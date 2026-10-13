@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Optional native Windows launcher and setup notes in `WINDOWS.md`.
+
+### Fixed
+- Auto-rig setup finds the virtual environment's Python executable on Windows.
+
 ## [0.4.3] - 2026-10-10
 
 ### Added

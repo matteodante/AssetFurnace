@@ -12,6 +12,16 @@ import bootstrap_autorig as ba
 import download_api
 
 
+def test_windows_venv_python_uses_scripts_directory(monkeypatch, tmp_path):
+    monkeypatch.setattr(ba.host, "os_family", lambda: "windows")
+    assert ba.venv_python(tmp_path) == tmp_path / ".venv" / "Scripts" / "python.exe"
+
+
+def test_linux_venv_python_uses_bin_directory(monkeypatch, tmp_path):
+    monkeypatch.setattr(ba.host, "os_family", lambda: "linux")
+    assert ba.venv_python(tmp_path) == tmp_path / ".venv" / "bin" / "python"
+
+
 def test_announcement_names_backend_licence_and_size():
     text = ba.announcement()
     assert "SkinTokens" in text and "MIT" in text

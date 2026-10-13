@@ -74,6 +74,8 @@ EXTRA_PACKAGES = ("scipy",)
 
 
 def venv_python(root: Path = VENDOR) -> Path:
+    if host.os_family() == "windows":
+        return root / ".venv" / "Scripts" / "python.exe"
     return root / ".venv" / "bin" / "python"
 
 
