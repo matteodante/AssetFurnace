@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Auto-rig setup finds the virtual environment's Python executable on Windows.
+- Blender imports reject empty active scenes and invalid skin indices, retain every
+  source license sidecar, and detect damaged saved versions on retry. Corrupt edit
+  metadata no longer prevents other sessions from loading.
+- The shared model viewer releases geometry, textures and materials when switching
+  models and ignores late callbacks from a closed viewport. Dynamic error text is escaped.
+- Background-job cleanup rejects invalid process IDs. Update commands quote folder
+  names safely, and prop metadata uses portable paths on Windows.
 
 ## [0.4.3] - 2026-10-10
 

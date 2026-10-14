@@ -53,6 +53,8 @@ def windows_group_alive(pid: int, kernel32) -> bool:
 
 def group_alive(pid: int, windows: bool = _IS_WINDOWS) -> bool:
     """True if the process group led by `pid` still exists."""
+    if type(pid) is not int or pid <= 0:
+        return False
     if windows:
         return windows_group_alive(pid, ctypes.windll.kernel32)
     try:
@@ -66,6 +68,8 @@ def group_alive(pid: int, windows: bool = _IS_WINDOWS) -> bool:
 
 def process_alive(pid: int, windows: bool = _IS_WINDOWS) -> bool:
     """True if the single process `pid` exists (a server, not a job's group)."""
+    if type(pid) is not int or pid <= 0:
+        return False
     if windows:
         return windows_group_alive(pid, ctypes.windll.kernel32)
     try:
@@ -94,11 +98,15 @@ def parse_pid_record(text: str) -> tuple[int, int | None]:
     if len(fields) not in (1, 2):
         raise ValueError(f"not a pid record: {text!r}")
     numbers = [int(field) for field in fields]
+    if any(number <= 0 for number in numbers):
+        raise ValueError("pid records require positive process ids")
     return numbers[0], numbers[1] if len(numbers) == 2 else None
 
 
 def terminate_group(pid: int, windows: bool = _IS_WINDOWS) -> None:
     """Best-effort stop of the group led by `pid`; one already gone is not an error."""
+    if type(pid) is not int or pid <= 0:
+        return
     if windows:
         subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)

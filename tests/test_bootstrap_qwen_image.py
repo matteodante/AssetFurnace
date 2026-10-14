@@ -201,7 +201,8 @@ def test_finish_install_flattens_and_marks_executable(tmp_path, monkeypatch):
     assert (tmp_path / "libstable-diffusion.so").exists()
     # The flatten must carry real links as links, not turn them into text files.
     assert (tmp_path / "libsd.so").is_symlink()
-    assert binary.stat().st_mode & 0o111
+    if os.name != "nt":
+        assert binary.stat().st_mode & 0o111
     assert not (tmp_path / "build").exists()
 
 
@@ -319,6 +320,7 @@ def test_a_mac_is_not_probed(monkeypatch):
     assert boot.main(["--yes"]) == 0
 
 
+@pytest.mark.skipif(os.name == "nt", reason="executes a POSIX shell fixture")
 def test_probe_gpu_runs_the_binary_and_returns_its_chatter(tmp_path):
     fake = tmp_path / "sd-cli"
     fake.write_text("#!/bin/sh\necho 'ggml_vulkan: Found 1 Vulkan devices:'\nexit 1\n")

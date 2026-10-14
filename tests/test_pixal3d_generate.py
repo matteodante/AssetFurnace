@@ -12,6 +12,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+import os
 
 import numpy as np
 import pytest
@@ -492,7 +493,7 @@ def test_an_existing_loader_path_is_kept_in_front(tmp_path, monkeypatch):
     (root / "lib").mkdir(parents=True)
     monkeypatch.setattr(px, "_rocm_root", lambda: root)
     env = px.run_env(None, {"LD_LIBRARY_PATH": "/my/lib"})
-    assert env["LD_LIBRARY_PATH"] == f"{root / 'lib'}:/my/lib"
+    assert env["LD_LIBRARY_PATH"] == f"{root / 'lib'}{os.pathsep}/my/lib"
 
 
 def test_rocm_is_not_added_twice(tmp_path, monkeypatch):

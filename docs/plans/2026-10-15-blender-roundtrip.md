@@ -48,10 +48,10 @@ Test dedicati: `test_blender_versions.py`, `test_blender_edit_api.py`,
 Il test Blender è opt-in con `I2L_TEST_EDIT_BLENDER=1`: apre un modello, modifica un
 vertice, esporta, importa la revisione e controlla che l'originale sia identico.
 
-Esecuzione estesa su Windows/Python 3.11: **498 passati, 3 fallimenti già riprodotti
-sulla base `main`** in `test_viewer_generate_api.py`. Due assumono `os.killpg`, assente
-su Windows; il terzo simula un host NVIDIA senza sostituire il controllo Windows.
-Nessun nuovo fallimento nel percorso Blender. Ruff passa con target Python 3.10.
+Prima esecuzione estesa su Windows/Python 3.11: 498 passati e tre fallimenti già
+presenti su `main`. La revisione successiva ha corretto anche queste assunzioni di
+piattaforma nei test e allargato la verifica all'intera suite: **2.566 passati,
+42 saltati, zero fallimenti**. [Problemi corretti e verifica finale](2026-10-15-blender-roundtrip-review.md).
 
 Prova manuale su una copia isolata del guerriero: apertura con finestra Blender 5.2.2,
 export modificato, nuova versione nella Library, 34 joint e due clip incorporate

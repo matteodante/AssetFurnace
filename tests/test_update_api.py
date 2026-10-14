@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import shlex
 import urllib.error
-from pathlib import Path
+from pathlib import PurePosixPath, PureWindowsPath
 
 import update_api
 
@@ -28,7 +29,7 @@ class Fetch:
 
 def check(tmp_path, fetch, now=1_000_000.0, current="0.2.0", **kw):
     return update_api.check(current=current, now=now, cache=tmp_path / "check.json",
-                            fetch=fetch, env=kw.get("env", {}), repo=Path("/lab"),
+                            fetch=fetch, env=kw.get("env", {}), repo=PurePosixPath("/lab"),
                             family=kw.get("family", "macos"))
 
 
@@ -42,6 +43,15 @@ def test_a_newer_release_is_reported_with_the_command_for_this_folder(tmp_path):
 def test_windows_gets_the_powershell_command(tmp_path):
     result = check(tmp_path, Fetch(), family="windows")
     assert "install.ps1" in result["command"] and "I3D_DIR" in result["command"]
+
+
+def test_update_commands_keep_folder_names_literal():
+    posix = PurePosixPath("/tmp/a folder/$(echo unsafe)/it's here")
+    command = update_api.update_command(posix, "linux")
+    assert shlex.split(command)[-1] == str(posix)
+    windows = PureWindowsPath("C:/a folder/$env:TEMP/it's here")
+    command = update_api.update_command(windows, "windows")
+    assert "$env:I3D_DIR = 'C:\\a folder\\$env:TEMP\\it''s here'" in command
 
 
 def test_same_or_older_release_is_not_newer(tmp_path):

@@ -96,6 +96,7 @@ def test_the_lab_listens_for_runpods_proxy():
     assert command.rstrip().endswith("&")
 
 
+@pytest.mark.skipif(os.name == "nt", reason="executes the POSIX RunPod launcher in bash")
 def test_starting_the_lab_returns_at_once(tmp_path):
     # 2026-10-02: `cd x && nohup ./lab ... &` backgrounded the whole list, which kept the
     # SSH channel open, and the step timed out. A pipe holds stdout the way ssh does.
@@ -138,6 +139,7 @@ def test_a_network_blip_while_waiting_is_not_a_failed_step():
         viewer.wait("/api/x/status", limit=0.3, poll=0.1)
 
 
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="POSIX terminal hangup signal")
 def test_closing_the_terminal_still_deletes_the_pod():
     # SIGHUP/SIGTERM skip `finally` unless turned into KeyboardInterrupt.
     previous = {sig: signal.getsignal(sig) for sig in (signal.SIGHUP, signal.SIGTERM)}

@@ -64,7 +64,7 @@ def test_blender_command_is_noninteractive_and_typed(tmp_path):
     job = manager.create("Creature.glb", b"glb", b"blend", valid_sidecar(b"glb", b"blend"))
     command = rig_api.build_command(job, Path("/Applications/Blender"))
 
-    assert command[:3] == ["/Applications/Blender", "--background", str(job.scene_path)]
+    assert command[:3] == [str(Path("/Applications/Blender")), "--background", str(job.scene_path)]
     # Without this Blender exits 0 when the worker raises, so a crash reads as success.
     # It must come before --python: Blender applies arguments in order.
     assert command[3:5] == ["--python-exit-code", "1"]
