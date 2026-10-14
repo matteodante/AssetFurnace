@@ -216,7 +216,8 @@ def test_trellis_setup_is_a_build_not_a_download():
     assert bc.BY_ID["hunyuan_xiong"].setup_fetches_weights is True
 
 
-def test_the_flag_reaches_the_browser():
+def test_the_flag_reaches_the_browser(monkeypatch):
+    monkeypatch.setattr(bc, "host_platform", lambda: bc.APPLE)
     trellis = next(b for b in bc.catalog_status()["backends"] if b["id"] == "trellis")
     assert trellis["setup_fetches_weights"] is False
 

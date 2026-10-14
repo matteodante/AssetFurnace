@@ -4,6 +4,7 @@ import { OrbitControls } from '../vendor/controls/OrbitControls.js';
 import { IndexedOBJLoader } from '../IndexedOBJLoader.js';
 import { RoomEnvironment } from '../vendor/environments/RoomEnvironment.js';
 import { inspectRig, resetRigPose } from '../animation/rig-inspection.js';
+import { disposeModelResources } from './model-resources.js';
 
 // Pure geometry shared by every viewport. Each renderer still creates its own PMREM
 // texture because GPU resources cannot be shared across WebGL contexts.
@@ -34,12 +35,13 @@ export function createModelViewport({ pane, spec, slotIndex = null, onChange, on
 
   // Studio HDRI environment, matching Blender's Material Preview/LookDev lighting.
   const pmremGenerator = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmremGenerator.fromScene(roomEnvironment, 0.04).texture;
+  const environmentTarget = pmremGenerator.fromScene(roomEnvironment, 0.04);
+  scene.environment = environmentTarget.texture;
   pmremGenerator.dispose();
   scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x30302a, 0.15));
 
   const view = {
-    kind: 'model', spec, slotIndex, pane, renderer, scene, camera, controls,
+    kind: 'model', spec, slotIndex, pane, renderer, scene, camera, controls, environmentTarget, disposed: false,
     root: null, modelRoot: null, stats: pane.querySelector('.stats'), materials: [],
     overlay: null, rig: inspectRig(null),
   };
@@ -49,6 +51,12 @@ export function createModelViewport({ pane, spec, slotIndex = null, onChange, on
 }
 
 export function disposeModelViewport(view) {
+  if (view.disposed) return;
+  view.disposed = true;
+  disposeModelResources(view.scene, view.materials.flatMap((entry) => [entry.original, entry.flat, entry.normal]));
+  view.environmentTarget.dispose();
+  view.materials.length = 0;
+  view.scene.clear();
   view.controls.dispose();
   view.renderer.dispose();
   view.renderer.forceContextLoss();
@@ -57,6 +65,7 @@ export function disposeModelViewport(view) {
 function loadModel(view, onLoaded, onError) {
   const { spec } = view;
   const loaded = (root, animations = []) => {
+    if (view.disposed) { disposeModelResources(root); return; }
     // Normalize to a unit box centered on the origin so differently scaled exports remain
     // directly comparable and every room can use the same camera framing contract.
     const pivot = new THREE.Group();
@@ -64,7 +73,8 @@ function loadModel(view, onLoaded, onError) {
     const box = new THREE.Box3().setFromObject(root);
     const size = box.getSize(new THREE.Vector3());
     const centre = box.getCenter(new THREE.Vector3());
-    const scale = 1 / Math.max(size.x, size.y, size.z);
+    const extent = Math.max(size.x, size.y, size.z);
+    const scale = Number.isFinite(extent) && extent > 0 ? 1 / extent : 1;
     root.position.sub(centre);
     pivot.scale.setScalar(scale);
     pivot.add(root);
@@ -100,10 +110,11 @@ function loadModel(view, onLoaded, onError) {
     if (onLoaded) onLoaded(view);
   };
   const progress = (event) => {
-    if (!event.lengthComputable) return;
+    if (view.disposed || !event.lengthComputable) return;
     view.stats.textContent = `loading… ${Math.round(event.loaded / event.total * 100)}%`;
   };
   const failed = (error) => {
+    if (view.disposed) return;
     view.stats.textContent = 'FAILED';
     if (onError) onError(error);
   };

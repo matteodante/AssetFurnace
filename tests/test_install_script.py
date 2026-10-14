@@ -18,7 +18,7 @@ SCRIPT = REPO / "install.sh"
 BASH = shutil.which("bash")
 GIT = shutil.which("git")
 
-pytestmark = pytest.mark.skipif(not (BASH and GIT), reason="needs bash and git")
+pytestmark = pytest.mark.skipif(os.name == "nt" or not (BASH and GIT), reason="POSIX installer needs a native POSIX shell and filesystem")
 
 
 def _git(cwd: Path, *args: str) -> str:

@@ -123,12 +123,25 @@ def test_pid_records_old_and_new_both_parse():
     assert processes.parse_pid_record("4242") == (4242, None)
 
 
-@pytest.mark.parametrize("text", ["", "abc", "1 2 3", "12 x"])
+@pytest.mark.parametrize("text", ["", "abc", "1 2 3", "12 x", "0", "-1", "42 0", "42 -1"])
 def test_a_malformed_pid_record_is_rejected(text):
     with pytest.raises(ValueError):
         processes.parse_pid_record(text)
 
 
 def test_this_process_is_alive_and_a_free_pid_is_not():
-    assert processes.process_alive(os.getpid(), windows=False)
-    assert not processes.process_alive(2**22 + 12345, windows=False)
+    assert processes.process_alive(os.getpid())
+    assert not processes.process_alive(2**22 + 12345)
+
+
+@pytest.mark.parametrize("pid", [0, -1, True])
+def test_invalid_pids_never_reach_a_signal_or_taskkill(pid, monkeypatch):
+    calls = []
+    monkeypatch.setattr(processes.os, "kill", lambda *args: calls.append(args))
+    monkeypatch.setattr(processes.os, "killpg", lambda *args: calls.append(args), raising=False)
+    monkeypatch.setattr(processes.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+    for windows in (True, False):
+        assert not processes.group_alive(pid, windows=windows)
+        assert not processes.process_alive(pid, windows=windows)
+        processes.terminate_group(pid, windows=windows)
+    assert not calls

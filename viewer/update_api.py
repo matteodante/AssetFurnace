@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import sys
 import time
 import urllib.error
@@ -52,8 +53,9 @@ def _version(tag: str | None) -> tuple[int, ...] | None:
 def update_command(repo: Path, family: str) -> str:
     """The installer line that updates *this* folder, not a fresh copy in the default."""
     if family == "windows":
-        return f'$env:I3D_DIR = "{repo}"; irm {RAW}/install.ps1 | iex'
-    return f"curl -fsSL {RAW}/install.sh | bash -s -- --dir {repo}"
+        literal = str(repo).replace("'", "''")
+        return f"$env:I3D_DIR = '{literal}'; irm {RAW}/install.ps1 | iex"
+    return f"curl -fsSL {RAW}/install.sh | bash -s -- --dir {shlex.quote(str(repo))}"
 
 
 def _read_cache(path: Path) -> dict[str, Any]:

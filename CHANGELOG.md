@@ -8,10 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Edit in Blender** in Studio: open a separate editing copy, export a GLB from
+  Blender and import it as a new Library version. Originals and provenance stay
+  available; imported versions preview their own rig, materials and animations.
+  Remote or Blender-free servers offer an editing-copy download instead.
+  See [the workflow and limits](docs/blender-editing.md).
 - Optional native Windows launcher and setup notes in `WINDOWS.md`.
+- Guided editor feasibility CLI (`scripts/inspect_edit_asset.py`): bounded GLB inspection,
+  lossless container checks and numerical bind/reweight probes with saved evidence.
+  The web editor remains in development; passing inspection does not enable editing.
+- Experimental canonical editing snapshots and a Blender no-op bridge, preserving
+  untouched GLB data and reporting geometry, UV and weight round-trip checks.
+  This is a feasibility tool; interactive editing and rig reconstruction are pending.
 
 ### Fixed
 - Auto-rig setup finds the virtual environment's Python executable on Windows.
+- Blender imports reject empty active scenes and invalid skin indices, retain every
+  source license sidecar, and detect damaged saved versions on retry. Corrupt edit
+  metadata no longer prevents other sessions from loading.
+- The shared model viewer releases geometry, textures and materials when switching
+  models and ignores late callbacks from a closed viewport. Dynamic error text is escaped.
+- Background-job cleanup rejects invalid process IDs. Update commands quote folder
+  names safely, and prop metadata uses portable paths on Windows.
 
 ## [0.4.3] - 2026-10-10
 

@@ -275,7 +275,7 @@ def rocm_library_path(base: dict[str, str], root: Path | None = None) -> str | N
     directory = found / "lib"
     if not directory.is_dir():
         return None
-    return None if str(directory) in base.get("LD_LIBRARY_PATH", "").split(":") else directory
+    return None if str(directory) in base.get("LD_LIBRARY_PATH", "").split(os.pathsep) else directory
 
 
 def _rocm_root() -> Path | None:
@@ -293,7 +293,7 @@ def run_env(steps: int | None, base: dict[str, str] | None = None) -> dict[str, 
     rocm = rocm_library_path(env)
     if rocm is not None:
         existing = env.get("LD_LIBRARY_PATH", "")
-        env["LD_LIBRARY_PATH"] = f"{rocm}:{existing}" if existing else str(rocm)
+        env["LD_LIBRARY_PATH"] = f"{rocm}{os.pathsep}{existing}" if existing else str(rocm)
     return env
 
 
