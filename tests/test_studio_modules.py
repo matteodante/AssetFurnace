@@ -47,6 +47,28 @@ def test_blender_revision_selection_and_upload_limits():
 
 
 @needs_node
+def test_model_cleanup_releases_shared_and_hidden_resources_once():
+    out = _run("../components/model-resources.js", """
+      const count = {};
+      const resource = key => ({dispose(){ count[key] = (count[key] || 0) + 1; }});
+      const image = {close(){ count.image = (count.image || 0) + 1; }};
+      const texture = {...resource('texture'), isTexture:true, image};
+      const paint = {...resource('paint'), map:texture};
+      const clay = resource('clay'), geometry = resource('geometry'), skeleton = resource('skeleton');
+      const mesh = {geometry, skeleton, material:clay, userData:{paint:[paint,paint]}};
+      m.disposeModelResources({traverse(fn){fn(mesh);fn(mesh);}}, [paint]);
+      console.log(JSON.stringify(count));""")
+    assert out == dict(texture=1, image=1, paint=1, clay=1, geometry=1, skeleton=1)
+
+
+@needs_node
+def test_viewer_dynamic_text_cannot_create_html():
+    out = _run("../components/html.js", """
+      console.log(JSON.stringify(m.escapeHTML('<img src=x onerror="alert(1)">&')));""")
+    assert out == '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&amp;'
+
+
+@needs_node
 def test_progress_and_next_step_per_kind():
     out = _run("library.js", f"""
       const a = {json.dumps([KNIGHT, FOX, SHEET])};
