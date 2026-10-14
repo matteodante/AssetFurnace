@@ -18,6 +18,7 @@ each file explains *why* it exists, which is usually the part you need.
 |---|---|
 | `inspect_edit_asset.py` | Check a GLB for the guided editor and save reproducible S0/RIG0 evidence. |
 | `blender_edit_bridge.py` | Round-trip canonical editing buffers through Blender without reimporting the GLB. |
+| `blender_open_asset.py` | Open an isolated GLB editing copy in Blender and save a resumable workspace. |
 
 ## Generate an asset
 

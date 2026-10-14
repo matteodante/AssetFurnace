@@ -31,6 +31,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 # Sibling import must also work when tests load this file directly via importlib.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import image_api
+import blender_edit_api
 from image_to_3dlab import processes
 from image_to_3dlab.blender import find_blender, missing_help as blender_missing_help
 from image_to_3dlab.gpu_memory import gpu_busy_note
@@ -2072,6 +2073,8 @@ class Handler(SimpleHTTPRequestHandler):
         return cls._chain_runner
 
     def do_POST(self) -> None:
+        if blender_edit_api.handle(self, OUTPUT_ROOT, mutation=True):
+            return
         parts = self._path_parts()
         if parts == ["api", "chains"]:
             try:
@@ -2302,7 +2305,16 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")
         return None
 
+    def send_head(self):
+        # This covers static GET and HEAD after URL normalization.
+        if blender_edit_api.private_file(OUTPUT_ROOT, self.translate_path(self.path)):
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return None
+        return super().send_head()
+
     def do_GET(self) -> None:
+        if blender_edit_api.handle(self, OUTPUT_ROOT):
+            return
         if urlparse(self.path).path in ("", "/", "/viewer", "/viewer/"):
             self.send_response(HTTPStatus.FOUND)  # the front door is the studio
             self.send_header("Location", "/viewer/studio.html")

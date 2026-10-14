@@ -34,7 +34,7 @@ FINISH_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__finish__\d{8}-\d{6}(?:-\d+)?$")
 RIG_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__rig__\d{8}-\d{6}(?:-\d+)?$")
 PROPS_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__props__\d{8}-\d{6}(?:-\d+)?$")
 # Folders under output/ that hold other steps' runs, not 3D generations.
-NOT_GENERATED = {"finish", "props", "images", "rig-rebind", "animate"}
+NOT_GENERATED = {"finish", "props", "images", "rig-rebind", "animate", "blender-edits", "editor-feasibility"}
 # A second take of a preset (`_b`) is a choice between versions, not another move.
 TAKE_SUFFIX = re.compile(r"_[b-z]$")
 STAGES = ("picture", "model", "finished", "rigged", "animated")
@@ -290,6 +290,9 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
             "updated": max((f.stat().st_mtime for f in files), default=0),
         })
     hashes.save()
+    from blender_versions import attach_versions
+
+    attach_versions(output, assets)
     meta = _read_meta(output)
     hidden = set(meta.get("hidden", []))
     names = meta.get("names") if isinstance(meta.get("names"), dict) else {}

@@ -8,6 +8,7 @@ import { stepBody, wireStep } from './steps.js';
 import { openCreate, runChain } from './create.js';
 import { openActivity, openAbout, openGuide, closeSheet } from './pages.js';
 import { STEP_LABELS } from './plan.js';
+import { createBlenderPanel, initialRevision, revisionFor } from './blender-edit.js';
 
 const $ = (id) => document.getElementById(id);
 const LOGO = './studio/mark.svg';
@@ -18,12 +19,29 @@ let filter = 'all', query = '', showHidden = false, limit = 30;
 let current = null;
 let engines = [], presets = [], recipes = null, busy = false, playNext = null;
 let making = null, viewingMaking = false;  // the asset Create is making right now
+const selectedVersions = new Map();
+let displayedFile = null;
 
-const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onClipChange: (clip) => setDownload(clip.file) });
+const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onClipChange: (clip) => {
+  displayedFile = clip.file;
+  setDownload(clip.file);
+  blenderPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
+} });
 
 const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const url = (relative) => servedUrl(base, relative);
 const fileName = (relative) => relative?.split('/').pop() ?? '';
+const blenderPanel = createBlenderPanel({ root: $('blenderPanel'), url,
+  onVersion: (id) => { if (current) { selectedVersions.set(current.id, id); show(current); } },
+  onImported: async (assetId, versionId, isActive) => {
+    if (!await refreshAssets()) throw new Error('Version saved, but the Library could not reload. Reload this page to see it.');
+    if (isActive() && current?.id === assetId && !viewingMaking) {
+      selectedVersions.set(assetId, versionId);
+      show(current);
+      blenderPanel.announceImported(assetId, versionId);
+    }
+  },
+});
 
 function renderLibrary() {
   const { rows: list, more, hiddenCount } = visibleAssets(assets, { filter, query, showHidden, limit });
@@ -109,12 +127,28 @@ function show(asset) {
   $('vTitle').textContent = asset?.name ?? '';
   $('vMeta').textContent = asset ? statusText(asset) : '';
   if (!asset) {
+    blenderPanel.update(null);
     viewer.showEmpty('Nothing to show yet. Pick an asset on the left.');
     $('steps').innerHTML = '';
     return;
   }
   renderSteps(asset);
   renderHideButton();
+  const selected = initialRevision(asset, selectedVersions.get(asset.id));
+  selectedVersions.set(asset.id, selected);
+  const revision = revisionFor(asset, selected);
+  if (revision) {
+    viewer.setFacing(null);
+    viewer.setClips([]);
+    displayedFile = revision.file;
+    viewer.load(url(revision.file), { label: revision.label, embeddedClips: true });
+    $('vMeta').textContent = `Blender version · ${revision.label}`;
+    $('steps').innerHTML = '<li class="hint opened-note">This version contains only what was exported from Blender. Select Original pipeline to see its steps, moves and other outputs.</li>';
+    setDownload(revision.file);
+    blenderPanel.update(asset, revision.file, revision);
+    return;
+  }
+  displayedFile = displayModel(asset);
   // only rigged files are turned: the skeleton is what says which way the feet point
   viewer.setFacing(asset.rigged && (asset.clips.length || displayModel(asset) === asset.rigged) ? asset.facing : null);
   if (asset.kind === 'character' && asset.clips.length) {
@@ -132,6 +166,7 @@ function show(asset) {
     else if (asset.picture) viewer.showImage(url(asset.picture), 'A picture so far. Make it 3D from the Steps panel.');
     else viewer.showEmpty('Nothing to show for this asset yet.');
   }
+  blenderPanel.update(asset, displayedFile);
 }
 
 $('assetList').addEventListener('click', (event) => {
@@ -185,11 +220,12 @@ async function loadLibrary(keepId = null, { pick = true } = {}) {
 async function refreshAssets() {
   const response = await fetch('/api/assets');
   const payload = await response.json();
-  if (!response.ok) return;
+  if (!response.ok) return false;
   base = payload.base;
   assets = payload.assets;
   if (current) current = assets.find((a) => a.id === current.id) ?? current;
   renderLibrary();
+  return true;
 }
 
 async function loadTools() {
@@ -230,6 +266,7 @@ function makingRow() {
 /** The viewer, Steps and Library while Create is making something. */
 function showMaking() {
   if (!making) return;
+  blenderPanel.update(null);
   closeSheet($('stage'));
   viewingMaking = true;
   renderLibrary();
@@ -369,6 +406,7 @@ let openedUrl = null;
 
 function openFile(file) {
   if (!file) return;
+  blenderPanel.update(null);
   closeSheet($('stage'));
   current = null;
   viewingMaking = false;

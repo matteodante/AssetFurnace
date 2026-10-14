@@ -1,5 +1,7 @@
 # Avvio dell'implementazione: S0/RIG0
 
+**15 ottobre, cambio di priorità:** sviluppo dell'editor guidato rimandato su richiesta dell'utente. Il lavoro corrente è il [flusso manuale Blender](2026-10-15-blender-roundtrip.md). I risultati sotto restano esperimenti precedenti, non la descrizione della funzione disponibile in Studio.
+
 Data: 14 ottobre 2026. Collegato al [piano revisionato](2026-10-14-guided-model-editor.md).
 
 Ultimo aggiornamento: 15 ottobre 2026. I risultati del primo incremento restano sotto come storico; la sezione finale registra il documento canonico e le prove reali con Blender aggiunti successivamente.

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Edit in Blender** in Studio: open a separate editing copy, export a GLB from
+  Blender and import it as a new Library version. Originals and provenance stay
+  available; imported versions preview their own rig, materials and animations.
+  Remote or Blender-free servers offer an editing-copy download instead.
+  See [the workflow and limits](docs/blender-editing.md).
 - Optional native Windows launcher and setup notes in `WINDOWS.md`.
 - Guided editor feasibility CLI (`scripts/inspect_edit_asset.py`): bounded GLB inspection,
   lossless container checks and numerical bind/reweight probes with saved evidence.

@@ -206,9 +206,14 @@ export function createStudioViewer({ stage, logoUrl, onClipChange }) {
     }
   }
 
-  function load(url, { label = '', autoplay = false } = {}) {
+  let embeddedAnimations = [];
+  const escapeClip = (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function load(url, { label = '', autoplay = false, embeddedClips = false } = {}) {
     const token = ++loadToken;
     dispose();
+    embeddedAnimations = [];
+    if (embeddedClips) { clipBar.hidden = true; clipBar.innerHTML = ''; }
     setOverlay(`<div class="ph"><img src="${logoUrl}" alt=""><span>Loading model…</span></div>`);
     const created = createModelViewport({
       pane,
@@ -234,6 +239,16 @@ export function createStudioViewer({ stage, logoUrl, onClipChange }) {
           player.select(loaded.rig.animations[0]);
           player.action.setLoop(THREE.LoopRepeat, Infinity);
           if (autoplay) player.play();
+        }
+        if (embeddedClips && loaded.rig.animations.length) {
+          embeddedAnimations = loaded.rig.animations;
+          clipBar.hidden = false;
+          clipBar.innerHTML = `<button class="tool" data-clip-act="play" data-tip="Play or pause" aria-label="Play or pause">${ICON.play}</button>
+            <button class="ghost" data-clip-act="rest">Reset pose</button>
+            ${embeddedAnimations.map((clip, i) => `<button class="chip" data-clip="${i}" aria-pressed="${i === 0}">${escapeClip(clip.name || `Animation ${i + 1}`)}</button>`).join('')}
+            <span class="scrubber"><input type="range" class="scrub" data-scrub min="0" max="1000" value="0" aria-label="Scrub through the move"><span class="meta frame" data-frame>frame 0</span></span>`;
+          syncScrub(0, player.duration);
+          syncPlayButton(player.playing);
         }
         // keep wireframe and skeleton on across models and moves
         const pressed = (act) => tools.querySelector(`[data-act="${act}"]`).getAttribute('aria-pressed') === 'true';
@@ -298,7 +313,7 @@ export function createStudioViewer({ stage, logoUrl, onClipChange }) {
       <button class="tool" data-clip-act="play" data-tip="Play or pause" aria-label="Play or pause">${ICON.pause}</button>
       <button class="ghost" data-clip-act="rest" data-tip="Reset pose: stop and show the character in its rest pose">Reset pose</button>
       <span class="sep"></span>`) + `
-      ${items.map((clip, i) => `<button class="chip" data-clip="${i}" aria-pressed="${i === clipIndex}">${clip.name}</button>`).join('')}`
+      ${items.map((clip, i) => `<button class="chip" data-clip="${i}" aria-pressed="${i === clipIndex}">${escapeClip(clip.name)}</button>`).join('')}`
       + (still ? '' : `<span class="scrubber"><input type="range" class="scrub" data-scrub min="0" max="1000" value="0" aria-label="Scrub through the move"><span class="meta frame" data-frame>frame 0</span></span>`);
     if (clipIndex >= 0) onClipChange?.(items[clipIndex]);
     clipBar.dataset.rest = restUrl || '';
@@ -329,6 +344,12 @@ export function createStudioViewer({ stage, logoUrl, onClipChange }) {
     if (chip) {
       clipIndex = Number(chip.dataset.clip);
       clipBar.querySelectorAll('[data-clip]').forEach((b) => b.setAttribute('aria-pressed', String(b === chip)));
+      if (embeddedAnimations.length) {
+        player.select(embeddedAnimations[clipIndex]);
+        player.action.setLoop(THREE.LoopRepeat, Infinity);
+        player.play();
+        return;
+      }
       load(clips[clipIndex].url, { label: clips[clipIndex].name, autoplay: true });
       onClipChange?.(clips[clipIndex]);
       return;

@@ -2,6 +2,8 @@
 
 Data: 14 ottobre 2026. Repository studiata: AssetFurnace, base `6042e60`.
 
+**Priorità aggiornata il 15 ottobre:** l'utente ha ridotto la richiesta a [Apri in Blender → esporta GLB → importa come nuova versione](2026-10-15-blender-roundtrip.md). Il presente editor guidato è rimandato; piano, revisione e prove restano come storico. I suoi gate non sono criteri di rilascio del flusso manuale.
+
 **Stato: implementazione avviata, prove S0/RIG0 in corso.** Sono presenti i primi controlli GLB e moduli numerici; la web app non dispone ancora dell'editor e i gate non sono conclusi. [Avanzamento, codice e risultati](2026-10-14-guided-model-editor-progress.md). Le decisioni architetturali sotto restano il contratto da verificare. Ricerca su fonti primarie svolta il 13–14 ottobre 2026. [Revisione indipendente](2026-10-14-guided-model-editor-review.md), riferita alla versione del piano precedente a questo aggiornamento di stato.
 
 **Estensione del 14 ottobre:** la richiesta comprende ora anche correzione guidata dello scheletro, modifica dei pesi e studio delle ossa mancanti. Il contratto tecnico è in §14; requisiti, dipendenze e criteri di rilascio sotto includono questa estensione. La precedente revisione del solo editor di forma resta nello storico del report.

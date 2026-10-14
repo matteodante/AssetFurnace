@@ -32,6 +32,21 @@ SHEET = {"name": "tavern", "kind": "prop set", "stage": "finished", "picture": N
 
 
 @needs_node
+def test_blender_revision_selection_and_upload_limits():
+    out = _run("blender-edit.js", """
+      const asset = {model:'original.glb',blender_versions:[{id:'v1'}, {id:'v2'}]};
+      console.log(JSON.stringify({
+        newest:m.initialRevision(asset), original:m.initialRevision(asset,'original'),
+        kept:m.initialRevision(asset,'v1'), missing:m.revisionFor(asset,'missing'),
+        good:m.fileProblem({name:'edited.GLB',size:100}),
+        gltf:!!m.fileProblem({name:'edited.gltf',size:100}),
+        big:!!m.fileProblem({name:'edited.glb',size:600*1024*1024})
+      }));""")
+    assert out == {"newest": "v2", "original": "original", "kept": "v1", "missing": None,
+                   "good": None, "gltf": True, "big": True}
+
+
+@needs_node
 def test_progress_and_next_step_per_kind():
     out = _run("library.js", f"""
       const a = {json.dumps([KNIGHT, FOX, SHEET])};
