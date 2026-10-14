@@ -12,6 +12,12 @@ docstring, so a new script is not finished until it is listed here.
 Most tools print their real documentation with `--help`; the docstring at the top of
 each file explains *why* it exists, which is usually the part you need.
 
+## Guided editor feasibility
+
+| Script | What it does |
+|---|---|
+| `inspect_edit_asset.py` | Check a GLB for the guided editor and save reproducible S0/RIG0 evidence. |
+
 ## Generate an asset
 
 Run a backend end to end, or re-run part of one without paying for the whole thing again.
