@@ -8,10 +8,10 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from test_edit_glb import fixture
 
 from image_to_3dlab.edit_probe import inspect_asset, run_probe
 from image_to_3dlab.glb_turn import build_glb, parse_glb
-from test_edit_glb import fixture
 
 
 def test_probe_checks_reloaded_data_and_the_reweight_bind_invariant():
@@ -83,7 +83,7 @@ def test_cli_writes_inspectable_evidence_and_distinguishes_unsupported_input(tmp
     repo = Path(__file__).resolve().parents[1]
     result = subprocess.run([sys.executable, str(repo / "scripts/inspect_edit_asset.py"),
                              str(source), "--output-dir", str(output)],
-                            capture_output=True, text=True, cwd=tmp_path, timeout=20)
+                            check=False, capture_output=True, text=True, cwd=tmp_path, timeout=20)
     assert result.returncode == expected_code, result.stderr
     assert json.loads(result.stdout)["production_editing_ready"] is False
     assert (output / "report.json").is_file()

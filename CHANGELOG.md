@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Guided editor feasibility CLI (`scripts/inspect_edit_asset.py`): bounded GLB inspection,
   lossless container checks and numerical bind/reweight probes with saved evidence.
   The web editor remains in development; passing inspection does not enable editing.
+- Experimental canonical editing snapshots and a Blender no-op bridge, preserving
+  untouched GLB data and reporting geometry, UV and weight round-trip checks.
+  This is a feasibility tool; interactive editing and rig reconstruction are pending.
 
 ### Fixed
 - Auto-rig setup finds the virtual environment's Python executable on Windows.

@@ -334,9 +334,10 @@ class EditGLB:
                         expected = 3 if name == "NORMAL" else 4
                         if array.shape != (len(positions), expected) or meta["componentType"] != 5126:
                             _fail(f"{name} has an unsupported type")
-                    if name.startswith("TEXCOORD_"):
-                        if array.shape != (len(positions), 2) or array.dtype.kind != "f":
-                            _fail(f"{name} must be float/normalized VEC2")
+                    if name.startswith("TEXCOORD_") and (
+                        array.shape != (len(positions), 2) or array.dtype.kind != "f"
+                    ):
+                        _fail(f"{name} must be float/normalized VEC2")
                 if "material" in part:
                     _ref(materials, part["material"], "material")
                 if "indices" in part:

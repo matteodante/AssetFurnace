@@ -4,8 +4,12 @@ import numpy as np
 import pytest
 
 from image_to_3dlab.edit_math import (
-    EditMathError, calibrate_local_rotation, certify_bind, posed_delta_to_rest,
-    rebind_inverse, skin_matrices,
+    EditMathError,
+    calibrate_local_rotation,
+    certify_bind,
+    posed_delta_to_rest,
+    rebind_inverse,
+    skin_matrices,
 )
 
 

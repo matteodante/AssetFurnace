@@ -9,8 +9,13 @@ from pathlib import Path
 
 import numpy as np
 
-from image_to_3dlab.edit_glb import EditGLB, EditGLBError, MAX_GLB_BYTES
-from image_to_3dlab.edit_math import EditMathError, certify_bind, rebind_inverse, skin_matrices
+from image_to_3dlab.edit_glb import MAX_GLB_BYTES, EditGLB, EditGLBError
+from image_to_3dlab.edit_math import (
+    EditMathError,
+    certify_bind,
+    rebind_inverse,
+    skin_matrices,
+)
 
 PROBE_VERSION = 1
 
