@@ -123,6 +123,36 @@ def inspect_glb(data: bytes) -> dict:
                 ref(nodes, index)
         if "scene" in doc:
             ref(doc.get("scenes", []), doc["scene"])
+        scenes = objects("scenes")
+        if not scenes:
+            raise ValueError("The GLB has no active scene; export the model from Blender")
+        active = ref(scenes, doc.get("scene", 0))
+        pending = list(active.get("nodes", []))
+        visible_meshes = 0
+        visited = set()
+        while pending:
+            index = pending.pop()
+            node = ref(nodes, index)
+            if index in visited:
+                raise ValueError("The active scene contains duplicate node instances")
+            visited.add(index)
+            visible_meshes += "mesh" in node
+            pending.extend(node.get("children", []))
+        if not visible_meshes:
+            raise ValueError("The active scene has no mesh; export the model, not an empty selection")
+        for node in nodes:
+            if "mesh" not in node or "skin" not in node:
+                continue
+            skin = ref(skins, node["skin"])
+            for primitive in ref(meshes, node["mesh"])["primitives"]:
+                attrs = primitive["attributes"]
+                if any(k.startswith(("JOINTS_", "WEIGHTS_")) and k not in ("JOINTS_0", "WEIGHTS_0") for k in attrs):
+                    raise ValueError("Studio previews four skin influences per vertex; limit bone influences in Blender's exporter")
+                joints, weights = glb.accessor(attrs["JOINTS_0"]), glb.accessor(attrs["WEIGHTS_0"])
+                if joints.ndim != 2 or joints.shape[1] != 4 or joints.dtype.kind != "u" or joints.max() >= len(skin["joints"]):
+                    raise ValueError("Skin joint indices do not belong to the skeleton")
+                if weights.shape != joints.shape or weights.dtype.kind != "f" or (weights < 0).any() or (weights.sum(axis=1) <= 0).any():
+                    raise ValueError("Invalid skin weights")
         for mesh in meshes:
             if not mesh.get("primitives"):
                 raise ValueError("Empty mesh")

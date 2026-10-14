@@ -126,7 +126,7 @@ def private_file(output, path):
     resolved = original.resolve()
     if original.is_relative_to(root):
         parts = original.relative_to(root).parts
-        if not resolved.is_relative_to(root.resolve()):
+        if not resolved.is_relative_to(root.resolve()) or resolved != root.resolve().joinpath(*parts):
             return True
     elif resolved.is_relative_to(root.resolve()):
         parts = resolved.relative_to(root.resolve()).parts

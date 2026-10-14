@@ -138,3 +138,16 @@ def test_downloaded_editing_copy_uses_captured_snapshot(server, library):
     source.write_bytes(b"changed")
     status, body = request(server, "GET", f"/api/blender-edit/sessions/{session['id']}/source.glb")
     assert status == 200 and body == original
+
+
+def test_public_filename_cannot_alias_private_snapshot(server, library):
+    output, _, asset, _ = library
+    session = bv.create_session(output, asset["id"], "knight/knight.glb", "2" * 32)
+    alias = output / "blender-edits/versions" / ("2" * 32) / "model.glb"
+    alias.parent.mkdir(parents=True)
+    try:
+        alias.symlink_to(bv.session_path(output, session["id"]) / "input/source.glb")
+    except OSError:
+        pytest.skip("symlink creation not available on this host")
+    status, _ = request(server, "GET", f"/{output.name}/blender-edits/versions/{session['id']}/model.glb")
+    assert status == 404

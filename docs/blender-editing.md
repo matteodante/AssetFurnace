@@ -35,6 +35,8 @@ This feature uses the server's existing access model; it does not add user accou
 
 - Original files are never overwritten. A version stores the uploaded GLB byte for byte,
   its parent version and SHA-256 hashes, and a copy of the available source license record.
+  Additional source sidecars are retained too; `source_sidecars` lists their hashes and
+  records (the primary record references `source_record` to avoid duplicating ancestry).
   Editing does not change the source license or establish rights to added content.
 - Previous clips, LODs, collision files, Unreal exports and pipeline results stay on the
   original. They are not attached to a changed mesh or skeleton. Steps remain available
@@ -49,7 +51,9 @@ This feature uses the server's existing access model; it does not add user accou
   these changes, retarget animation, or certify Unreal compatibility.
 - Uploads must be self-contained glTF 2.0 binary files up to 512 MiB, with embedded
   PNG/JPEG/WebP/AVIF images. Draco, meshopt, KTX textures and unknown required extensions
-  are refused. Structural checks include references, buffers, finite values and memory
+  are refused. The active scene must contain a mesh; skinning is limited to four
+  influences per vertex for Studio's preview. Use the exporter's bone-influence limit.
+  Structural checks include references, buffers, finite values and memory
   limits. They are not full glTF conformance, image decoding or semantic rig validation.
 
 ## Recovery

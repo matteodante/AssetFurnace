@@ -21,7 +21,10 @@ from image_to_3dlab.glb_turn import build_glb, parse_glb
 def library(tmp_path):
     source = tmp_path / "knight" / "knight.glb"
     source.parent.mkdir()
-    source.write_bytes(fixture())
+    doc, binary = parse_glb(fixture())
+    doc["scenes"] = [{"nodes": [0, 1]}]
+    doc["scene"] = 0
+    source.write_bytes(build_glb(doc, binary))
     record = {"license": {"name": "source conditions"}, "classification": "research-only", "motion": {"license": "motion conditions"}}
     source.with_suffix(".provenance.json").write_text(json.dumps(record))
     return tmp_path, source, assets_api.list_assets(tmp_path)[0], record
@@ -169,3 +172,60 @@ def test_legacy_sidecar_output_path_is_preserved(library):
     assert saved["source_record"] == record
     assert saved["license"] == record["license"]
     assert saved["classification"] is None
+
+
+def test_all_license_sidecars_travel_with_the_import(library):
+    output, source, asset, _ = library
+    motion = {"motion": {"license": "animation-specific restrictions"}}
+    source.with_suffix(".json").write_text(json.dumps(motion))
+    session = bv.create_session(output, asset["id"], "knight/knight.glb", "d" * 32)
+    version = bv.import_version(output, session["id"], source.read_bytes(), "edited.glb")
+    saved = json.loads((output / version["provenance"]).read_text())
+    assert next(s["record"] for s in saved["source_sidecars"] if s["suffix"] == ".json") == motion
+    primary = next(s for s in saved["source_sidecars"] if s["suffix"] == ".provenance.json")
+    assert primary["record_ref"] == "source_record" and "record" not in primary
+
+
+def test_corrupt_pending_session_does_not_break_other_sessions(library):
+    output, _, asset, _ = library
+    broken = bv.create_session(output, asset["id"], "knight/knight.glb", "e" * 32)
+    broken.pop("created_at")
+    bv.write_json(bv.session_path(output, broken["id"]) / "session.json", broken)
+    valid = bv.create_session(output, asset["id"], "knight/knight.glb", "f" * 32)
+    assert [s["id"] for s in bv.list_sessions(output, asset["id"])] == [valid["id"]]
+
+
+def test_retry_does_not_report_a_damaged_published_version_as_success(library):
+    output, source, asset, _ = library
+    data = source.read_bytes()
+    session = bv.create_session(output, asset["id"], "knight/knight.glb", "a" * 32)
+    version = bv.import_version(output, session["id"], data, "edited.glb")
+    (output / version["file"]).write_bytes(b"damaged")
+    with pytest.raises(ValueError, match="saved version"):
+        bv.import_version(output, session["id"], data, "edited.glb")
+
+
+def test_empty_active_scene_is_refused(library):
+    _, source, _, _ = library
+    doc, binary = parse_glb(source.read_bytes())
+    doc["scenes"] = [{"nodes": []}, {"nodes": [0, 1]}]
+    with pytest.raises(ValueError, match="active scene"):
+        inspect_glb(build_glb(doc, binary))
+
+
+def test_skin_indices_must_belong_to_the_selected_skin(library):
+    _, source, _, _ = library
+    doc, binary = parse_glb(source.read_bytes())
+    doc["skins"][0]["joints"] = [1]
+    with pytest.raises(ValueError, match="joint indices"):
+        inspect_glb(build_glb(doc, binary))
+
+
+def test_partial_version_metadata_does_not_break_library(library):
+    output, source, asset, _ = library
+    session = bv.create_session(output, asset["id"], "knight/knight.glb", "b" * 32)
+    version = bv.import_version(output, session["id"], source.read_bytes(), "edited.glb")
+    del version["parent_file"]
+    bv.write_json(output / version["metadata"], version)
+    assert bv.list_versions(output) == []
+    assert assets_api.list_assets(output)[0]["model"] == "knight/knight.glb"

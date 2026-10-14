@@ -51,7 +51,10 @@ def session_path(output, session_id):
 def read_json(path):
     if path.stat().st_size > 16 * 1024 * 1024:
         raise ValueError("Metadata exceeds 16 MiB")
-    value = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except RecursionError as exc:
+        raise ValueError("Metadata is nested too deeply") from exc
     if not isinstance(value, dict):
         raise ValueError("Invalid metadata")  # noqa: TRY004 - invalid serialized data, not a caller type error
     return value
@@ -87,6 +90,13 @@ def read_session(output, session_id):
     session = read_json(path / "session.json")
     if session.get("id") != session_id or session.get("schema_version") != 1:
         raise ValueError("Invalid edit metadata")
+    datetime.fromisoformat(session["created_at"])
+    if (not re.fullmatch(r"[0-9a-f]{12}", str(session.get("asset_id", "")))
+            or not isinstance(session.get("asset_name"), str)
+            or not isinstance(session.get("facts"), dict)
+            or not isinstance(session.get("sidecars"), list)
+            or not re.fullmatch(r"[0-9a-f]{64}", str(session.get("parent_sha256", "")))):
+        raise ValueError("Invalid edit metadata")
     safe_path(output, session["parent_file"])
     return session
 
@@ -102,7 +112,7 @@ def list_sessions(output, asset_id):
                 session = read_session(output, directory.name)
                 if session["asset_id"] == asset_id and not (output / DIRECTORY / "versions" / session["id"] / "version.json").exists():
                     results.append(session)
-            except (OSError, ValueError, KeyError):
+            except (OSError, ValueError, KeyError, TypeError):
                 continue
     return sorted(results, key=lambda s: s["created_at"], reverse=True)
 
@@ -181,12 +191,17 @@ def list_versions(output):
                     continue
                 if not isinstance(record["facts"].get("animations"), list):
                     continue
-                datetime.fromisoformat(record["created_at"])
+                datetime.fromisoformat(record["created_at"]).timestamp()
+                safe_path(output, record["parent_file"])
                 expected = f"{DIRECTORY}/versions/{directory.name}/model.glb"
+                if (record.get("metadata") != f"{DIRECTORY}/versions/{directory.name}/version.json"
+                        or record.get("provenance") != f"{DIRECTORY}/versions/{directory.name}/model.provenance.json"
+                        or not re.fullmatch(r"[0-9a-f]{64}", str(record.get("sha256", "")))):
+                    continue
                 if (record.get("id") == directory.name and record.get("file") == expected
                         and record.get("schema_version") == 1 and safe_path(output, expected).is_file()):
                     results.append(record)
-            except (OSError, ValueError, KeyError, TypeError):
+            except (OSError, ValueError, KeyError, TypeError, OverflowError):
                 continue
     return sorted(results, key=lambda r: (r["created_at"], r["id"]))
 
@@ -214,6 +229,8 @@ def import_version(output, session_id, data, filename):
             previous = read_json(target / "version.json")
             if previous["sha256"] != sha(data):
                 raise ValueError("This edit already imported a different file; start a new edit")
+            if sha(read_glb(safe_path(output, f"{DIRECTORY}/versions/{session_id}/model.glb"))) != previous["sha256"]:
+                raise ValueError("This saved version changed on disk; restore it before retrying")
             return previous
         checked_snapshot(output, session)
         if not isinstance(filename, str) or len(filename) > 240 or not filename.lower().endswith(".glb"):
@@ -236,6 +253,12 @@ def import_version(output, session_id, data, filename):
         except (OSError, ValueError):
             codes.append("source_changed")
         source = session["source_record"] or {}
+        source_sidecars = []
+        for item in session["sidecars"]:
+            record = read_json(session_path(output, session_id) / "input" / f"source{item['suffix']}")
+            # Do not embed the previous provenance twice on every iteration.
+            payload = {"record_ref": "source_record"} if record == source else {"record": record}
+            source_sidecars.append({**item, **payload})
         source_output = source.get("output")
         classification = source.get("classification") or (source_output.get("classification") if isinstance(source_output, dict) else None)
         if not source.get("license"):
@@ -252,7 +275,8 @@ def import_version(output, session_id, data, filename):
                       "input": {"source": session["parent_file"], "sha256": session["parent_sha256"]},
                       "output": {"sha256": version["sha256"], "classification": classification},
                       "license": source.get("license"), "classification": classification,
-                      "source_record": source or None, "manual_edit": {"session_id": session_id, "generator": facts["generator"],
+                      "source_record": source or None, "source_sidecars": source_sidecars,
+                      "manual_edit": {"session_id": session_id, "generator": facts["generator"],
                       "additional_content_licenses": "not_verified", "derived_artifacts": "not_inherited"}}
         staging = safe_path(output, f"{DIRECTORY}/versions/.pending-{uuid.uuid4().hex}")
         staging.mkdir(parents=True)
