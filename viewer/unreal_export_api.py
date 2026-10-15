@@ -179,6 +179,17 @@ def _check(handler, mutation: bool) -> None:
         raise PermissionError("Use this Studio page to export models")
 
 
+def _drain(handler) -> None:
+    """Read a small refused body first: closing on a client still sending it aborts the
+    connection on Windows, and the page sees a network error instead of the reason."""
+    try:
+        length = int(handler.headers.get("Content-Length", "0"))
+    except ValueError:
+        return
+    if 0 < length <= MAX_BODY and not handler.headers.get("Transfer-Encoding"):
+        handler.rfile.read(length)
+
+
 def handle(handler, output: Path, *, mutation: bool = False) -> bool:
     path = urlsplit(handler.path).path
     if not path.startswith("/api/unreal-export"):
@@ -216,6 +227,7 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
         else:
             handler._send_json(404, {"error": "Unknown Unreal export endpoint"})
     except PermissionError as exc:
+        _drain(handler)
         handler.close_connection = True
         handler._send_json(403, {"error": str(exc)})
     except KeyError:
