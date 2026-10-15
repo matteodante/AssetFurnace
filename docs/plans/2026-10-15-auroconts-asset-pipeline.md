@@ -65,6 +65,27 @@ Il "Part Composer" per il caso vincolato: corpi base fissi, slot fissi, uno sche
 - **Rischio**: medio. Nei video recenti anche lo strumento migliore (AssetHub Part Composer) lascia ritocchi a mano;
   qui si scommette che i vincoli rendano l'adattamento deterministico. Si prova su un solo set prima di andare avanti.
 
+### Quale modello per le parti (confronto del 15/10/2026)
+
+I tre non sono alternative uguali: fanno lavori diversi.
+
+| Modello | Entra | Esce | Controllo sulle parti | Per noi |
+|---|---|---|---|---|
+| **OmniPart** (MIT, SIGGRAPH Asia 2025) | Un'immagine **più una maschera di segmentazione 2D** | Parti 3D generate con un modello derivato da TRELLIS | **Sì**: le parti sono quelle disegnate nella maschera | Il più adatto: la maschera può essere quella degli slot (elmo, busto, guanti…) |
+| **HoloPart** (MIT) | Una **mesh già fatta** con la sua segmentazione (per esempio da SAMPart3D o SAMesh) | Le stesse parti, **completate** anche dove erano nascoste | Sì, dalla segmentazione | Complemento: si genera il personaggio intero con Pixal3D, lo si divide per slot e HoloPart completa i pezzi |
+| **PartCrafter** (MIT, NeurIPS 2025) | Un'immagine | Fino a 16 parti in un colpo | Poco: decide il modello come dividere | Il meno adatto per l'equipaggiamento; forse per gruppi di oggetti |
+
+Nel confronto pubblicato con CubePart (dati degli autori, non verificati da noi) OmniPart con maschere SAM3 batte
+PartCrafter e PartPacker. **Nessuno dei tre è provato su questo PC**: requisiti e Windows vanno verificati (PartCrafter ha
+una guida per Windows in un fork; OmniPart e HoloPart sono pensati per Linux con CUDA).
+
+Proposta: nella versione minima della funzione 4 si mettono a confronto, sullo stesso set di armatura, tre strade:
+1. **OmniPart** con le maschere degli slot;
+2. **Pixal3D intero + segmentazione per slot + HoloPart**;
+3. **una immagine per parte + Pixal3D**, come fa AssetHub.
+
+Vince quella che dopo l'adattamento al corpo dà la qualità migliore con meno ritocchi.
+
 ### 5. Profilo d'uscita per Unreal
 
 - **Cosa**: un profilo di esportazione che produce file pronti per Unreal:
