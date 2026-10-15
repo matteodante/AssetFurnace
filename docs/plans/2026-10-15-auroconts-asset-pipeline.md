@@ -43,7 +43,7 @@ originali, tabella di corrispondenza, import in Unreal) resta nella repo di Auro
 - **Poi, dopo una prova**: un LoRA dello stile per il modello d'immagine.
 - **Accettazione**: il punteggio separa i concept che l'utente approva da quelli che rimanda, su un campione etichettato.
 
-**Quanto costa un LoRA dello stile.** Non tanto in soldi, quanto in preparazione:
+**Quanto costa un LoRA dello stile** (rimandato dall'utente il 15/10/2026). Non tanto in soldi, quanto in preparazione:
 - Per Qwen-Image servono di base 24 GB di VRAM (le configurazioni di ai-toolkit sono pensate per 24 GB); la RTX 5070 Ti
   ne ha 16, quindi in locale solo con scaricamento aggressivo in RAM, non garantito.
 - In alternativa una GPU a noleggio da 24–48 GB per qualche ora a corsa: probabilmente pochi euro a tentativo, da
@@ -173,8 +173,10 @@ sul forum di Epic (una risposta esperta, non una verifica ufficiale).
 
 ## Ordine
 
-1. Fondamenta: 1, 5, 7, 8.
-2. Una versione minima del 4 su un solo set di armatura.
+**Decisione dell'utente del 15/10/2026**: prima si sviluppano in AssetFurnace le funzioni di base (1, 5, 7, 8), poi si prova. Il **LoRA dello stile è rimandato**: si lavora con prompt fissi, immagini di riferimento e ControlNet.
+
+1. Fondamenta, sviluppate prima di qualsiasi prova: 1, 5, 7, 8.
+2. La 4 parte da una prova rapida con script usa e getta su un solo set di armatura; la funzione vera si costruisce solo sulla strada che vince.
 3. Stile: 2 e 3.
 4. 6, quando servono le creature non umanoidi.
 
