@@ -3,6 +3,7 @@
 
 import { followJob, plainError, statusUrlFor, jobEnd } from './jobs.js';
 import { freshSeed } from './create.js';
+import { familyPicker, familyNote } from './creature-family.js';
 
 const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fileName = (path) => path?.split('/').pop() ?? '';
@@ -50,15 +51,13 @@ export function stepBody(stepId, asset, ctx) {
   }
   if (stepId === 'rigged') {
     return `<p class="hint">Adds a skeleton so it can move. About a minute. Works best on a character standing in a T-pose with empty hands.</p>
-      <p class="ask">Is this a humanoid: two arms, two legs, standing upright?</p>
-      <div class="row"><button class="primary" data-run="rigged" data-humanoid="yes">Yes, rig it</button>
-      <button class="ghost" data-run="rigged" data-humanoid="no" data-tip="Four-legged and other creatures can be rigged but not animated with the preset moves, and the rig may be wonky.">No, rig it anyway</button></div>`;
+      ${familyPicker()}`;
   }
   if (stepId === 'animated' && asset.fits_moves === false) {
-    return `<p class="hint">Rigged. Preset moves are for humanoids only for now: four-legged and other creatures can be rigged,
+    return familyNote(asset) || `<p class="hint">Rigged. Preset moves are for humanoids only for now: four-legged and other creatures can be rigged,
       not animated, and the rig may be wonky. Download it to animate in Blender.</p>`;
   }
-  if (stepId === 'animated') return movePicker(asset, ctx, asset.clips.length ? 'Add this move' : 'Animate');
+  if (stepId === 'animated') return familyNote(asset) + movePicker(asset, ctx, asset.clips.length ? 'Add this move' : 'Animate');
   return '';
 }
 
@@ -91,17 +90,15 @@ export function wireStep(card, stepId, asset, ctx) {
       backend: engine?.value || ctx.engines[0]?.id,
       faces: Number(k('faces')?.value), photo: k('photo')?.checked, texture: Number(k('texture')?.value),
       preset: card.querySelector('[data-preset][aria-pressed="true"]')?.dataset.preset,
-      speed: Number(speed?.value || 1), spread: Number(spread?.value || 0),
+      speed: Number(speed?.value || 1), spread: Number(spread?.value || 0), family: k('family')?.value,
     };
     card.dataset.lastPreset = settings.preset || '';
     const run = { model: () => startModel(asset, ctx, settings.backend),
       finished: () => (asset.kind === 'prop set' ? startSplit(asset)
         : startFinish(asset, ctx, { faces: settings.faces, skip_photo: !settings.photo, texture_size: settings.texture })),
-      rigged: () => startRig(asset),
+      rigged: () => startRig(asset, settings.family),
       animated: () => startAnimate(asset, settings.preset, settings.speed, settings.spread) }[stepId];
-    const note = button.dataset.humanoid === 'no'
-      ? 'Rigging anyway. Preset moves only fit humanoids, so this one can be downloaded and animated in Blender. The rig may be wonky.' : '';
-    await runInCard(card, run, ctx, stepId, note);
+    await runInCard(card, run, ctx, stepId, '');
   });
 }
 
@@ -128,9 +125,10 @@ async function startSplit(asset) {
   return { kind: 'props', start: await postStart('/api/props', form) };
 }
 
-async function startRig(asset) {
+async function startRig(asset, family = 'auto') {
   const form = new FormData();
   form.append('model', asset.finished || asset.model);
+  form.append('family', family || 'auto');
   return { kind: 'animate', start: await postStart('/api/animate/rig', form) };
 }
 
