@@ -244,3 +244,13 @@ def test_a_resume_submission_does_not_need_what_its_done_rows_needed(tmp_path, m
     install_fake_generator(monkeypatch, ready=False)
     assert mcp_server.validate_batch(str(spec_path))["ok"] is False   # the full check
     assert mcp_server.submit_batch(str(spec_path))["started"] is True
+
+
+
+def test_resume_takes_the_spec_as_well_as_the_folder(tmp_path, monkeypatch, launched):
+    install_fake_generator(monkeypatch, FakeGenerator(interrupt_on="row02"))
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(FakeFinish().run))
+    spec_path = write_spec(tmp_path, rows=2)
+    with pytest.raises(KeyboardInterrupt):
+        batch.run_batch(batch.load_batch(spec_path))
+    assert mcp_server.resume_batch(str(spec_path))["started"] is True

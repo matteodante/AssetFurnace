@@ -195,7 +195,11 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
     batched = library_nodes(output)
     # a batch that only checked or exported a GLB the Library already shows adds no
     # second node for it: that one would take over the original's rigs and props
-    known = {model["file"].resolve() for model in models}
+    known = {model["file"].resolve(): model for model in models}
+    for model in batched["model"]:
+        kept = known.get(model["file"].resolve())
+        if kept is not None:   # its picture and finish join the kept node instead
+            kept.setdefault("link", model["link"])
     batched["model"] = [model for model in batched["model"] if model["file"].resolve() not in known]
     pictures, models = pictures + batched["picture"], models + batched["model"]
     finishes = finishes + batched["finished"]

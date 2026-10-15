@@ -376,3 +376,21 @@ def test_the_finish_record_carries_this_runs_intent(tmp_path, generated):
                                            output, None)
     assert record["intent"] == {"use_case": "game", "distribution": "private",
                                 "commercial_intent": True}
+
+
+
+def test_pixel_match_views_are_checked_before_the_batch(tmp_path, monkeypatch, generated):
+    asset, sidecar = generated
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"")
+    monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
+    tiny_png(tmp_path / "refs" / "cat.png")
+    views = asset.with_suffix(".svviews")
+    views.mkdir()
+    (views / "transforms.json").write_text(json.dumps({"frames": [{"file_path": "missing.png"}]}))
+    row = _row(tmp_path, images=(), steps=("finish",), asset=asset)
+    (problem,) = finish_step.preflight([row])
+    assert "Pixel Match" in problem and "missing.png" in problem
+    off = _row(tmp_path, images=(), steps=("finish",), asset=asset,
+               options={"finish": {"photo": False}})
+    assert finish_step.preflight([off]) == []

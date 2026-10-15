@@ -119,6 +119,9 @@ class BatchRow:
     measure: str | None = None     # what size_cm measures: "height" or "longest"
     # the images as the spec named them, before a moved one was read from its staged copy
     given_images: tuple[str, ...] = ()
+    # a row with only an asset: the picture its record leads to, or the copy staged for it
+    # when that one has since moved
+    concept: Path | None = None
 
     def fingerprint(self) -> str:
         """What the row asks for, files by content: moving the spec does not re-run it."""
@@ -127,7 +130,7 @@ class BatchRow:
         # an asset's record is part of what the row works from (its licence, its models),
         # and without images of its own the row takes its concept from that record too
         record = recorded_sidecar(self.asset) if self.asset else None
-        image = recorded_image(self.asset) if self.asset and not self.images else None
+        image = self.concept if self.asset and not self.images else None
         payload = {
             "images": [digest(image) for image in self.images],
             "asset": digest(self.asset) if self.asset else None,
@@ -191,14 +194,27 @@ def recorded_image(asset: Path | None) -> Path | None:
     return None
 
 
+def _beside(asset: Path | None) -> list[dict[str, Any]]:
+    """Every record kept beside a GLB that parses: its provenance and the backend's own.
+    The licence gate reads all of them, so a thin or partial one cannot hide another."""
+    if asset is None:
+        return []
+    found = []
+    for candidate in (asset.with_suffix(".provenance.json"), asset.with_suffix(".json")):
+        data = read_json(candidate) if candidate.is_file() else None
+        if isinstance(data, dict) and data:
+            found.append(data)
+    return found
+
+
 def recorded_backend(asset: Path | None) -> str | None:
     """The model an existing GLB was generated with, as its records name it, however many
     finishes ago."""
-    sidecar = recorded_sidecar(asset)
-    for level in _records(read_json(sidecar) if sidecar else None):
-        backend = (level.get("model") or {}).get("backend") or level.get("backend")
-        if isinstance(backend, str):
-            return backend
+    for record in _beside(asset):
+        for level in _records(record):
+            backend = (level.get("model") or {}).get("backend") or level.get("backend")
+            if isinstance(backend, str):
+                return backend
     return None
 
 
@@ -209,9 +225,8 @@ KNOWN_CLASSES = ("commercial-clear", "commercial-conditional", "territory-restri
 def recorded_classes(asset: Path | None) -> list[str]:
     """Every licence class an existing GLB's records name, through the whole chain: the
     output's, the record's own, and each component that was actually used."""
-    sidecar = recorded_sidecar(asset)
     found: list[str] = []
-    for level in _records(read_json(sidecar) if sidecar else None):
+    for level in (level for record in _beside(asset) for level in _records(record)):
         values = [(level.get("output") or {}).get("classification"), level.get("classification")]
         values += [component.get("commercial_status") for component in level.get("components") or []
                    if isinstance(component, dict) and component.get("loaded", True)]
@@ -357,11 +372,15 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
     last = read_json(output_dir / name / SPEC_COPY)
     ran_with = {row.get("id"): set(row.get("given_images") or [])
                 for row in (last or {}).get("rows", []) if isinstance(row, dict)}
+    # and the pictures staged for each row, for an asset row whose recorded picture moved
+    saved = (read_json(output_dir / name / STATE_FILE) or {}).get("rows", {})
+    staged_copies = {row_id: [output_dir / name / record["path"] for record in entry.get("staged", [])]
+                     for row_id, entry in saved.items() if isinstance(entry, dict)}
     rows, seen = [], set()
     for number, raw in enumerate(raw_rows, start=1):
         row, row_problems = _parse_row(raw, defaults, base, number,
                                        staged=output_dir / name / "rows",
-                                       ran_with=ran_with)
+                                       ran_with=ran_with, staged_copies=staged_copies)
         problems += row_problems
         if row is None:
             continue
@@ -451,6 +470,7 @@ def _read_csv(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
 
 def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
                staged: Path | None = None, ran_with: dict[str, set[str]] | None = None,
+               staged_copies: dict[str, list[Path]] | None = None,
                ) -> tuple[BatchRow | None, list[str]]:
     if not isinstance(raw, dict):
         return None, [f"row {number}: must be an object"]
@@ -458,8 +478,11 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
     problems = [f"{label}: unknown field {key!r}" for key in sorted(set(raw) - ROW_KEYS)]
     value = {**defaults, **raw}
 
-    row_id = str(value.get("id", ""))
-    if not ID_PATTERN.fullmatch(row_id):
+    row_id = value.get("id", "")
+    if not isinstance(row_id, str):   # 7 or null would become a folder name and a review key
+        problems.append(f"{label}: id must be text, not {row_id!r}")
+        row_id = ""
+    elif not ID_PATTERN.fullmatch(row_id):
         problems.append(f"{label}: id {row_id!r}: use letters, digits, '_', '.', '-' "
                         "(up to 64), starting with a letter or digit")
 
@@ -564,6 +587,10 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
             merged.update(source)
         if merged:
             options[step] = merged
+    concept = None
+    if asset is not None and asset.is_file() and not images:
+        concept = recorded_image(asset) or next(
+            (copy for copy in (staged_copies or {}).get(row_id, []) if copy.is_file()), None)
     size_cm, measure = value.get("size_cm"), value.get("measure")
     if size_cm is not None and (isinstance(size_cm, bool) or not isinstance(size_cm, (int, float))
                                 or not 0 < size_cm <= SIZE_LIMIT_CM):
@@ -581,7 +608,8 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
     return BatchRow(id=row_id, images=images, asset=asset, kind=kind, faces=faces,
                     profile=str(profile) if profile is not None else None,
                     steps=tuple(steps), backend=backend, parameters=parameters,
-                    options=options, size_cm=size_cm, measure=measure, given_images=given), []
+                    options=options, size_cm=size_cm, measure=measure, given_images=given,
+                    concept=concept), []
 
 
 # --------------------------------------------------------------------- step registry
@@ -1011,7 +1039,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     entry.pop("finished_at", None)
     save()
 
-    staged = row.images or tuple(i for i in [recorded_image(row.asset)] if i is not None)
+    staged = row.images or ((row.concept,) if row.concept else ())
     if "generate" not in row.steps and staged:
         # generate copies a row's images; a finish-only row's (or the picture its asset's
         # record leads to) are staged here, so its folder and outputs.json carry it too

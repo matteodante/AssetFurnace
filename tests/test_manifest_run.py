@@ -249,3 +249,13 @@ def test_a_direct_manifests_commercial_intent_must_be_a_boolean(tmp_path, monkey
     manifest.write_text(json.dumps(data))
     with pytest.raises(manifest_run.ManifestRunError, match="commercial_intent"):
         manifest_run.run_manifest(manifest)
+
+
+
+def test_pixal3d_steps_are_checked_against_the_installed_runner(tmp_path, monkeypatch):
+    monkeypatch.setattr(manifest_run, "_pixal3d_steps_problem",
+                        lambda steps: "trellis-cli is not patched for --steps")
+    image = tiny_png(tmp_path / "cat.png")
+    (problem,) = manifest_run.pixal3d_input_check([image], {"steps": 8, "matte": False})
+    assert "not patched" in problem
+    assert manifest_run.pixal3d_check_parameters({"steps": 51})   # the wrapper's own limit

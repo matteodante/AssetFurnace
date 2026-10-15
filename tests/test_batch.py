@@ -533,6 +533,8 @@ def test_cli_run_batch_rejects_a_bad_spec_with_code_2(tmp_path, monkeypatch, cap
 
 def test_cli_run_batch_cannot_be_mixed_with_a_manifest(tmp_path, capsys):
     assert cli.main(["--run-batch", "a.json", "--run-manifest", "b.json"]) == 2
+    for mode in ("--fast", "--quality", "--trellis"):
+        assert cli.main(["--run-batch", "a.json", mode]) == 2
 
 
 @pytest.mark.parametrize("name", ["example-batch.json", "example-batch.csv"])
@@ -845,7 +847,8 @@ def test_a_finish_only_rows_recorded_image_is_part_of_its_fingerprint(tmp_path):
     image = tiny_png(tmp_path / "crate.png", 1)
     asset.with_suffix(".provenance.json").write_text(json.dumps({"input": {"path": str(image)}}))
     row = batch.BatchRow(id="SM_Crate", images=(), asset=asset, kind="prop", faces=None,
-                         profile=None, steps=("finish",), backend="pixal3d")
+                         profile=None, steps=("finish",), backend="pixal3d",
+                         concept=batch.recorded_image(asset))
     before = row.fingerprint()
     tiny_png(image, 2)
     assert row.fingerprint() != before
@@ -1268,3 +1271,42 @@ def test_the_same_bytes_from_another_batch_are_queued_again(tmp_path, monkeypatc
     events = [json.loads(line) for line in (tmp_path / batch.REVIEW_LOG).read_text().splitlines()]
     assert [event["source"] for event in events] == ["batch:first", "batch:second"]
     assert events[0]["asset_sha256"] == events[1]["asset_sha256"]
+
+
+
+def test_a_thin_provenance_file_does_not_hide_the_backends_record(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec = _asset_row_spec(tmp_path, {"license": {"name": "something"}},
+                           use_case="game", distribution="worldwide")
+    (tmp_path / "old" / "knight.json").write_text(json.dumps({"backend": "hunyuan-comfyui"}))
+    with pytest.raises(batch.BatchError, match="hunyuan-comfyui"):
+        batch.load_batch(spec)
+
+
+def test_an_id_must_be_text(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    spec = json.loads(spec_path.read_text())
+    spec["rows"][0]["id"] = 7
+    spec_path.write_text(json.dumps(spec))
+    with pytest.raises(batch.BatchError, match="id must be text"):
+        batch.load_batch(spec_path)
+
+
+def test_an_asset_rows_moved_concept_is_read_from_its_staged_copy(tmp_path, monkeypatch,
+                                                                  fake_finish):
+    asset = tmp_path / "old" / "crate.glb"
+    asset.parent.mkdir()
+    asset.write_bytes(b"glTFold")
+    concept = tiny_png(tmp_path / "old" / "concept.png")
+    asset.with_suffix(".provenance.json").write_text(json.dumps({"input": {"path": str(concept)}}))
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1, "output": {"directory": "out"},
+        "rows": [{"id": "SM_Crate", "asset": "old/crate.glb", "steps": ["finish"]}]}))
+    batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
+    concept.unlink()
+    row = batch.load_batch(tmp_path / "lot.json").rows[0]
+    assert row.concept == tmp_path / "out" / "lot" / "rows" / "SM_Crate" / "input" / "concept.png"
+    fake_finish.calls.clear()
+    batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
+    assert fake_finish.calls == []   # same bytes, same fingerprint: still done

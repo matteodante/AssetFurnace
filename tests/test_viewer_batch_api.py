@@ -372,3 +372,22 @@ def test_a_batch_never_takes_over_a_library_models_node(output, monkeypatch):
     batch.run_batch(batch.load_batch(spec))
     models = [a for a in assets_api.list_assets(output) if a["model"]]
     assert [a["model"] for a in models] == [f"{run.name}/{run.name}.glb"]
+
+
+
+def test_a_duplicate_models_batch_picture_joins_the_kept_model(output, monkeypatch):
+    from image_to_3dlab.batch_steps import StepResult
+
+    monkeypatch.setitem(batch.STEPS, "checks", fake_step(lambda ctx: StepResult()))
+    run = output / "knight__pixal3d__1"
+    run.mkdir()
+    glb = run / f"{run.name}.glb"
+    glb.write_bytes(b"glTFknight")
+    picture = tiny_png(output.parent / "knight_ref.png")
+    spec = output.parent / "checks.json"
+    spec.write_text(json.dumps({"schema_version": 1, "name": "checked", "rows": [
+        {"id": "SK_Knight", "asset": str(glb), "images": [str(picture)], "steps": ["checks"]}]}))
+    batch.run_batch(batch.load_batch(spec))
+    (asset,) = assets_api.list_assets(output)
+    assert asset["model"] == f"{run.name}/{run.name}.glb"
+    assert asset["picture"] == "batches/checked/rows/SK_Knight/input/knight_ref.png"

@@ -63,7 +63,7 @@ def preflight(rows) -> list[str]:
         problems += [f"row {row.id}: finish option {problem}"
                      for problem in _bad_values(settings)]
     for row in rows:
-        image = row.images[0] if row.images else recorded_image(row.asset)
+        image = row.images[0] if row.images else (row.concept or recorded_image(row.asset))
         if image is None:
             problems.append(f"row {row.id}: finish needs the source image: give the row "
                             "an image, or an asset whose provenance names one that exists")
@@ -71,6 +71,9 @@ def preflight(rows) -> list[str]:
             broken = _unreadable(image)
             if broken:
                 problems.append(f"row {row.id}: {image.name} is not a readable picture: {broken}")
+        views = views_for(row.asset) if row.asset is not None else None
+        if views is not None and row.options.get("finish", {}).get("photo", True):
+            problems += [f"row {row.id}: Pixel Match: {problem}" for problem in _views_problems(views)]
     blender = find_blender()
     if blender is None or not Path(blender).is_file():
         problems.append(missing_help())
@@ -128,12 +131,29 @@ def _unreadable(image: Path) -> str | None:
     return None
 
 
+def _views_problems(views: Path) -> list[str]:
+    """What would stop Pixel Match reading a saved camera (photo_paint.load_views), found
+    before the retopology it runs after."""
+    try:
+        meta = json.loads((views / "transforms.json").read_text(encoding="utf-8"))
+        frames = meta["frames"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return [f"{views.name}/transforms.json is unreadable: {exc}"]
+    problems = []
+    for frame in frames if isinstance(frames, list) else []:
+        path = frame.get("file_path") if isinstance(frame, dict) else None
+        broken = _unreadable(views / path) if isinstance(path, str) else "no file_path"
+        if broken:
+            problems.append(f"view {path!r} in {views.name}: {broken}")
+    return problems
+
+
 def source_image(ctx: StepContext) -> Path | None:
     """The concept the asset came from: the row's first image, else its record's input."""
     if ctx.row.images:
         copy = ctx.row_dir / "input" / ctx.row.images[0].name
         return copy if copy.is_file() else ctx.row.images[0]
-    return image_from_record(_read(ctx.sidecar))
+    return image_from_record(_read(ctx.sidecar)) or ctx.row.concept
 
 
 

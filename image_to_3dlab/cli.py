@@ -149,9 +149,10 @@ def main(argv: list[str] | None = None) -> int:
     batch_intent = {"use_case": args.use_case, "distribution": args.distribution,
                     "commercial_intent": args.commercial}
     if args.run_batch:
-        if args.run_manifest or args.image:
-            print("error: --run-batch runs a whole spec; it takes no IMAGE or "
-                  "--run-manifest", file=sys.stderr)
+        if args.run_manifest or args.image or args.fast or args.quality or args.trellis:
+            print("error: --run-batch runs a whole spec; it takes no IMAGE, --run-manifest "
+                  "or --fast/--quality/--trellis (the spec names each row's backend)",
+                  file=sys.stderr)
             return 2
         return batch.run_from_cli(args.run_batch, batch_intent, args.retry_failed)
     if any(value is not None for value in batch_intent.values()) or args.retry_failed:

@@ -69,12 +69,21 @@ PIXAL3D_PARAMETERS = frozenset({"seed", "steps", "gss", "gsh", "fov", "matte"})
 PIXAL3D_BOOTSTRAP = "python scripts/bootstrap_pixal3d.py (8.4 GB of weights; it asks first)"
 
 
-def _pixal3d_state() -> dict[str, Any]:
-    """`readiness()` from the wrapper itself, so "ready" has one definition."""
+def _pixal3d_module():
     spec = importlib.util.spec_from_file_location("pixal3d_generate", PIXAL3D_SCRIPT)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.readiness()
+    return module
+
+
+def _pixal3d_state() -> dict[str, Any]:
+    """`readiness()` from the wrapper itself, so "ready" has one definition."""
+    return _pixal3d_module().readiness()
+
+
+def _pixal3d_steps_problem(steps: int | None) -> str | None:
+    """The wrapper's own `steps_problem`: an unpatched or stale build refuses `--steps`."""
+    return _pixal3d_module().steps_problem(steps)
 
 
 def pixal3d_readiness() -> list[str]:
@@ -95,8 +104,8 @@ def pixal3d_check_parameters(parameters: dict[str, Any]) -> list[str]:
     if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int) or seed < 0):
         problems.append(f"seed must be a whole number from 0, not {seed!r}")
     if steps is not None and (isinstance(steps, bool) or not isinstance(steps, int)
-                              or not 1 <= steps <= 64):
-        problems.append(f"steps must be a whole number from 1 to 64, not {steps!r}")
+                              or not 1 <= steps <= 50):
+        problems.append(f"steps must be a whole number from 1 to 50, not {steps!r}")
     for key in ("gss", "gsh"):
         value = parameters.get(key)
         if value is not None and not (number(value) and value > 0):
@@ -117,6 +126,11 @@ def pixal3d_input_check(images: list[Path], parameters: dict[str, Any]) -> list[
 
     from .matte import is_matted, matte_model, model_file
 
+    steps = parameters.get("steps")
+    if isinstance(steps, int) and not isinstance(steps, bool):
+        problem = _pixal3d_steps_problem(steps)
+        if problem:
+            return [problem]
     try:   # a broken picture fails here, not minutes into a batch
         with Image.open(images[0]) as opened:
             opened.load()

@@ -128,7 +128,10 @@ def submit_batch(spec: str, retry_failed: bool = False, use_case: str | None = N
 def resume_batch(batch_ref: str, retry_failed: bool = False) -> dict[str, Any]:
     """Start a stopped batch again from where it left off, with the spec and intent it ran
     with. retry_failed also re-runs the rows that failed."""
-    directory = Path(batch_ref).expanduser().resolve()
+    try:
+        directory = _directory(batch_ref)   # a spec or its batch folder, as elsewhere
+    except batch.BatchError as exc:
+        return {"started": False, "problems": exc.problems}
     state = batch.read_json(directory / batch.STATE_FILE) if directory.is_dir() else None
     if not state:
         return {"started": False, "problems": [f"{directory.name} never ran: submit its spec"]}
