@@ -84,7 +84,9 @@ def build_parser() -> argparse.ArgumentParser:
 def run(args: argparse.Namespace) -> int:
     output = args.output
     if args.command == "new":
-        root = sb.create(args.at or output / "styles" / args.name, args.name, args.description, args.wording)
+        root = args.at or output / "styles" / args.name
+        registry.check_free(output, args.name, root)  # before making anything, so a refusal leaves no folder
+        sb.create(root, args.name, args.description, args.wording)
         registry.register(output, root)
         print(f"made {args.name} in {root}")
     elif args.command == "register":
@@ -122,7 +124,9 @@ def run(args: argparse.Namespace) -> int:
                 print(f"problem: {problem}")
     elif args.command == "prompt":
         root = registry.find(output, args.bible)
-        print(prompts.compose(args.subject, args.kind, bible=root, references=args.references)["prompt"])
+        # The sentence about reference pictures only when there are pictures to send.
+        usable = len(refs.pick(root, args.kind, k=min(args.references, refs.MAX_REFERENCES))) if args.references > 0 else 0
+        print(prompts.compose(args.subject, args.kind, bible=root, references=usable)["prompt"])
     elif args.command == "refs":
         for path in refs.pick(registry.find(output, args.bible), args.kind, k=args.k):
             print(path)

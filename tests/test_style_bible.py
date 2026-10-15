@@ -145,3 +145,48 @@ def test_load_refuses_a_broken_or_unsafe_bible_json(tmp_path, root):
 def test_writes_are_atomic_and_leave_no_temporary_files(tmp_path, root):
     sb.add(root, picture(tmp_path / "a.png"), "a")
     assert sorted(p.name for p in root.iterdir()) == ["bible.json", "images", "rejected"]
+
+
+def test_an_entry_cannot_climb_from_its_folder_into_the_other_one(tmp_path, root):
+    """Codex review 1: `images/../rejected/x.png` starts with `images/` but is a rejected picture."""
+    path = root / "bible.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    sneaky = {**data, "images": [{"file": "images/../rejected/x.png", "sha256": "0" * 64, "note": "x",
+                                  "added": "2026-10-16T00:00:00+00:00"}]}
+    path.write_text(json.dumps(sneaky), encoding="utf-8")
+    with pytest.raises(sb.BibleError, match="inside"):
+        sb.load(root)
+
+
+def test_kinds_and_criteria_must_have_the_right_shape(root):
+    """Codex review 1: a hand-edited `"creature": "claws"` crashed compose() later."""
+    path = root / "bible.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for bad in ({"kinds": {"creature": "oversized claws"}}, {"kinds": {"creature": {"wording": 3}}},
+                {"kinds": {"vehicle": {"wording": "x"}}}, {"style": {"wording": "x", "criteria": "one"}}):
+        path.write_text(json.dumps({**data, **bad}), encoding="utf-8")
+        with pytest.raises(sb.BibleError):
+            sb.load(root)
+
+
+def test_a_bible_held_by_another_process_waits_then_says_it_is_busy(tmp_path, root, monkeypatch):
+    """Codex review 1: two terminals editing one bible must not drop each other's change."""
+    monkeypatch.setattr(sb, "LOCK_WAIT_SECONDS", 0.3)
+    (root / sb.LOCK_FILE).write_text("12345", encoding="utf-8")
+    with pytest.raises(sb.BibleError, match="busy"):
+        sb.add(root, picture(tmp_path / "a.png"), "note")
+    (root / sb.LOCK_FILE).unlink()
+    sb.add(root, picture(tmp_path / "a.png"), "note")
+    assert not (root / sb.LOCK_FILE).exists()
+
+
+def test_a_lock_left_by_a_crash_is_taken_over(tmp_path, root, monkeypatch):
+    import os
+    import time
+
+    lock = root / sb.LOCK_FILE
+    lock.write_text("12345", encoding="utf-8")
+    old = time.time() - sb.STALE_LOCK_SECONDS - 5
+    os.utime(lock, (old, old))
+    sb.add(root, picture(tmp_path / "a.png"), "note")
+    assert sb.load(root)["images"]

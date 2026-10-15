@@ -88,3 +88,22 @@ def test_errors_are_one_line_and_exit_2(tmp_path, capsys):
     assert run("--output", output, "add", "nope", picture(tmp_path / "a.png"), "--note", "x") == 2
     err = capsys.readouterr().err
     assert "no bible" in err and "Traceback" not in err
+
+
+def test_new_with_a_taken_name_leaves_no_folder_behind(tmp_path, capsys):
+    """Codex review 1: a failed registration used to leave an unregistered bible that blocked a retry."""
+    output = tmp_path / "output"
+    assert run("--output", output, "new", "g") == 0
+    other = tmp_path / "elsewhere"
+    assert run("--output", output, "new", "g", "--at", other) == 2
+    assert "already" in capsys.readouterr().err
+    assert not (other / "bible.json").exists()
+
+
+def test_the_reference_sentence_needs_references_that_exist(tmp_path, capsys):
+    """Codex review 1: an empty bible must not ask the model to follow pictures it will not get."""
+    output = tmp_path / "output"
+    run("--output", output, "new", "g")
+    capsys.readouterr()
+    assert run("--output", output, "prompt", "g", "prop", "a cup", "--references", "2") == 0
+    assert "reference pictures" not in capsys.readouterr().out

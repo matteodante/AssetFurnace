@@ -21,6 +21,8 @@ import re
 import shutil
 import tempfile
 import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -42,6 +44,11 @@ DEFAULT_CRITERIA = [
 ]
 
 _LOCK = threading.Lock()
+# Across processes (the studio and a terminal), a lock file beside bible.json. A lock older
+# than STALE_LOCK_SECONDS was left by a crash: no edit takes that long.
+LOCK_FILE = ".bible.lock"
+LOCK_WAIT_SECONDS = 10.0
+STALE_LOCK_SECONDS = 120.0
 
 
 class BibleError(ValueError):
@@ -73,6 +80,37 @@ def _write(root: Path, data: dict) -> None:
         raise
 
 
+@contextmanager
+def _locked(root: Path):
+    """Hold the bible for one read-modify-write, in this process and against others."""
+    if not (Path(root) / FILE).is_file():
+        load(root)  # says there is no bible here, rather than failing on the lock file
+    lock = Path(root) / LOCK_FILE
+    with _LOCK:
+        deadline = time.monotonic() + LOCK_WAIT_SECONDS
+        while True:
+            try:
+                handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(handle, str(os.getpid()).encode())
+                os.close(handle)
+                break
+            except FileExistsError:
+                try:
+                    if time.time() - lock.stat().st_mtime > STALE_LOCK_SECONDS:
+                        lock.unlink(missing_ok=True)
+                        continue
+                except FileNotFoundError:
+                    continue
+                if time.monotonic() > deadline:
+                    raise BibleError(f"the bible in {root} is busy (another edit holds {LOCK_FILE}); "
+                                     "try again") from None
+                time.sleep(0.05)
+        try:
+            yield
+        finally:
+            lock.unlink(missing_ok=True)
+
+
 def create(root: Path, name: str, description: str = "", wording: str = "") -> Path:
     """Make a new, empty bible in `root` (created if needed); return the folder."""
     root = Path(root)
@@ -95,9 +133,10 @@ def create(root: Path, name: str, description: str = "", wording: str = "") -> P
     return root
 
 
-def _inside(root: Path, relative: str) -> bool:
-    path = (root / relative).resolve()
-    return path.is_relative_to(root.resolve())
+def _inside(folder: Path, relative: str) -> bool:
+    """Whether `relative` (from the bible root) lands inside `folder` once `..` is resolved."""
+    path = (folder.parent / relative).resolve()
+    return path.is_relative_to(folder.resolve()) and path != folder.resolve()
 
 
 def load(root: Path) -> dict[str, Any]:
@@ -117,8 +156,17 @@ def load(root: Path) -> dict[str, Any]:
     style = data.get("style")
     if not isinstance(style, dict) or not isinstance(style.get("wording", ""), str):
         raise BibleError(f"{path}: 'style' must be an object with a 'wording' text")
-    if not isinstance(data.get("kinds", {}), dict):
+    criteria = style.get("criteria", [])
+    if not isinstance(criteria, list) or not all(isinstance(c, str) for c in criteria):
+        raise BibleError(f"{path}: 'style.criteria' must be a list of questions")
+    kinds = data.get("kinds", {})
+    if not isinstance(kinds, dict):
         raise BibleError(f"{path}: 'kinds' must be an object")
+    for kind, value in kinds.items():
+        if kind not in KINDS:
+            raise BibleError(f"{path}: unknown kind {kind!r} in 'kinds'; choose from {', '.join(KINDS)}")
+        if not isinstance(value, dict) or not isinstance(value.get("wording", ""), str):
+            raise BibleError(f"{path}: 'kinds.{kind}' must be an object with a 'wording' text")
     for key, folder in LISTS.items():
         entries = data.get(key)
         if not isinstance(entries, list):
@@ -132,7 +180,7 @@ def _check_entry(root: Path, path: Path, folder: str, entry: Any) -> None:
     if not isinstance(entry, dict):
         raise BibleError(f"{path}: every picture must be an object")
     file = entry.get("file")
-    if not isinstance(file, str) or not file.startswith(f"{folder}/") or not _inside(root, file):
+    if not isinstance(file, str) or not file.startswith(f"{folder}/") or not _inside(root / folder, file):
         raise BibleError(f"{path}: {file!r} must be a file inside the bible's {folder}/ folder")
     if not SHA256.fullmatch(str(entry.get("sha256", ""))):
         raise BibleError(f"{path}: {file} has no valid sha256")
@@ -187,7 +235,7 @@ def add(root: Path, image: Path, note: str, kind: str | None = None, rejected: b
     _check_picture(image)
     digest = sha256_file(image)
     key = "rejected" if rejected else "images"
-    with _LOCK:
+    with _locked(root):
         data = load(root)
         for other in LISTS:
             if any(e["sha256"] == digest for e in data[other]):
@@ -224,7 +272,7 @@ def _find(data: dict, selector: str) -> tuple[str, int]:
 def remove(root: Path, selector: str) -> dict[str, Any]:
     """Take a picture out: its entry, its file and its provenance copy. Returns the entry."""
     root = Path(root)
-    with _LOCK:
+    with _locked(root):
         data = load(root)
         key, index = _find(data, selector)
         entry = data[key].pop(index)
@@ -241,7 +289,7 @@ def set_note(root: Path, selector: str, note: str) -> dict[str, Any]:
     if not note:
         raise BibleError("a note cannot be empty")
     root = Path(root)
-    with _LOCK:
+    with _locked(root):
         data = load(root)
         key, index = _find(data, selector)
         data[key][index]["note"] = note
