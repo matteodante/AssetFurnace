@@ -195,3 +195,34 @@ def test_two_exports_with_the_same_mesh_name_are_refused(tmp_path):
     second = _export(tmp_path / "again", "prop", "SM_Box")
     with pytest.raises(SystemExit, match="SM_Box"):
         uc.load_exports([first, second])
+
+
+# --- review round 3 ----------------------------------------------------------------------
+
+def test_names_that_differ_only_in_case_share_a_folder_and_are_refused(tmp_path):
+    first = _export(tmp_path, "creature", "SK_Wolf")
+    (tmp_path / "b").mkdir()
+    second = _export(tmp_path / "b", "creature", "SK_WOLF")
+    with pytest.raises(SystemExit, match="SK_W"):
+        uc.load_exports([first, second])
+
+
+def test_a_sidecar_naming_a_folder_outside_the_project_is_refused(tmp_path):
+    folder = _export(tmp_path, "prop", "SM_Box")
+    sidecar = folder / "SM_Box.unreal.json"
+    data = json.loads(sidecar.read_text())
+    data["mesh"] = "../../../Windows"
+    sidecar.write_text(json.dumps(data))
+    with pytest.raises(SystemExit, match="mesh name"):
+        uc.load_exports([folder])
+
+
+def test_equipment_exported_for_another_body_size_does_not_fit(tmp_path):
+    exports = uc.load_exports([_export(tmp_path, "creature", "SK_Body", size_cm=200),
+                               _export(tmp_path, "equipment", "SK_Helm", skeleton_from="SK_Body", size_cm=180)])
+    fit = uc.fit_results(exports)
+    assert fit["SK_Helm"]["ok"] is False and "180" in fit["SK_Helm"]["detail"] and "200" in fit["SK_Helm"]["detail"]
+    same = uc.load_exports([_export(tmp_path / "x" if (tmp_path / "x").mkdir() is None else tmp_path, "creature",
+                                    "SK_Body", size_cm=180),
+                            _export(tmp_path / "x", "equipment", "SK_Helm", skeleton_from="SK_Body", size_cm=180)])
+    assert uc.fit_results(same)["SK_Helm"]["ok"] is True
