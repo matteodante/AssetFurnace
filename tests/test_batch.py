@@ -1140,3 +1140,54 @@ def test_the_review_index_answers_like_the_lookup(tmp_path):
     index = batch.review_index(log)
     for key, sha in (("A", "v1"), ("A", "v2"), ("B", "x"), ("C", None)):
         assert batch.review_in(index, key, sha) == batch.review_state(log, key, sha)
+
+
+
+@pytest.mark.parametrize("classification", ["blocked", "commercial-conditinal", "future-class"])
+def test_an_unknown_licence_class_in_the_source_fails_closed(tmp_path, monkeypatch,
+                                                             classification):
+    install_fake_generator(monkeypatch)
+    spec = _asset_row_spec(tmp_path, {"output": {"classification": classification}})
+    with pytest.raises(batch.BatchError, match="not one this repo has reviewed"):
+        batch.load_batch(spec)
+
+
+def test_a_damaged_provenance_file_does_not_hide_the_backends_record(tmp_path):
+    asset = tmp_path / "knight.glb"
+    asset.write_bytes(b"glTF")
+    asset.with_suffix(".provenance.json").write_text("{ half a record")
+    asset.with_suffix(".json").write_text(json.dumps({"backend": "hunyuan-comfyui"}))
+    assert batch.recorded_sidecar(asset) == asset.with_suffix(".json")
+    assert batch.recorded_backend(asset) == "hunyuan-comfyui"
+
+
+def test_a_resume_from_a_staged_copy_regenerates_without_copying_it_onto_itself(
+        tmp_path, monkeypatch, fake_finish):
+    generator = install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    batch.run_batch(batch.load_batch(spec_path))
+    (tmp_path / "refs" / "row01.png").unlink()            # the original moved away
+    directory = spec_path.parent / "out" / "test-batch"
+    glb = next((directory / "rows" / "SM_row01" / "generate").rglob("*.glb"))
+    glb.unlink()                                           # and a generated file is gone
+    generator.calls.clear()
+    assert batch.run_batch(batch.load_batch(spec_path)).counts == {"done": 1}
+    assert generator.calls == ["row01"]
+
+
+def test_the_index_lists_this_runs_picture_not_a_leftover(tmp_path, monkeypatch, fake_finish):
+    asset = tmp_path / "old" / "crate.glb"
+    asset.parent.mkdir()
+    asset.write_bytes(b"glTFold")
+    first = tiny_png(tmp_path / "old" / "first.png", 1)
+    record = asset.with_suffix(".provenance.json")
+    record.write_text(json.dumps({"input": {"path": str(first)}}))
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1, "output": {"directory": "out"},
+        "rows": [{"id": "SM_Crate", "asset": "old/crate.glb", "steps": ["finish"]}]}))
+    batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
+    second = tiny_png(tmp_path / "old" / "second.png", 2)
+    record.write_text(json.dumps({"input": {"path": str(second)}}))
+    batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
+    index = json.loads((tmp_path / "out" / "lot" / batch.INDEX_FILE).read_text())
+    assert index["rows"][0]["references"] == ["rows/SM_Crate/input/second.png"]

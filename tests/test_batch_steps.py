@@ -365,3 +365,14 @@ def test_the_staged_pictures_are_finish_files(tmp_path, monkeypatch, generated):
     ctx = _context(tmp_path, _row(tmp_path), asset, sidecar)
     staged = tiny_png(ctx.row_dir / "input" / "cat.png")
     assert staged in finish_step.run(ctx).files
+
+
+
+def test_the_finish_record_carries_this_runs_intent(tmp_path, generated):
+    asset, sidecar = generated
+    output = tmp_path / "out.glb"
+    output.write_bytes(b"glTFdone")
+    record = finish_step.provenance_record(_context(tmp_path, _row(tmp_path), asset, sidecar),
+                                           output, None)
+    assert record["intent"] == {"use_case": "game", "distribution": "private",
+                                "commercial_intent": True}

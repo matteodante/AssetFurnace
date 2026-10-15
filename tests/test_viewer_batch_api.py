@@ -338,3 +338,19 @@ def test_identical_files_in_two_batches_are_still_two_assets(output, monkeypatch
     for asset in assets:
         assert asset["stage"] == "finished"
         assert asset["model"].split("/")[1] == asset["finished"].split("/")[1]
+
+
+
+def test_a_checks_only_rows_glb_inside_output_is_in_the_library(output, monkeypatch):
+    from image_to_3dlab.batch_steps import StepResult
+
+    monkeypatch.setitem(batch.STEPS, "checks", fake_step(lambda ctx: StepResult()))
+    source = output / "imported" / "crate.glb"
+    source.parent.mkdir()
+    source.write_bytes(b"glTFcrate")
+    spec = output.parent / "checks.json"
+    spec.write_text(json.dumps({"schema_version": 1, "name": "checked", "rows": [
+        {"id": "SM_Crate", "asset": str(source), "steps": ["checks"]}]}))
+    batch.run_batch(batch.load_batch(spec))
+    (asset,) = [a for a in assets_api.list_assets(output) if a["model"]]
+    assert asset["model"] == "imported/crate.glb"

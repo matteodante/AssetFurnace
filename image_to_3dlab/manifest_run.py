@@ -200,7 +200,10 @@ def run_manifest(path: Path, log: Callable[[str], None] = print) -> tuple[Path, 
             "commercial_intent": data.get("commercial_intent", False),
         }
         policy = data.get("license_policy", {})
-        output_root = Path(data.get("output", {}).get("directory", "output"))
+        output = data.get("output", {})
+        if not isinstance(output, dict) or not isinstance(output.get("directory", "output"), str):
+            raise ValueError('output must be an object like {"directory": "output"}')
+        output_root = Path(output.get("directory", "output"))
     except (KeyError, TypeError, ValueError) as exc:
         raise ManifestRunError(f"invalid run manifest: {exc}") from exc
 
@@ -228,6 +231,10 @@ def run_manifest(path: Path, log: Callable[[str], None] = print) -> tuple[Path, 
     if not isinstance(policy, dict) or not isinstance(policy.get("allow_conditional", True), bool):
         # "false" as a string is truthy: the licence gate must not fail open on a typo
         raise ManifestRunError("license_policy.allow_conditional must be true or false")
+    unknown_policy = sorted(set(policy) - {"allow_conditional", "allow_research_only"})
+    if unknown_policy:
+        # a misspelt key would leave the permissive default in force
+        raise ManifestRunError(f"license_policy: unknown field(s) {', '.join(unknown_policy)}")
     try:
         profile = validate_run_policy(backend, intent["use_case"], intent["distribution"],
                                       policy.get("allow_conditional", True))

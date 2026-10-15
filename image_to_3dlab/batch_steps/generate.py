@@ -60,7 +60,8 @@ def run(ctx: StepContext) -> StepResult:
     images = []
     for image in ctx.row.images:
         copy = inputs / image.name
-        shutil.copyfile(image, copy)
+        if image.resolve() != copy.resolve():   # a resume may read the staged copy itself
+            shutil.copyfile(image, copy)
         images.append(copy)
     manifest = ctx.row_dir / MANIFEST
     manifest.write_text(json.dumps(row_manifest(ctx, images), indent=2) + "\n",

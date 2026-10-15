@@ -105,6 +105,8 @@ def test_run_manifest_refuses_before_the_generator_when_weights_are_missing(tmp_
     ({"seed": 1}, {"license_policy": {"allow_conditional": "false"}}, "true or false"),
     ({"seed": 1}, {"input": {"path": 42}}, "file paths"),
     ({"seed": 1}, {"input": {"views": ["cat.png", 7]}}, "file paths"),
+    ({"seed": 1}, {"license_policy": {"allow_conditionals": False}}, "allow_conditionals"),
+    ({"seed": 1}, {"output": ["out"]}, "output must be an object"),
 ])
 def test_run_manifest_rejects_bad_manifests_with_code_2(tmp_path, monkeypatch, parameters,
                                                         extra, message):

@@ -118,6 +118,12 @@ def library_nodes(output: Path) -> dict[str, list[dict[str, Any]]]:
             picture = next((ref for ref in references if ref.is_file()), None)
             model = _made(directory, steps, "generate")
             finished = _made(directory, steps, "finish")
+            if model is None and finished is None and row.get("asset"):
+                # a row that only checked or exported an existing GLB: show that one, if it
+                # is inside output/ where the studio can serve it
+                final = (directory / row["asset"]).resolve()
+                if final.is_file() and output.resolve() in final.parents:
+                    model = final
             # `<picture stem>__...` is how the Library ties a picture to its model, so the
             # batch is part of both stems, as a hash of batch and row: names containing
             # `__` cannot run into each other. The name shown is the row's id.

@@ -145,7 +145,8 @@ def recorded_sidecar(asset: Path | None) -> Path | None:
     if asset is None:
         return None
     for candidate in (asset.with_suffix(".provenance.json"), asset.with_suffix(".json")):
-        if candidate.is_file():
+        # a damaged provenance file must not hide the backend's own record behind it
+        if candidate.is_file() and isinstance(read_json(candidate), dict) and read_json(candidate):
             return candidate
     return None
 
@@ -199,6 +200,10 @@ def recorded_backend(asset: Path | None) -> str | None:
     return None
 
 
+KNOWN_CLASSES = ("commercial-clear", "commercial-conditional", "territory-restricted",
+                 "research-only")
+
+
 def recorded_classes(asset: Path | None) -> list[str]:
     """Every licence class an existing GLB's records name, through the whole chain: the
     output's, the record's own, and each component that was actually used."""
@@ -218,6 +223,9 @@ def class_problem(classification: str, intent: dict[str, Any],
     `provenance.validate_run_policy` applied to a class rather than a backend."""
     if classification == "commercial-clear":
         return None
+    if classification not in KNOWN_CLASSES:
+        # a class this repo does not know (a newer tool, a typo, `blocked`) fails closed
+        return f"its licence class {classification!r} is not one this repo has reviewed"
     if not policy.get("allow_conditional", True):
         return f"it is {classification}; the policy disallows conditional models"
     if classification == "research-only" and not (
@@ -1189,7 +1197,9 @@ def _index(spec: BatchSpec, rows: dict[str, Any]) -> dict[str, Any]:
         if entry["status"] != "done":
             continue
         inputs = directory / "rows" / row.id / "input"
-        pictures = row.images or tuple(sorted(p for p in inputs.glob("*") if p.is_file()))
+        # this run's staged pictures, not whatever an earlier run left in the folder
+        pictures = row.images or tuple(directory / record["path"]
+                                       for record in entry.get("staged", []))
         listed.append({
             "id": row.id, "kind": row.kind, "profile": row.profile, "faces": row.faces,
             "size_cm": row.size_cm, "measure": row.measure,

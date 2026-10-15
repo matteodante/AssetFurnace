@@ -239,6 +239,8 @@ def provenance_record(ctx: StepContext, output: Path,
         "schema_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "tool": "batch finish: scripts/retopo_repaint.py",
+        # what this run declared and was checked against, whatever the source's said
+        "intent": dict(ctx.intent),
         "input": {"path": str(ctx.asset), "sha256": sha256_file(ctx.asset),
                   "source": "generated" if source else "unknown",
                   **({"image": {"path": str(image), "sha256": sha256_file(image)}}
