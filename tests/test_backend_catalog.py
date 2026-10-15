@@ -592,3 +592,54 @@ def test_a_routes_removable_bytes_leave_out_shared_files():
     assert bc.is_shared(pixal, lite) is True
     assert bc.is_shared(bc.BY_ID["matte"], bc.BY_ID["matte"].weights[0]) is False
     assert "bytes_removable" in pixal.describe(bc.NVIDIA)
+
+
+def _cache_repo(tmp_path, files: dict[str, int]):
+    """A Hugging Face cache folder whose snapshot holds `files` (name -> size)."""
+    snaps = tmp_path / "models--org--name" / "snapshots" / "rev"
+    snaps.mkdir(parents=True)
+    for name, size in files.items():
+        (snaps / name).write_bytes(b"x" * size)
+    return tmp_path / "models--org--name"
+
+
+def test_a_named_file_is_counted_alone_in_a_shared_folder(tmp_path):
+    """Two files of one repo, two weight sets: each counts only its own file, or the
+    folder's total is reported twice and the backend reads more than 100%."""
+    repo = _cache_repo(tmp_path, {"encoder.gguf": 100, "vision.gguf": 30})
+    vision = bc.WeightSet("vision", "org/name", 30, repo, filename="vision.gguf")
+    described = vision.describe()
+    assert described["bytes_present"] == 30
+    assert described["present"] is True
+    assert bc.WeightSet("other", "org/name", 5, repo, filename="absent.gguf").describe()[
+        "present"] is False
+
+
+def test_weights_sharing_a_folder_each_name_their_own_file():
+    for backend in bc.CATALOG:
+        by_path: dict[Path, list] = {}
+        for weight in backend.weights:
+            by_path.setdefault(weight.path, []).append(weight)
+        for path, group in by_path.items():
+            if len(group) < 2:
+                continue
+            names = [w.filename for w in group]
+            assert None not in names, f"{backend.id}: {path} is counted whole and in part"
+            assert len(set(names)) == len(names), f"{backend.id}: {path} lists a file twice"
+
+
+def test_qwen_image_lists_the_vision_file_that_reads_reference_pictures():
+    """Editing with reference pictures needs Qwen3-VL's vision half; text to image does
+    not. The size is the exact byte count Hugging Face reports, so the Setup page's
+    figure is the download's."""
+    weights = {w.filename: w for w in bc.BY_ID["qwen-image"].weights}
+    vision = weights["mmproj-Qwen3VL-8B-Instruct-F16.gguf"]
+    assert vision.source == "Qwen/Qwen3-VL-8B-Instruct-GGUF"
+    assert vision.bytes_expected == 1_159_029_824
+    assert "Qwen3VL-8B-Instruct-Q4_K_M.gguf" in weights
+
+
+def test_readiness_keeps_one_row_per_weight_even_from_one_repo():
+    """The encoder and its vision file share a repo; keyed by repo, one hid the other."""
+    payload = bc.readiness("qwen-image")
+    assert len(payload["weights"]) == len(bc.BY_ID["qwen-image"].weights)
