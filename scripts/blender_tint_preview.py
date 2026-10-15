@@ -78,7 +78,7 @@ def mask_for_material(sidecar: dict, name: str) -> str | None:
     be told apart here, so that material is left untinted rather than given the wrong mask.
     """
     materials = sidecar.get("materials") or []
-    if len(materials) <= 1:
+    if not materials:
         return (sidecar.get("textures") or {}).get("tint_mask")
     for wanted in (name or "", re.sub(r"\.\d{3}$", "", name or "")):   # exact name first
         matches = [m for m in materials if m.get("name") == wanted]

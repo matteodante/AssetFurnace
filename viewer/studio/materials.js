@@ -121,6 +121,13 @@ export function maskFor(run, materialIndex) {
   return materials.find((m) => m.material === materialIndex)?.files?.tint_mask || null;
 }
 
+/** What to do after a status read: poll again while running, and after a failed read too,
+ *  so a passing hiccup never leaves the panel stuck with its button off. */
+export function pollPlan(state, failed) {
+  if (failed) return { delay: 3000, runDisabled: false };
+  return state === 'running' ? { delay: 1500, runDisabled: true } : { delay: null, runDisabled: false };
+}
+
 /** Tint only a model whose last run passed: a rejected rerun has no mask to trust. */
 export const shouldTint = (run) => !!(run?.glb && run.files?.tint_mask);
 
@@ -255,16 +262,21 @@ export function createMaterialsPanel({ root, url }) {
       run = data.run;
       renderRun();
       const { state, error } = data.job;
-      el('run').disabled = state === 'running';
-      if (state === 'running') {
+      const plan = pollPlan(state, false);
+      el('run').disabled = plan.runDisabled;
+      if (plan.delay) {
         message('Making materials… this takes from a few seconds to a minute.');
-        timer = setTimeout(refresh, 1500);
+        timer = setTimeout(refresh, plan.delay);
       } else {
         message(state === 'failed' ? `The step stopped: ${error}` : state === 'sent_back' ? 'Sent back: the albedo needs fixing first.' : '', state === 'failed');
         await applyTint();
       }
     } catch (error) {
-      if (mine === epoch) message(error.message, true);
+      if (mine !== epoch) return;
+      const plan = pollPlan(null, true);
+      message(`${error.message} Trying again…`, true);
+      el('run').disabled = plan.runDisabled;
+      timer = setTimeout(refresh, plan.delay);
     }
   }
 

@@ -67,8 +67,10 @@ def test_each_blender_material_gets_its_own_mask():
     assert mask_for_material(sidecar, "body") == "T_k_body_Tint.png"
     assert mask_for_material(sidecar, "head.001") == "T_k_head_Tint.png"   # Blender's duplicate suffix
     assert mask_for_material(sidecar, "other") is None
-    single = {"textures": {"tint_mask": "T_k_Tint.png"}, "materials": [{"material": 0, "name": "x"}]}
-    assert mask_for_material(single, "anything") == "T_k_Tint.png"
+    single = {"textures": {"tint_mask": "T_k_Tint.png"},
+              "materials": [{"material": 0, "name": "x", "textures": {"tint_mask": "T_k_Tint.png"}}]}
+    assert mask_for_material(single, "x") == "T_k_Tint.png"
+    assert mask_for_material(single, "anything") is None
     twins = {"materials": [{"material": 0, "name": "arm", "textures": {"tint_mask": "a.png"}},
                            {"material": 1, "name": "arm", "textures": {"tint_mask": "b.png"}}]}
     assert mask_for_material(twins, "arm") is None                         # ambiguous: leave it alone
@@ -80,3 +82,12 @@ def test_an_exact_blender_name_wins_over_the_suffix_rule():
                              {"material": 1, "name": "metal", "textures": {"tint_mask": "b.png"}}]}
     assert mask_for_material(sidecar, "metal.001") == "a.png"
     assert mask_for_material(sidecar, "metal") == "b.png"
+
+
+def test_a_sole_mask_is_given_only_to_its_own_material():
+    """One textured material beside a factor-only one: the plain one gets no mask."""
+    sidecar = {"textures": {"tint_mask": "T_k_Tint.png"},
+               "materials": [{"material": 0, "name": "cloth", "textures": {"tint_mask": "T_k_Tint.png"}}]}
+    assert mask_for_material(sidecar, "cloth") == "T_k_Tint.png"
+    assert mask_for_material(sidecar, "cloth.001") == "T_k_Tint.png"
+    assert mask_for_material(sidecar, "plain") is None

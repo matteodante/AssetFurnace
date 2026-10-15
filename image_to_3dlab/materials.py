@@ -376,7 +376,7 @@ def wrap_uv(values: np.ndarray, mode: int) -> np.ndarray:
 
 
 def uv_coverage(uv: np.ndarray, faces: np.ndarray, size: tuple[int, int],
-                wrap: tuple = (REPEAT, REPEAT)) -> np.ndarray:
+                wrap: tuple = (REPEAT, REPEAT), grow: bool = True) -> np.ndarray:
     """Texels covered by at least one UV triangle (glTF UVs: v = 0 is the top row).
 
     Under REPEAT a triangle outside 0..1 is moved into it, and drawn once more one tile
@@ -408,7 +408,7 @@ def uv_coverage(uv: np.ndarray, faces: np.ndarray, size: tuple[int, int],
                 draw.polygon([tuple(p) for p in t], fill=255)
             coverage = (np.asarray(canvas) > 0).astype(np.uint8)
     # Sub-texel triangles fill nothing; one texel of growth catches them.
-    return ndimage.binary_dilation(coverage.astype(bool), iterations=1)
+    return ndimage.binary_dilation(coverage.astype(bool), iterations=1) if grow else coverage.astype(bool)
 
 
 def masked_blur(image: np.ndarray, mask: np.ndarray, sigma: float) -> np.ndarray:
@@ -461,14 +461,30 @@ def island_blur(image: np.ndarray, labels: np.ndarray, slices, sigma: float) -> 
     return out
 
 
-def height_from_luminance(lum: np.ndarray, coverage: np.ndarray) -> np.ndarray:
+def island_labels(coverage: np.ndarray, core: np.ndarray | None = None) -> np.ndarray:
+    """Number the UV islands of a coverage that was grown by one texel.
+
+    Growing joins islands whose gutter is one or two texels wide, so they are numbered on
+    `core`, the coverage before growth (shrunk back when not given), and each grown texel
+    then joins its nearest island.
+    """
+    core = ndimage.binary_erosion(coverage) if core is None else core & coverage
+    labels, count = ndimage.label(core)
+    if not count:
+        return ndimage.label(coverage)[0]
+    _, (rows, cols) = ndimage.distance_transform_edt(~core, return_indices=True)
+    return np.where(coverage, labels[rows, cols], 0)
+
+
+def height_from_luminance(lum: np.ndarray, coverage: np.ndarray,
+                          islands: np.ndarray | None = None) -> np.ndarray:
     """Height as a weighted sum of luminance frequency bands (the Materialize idea).
 
     Each band is the difference between two blurs taken inside one UV island at a time,
     so fine cracks and broad plates both contribute, and neither the gutter nor a
     neighbouring island does.
     """
-    labels, _ = ndimage.label(coverage)
+    labels = island_labels(coverage) if islands is None else islands
     slices = ndimage.find_objects(labels)
     levels = [np.where(coverage, lum, 0.0)] + [island_blur(lum, labels, slices, s) for s in HEIGHT_SIGMAS]
     height = np.full(lum.shape, 0.5, dtype=np.float64)
@@ -477,9 +493,10 @@ def height_from_luminance(lum: np.ndarray, coverage: np.ndarray) -> np.ndarray:
     return fill_gutter(np.where(coverage, height, 0.5), coverage, max_px=None)
 
 
-def normal_from_albedo(lum: np.ndarray, coverage: np.ndarray, strength: float = 6.0) -> np.ndarray:
+def normal_from_albedo(lum: np.ndarray, coverage: np.ndarray, strength: float = 6.0,
+                       islands: np.ndarray | None = None) -> np.ndarray:
     """Normal map from an albedo's 0..1 luminance; `strength` is per 1024 texels."""
-    height = height_from_luminance(np.asarray(lum, dtype=np.float64), coverage)
+    height = height_from_luminance(np.asarray(lum, dtype=np.float64), coverage, islands)
     return normal_from_height(height, strength * lum.shape[1] / 1024.0)
 
 
@@ -554,6 +571,14 @@ def uneven(scale) -> bool:
     """A scale that stretches one UV axis more than the other, beyond 1%."""
     sx, sy = (abs(float(v)) for v in scale)
     return abs(sx - sy) > 0.01 * max(sx, sy, 1e-12)
+
+
+def view_shared(document: dict, image_index: int) -> bool:
+    """Whether another image or an accessor reads the same bufferView as this image."""
+    view = document["images"][image_index].get("bufferView")
+    return (any(i != image_index and image.get("bufferView") == view
+                for i, image in enumerate(document.get("images", [])))
+            or any(accessor.get("bufferView") == view for accessor in document.get("accessors", [])))
 
 
 def referenced_outside_materials(document: dict, texture_index: int) -> bool:
@@ -896,8 +921,18 @@ def _load_ao(path: Path | None, surfaces) -> dict[int, np.ndarray]:
             for index, s in surfaces.items()}
 
 
+COMPRESSED_GEOMETRY = ("EXT_meshopt_compression", "KHR_draco_mesh_compression")
+
+
 def _analyse(glb: EditGLB, ao_path, zones_from: str, samples: int, seed: int) -> _Analysis:
+    packed = [e for e in COMPRESSED_GEOMETRY if e in glb.document.get("extensionsRequired", [])]
+    if packed:
+        raise ValueError(f"the geometry is compressed ({', '.join(packed)}): decompress the GLB first, "
+                         "or its bytes would be read as plain positions and UVs")
     surfaces = _surfaces(glb)
+    if ao_path is not None and len(surfaces) > 1:
+        raise ValueError(f"one AO image cannot serve {len(surfaces)} material atlases that each fill "
+                         "the UV square; run without --ao, or bake one AO per material")
     s = _sample(surfaces, samples, seed)
     zone_clusters = cluster_colours(zone_features(s.lab), seed=seed)
     light_groups = zone_clusters
@@ -1115,6 +1150,9 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
         bad = set(overrides) - set(CHANNELS)
         if bad:
             raise ValueError(f"unknown zone channels: {sorted(bad)}")
+    if texture_prefix is not None and safe_name(texture_prefix) != texture_prefix:
+        raise ValueError(f"texture prefix {texture_prefix!r} must be a plain file name "
+                         "(letters, digits, '_' and '-')")
     target = out_dir / f"{asset.stem}.glb"
     if target.exists() and target.samefile(asset):
         raise ValueError("out_dir is the asset's own folder: the result would overwrite the source")
@@ -1148,15 +1186,18 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
         base_info = pbr["baseColorTexture"]
         sampler = document["textures"][base_info["index"]].get("sampler")
         height, width = surface.image.shape[:2]
-        coverage = uv_coverage(np.concatenate(surface.uv),
-                               np.concatenate([f + sum(len(u) for u in surface.uv[:i])
-                                               for i, f in enumerate(surface.faces)]),
-                               (width, height), surface.wrap)
+        raw = uv_coverage(np.concatenate(surface.uv),
+                          np.concatenate([f + sum(len(u) for u in surface.uv[:i])
+                                          for i, f in enumerate(surface.faces)]),
+                          (width, height), surface.wrap, grow=False)
+        coverage = ndimage.binary_dilation(raw, iterations=1)
         name = prefix
         if many:
-            name = f"{prefix}_{safe_name(material.get('name') or str(surface.material))}"
-            if name.casefold() in used:   # Skin and skin are one file on Windows and macOS
-                name = f"{name}-{surface.material}"
+            base_name = f"{prefix}_{safe_name(material.get('name') or str(surface.material))}"
+            name, extra = base_name, 0
+            while name.casefold() in used:   # Skin and skin are one file on Windows and macOS
+                extra += 1
+                name = f"{base_name}-{surface.material}" + (f"-{extra}" if extra > 1 else "")
         used.add(name.casefold())
         written: dict[str, Path] = {}
 
@@ -1176,7 +1217,8 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
             for m, slot in users.get(old["index"], []))
         old_texture = document["textures"][old["index"]] if old is not None else None
         if exclusive and sum(texture_source(t) == texture_source(old_texture)
-                             for t in document["textures"]) == 1:
+                             for t in document["textures"]) == 1 and not view_shared(
+                                 document, texture_source(old_texture)):
             # Reuse the old metallic-roughness slot rather than leave a dead 4K image behind.
             source = texture_source(old_texture)
             image = document["images"][source]
@@ -1210,13 +1252,16 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
             maps["normal"] = "skipped: the base colour is rotated or unevenly scaled"
         else:
             lum = linear_to_srgb(surface_luminance(surface))
-            normal = fill_gutter(normal_from_albedo(lum, coverage, normal_strength), coverage)
+            islands = island_labels(coverage, core=raw)   # numbered before growth joined any
+            normal = fill_gutter(normal_from_albedo(lum, coverage, normal_strength, islands), coverage)
             written["normal"] = out_dir / f"{name}_N.png"
             Image.fromarray(normal).save(written["normal"])
             normal_tex, binary = add_texture(document, binary, _png(normal), f"{name}_N", sampler)
             material["normalTexture"] = {"index": normal_tex, **texcoord}
             maps["normal"] = "derived"
 
+        if not isinstance(material.get("extras", {}), dict):
+            material["extras"] = {"value": material["extras"]}   # keep their data, beside ours
         extras = material.setdefault("extras", {})
         extras["assetfurnace"] = {
             "tintMask": {"index": mask_tex, **texcoord},
@@ -1231,7 +1276,15 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
 
     drop_unused_extensions(document)
     glb_path = out_dir / f"{stem}.glb"
-    glb_path.write_bytes(build_glb(document, binary))
+    try:
+        # The GLB and its licence record first; the sidecar, which Studio and batches read
+        # as "done", only once both exist.
+        glb_path.write_bytes(build_glb(document, binary))
+        write_provenance(asset, source_sha256, licence, glb_path)
+    except BaseException:
+        for leftover in (glb_path, glb_path.with_suffix(".provenance.json"), sidecar_path):
+            leftover.unlink(missing_ok=True)
+        raise
     sidecar["glb"] = glb_path.name
     sidecar["textures"] = {**per_material[0]["textures"],
                            "orm_channels": {"R": "occlusion", "G": "roughness", "B": "metallic"},
@@ -1239,6 +1292,5 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
     sidecar["maps"] = first_maps
     sidecar["materials"] = per_material
     sidecar_path.write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
-    write_provenance(asset, source_sha256, licence, glb_path)
     return MaterialsResult(status, analysis.checks, analysis.zones, glb_path, sidecar_path,
                            first_textures, first_maps)

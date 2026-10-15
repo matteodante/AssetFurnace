@@ -162,3 +162,12 @@ def test_the_mask_repeats_the_way_the_albedo_does():
       m.matchWrapping(mask, {wrapS: 1000, wrapT: 1002});
       console.log(JSON.stringify(mask));""")
     assert out == {"wrapS": 1000, "wrapT": 1002, "needsUpdate": True}
+
+
+@needs_node
+def test_polling_keeps_going_after_a_failed_status_read():
+    out = run("""console.log(JSON.stringify([
+      m.pollPlan('running', false), m.pollPlan('done', false), m.pollPlan(null, true)]));""")
+    assert out == [{"delay": 1500, "runDisabled": True},
+                   {"delay": None, "runDisabled": False},
+                   {"delay": 3000, "runDisabled": False}]

@@ -14,6 +14,7 @@ import struct
 import numpy as np
 import pytest
 from PIL import Image
+from scipy import ndimage
 
 from image_to_3dlab import materials as m
 from image_to_3dlab.edit_glb import EditGLB
@@ -961,3 +962,95 @@ def test_no_normal_is_derived_under_a_rotated_base_colour(tmp_path):
     result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
     assert result.maps["normal"].startswith("skipped")
     assert "normalTexture" not in EditGLB(result.glb_path.read_bytes()).document["materials"][0]
+
+
+# --------------------------------------------------------------------------- last review round
+
+def test_one_ao_image_is_refused_for_several_material_atlases(tmp_path):
+    Image.fromarray(np.full((SIZE, SIZE), 200, np.uint8)).save(tmp_path / "ao.png")
+    asset = two_material_glb(tmp_path / "two.glb", ["head", "body"])
+    with pytest.raises(ValueError, match="AO"):
+        m.make_game_materials(asset, tmp_path / "out", ao=tmp_path / "ao.png", samples=20000)
+
+
+def test_suffixed_names_never_land_on_a_name_already_taken(tmp_path):
+    asset = two_material_glb(tmp_path / "three.glb", ["foo-2", "foo"])
+    document, binary = parse_glb(asset.read_bytes())
+    primitive = document["meshes"][0]["primitives"][0]
+    document["meshes"][0]["primitives"].append({**primitive, "material": 2})
+    document["materials"].append({"name": "foo", "pbrMetallicRoughness": dict(document["materials"][0]["pbrMetallicRoughness"])})
+    asset.write_bytes(build_glb(document, binary))
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    files = [x["textures"]["tint_mask"].casefold() for x in json.loads(result.sidecar_path.read_text())["materials"]]
+    assert len(set(files)) == 3
+
+
+@pytest.mark.parametrize("extension", ["EXT_meshopt_compression", "KHR_draco_mesh_compression"])
+def test_compressed_geometry_is_refused_before_it_is_misread(tmp_path, extension):
+    asset = make_glb(tmp_path / "packed.glb", banded_albedo())
+    document, binary = parse_glb(asset.read_bytes())
+    document["extensionsUsed"] = [extension]
+    document["extensionsRequired"] = [extension]
+    asset.write_bytes(build_glb(document, binary))
+    with pytest.raises(ValueError, match="compress"):
+        m.run_checks(asset, samples=20000)
+
+
+def test_an_image_sharing_its_bytes_with_another_is_not_overwritten(tmp_path):
+    rng = np.random.default_rng(11)
+    mr = np.zeros((SIZE, SIZE, 3), np.uint8)
+    mr[..., 1] = rng.integers(40, 220, (SIZE, SIZE))
+    asset = make_glb(tmp_path / "shared.glb", banded_albedo(), mr=mr)
+    document, binary = parse_glb(asset.read_bytes())
+    document["images"].append({"bufferView": document["images"][1]["bufferView"], "mimeType": "image/png"})
+    document["textures"].append({"source": 2, "sampler": 0})
+    document["materials"][0]["emissiveTexture"] = {"index": 2}
+    asset.write_bytes(build_glb(document, binary))
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    out = EditGLB(result.glb_path.read_bytes())
+    view = out.document["bufferViews"][out.document["images"][2]["bufferView"]]
+    start = view.get("byteOffset", 0)
+    kept = np.asarray(Image.open(io.BytesIO(out.binary[start:start + view["byteLength"]])).convert("RGB"))
+    np.testing.assert_array_equal(kept, mr)
+
+
+def test_provenance_is_written_before_the_sidecar_publishes_the_run(banded, tmp_path, monkeypatch):
+    """If the licence record cannot be written, no sidecar may say the run is done."""
+    def full_disk(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(m, "write_provenance", full_disk)
+    with pytest.raises(OSError):
+        m.make_game_materials(banded, tmp_path / "out", samples=20000)
+    assert not (tmp_path / "out" / "banded.materials.json").exists()
+    assert not (tmp_path / "out" / "banded.glb").exists()
+
+
+@pytest.mark.parametrize("prefix", ["../escape", "a/b", "C:/x", ".."])
+def test_a_texture_prefix_cannot_leave_the_output_folder(banded, tmp_path, prefix):
+    with pytest.raises(ValueError, match="prefix"):
+        m.make_game_materials(banded, tmp_path / "out", texture_prefix=prefix, samples=20000)
+
+
+def test_extras_that_are_not_an_object_are_kept(tmp_path):
+    asset = make_glb(tmp_path / "extras.glb", banded_albedo())
+    document, binary = parse_glb(asset.read_bytes())
+    document["materials"][0]["extras"] = ["their", "data"]
+    asset.write_bytes(build_glb(document, binary))
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    material = EditGLB(result.glb_path.read_bytes()).document["materials"][0]
+    assert material["extras"]["value"] == ["their", "data"]
+    assert "tintMask" in material["extras"]["assetfurnace"]
+
+
+def test_islands_two_texels_apart_stay_apart_after_coverage_growth():
+    lum = np.zeros((64, 64))
+    raw = np.zeros((64, 64), bool)
+    raw[8:56, 8:30] = True
+    raw[8:56, 32:56] = True                      # a two-texel gutter at columns 30-31
+    lum[:, :31] = 0.9
+    lum[:, 31:] = 0.1
+    grown = ndimage.binary_dilation(raw, iterations=1)   # what uv_coverage hands over
+    islands = m.island_labels(grown, core=raw)           # numbered before the growth
+    normal = m.normal_from_albedo(lum, grown, strength=64.0, islands=islands).astype(int)
+    assert np.abs(normal[raw][:, :2] - 128).max() <= 1
