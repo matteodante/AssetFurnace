@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from image_to_3dlab.checks import geometry
-from image_to_3dlab.checks.asset import base_colour
+from image_to_3dlab.checks.asset import texture_of
 from image_to_3dlab.checks.registry import grade_max, register, result
 
 
@@ -129,7 +129,7 @@ def uv_overlap(asset, config):
     groups: dict[int, list] = {}
     missing, outside, total = 0, 0, 0
     for mesh in asset.primitives:
-        image = base_colour(mesh)
+        image = texture_of(mesh)
         uv = getattr(mesh.visual, "uv", None)
         if image is None:
             continue

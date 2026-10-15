@@ -76,13 +76,17 @@ def main(argv: list[str] | None = None) -> int:
     numbers = {k: v for k, v in (("height", args.height), ("width", args.width), ("depth", args.depth)) if v}
     asset = Asset(glb=args.glb, key=args.key, reference=args.reference, reference_numbers=numbers or None,
                   provenance=args.provenance)
-    overrides = parse_overrides(args.set)
-    if args.no_queue:
-        report = run_checks(asset, profile=args.profile, overrides=overrides)
-        path = write_report(report)
-    else:
-        report, path = review.check_and_enqueue(asset, log=args.log or review.LOG, profile=args.profile,
-                                                overrides=overrides, key=args.key)
+    try:
+        overrides = parse_overrides(args.set)
+        if args.no_queue:
+            report = run_checks(asset, profile=args.profile, overrides=overrides)
+            path = write_report(report)
+        else:
+            report, path = review.check_and_enqueue(asset, log=args.log or review.LOG, profile=args.profile,
+                                                    overrides=overrides, key=args.key)
+    except (ValueError, TypeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     if args.json:
         print(json.dumps(report, indent=2))
     else:

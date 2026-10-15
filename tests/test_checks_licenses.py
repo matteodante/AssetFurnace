@@ -159,3 +159,27 @@ def test_non_commercial_creative_commons_is_blocked(tmp_path, name, status):
     glb = fx.clean(tmp_path / "a.glb")
     fx.sidecar(glb, {"license": name})
     assert check(glb)["status"] == status
+
+
+def _prop_run(tmp_path, source_matches=True):
+    run = tmp_path / "output" / "props" / "tavern__pixal3d__20261013-234430__props__20261013-234841"
+    prop = run / "finished" / "prop_01"
+    prop.mkdir(parents=True)
+    source = fx.clean(run / "source.glb")
+    sha = checks.Asset(glb=source).sha256 if source_matches else "0" * 64
+    (run / "props.provenance.json").write_text(json.dumps({
+        "schema_version": 1, "input": {"sha256": sha, "source": "generated"},
+        "license": fx.PIXAL3D_RECORD["license"], "classification": "commercial-conditional",
+        "source_record": fx.PIXAL3D_RECORD}))
+    return fx.clean(prop / "prop_01_LOD0.glb")
+
+
+def test_a_prop_is_traced_to_its_props_run(tmp_path):
+    """Codex review 4: props keep their licence in <run>/props.provenance.json."""
+    found = check(_prop_run(tmp_path))
+    assert found["status"] == "pass" and "props.provenance.json" in found["details"]["records"][0]
+
+
+def test_a_props_run_whose_source_changed_is_not_trusted(tmp_path):
+    found = check(_prop_run(tmp_path, source_matches=False))
+    assert found["status"] == "fail" and "source.glb" in found["message"]

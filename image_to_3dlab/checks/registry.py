@@ -128,8 +128,32 @@ def load_profile(name: str = "prop", overrides: dict | None = None) -> dict:
     profile = json.loads((PROFILES / "default.json").read_text(encoding="utf-8"))
     profile = _merge(profile, json.loads((PROFILES / f"{name}.json").read_text(encoding="utf-8")))
     profile["name"] = name
+    _check_overrides(overrides or {})
     profile["checks"] = _merge(profile.get("checks", {}), overrides or {})
     return profile
+
+
+GENERIC_SETTINGS = {"enabled", "warn_only"}
+
+
+def _check_overrides(overrides: dict) -> None:
+    """Refuse a misspelled override: a tighter budget that is silently ignored is worse than an error.
+
+    A check must be registered or in the default profile; its settings must be ones the
+    default profile gives it (or `enabled` / `warn_only`). A registered check that the
+    default profile does not describe accepts any setting, since nothing says which it reads.
+    """
+    defaults = json.loads((PROFILES / "default.json").read_text(encoding="utf-8")).get("checks", {})
+    for check, settings in overrides.items():
+        if check not in REGISTRY and check not in defaults:
+            raise ValueError(f"no check is called {check!r}; known: {sorted(set(REGISTRY) | set(defaults))}")
+        if not isinstance(settings, dict):
+            raise TypeError(f"settings for {check!r} must be an object, got {settings!r}")
+        if check in defaults:
+            unknown = sorted(set(settings) - set(defaults[check]) - GENERIC_SETTINGS)
+            if unknown:
+                raise ValueError(f"{check!r} has no setting {', '.join(unknown)}; it reads "
+                                 f"{sorted(set(defaults[check]) | GENERIC_SETTINGS)}")
 
 
 def _apply_warn_only(found: dict) -> dict:

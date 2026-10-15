@@ -19,8 +19,11 @@ to review carrying every earlier note. Checking the same file again changes noth
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -154,6 +157,39 @@ def enqueue_for_review(glb: str | Path, key: str, *, source: str | None = None, 
     return enqueue(log, empty, "", key, now, source, kind)
 
 
+@contextmanager
+def _file_lock(log: Path, timeout: float = 10.0, stale: float = 120.0):
+    """An exclusive lock beside the log that other processes see (the studio and the CLI).
+
+    Taken by creating `<log>.lock` exclusively; a lock older than `stale` seconds is left
+    by a process that died and is broken. Waiting longer than `timeout` is a conflict.
+    """
+    lock = Path(log).with_name(Path(log).name + ".lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            try:
+                if time.time() - lock.stat().st_mtime > stale:
+                    lock.unlink(missing_ok=True)
+                    continue
+            except FileNotFoundError:
+                continue
+            if time.monotonic() > deadline:
+                raise ReviewConflict("the review log is busy: another decision is being written; try again") from None
+            time.sleep(0.05)
+            continue
+        os.write(handle, str(os.getpid()).encode())
+        os.close(handle)
+        break
+    try:
+        yield
+    finally:
+        lock.unlink(missing_ok=True)
+
+
 def approval_blocker(item: dict) -> str | None:
     """Why this version cannot be approved, or None. Sending it back is always possible.
 
@@ -171,7 +207,7 @@ def approval_blocker(item: dict) -> str | None:
 
 
 def decide(log: Path, key: str, decision: str, note: str = "", now: str | None = None,
-           asset_sha256: str | None = None) -> dict:
+           asset_sha256: str | None = None, lock_timeout: float = 10.0) -> dict:
     """Approve the version waiting for review, or send it back with a note; return the new state.
 
     `asset_sha256` is the version the reviewer looked at: if a newer one was queued in the
@@ -183,12 +219,20 @@ def decide(log: Path, key: str, decision: str, note: str = "", now: str | None =
     note = (note or "").strip()
     if decision == "sent_back" and not note:
         raise ValueError("sending an asset back needs a note saying what to change")
-    with _WRITE:  # read, judge and write as one step, so two reviewers cannot both decide
+    # Read, judge and write as one step, across threads and processes, so two reviewers
+    # cannot both decide the same version.
+    with _WRITE, _file_lock(log, timeout=lock_timeout):
         current = fold(load(log)).get(safe_key(key))
         if current is None:
             raise KeyError(f"{key} is not in the review log")
         if asset_sha256 and asset_sha256 != current.get("asset_sha256"):
             raise ReviewConflict(f"{key} has a newer version in the queue; reload it before deciding")
+        on_disk = Path(current.get("asset") or "")
+        if on_disk.is_file():
+            from image_to_3dlab.provenance import sha256_file
+
+            if sha256_file(on_disk) != current.get("asset_sha256"):
+                raise ReviewConflict(f"{key} changed on disk since it was checked; check it again before deciding")
         if current["state"] == "sent_back":
             raise ReviewConflict(f"{key} was sent back; it waits for a new version to be checked")
         if current["state"] != "to_review":

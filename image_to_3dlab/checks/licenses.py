@@ -25,6 +25,7 @@ from typing import Any
 
 from image_to_3dlab.checks.registry import register, result
 
+PROPS_RUN = re.compile(r"^[A-Za-z0-9_-]{1,200}__props__\d{8}-\d{6}(?:-\d+)?$")
 FINISH_RUN = re.compile(r"^(?P<source>[A-Za-z0-9_-]{1,200})__finish__\d{8}-\d{6}(?:-\d+)?$")
 
 # Pattern -> (class, condition). Matched anywhere in a licence name, case-insensitive.
@@ -111,6 +112,16 @@ def find_records(glb: Path, explicit: Path | None = None,
     if found:
         return found, "beside the model"
     for folder in [glb.parent, *glb.parents][:4]:
+        if PROPS_RUN.match(folder.name):
+            # Props keep one record for the whole run, bound to the run's copy of its source.
+            record_path, source = folder / "props.provenance.json", folder / "source.glb"
+            record = _read(record_path)
+            if record is None:
+                return [], f"props run, but {record_path.name} is missing or has no licence"
+            declared = (record.get("input") or {}).get("sha256")
+            if declared and (not source.is_file() or sha256_file(source) != declared):
+                return [], f"props run, but its source.glb is not the model {record_path.name} records"
+            return [(record_path, record)], f"traced to {record_path}"
         match = FINISH_RUN.match(folder.name)
         if not match:
             continue

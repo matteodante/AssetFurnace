@@ -6,6 +6,7 @@ first use, and shared by every check in the run.
 
 from __future__ import annotations
 
+import math
 import os
 import shutil
 from dataclasses import dataclass, field
@@ -53,7 +54,8 @@ class Asset:
                 object.__setattr__(self, name, Path(value))
         for axis, value in (self.reference_numbers or {}).items():
             # A negative height made every size check pass: refuse it where it comes in.
-            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0):
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                                      or not math.isfinite(value) or value <= 0):
                 raise ValueError(f"reference {axis} must be a positive number of metres, got {value!r}")
 
     # -- what is on disk ---------------------------------------------------------------
@@ -125,7 +127,7 @@ class Asset:
 
     @property
     def has_texture(self) -> bool:
-        return any(base_colour(m) is not None for m in self.primitives)
+        return any(texture_of(m) is not None for m in self.primitives)
 
     # -- what a check needs --------------------------------------------------------------
 
@@ -164,10 +166,20 @@ class Asset:
         return None
 
 
-def base_colour(mesh) -> Any:
-    """The base-colour image of a trimesh primitive, or None."""
+TEXTURE_SLOTS = ("baseColorTexture", "normalTexture", "metallicRoughnessTexture", "occlusionTexture",
+                 "emissiveTexture", "image")
+
+
+def texture_of(mesh) -> Any:
+    """The texture image a primitive's UVs map, or None: the base colour first, else any other slot.
+
+    A material with a flat colour and only a normal or roughness map still maps its UVs
+    onto a texture, so overlapping UVs there corrupt detail just the same. trimesh loads
+    the first UV set (TEXCOORD_0), which is the one every slot here uses by default.
+    """
     material = getattr(getattr(mesh, "visual", None), "material", None)
-    image = getattr(material, "baseColorTexture", None)
-    if image is None:
-        image = getattr(material, "image", None)
-    return image
+    for slot in TEXTURE_SLOTS:
+        image = getattr(material, slot, None)
+        if image is not None:
+            return image
+    return None

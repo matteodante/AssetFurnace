@@ -160,3 +160,26 @@ def test_a_report_where_nothing_was_measured_is_not_a_pass(tmp_path):
 def test_a_bmp_reference_is_a_picture(tmp_path):
     """Codex review 2: the studio accepts BMP pictures, so the checks must too."""
     assert checks.Asset(glb=tmp_path / "a.glb", reference=tmp_path / "concept.BMP").reference_kind == "image"
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf")])
+def test_reference_measurements_must_be_finite(tmp_path, value):
+    """Codex review 4: NaN compares false with every threshold, so it passed."""
+    with pytest.raises(ValueError, match="positive"):
+        checks.Asset(glb=tmp_path / "a.glb", reference_numbers={"height": value})
+
+
+@pytest.mark.parametrize("overrides, wrong", [
+    ({"budget.face": {"max": 1000}}, "budget.face"),
+    ({"budget.faces": {"mx": 1000}}, "mx"),
+])
+def test_a_misspelled_override_is_refused(tmp_path, overrides, wrong):
+    """Codex review 4: a tighter budget that is silently ignored is worse than an error."""
+    with pytest.raises(ValueError, match=wrong):
+        checks.run_checks(checks.Asset(glb=fx.clean(tmp_path / "a.glb")), only=["mesh.holes"], overrides=overrides)
+
+
+def test_generic_settings_are_accepted_for_any_registered_check(tmp_path):
+    report = checks.run_checks(checks.Asset(glb=fx.clean(tmp_path / "a.glb")), only=["mesh.holes"],
+                               overrides={"mesh.holes": {"warn_only": True, "fail": 5.0}, "silhouette": {"enabled": False}})
+    assert report["results"][0]["check"] == "mesh.holes"

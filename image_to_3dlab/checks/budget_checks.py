@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from image_to_3dlab.checks import geometry
-from image_to_3dlab.checks.asset import REPO, base_colour
+from image_to_3dlab.checks.asset import REPO, texture_of
 from image_to_3dlab.checks.registry import (
     grade_band,
     grade_max,
@@ -195,7 +195,7 @@ def texel_density(width: int, height: int, uv_area: float, surface_area: float) 
 def density(asset, config):
     weighted, area_total, per_part = 0.0, 0.0, []
     for mesh in asset.primitives:
-        image = base_colour(mesh)
+        image = texture_of(mesh)
         uv = getattr(mesh.visual, "uv", None)
         if image is None or uv is None:
             continue

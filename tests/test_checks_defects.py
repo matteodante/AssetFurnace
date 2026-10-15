@@ -145,3 +145,9 @@ def test_a_declared_texture_that_cannot_be_read_fails(tmp_path):
     (tmp_path / "large texture.png").unlink()
     found = checks.run_checks(checks.Asset(glb=glb), only=["budget.textures"])["results"][0]
     assert found["status"] == "fail" and "could not be read" in found["message"]
+
+
+def test_overlapping_uvs_under_a_normal_map_alone_are_caught(tmp_path):
+    """Codex review 4: every texture slot counts, not only the base colour."""
+    found = checks.run_checks(checks.Asset(glb=fx.normal_map_only(tmp_path / "n.glb")), only=["uv.overlap"])["results"][0]
+    assert found["status"] == "fail", found

@@ -129,3 +129,15 @@ def test_a_prop_set_offers_its_props_not_the_sheet_and_approval_follows_the_rule
     assert out["choices"] == [["s1-barrel", "props/s/barrel_LOD0.glb"], ["s1-stool", "props/s/stool_LOD0.glb"]]
     assert out["unchecked"] is False and out["licence"] is False and out["other"] is True
     assert out["partial"] is False and "has not run" in out["why"]
+
+
+@needs_node
+def test_a_prop_sets_blender_versions_come_first_under_their_props_key():
+    """Codex review 4: a prop edited in Blender is what the Library shows, so it is offered first."""
+    out = _run("""
+      const sets = [{id:'s1', name:'tavern', kind:'prop set', model:'a/sheet.glb',
+        props:[{name:'barrel', file:'props/s/barrel_LOD0.glb'}, {name:'stool', file:'props/s/stool_LOD0.glb'}],
+        blender_versions:[{id:'v1', label:'Blender 1', file:'blender-edits/versions/v1/model.glb', parent_file:'props/s/stool_LOD0.glb'}]}];
+      console.log(JSON.stringify(m.checkChoices(sets).map((c) => [c.id, c.file])));""")
+    assert out == [["s1-stool", "blender-edits/versions/v1/model.glb"],
+                   ["s1-barrel", "props/s/barrel_LOD0.glb"], ["s1-stool", "props/s/stool_LOD0.glb"]]

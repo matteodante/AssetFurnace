@@ -194,3 +194,37 @@ def test_approval_needs_a_licence_check_that_ran(log, tmp_path):
     review.enqueue_for_review(glb, "part", report=full, report_file="r.json", log=log, now=T[1])
     assert review.fold(review.load(log))["part"]["license_status"] == "pass"
     assert review.decide(log, "part", "approved", "", now=T[2])["state"] == "approved"
+
+
+def _queued(tmp_path, log):
+    glb = fx.clean(tmp_path / "row.glb")
+    fx.sidecar(glb, fx.PIXAL3D_RECORD)
+    report = checks.run_checks(checks.Asset(glb=glb), only=["mesh.holes", "license.components"])
+    review.enqueue_for_review(glb, "row", report=report, report_file="r.json", log=log, now=T[0])
+    return glb
+
+
+def test_a_file_replaced_on_disk_after_queueing_cannot_be_decided(tmp_path, log):
+    """Codex review 4: the decision must be about the bytes that were checked."""
+    glb = _queued(tmp_path, log)
+    fx.cube(glb)  # a batch writes its next result in place, without queueing it
+    with pytest.raises(review.ReviewConflict, match="changed on disk"):
+        review.decide(log, "row", "approved", "")
+    with pytest.raises(review.ReviewConflict, match="changed on disk"):
+        review.decide(log, "row", "sent_back", "redo")
+
+
+def test_decisions_take_a_lock_other_processes_see(tmp_path, log):
+    """Codex review 4: the studio and the CLI are separate processes."""
+    _queued(tmp_path, log)
+    lock = log.with_name(log.name + ".lock")
+    lock.write_text("held by another process")
+    with pytest.raises(review.ReviewConflict, match="busy"):
+        review.decide(log, "row", "approved", "", lock_timeout=0.3)
+    assert lock.exists()  # someone else's lock is not removed while fresh
+    import os
+    import time
+    old = time.time() - 600
+    os.utime(lock, (old, old))   # a lock left by a crashed process is stale
+    assert review.decide(log, "row", "approved", "", lock_timeout=0.3)["state"] == "approved"
+    assert not lock.exists()

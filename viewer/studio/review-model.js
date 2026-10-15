@@ -67,7 +67,12 @@ export function checkChoices(assets) {
     // each is its own asset in the queue.
     const props = (a.kind === 'prop set' ? a.props ?? [] : []).filter((p) => p?.file);
     if (props.length) {
-      return props.map((p) => ({ ...base, id: propKey(a.id, p.name), name: `${a.name} · ${p.name}`, file: p.file, version: null }));
+      // A prop edited in Blender is what the Library shows, so its versions come first,
+      // under the key of the prop they were made from.
+      const byFile = new Map(props.map((p) => [p.file, p]));
+      const edited = [...(a.blender_versions ?? [])].reverse().filter((v) => v?.file && byFile.has(v.parent_file))
+        .map((v) => { const p = byFile.get(v.parent_file); return { ...base, id: propKey(a.id, p.name), name: `${a.name} · ${p.name}`, file: v.file, version: v.label || v.id }; });
+      return [...edited, ...props.map((p) => ({ ...base, id: propKey(a.id, p.name), name: `${a.name} · ${p.name}`, file: p.file, version: null }))];
     }
     const versions = [...(a.blender_versions ?? [])].reverse()
       .filter((v) => v?.file).map((v) => ({ ...base, file: v.file, version: v.label || v.id }));

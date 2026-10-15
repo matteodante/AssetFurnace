@@ -228,3 +228,15 @@ def external_texture(path: Path, name: str = "large texture.png", size=(8192, 16
     document["images"] = [{"uri": quote(name), "mimeType": "image/png"}]
     path.write_bytes(build_glb(document, binary))
     return path
+
+
+def normal_map_only(path: Path, overlapping: bool = True) -> Path:
+    """A capsule painted by a flat colour, with only a normal map, whose UVs overlap."""
+    vertices, faces, uv = capsule_arrays()
+    if overlapping:
+        uv = uv.copy()
+        uv[:, 0] = np.where(uv[:, 0] > 0.5, uv[:, 0] - 0.5, uv[:, 0])
+    material = trimesh.visual.material.PBRMaterial(
+        normalTexture=Image.new("RGB", (256, 256), (128, 128, 255)), baseColorFactor=[200, 100, 50, 255])
+    return write_glb(trimesh.Trimesh(vertices, faces, process=False,
+                                     visual=trimesh.visual.TextureVisuals(uv=uv, material=material)), path)
