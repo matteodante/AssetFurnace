@@ -145,3 +145,14 @@ def test_a_clip_record_carries_the_rigs_licence(tmp_path):
     assert record["license"] == {"name": "MIT"} and record["rig"] == {"tool": "SkinTokens"}
     assert record["motion"]["clip"] == "digitigrade-walk" and record["motion"]["license"]["name"] == "MIT"
     assert cf.clip_record(None, "x-walk", "x", tool="test")["license"] is None  # unknown, never invented
+
+
+def test_a_clip_record_names_the_clip_not_the_rig(tmp_path):
+    clip = tmp_path / "wolf_digitigrade-walk.glb"
+    clip.write_bytes(b"clip bytes")
+    rig = {"license": {"name": "MIT"}, "output": {"path": "wolf_rigged.glb", "sha256": "0" * 64,
+                                                   "classification": "commercial"}}
+    record = cf.clip_record(rig, "digitigrade-walk", "digitigrade", tool="test", output=clip)
+    from image_to_3dlab.provenance import sha256_file
+    assert record["output"]["sha256"] == sha256_file(clip) and record["output"]["path"] == str(clip)
+    assert record["output"]["classification"] == "commercial"  # the licence class carries over

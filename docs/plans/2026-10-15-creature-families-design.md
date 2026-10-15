@@ -276,6 +276,9 @@ lo segnalo, non è una deformazione.
 **Seguiti**
 - Pelle che si attraversa (`BVHTree.overlap` fra parti lontane), quando servirà davvero.
 - Orientare dalle anche anche `kimodo_retarget.character_frame` e il profilo Unreal (PR 4, dopo la #6 e la #7).
+- `rig.deformation` misura anche le clip accanto al rig, ma l'esito resta legato all'hash del solo rig: se una clip
+  cambia dopo un'approvazione, la coda di revisione non lo vede (terzo giro di review di Codex). Va deciso con chi
+  cura la funzione 7: includere le clip misurate nella versione dell'asset, o rivedere ogni clip a sé.
 - La coda del lupo è nella mesh ma non nello scheletro di SkinTokens: segue il bacino. Con la famiglia giusta si
   potrebbe chiedere a SkinTokens un altro tentativo (altro seme) quando manca una coda visibile.
 

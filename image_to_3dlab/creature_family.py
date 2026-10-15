@@ -370,12 +370,19 @@ PROCEDURAL_LICENSE = {
 }
 
 
-def clip_record(rig_record: dict | None, clip: str, family: str | None, tool: str) -> dict:
+def clip_record(rig_record: dict | None, clip: str, family: str | None, tool: str,
+                output: Path | None = None) -> dict:
     """Provenance for a test clip: the rig's record (its licences), plus how the motion was
-    made. Without a rig record the licence stays unknown rather than invented."""
+    made, and `output` (the clip file) in place of the rig's own file and hash. Without a
+    rig record the licence stays unknown rather than invented."""
     import time
 
     record = dict(rig_record or {"license": None})
+    if output is not None:
+        from image_to_3dlab.provenance import sha256_file
+
+        before = record.get("output") if isinstance(record.get("output"), dict) else {}
+        record["output"] = {**before, "path": str(output), "sha256": sha256_file(output)}
     record.update({
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "tool": tool,

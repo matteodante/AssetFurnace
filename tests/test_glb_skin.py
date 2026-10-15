@@ -66,3 +66,9 @@ def test_rotations_turn_at_a_steady_rate_between_keys(tmp_path):
     corner = glb.deform(glb.pose(0, 0.25))[5] - np.array([0, 1, 0])  # (0.5, 1) from the joint at rest
     angle = np.degrees(np.arctan2(corner[1], corner[0])) - np.degrees(np.arctan2(1, 0.5))
     assert abs(angle - 45.0) < 0.01
+
+
+def test_primitives_with_different_influence_counts_join(tmp_path):
+    glb = SkinnedGLB(fx.write(tmp_path / "mixed.glb", second_weights=True, second_primitive=True))
+    assert glb.mesh.joints.shape[1] == glb.mesh.weights.shape[1] == 8
+    assert np.allclose(glb.mesh.weights.sum(axis=1), 1.0)
