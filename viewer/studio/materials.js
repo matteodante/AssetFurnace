@@ -103,11 +103,13 @@ export function downloadLinks(run) {
   return run?.glb && run.files?.glb ? [{ label: 'Download game-ready GLB', file: run.files.glb }] : [];
 }
 
-/** The tint mask for one material: each material slot has its own UV layout. */
-export function maskFor(run, materialName) {
+/** The tint mask for one material, found by its glTF material index (names can repeat;
+ *  the index is what GLTFLoader records). Each material slot has its own UV layout. */
+export function maskFor(run, materialIndex) {
   const materials = run?.materials || [];
-  if (materials.length > 1) return materials.find((m) => m.name === materialName)?.files?.tint_mask || null;
-  return run?.files?.tint_mask || null;
+  if (materials.length <= 1) return run?.files?.tint_mask || null;
+  if (materialIndex == null) return null;
+  return materials.find((m) => m.material === materialIndex)?.files?.tint_mask || null;
 }
 
 /** Tint only a model whose last run passed: a rejected rerun has no mask to trust. */
@@ -208,7 +210,7 @@ export function createMaterialsPanel({ root, url }) {
     }
     for (const entry of view.materials) {
       const material = entry.original;
-      const path = material?.map && maskFor(run, material.name);
+      const path = material?.map && maskFor(run, entry.index);
       if (!path) continue;
       const texture = await maskTexture(THREE, path);
       if (token !== epoch) return;

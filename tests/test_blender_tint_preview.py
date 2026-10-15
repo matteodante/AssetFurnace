@@ -6,7 +6,12 @@ against the shipping formula in ``image_to_3dlab.materials``.
 
 import numpy as np
 import pytest
-from blender_tint_preview import light_rotation, parse_tints, tint_terms
+from blender_tint_preview import (
+    light_rotation,
+    mask_for_material,
+    parse_tints,
+    tint_terms,
+)
 
 from image_to_3dlab import materials as m
 
@@ -53,3 +58,17 @@ def test_light_rotation_points_minus_z_along_the_light():
                @ np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]]))
         shine = rot @ np.array([0, 0, -1.0])
         np.testing.assert_allclose(shine, np.array(toward) / np.linalg.norm(toward), atol=1e-9)
+
+
+def test_each_blender_material_gets_its_own_mask():
+    sidecar = {"textures": {"tint_mask": "T_k_Tint.png"}, "materials": [
+        {"material": 0, "name": "head", "textures": {"tint_mask": "T_k_head_Tint.png"}},
+        {"material": 1, "name": "body", "textures": {"tint_mask": "T_k_body_Tint.png"}}]}
+    assert mask_for_material(sidecar, "body") == "T_k_body_Tint.png"
+    assert mask_for_material(sidecar, "head.001") == "T_k_head_Tint.png"   # Blender's duplicate suffix
+    assert mask_for_material(sidecar, "other") is None
+    single = {"textures": {"tint_mask": "T_k_Tint.png"}, "materials": [{"material": 0, "name": "x"}]}
+    assert mask_for_material(single, "anything") == "T_k_Tint.png"
+    twins = {"materials": [{"material": 0, "name": "arm", "textures": {"tint_mask": "a.png"}},
+                           {"material": 1, "name": "arm", "textures": {"tint_mask": "b.png"}}]}
+    assert mask_for_material(twins, "arm") is None                         # ambiguous: leave it alone

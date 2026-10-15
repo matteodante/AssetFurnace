@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -68,6 +69,20 @@ def tint_terms(zones: list[dict], tints: dict[str, list[float]]) -> list[dict]:
                       "scale": 1.0 / y if y > 1e-6 else 0.0,
                       "delta": [t - c for t, c in zip(tints[channel], mean)]})
     return terms
+
+
+def mask_for_material(sidecar: dict, name: str) -> str | None:
+    """The tint mask file for one Blender material, matched by its glTF name.
+
+    Blender suffixes repeated names (``arm.001``); a name the sidecar holds twice cannot
+    be told apart here, so that material is left untinted rather than given the wrong mask.
+    """
+    materials = sidecar.get("materials") or []
+    if len(materials) <= 1:
+        return (sidecar.get("textures") or {}).get("tint_mask")
+    base = re.sub(r"\.\d{3}$", "", name or "")
+    matches = [m for m in materials if m.get("name") == base]
+    return matches[0].get("textures", {}).get("tint_mask") if len(matches) == 1 else None
 
 
 def light_rotation(toward) -> tuple[float, float, float]:
@@ -193,15 +208,18 @@ def main(argv: list[str]) -> int:
     if not args.plain and args.tint:
         sidecar = json.loads(args.asset.with_name(f"{args.asset.stem}.materials.json").read_text())
         terms = tint_terms(sidecar["zones"], parse_tints(args.tint))
-        mask = args.asset.with_name(sidecar["textures"]["tint_mask"])
         variants.append(("tinted", terms))
     else:
-        mask = None
+        sidecar = None
 
     for label, terms in variants:
         if terms:
             for material in {s.material for o in objects if o.type == "MESH" for s in o.material_slots}:
-                _build_tint_nodes(bpy, material, mask, terms)
+                mask = mask_for_material(sidecar, material.name)
+                if mask is None:
+                    print(f"no tint mask for material {material.name!r}: left untinted")
+                    continue
+                _build_tint_nodes(bpy, material, args.asset.with_name(mask), terms)
         for light in LIGHTS:
             _set_lights(bpy, scene, light)
             scene.render.filepath = str(args.out_dir / f"{label}_{light}.png")

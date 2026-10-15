@@ -135,11 +135,16 @@ def test_the_game_ready_glb_can_be_downloaded_only_when_made():
 
 
 @needs_node
-def test_each_material_gets_its_own_mask():
+def test_each_material_gets_its_own_mask_by_gltf_index():
+    """Names repeat (two slots called 'arm'); the glTF index the loader records does not."""
     out = run("""const r = {files:{tint_mask:'d/T_k_Tint.png'}, materials:[
-        {name:'head', files:{tint_mask:'d/T_k_head_Tint.png'}}, {name:'body', files:{tint_mask:'d/T_k_body_Tint.png'}}]};
-      console.log(JSON.stringify([m.maskFor(r,'body'), m.maskFor(r,'head'), m.maskFor(r,'other'), m.maskFor({files:{}}, 'x')]));""")
-    assert out == ["d/T_k_body_Tint.png", "d/T_k_head_Tint.png", None, None]
+        {material:0, name:'arm', files:{tint_mask:'d/T_k_arm_Tint.png'}},
+        {material:3, name:'arm', files:{tint_mask:'d/T_k_arm-3_Tint.png'}}]};
+      const one = {files:{tint_mask:'d/T_k_Tint.png'}, materials:[{material:2, name:'x'}]};
+      console.log(JSON.stringify([m.maskFor(r, 3), m.maskFor(r, 0), m.maskFor(r, 1), m.maskFor(r, null),
+        m.maskFor(one, 2), m.maskFor(one, null), m.maskFor({files:{}}, 0)]));""")
+    assert out == ["d/T_k_arm-3_Tint.png", "d/T_k_arm_Tint.png", None, None,
+                   "d/T_k_Tint.png", "d/T_k_Tint.png", None]
 
 
 @needs_node
