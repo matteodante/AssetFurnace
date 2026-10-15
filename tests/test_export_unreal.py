@@ -277,3 +277,92 @@ def test_real_blender_puts_a_creatures_root_bone_on_the_floor(tmp_path):
     root = sidecar["blender"]["root_head_m"]
     assert root == pytest.approx([0.0, 0.0, 0.0], abs=1e-4)
     assert result["ok"], result["problems"]
+
+
+# --- review round 1 ----------------------------------------------------------------------
+
+def test_classification_is_read_where_generation_records_keep_it(tmp_path):
+    source = tmp_path / "knight.glb"
+    source.write_bytes(_triangle_glb())
+    (tmp_path / "knight.provenance.json").write_text(json.dumps(
+        {"license": {"name": "MIT"}, "output": {"classification": "commercial-conditional"}}))
+    record = ex.provenance([source], source)
+    assert record["classification"] == "commercial-conditional"
+    assert record["license"] == {"name": "MIT"}
+
+
+def test_a_source_without_a_record_says_its_licence_is_unknown(tmp_path):
+    source = tmp_path / "lonely" / "thing.glb"
+    source.parent.mkdir()
+    source.write_bytes(_triangle_glb())
+    record = ex.provenance([source], source)
+    assert record["license"] is None and "unknown" in record["note"]
+
+
+def test_a_failed_rerun_never_publishes_the_previous_result(files, tmp_path):
+    out = tmp_path / "out"
+    ex.export_unreal(files["part"], kind="prop", size_cm=40, out_dir=out, blender=Path("blender"),
+                     run=_fake_blender(material="Material.001"), log=lambda m: None)  # keeps .work
+    assert (out / ".work" / "blender.json").is_file()
+
+    def crash(command, **kwargs):
+        pass  # Blender dies before writing anything
+
+    with pytest.raises(RuntimeError, match="no report"):
+        ex.export_unreal(files["part"], kind="prop", size_cm=40, out_dir=out, blender=Path("blender"),
+                         run=crash, log=lambda m: None)
+
+
+def test_equipment_is_not_checked_without_its_body(files, capsys):
+    code = ex.main([str(files["part"]), "--kind", "equipment", "--size-cm", "180",
+                    "--body", str(files["rig"] / "Wolf_9k_rigged.glb"), "--check-in-unreal"])
+    assert code == 2
+    assert "BODY_EXPORT_DIR PART_EXPORT_DIR" in capsys.readouterr().err
+
+
+def _wrapped_in_an_empty(size=0.5) -> bytes:
+    """The triangle under an empty node that moves and doubles it, as some GLBs do."""
+    document, binary = parse_glb(_triangle_glb(size=size))
+    document["nodes"] = [{"name": "SceneRoot", "children": [1], "translation": [0, 3, 0], "scale": [2, 2, 2]},
+                         {"name": "Thing", "mesh": 0}]
+    document["scenes"] = [{"nodes": [0]}]
+    return build_glb(document, binary)
+
+
+@pytest.mark.skipif(find_blender() is None, reason="needs Blender")
+def test_real_blender_reshapes_a_model_hung_under_an_empty(tmp_path):
+    source = tmp_path / "wrapped.glb"
+    source.write_bytes(_wrapped_in_an_empty())
+    result = ex.export_unreal(source, kind="prop", size_cm=200, measure="longest", out_dir=tmp_path / "out",
+                              log=lambda m: None)
+    lo, hi = json.loads(Path(result["sidecar"]).read_text(encoding="utf-8"))["blender"]["box_after_m"]
+    assert max(h - low for low, h in zip(lo, hi)) == pytest.approx(2.0, rel=1e-4)
+    assert lo[2] == pytest.approx(0.0, abs=1e-5)
+    document, _ = parse_glb(Path(result["glb"]).read_bytes())
+    assert "SceneRoot" not in {n.get("name") for n in document["nodes"]}
+
+
+@pytest.mark.skipif(find_blender() is None, reason="needs Blender")
+def test_real_blender_renames_bones_whose_names_collide(tmp_path):
+    # Cleaning `bone.0` gives `bone_0`, which the other bone already owns until it is renamed.
+    source = tmp_path / "collide.glb"
+    document, binary = parse_glb(_skinned_glb())
+    document["nodes"][1]["name"], document["nodes"][2]["name"] = "bone.0", "bone_0"
+    source.write_bytes(build_glb(document, binary))
+    result = ex.export_unreal(source, kind="creature", size_cm=150, out_dir=tmp_path / "out", log=lambda m: None)
+    bones = json.loads(Path(result["sidecar"]).read_text(encoding="utf-8"))["blender"]["bones"]
+    assert sorted(bones.values()) == ["bone_0", "bone_0_1"]
+    names = {n.get("name") for n in parse_glb(Path(result["glb"]).read_bytes())[0]["nodes"]}
+    assert {"bone_0", "bone_0_1", "root"} <= names
+    assert not any(name and ".00" in name for name in names)
+
+
+@pytest.mark.skipif(find_blender() is None, reason="needs Blender")
+def test_real_blender_refuses_an_animation_file_without_an_animation(tmp_path):
+    source = tmp_path / "critter.glb"
+    source.write_bytes(_skinned_glb())
+    still = tmp_path / "critter_idle.glb"
+    still.write_bytes(_skinned_glb())
+    with pytest.raises(RuntimeError, match="critter_idle.glb holds no animation"):
+        ex.export_unreal(source, kind="creature", size_cm=150, animations=[still], out_dir=tmp_path / "out",
+                         log=lambda m: None)

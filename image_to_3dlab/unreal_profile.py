@@ -180,7 +180,9 @@ def find_provenance(path: Path, levels: int = 3) -> Path | None:
     """The `.provenance.json` that describes `path`: its own, else the nearest run's.
 
     A model's own record sits beside it (`X.glb` -> `X.provenance.json`); a prop cut
-    from a sheet shares its run's `props.provenance.json` a couple of folders up.
+    from a sheet shares its run's `props.provenance.json` a couple of folders up. A
+    folder holding several records, none of them this file's, gives None: picking one
+    could publish another asset's licence.
     """
     path = Path(path)
     own = path.with_name(path.name[:-len(path.suffix)] + ".provenance.json")
@@ -189,8 +191,10 @@ def find_provenance(path: Path, levels: int = 3) -> Path | None:
     folder = path.parent
     for _ in range(levels):
         found = sorted(folder.glob("*.provenance.json"))
-        if found:
+        if len(found) == 1:
             return found[0]
+        if found:
+            return None  # several records here, none of them this file's: not guessed
         if folder.parent == folder:
             break
         folder = folder.parent
@@ -563,7 +567,8 @@ def check_document(document: Mapping[str, Any], names: Mapping[str, Any]) -> lis
 
 def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | None, measure: str | None,
             lods: int, collision: str | None, humanoid: bool, skeleton_from: str | None,
-            animations: list[str], tint: str | None, problems: list[str]) -> dict[str, Any]:
+            animations: list[str], tint: str | None, problems: list[str],
+            orm: bool = True) -> dict[str, Any]:
     """`<mesh>.unreal.json`: what Unreal must do with the GLB, and what to expect."""
     skinned = kind != "prop"
     return {
@@ -574,6 +579,7 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
         "skinned": skinned,
         "material": names["material"],
         "textures": {"base_color": names["base_color"], "normal": names["normal"], "orm": names["orm"]},
+        "orm": orm,  # False when every material is plain factors: no ORM texture to find
         "tint": tint,
         "lods": lods,
         "collision": collision,
@@ -606,6 +612,8 @@ def _check(name: str, ok: bool, detail: str) -> dict[str, Any]:
 def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Turn what Unreal measured after import into pass/fail lines, one per criterion."""
     results = []
+    if expected.get("problems"):
+        results.append(_check("export", False, "the export itself reported: " + "; ".join(expected["problems"])))
     want = expected["expect"]
     equipment = expected["kind"] == "equipment"
     bounds = measured.get("bounds_cm") or [0, 0, 0]
@@ -624,8 +632,9 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
         key = "box_elems" if expected["collision"] == "box" else "convex_elems"
         count = (measured.get("collision") or {}).get(key, 0)
         results.append(_check("collision", count >= 1, f"{count} {expected['collision']} collision shape(s)"))
-    srgb = measured.get("orm_srgb", [])
-    results.append(_check("orm", bool(srgb) and not any(srgb), f"ORM textures sRGB: {srgb}"))
+    if expected.get("orm", True):
+        srgb = measured.get("orm_srgb", [])
+        results.append(_check("orm", bool(srgb) and not any(srgb), f"ORM textures sRGB: {srgb}"))
     if expected.get("tint"):
         srgb = measured.get("tint_srgb")
         results.append(_check("tint", srgb is False, "tint mask imported as linear data" if srgb is False else

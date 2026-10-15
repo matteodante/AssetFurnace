@@ -157,3 +157,31 @@ def test_each_asset_starts_from_an_empty_folder_in_the_check_project(tmp_path):
         uc.check([folder], project=project, editor=editor, run=lambda *a, **k: None)
     assert not stale.exists() and neighbour.exists()
     assert uc.content_folder(project, "SM_Box") == project.parent / "Content" / "AF" / "SM_Box"
+
+
+# --- review round 1 ----------------------------------------------------------------------
+
+def test_a_project_someone_else_made_is_never_cleared(tmp_path):
+    folder = _export(tmp_path, "prop", "SM_Box")
+    game = tmp_path / "Game" / "Game.uproject"
+    game.parent.mkdir()
+    game.write_text(json.dumps({"FileVersion": 3, "Description": "my game"}))
+    existing = uc.content_folder(game, "SM_Box") / "SM_Box.uasset"
+    existing.parent.mkdir(parents=True)
+    existing.write_bytes(b"real asset")
+    editor = tmp_path / "UE_5.8/Engine/Binaries/Win64/UnrealEditor.exe"
+    editor.parent.mkdir(parents=True)
+    editor.write_bytes(b"")
+    with pytest.raises(SystemExit, match="will not overwrite"):
+        uc.check([folder], project=game, editor=editor, run=lambda *a, **k: None)
+    assert existing.read_bytes() == b"real asset"
+
+
+def test_a_picture_unreal_never_saved_fails_the_check(tmp_path):
+    exports = uc.load_exports([_export(tmp_path, "prop", "SM_Box", lods=1)])
+    measured = {"assets": {"SM_Box": {
+        "class": "StaticMesh", "bounds_cm": [60, 20, 20], "min_z": 0.0, "lods": 1,
+        "collision": {"box_elems": 1, "convex_elems": 0}, "names": ["SM_Box"], "orm_srgb": [False]}}}
+    assert uc.write_results(exports, measured, tmp_path / "never-written.png") is False
+    written = json.loads((tmp_path / "SM_Box" / "unreal_check.json").read_text())
+    assert [r for r in written["results"] if r["check"] == "picture"][0]["ok"] is False

@@ -144,16 +144,19 @@ def provenance(inputs: list[Path], glb: Path) -> dict[str, Any]:
         sources.append({"file": Path(path).name, "sha256": _sha256(path),
                         "record_file": record_path.name if record_path else None, "record": record})
     main = sources[0]["record"] or {}
+    output = main.get("output") if isinstance(main.get("output"), dict) else {}
     return {
         "schema_version": 1,
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "tool": "scripts/export_unreal.py (Unreal export profile)",
         "input": {"name": Path(inputs[0]).name, "sha256": sources[0]["sha256"], "source": "derived"},
         "output": {"name": glb.name, "sha256": _sha256(glb)},
-        "license": main.get("license"),
-        "classification": main.get("classification"),
+        # Generation records keep the class under output; derived records at the top.
+        "license": main.get("license") or output.get("license"),
+        "classification": main.get("classification") or output.get("classification"),
         "sources": sources,
-        "note": "Reshaped and renamed for Unreal; no model was run. Licences are those of the sources.",
+        "note": "Reshaped and renamed for Unreal; no model was run. Licences are those of the sources."
+                + ("" if sources[0]["record"] else " No record was found for the main source: its licence is unknown."),
     }
 
 
@@ -178,6 +181,8 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
     job_path = p["work"] / "job.json"
     job_path.write_text(json.dumps(p["job"], indent=1), encoding="utf-8")
     log(f"export_unreal: {p['names']['mesh']} from {Path(source).name} in Blender")
+    for stale in (Path(p["job"]["out"]), Path(p["job"]["report"])):
+        stale.unlink(missing_ok=True)  # a kept .work from a failed run must not pass for this one
     with (p["work"] / "blender.log").open("wb") as handle:
         run(blender_command(blender, job_path), stdout=handle, stderr=subprocess.STDOUT, check=False, cwd=REPO)
     report_path = Path(p["job"]["report"])
@@ -199,7 +204,7 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
                          collision=p["job"]["collision"] if kind == "prop" and p["job"]["collision"] != "none" else None,
                          humanoid=bool(report.get("humanoid")), skeleton_from=p["skeleton_from"],
                          animations=report.get("animations", []), tint=p["tint"].name if p["tint"] else None,
-                         problems=problems)
+                         problems=problems, orm=any(m.get("orm") for m in textures["materials"].values()))
     if p["materials_record"]:
         record = p["out_dir"] / f"{p['names']['mesh']}.materials.json"
         shutil.copyfile(p["materials_record"], record)
@@ -241,6 +246,10 @@ def main(argv=None) -> int:
     parser.add_argument("--check-in-unreal", action="store_true",
                         help="then import it in Unreal 5 with scripts/unreal_import_check.py")
     args = parser.parse_args(argv)
+    if args.check_in_unreal and up.KIND_ALIASES.get(args.kind, args.kind) == "equipment":
+        print("export_unreal: equipment is checked on its body's Skeleton, so check both exports together:\n"
+              "    python scripts/unreal_import_check.py BODY_EXPORT_DIR PART_EXPORT_DIR", file=sys.stderr)
+        return 2
     try:
         result = export_unreal(args.source, kind=args.kind, size_cm=args.size_cm, measure=args.measure,
                                name=args.name, out_dir=args.out, lods=args.lods, collision=args.collision,

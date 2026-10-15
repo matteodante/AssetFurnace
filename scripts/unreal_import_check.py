@@ -48,10 +48,13 @@ CLOSEUP_FOV = 35.0
 
 # --- outside Unreal ---------------------------------------------------------------------
 
+PROJECT_MARK = "AssetFurnace Unreal import check (generated, safe to delete)"
+
+
 def project_document() -> dict:
     """A content-only project with just what the check needs."""
     return {"FileVersion": 3, "EngineAssociation": "", "Category": "",
-            "Description": "AssetFurnace Unreal import check (generated, safe to delete)",
+            "Description": PROJECT_MARK,
             "Plugins": [{"Name": name, "Enabled": True} for name in PROJECT_PLUGINS]}
 
 
@@ -85,6 +88,31 @@ def editor_commands(editor: Path, project: Path, job: Path) -> list[list[str]]:
         [str(editor), str(project), f"-ExecCmds=py {script} --inside capture {job.as_posix()}", "-RenderOffscreen",
          "-NoTextureStreaming", *common],
     ]
+
+
+def generated_project(project: Path) -> bool:
+    """Whether this check made `project` itself (so its imports are its own to replace)."""
+    try:
+        return json.loads(project.read_text(encoding="utf-8")).get("Description") == PROJECT_MARK
+    except (OSError, ValueError):
+        return False
+
+
+def clear_previous(project: Path, exports: list[dict]) -> None:
+    """Empty each asset's folder before Unreal runs, in the check's own project only.
+
+    Unreal, run headless, does not reliably replace what an earlier check left (the IK
+    rigs above all). In a project someone else made, an existing folder is refused
+    instead: those may be real assets.
+    """
+    own = generated_project(project)
+    for export in exports:
+        folder = content_folder(project, export["sidecar"]["mesh"])
+        if own:
+            shutil.rmtree(folder, ignore_errors=True)
+        elif folder.exists():
+            raise SystemExit(f"{folder} already exists in {project.name}; the check will not overwrite it. "
+                             "Move it, or leave out --project to use the check's own project.")
 
 
 def content_folder(project: Path, mesh: str) -> Path:
@@ -160,8 +188,9 @@ def write_results(exports: list[dict], measured: dict, picture: Path | None, pic
             if source and source.is_file():
                 shutil.copyfile(source, folder / name)
                 pictures[name] = name
-        if not pictures.get("unreal_check.png") and measured.get("capture_error"):
-            results.append({"check": "picture", "ok": False, "detail": measured["capture_error"].splitlines()[-1]})
+        if picture is not None and not pictures.get("unreal_check.png"):
+            reason = (measured.get("capture_error") or "Unreal saved no picture; see the capture log").splitlines()[-1]
+            results.append({"check": "picture", "ok": False, "detail": reason})
             ok = False
             all_ok = False
         (folder / "unreal_check.json").write_text(json.dumps({
@@ -188,11 +217,7 @@ def check(folders: list[Path], project: Path | None = None, editor: Path | None 
     project = ensure_project(project or DEFAULT_PROJECT, editor.parents[3], need_manny)
     work = project.parent / "Saved" / "AssetFurnace"
     work.mkdir(parents=True, exist_ok=True)
-    for export in exports:
-        # Unreal, run headless, does not reliably replace what an earlier check left
-        # (the IK rigs above all), so each asset's own folder starts empty. Only the
-        # check's content root is touched.
-        shutil.rmtree(content_folder(project, export["sidecar"]["mesh"]), ignore_errors=True)
+    clear_previous(project, exports)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     job = work / f"job-{stamp}.json"
     measured_path = work / f"measured-{stamp}.json"
