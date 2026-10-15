@@ -10,13 +10,16 @@ and, for a family that has them, `wolf_<family>-<motion>.glb` beside the rig: th
 the studio already lists as clips of `wolf_rigged.glb`. The maths is in
 `creature_motion.py`; this file only reads the armature and keys it.
 
-A test clip is a bonus on top of a rig, so a clip that cannot be made does not undo the
-rig: the reason goes into the family file and the exit code stays 0.
+A test clip is a bonus on top of a rig, so a family or clip that cannot be made does not
+undo the rig: the reason goes into the family file and the exit code stays 0. Each clip
+gets a provenance sidecar carrying the rig's licences (the studio rewrites it with the
+rig job's own record once the job ends).
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import traceback
 from pathlib import Path
@@ -38,6 +41,32 @@ def clip_path(rigged: Path, name: str) -> Path:
     return rigged.with_name(f"{stem}_{name}.glb")
 
 
+def recognise(rigged: Path, chosen: str | None) -> dict:
+    """The family file's content: the family and roles, or why there are none."""
+    try:
+        found = cf.classify_glb(rigged, family=chosen)
+    except Exception as exc:  # noqa: BLE001 - an unreadable rig still is the rig the user asked for
+        traceback.print_exc()
+        return {"schema_version": cf.SCHEMA_VERSION, "family": None, "clips": [],
+                "clips_error": f"could not recognise the family: {type(exc).__name__}: {exc}"}
+    found["clips"], found["clips_error"] = [], None
+    return found
+
+
+def write_provenance(rigged: Path, clip: Path, name: str, family: str | None) -> Path:
+    """`<clip>.provenance.json`, from the rig's own sidecar when it has one."""
+    import json
+
+    try:
+        rig_record = json.loads(rigged.with_suffix(".provenance.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        rig_record = None
+    record = cf.clip_record(rig_record, name, family, tool="scripts/creature_clips.py")
+    path = clip.with_suffix(".provenance.json")
+    path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return path
+
+
 def wanted_motions(family: str, chosen: bool) -> tuple[str, ...]:
     """The clips to make: a family's own, but for humanoids (who have the preset moves)
     only when a person asked for that family."""
@@ -56,12 +85,16 @@ def main() -> None:  # pragma: no cover - needs bpy
     args = ap.parse_args()
 
     chosen = None if args.family == AUTO else args.family
-    found = cf.classify_glb(args.rig, family=chosen)
+    found = recognise(args.rig, chosen)
+    if found["family"] is None:
+        cf.family_path(args.rig).write_text(json.dumps(found, indent=2) + "\n", encoding="utf-8")
+        print(found["clips_error"])
+        return
     motions = wanted_motions(found["family"], chosen is not None)
-    found["clips"], found["clips_error"] = [], None
     try:
         for motion in motions:
             name = _write_clip(args.rig, found["family"], motion, args.blend)
+            write_provenance(args.rig, clip_path(args.rig, name), name, found["family"])
             found["clips"].append(name)
             print(f"wrote test clip {name}")
     except Exception as exc:  # noqa: BLE001 - a missing clip must not cost the rig

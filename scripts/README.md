@@ -128,6 +128,7 @@ Numbers and renders to decide whether a change helped. Read `docs/` before trust
 | `mark_asset.py` | Record a human verdict on a generated asset, so winners stay findable. |
 | `check_asset.py` | Run the automatic checks on a GLB, write `<name>.checks.json` and put it in the review queue. |
 | `review_queue.py` | See the review queue, and approve an asset or send it back with a note. |
+| `style_bible.py` | Keep a project's style bible: approved and rejected pictures with notes, prompts and style references. |
 | `ribbon_metric.py` | Measure how torn a generated mesh is, and gate post-processing on it. |
 | `tear_provenance.py` | Ask of every large tear: could the input view see it?. |
 | `glb_forensics.py` | Dump what a GLB actually contains, so a reference asset can be diffed against ours. |
@@ -206,6 +207,18 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 | `blender_rigify_walk_cycle.py` | Author a trot cycle on the Rigify-generated 'rig' armature in the live Blender scene. |
 | `blender_idle_cycle.py` | Author a looping idle for the rigged fox. |
 | `blender_attack_cycle.py` | Author a slam-attack clip on a rigged quadruped in the live Blender scene. |
+
+## Export for Unreal
+
+A finished asset in, files Unreal Engine 5.8 imports with no touch-ups out: real size, on
+the ground, Unreal names, LODs, collision, ORM textures, Mannequin bone names. The design
+and its measurements are in [the Unreal profile design](../docs/plans/2026-10-15-unreal-profile-design.md).
+
+| Script | What it does |
+|---|---|
+| `export_unreal.py` | Turn a finished GLB into files Unreal Engine 5.8 imports with no touch-ups. |
+| `blender_export_unreal.py` | Reshape a finished GLB for Unreal in headless Blender: size, ground, facing, bones, LODs. |
+| `unreal_import_check.py` | Import exported assets into Unreal with Interchange and check them, with no editor window. |
 
 ## Project upkeep
 

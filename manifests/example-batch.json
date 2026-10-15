@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "_about": "Template batch. Copy it, point each row's images at your own pictures, and run: python pipeline.py --run-batch manifests/my-batch.json. Paths are resolved relative to THIS file. Run the same command again to resume. See docs/batches.md.",
+  "name": "example-batch",
+  "use_case": "game",
+  "distribution": "private",
+  "commercial_intent": true,
+  "license_policy": {
+    "allow_conditional": true
+  },
+  "output": {
+    "directory": "../output/batches"
+  },
+  "defaults": {
+    "backend": "pixal3d",
+    "kind": "prop",
+    "faces": 5000,
+    "steps": ["generate", "finish"],
+    "parameters": {"seed": 42}
+  },
+  "rows": [
+    {"id": "SM_Barrel_01", "images": ["../your-barrel.png"], "faces": 3000},
+    {"id": "SK_Spider_01", "images": ["../your-spider.png"], "kind": "creature", "faces": 20000},
+    {"id": "SM_Crate_02", "asset": "../output/your-crate.glb", "steps": ["finish"]}
+  ]
+}

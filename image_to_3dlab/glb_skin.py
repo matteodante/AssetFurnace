@@ -114,10 +114,13 @@ class SkinnedGLB:
                 v = self.glb.accessor(attr["POSITION"]).astype(np.float64)
                 f = (self.glb.accessor(prim["indices"]).astype(np.int64).reshape(-1, 3) if "indices" in prim
                      else np.arange(len(v)).reshape(-1, 3))
-                w = self.glb.accessor(attr["WEIGHTS_0"]).astype(np.float64)
+                sets = sorted(int(k.split("_")[1]) for k in attr if k.startswith("WEIGHTS_"))
+                w = np.hstack([self.glb.accessor(attr[f"WEIGHTS_{n}"]).astype(np.float64) for n in sets])
+                j = np.hstack([self.glb.accessor(attr[f"JOINTS_{n}"], normalized=False).astype(np.int64)
+                               for n in sets])
                 verts.append(v)
                 faces.append(f + offset)
-                joints.append(self.glb.accessor(attr["JOINTS_0"], normalized=False).astype(np.int64))
+                joints.append(j)
                 weights.append(w / np.maximum(w.sum(axis=1, keepdims=True), 1e-12))
                 offset += len(v)
         if not verts:
@@ -195,7 +198,14 @@ class SkinnedGLB:
             return out / np.linalg.norm(out) if rotation else out
         a, b = values[i], values[i + 1]
         u = (time - times[i]) / max(times[i + 1] - times[i], 1e-12)
-        if rotation and float(a @ b) < 0:
+        if not rotation:
+            return a + (b - a) * u
+        a, b = a / np.linalg.norm(a), b / np.linalg.norm(b)
+        if float(a @ b) < 0:
             b = -b
-        out = a + (b - a) * u
-        return out / np.linalg.norm(out) if rotation else out
+        angle = float(np.arccos(min(1.0, float(a @ b))))
+        if angle < 1e-6:
+            out = a + (b - a) * u
+        else:  # glTF's LINEAR rotation is spherical: a steady turning rate
+            out = (np.sin((1 - u) * angle) * a + np.sin(u * angle) * b) / np.sin(angle)
+        return out / np.linalg.norm(out)

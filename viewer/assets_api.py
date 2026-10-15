@@ -36,7 +36,8 @@ FINISH_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__finish__\d{8}-\d{6}(?:-\d+)?$")
 RIG_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__rig__\d{8}-\d{6}(?:-\d+)?$")
 PROPS_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__props__\d{8}-\d{6}(?:-\d+)?$")
 # Folders under output/ that hold other steps' runs, not 3D generations.
-NOT_GENERATED = {"finish", "props", "images", "rig-rebind", "animate", "blender-edits", "editor-feasibility"}
+NOT_GENERATED = {"finish", "props", "images", "rig-rebind", "animate", "blender-edits", "editor-feasibility",
+                 "batches"}
 # A second take of a preset (`_b`) is a choice between versions, not another move.
 TAKE_SUFFIX = re.compile(r"_[b-z]$")
 STAGES = ("picture", "model", "finished", "rigged", "animated")
@@ -191,6 +192,19 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
     hashes = _Hashes(output)
     pictures, models, finishes = _pictures(output), _models(output), _finishes(output)
     rigs, sets = _rigs(output), _prop_sets(output)
+    from batch_api import library_nodes  # a batch's finished rows are assets too (docs/batches.md)
+
+    batched = library_nodes(output)
+    # a batch that only checked or exported a GLB the Library already shows adds no
+    # second node for it: that one would take over the original's rigs and props
+    known = {model["file"].resolve(): model for model in models}
+    for model in batched["model"]:
+        kept = known.get(model["file"].resolve())
+        if kept is not None:   # its picture and finish join the kept node instead
+            kept.setdefault("links", []).append(model["link"])
+    batched["model"] = [model for model in batched["model"] if model["file"].resolve() not in known]
+    pictures, models = pictures + batched["picture"], models + batched["model"]
+    finishes = finishes + batched["finished"]
 
     # union-find over every run; each connected group is one asset
     nodes: list[tuple[str, dict[str, Any]]] = (
@@ -210,19 +224,27 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
     index_of = {id(n): i for i, (_, n) in enumerate(nodes)}
     model_by_sha: dict[str, int] = {}
     for model in models:
-        model_by_sha[hashes.of(model["file"])] = index_of[id(model)]
+        sha = hashes.of(model["file"])
+        if model.get("link") is None or sha not in model_by_sha:   # a batch copy never
+            model_by_sha[sha] = index_of[id(model)]                # takes over a hash
     for picture in pictures:
         for model in models:
             if model["stem"].startswith(picture["stem"] + "__") or model["stem"].startswith(picture["stem"] + "-cutout__"):
                 join(index_of[id(picture)], index_of[id(model)])
-    picture_by_sha = {hashes.of(p["file"]): index_of[id(p)] for p in pictures}
+    picture_by_sha: dict[str, int] = {}
+    for picture in pictures:   # as for models: a batch copy never takes over a hash
+        sha = hashes.of(picture["file"])
+        if picture.get("link") is None or sha not in picture_by_sha:
+            picture_by_sha[sha] = index_of[id(picture)]
     finished_by_sha: dict[str, int] = {}
     for fin in finishes:
         if fin["image"] is not None:
             match = picture_by_sha.get(hashes.of(fin["image"]))
             if match is not None:
                 join(index_of[id(fin)], match)
-        finished_by_sha[hashes.of(fin["file"])] = index_of[id(fin)]
+        sha = hashes.of(fin["file"])
+        if fin.get("link") is None or sha not in finished_by_sha:
+            finished_by_sha[sha] = index_of[id(fin)]
         if fin["source"] is not None:
             match = model_by_sha.get(hashes.of(fin["source"]))
             if match is not None:
@@ -239,6 +261,11 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
             match = model_by_sha.get(hashes.of(prop_set["file"]))
             if match is not None:
                 join(index_of[id(prop_set)], match)
+    linked: dict[str, int] = {}   # nodes that name their asset outright (batch rows)
+    for i, (_, node) in enumerate(nodes):
+        for link in [node.get("link"), *node.get("links", [])]:
+            if link is not None:
+                join(i, linked.setdefault(link, i))
     hashes.save()
 
     groups: dict[int, list[int]] = {}

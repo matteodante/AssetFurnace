@@ -284,10 +284,16 @@ def classify(parents: dict[str, str | None], heads: dict, up=(0.0, 1.0, 0.0), fr
     trunk = {b for b in body.parents if b not in in_legs}
     centre = np.mean([body.heads[leg["fork"]] for leg in legs], axis=0) if legs else body.heads[body.root]
 
-    for leg in legs:
+    # front or back from where each leg starts; legs that all start on one hub joint
+    # (an auto-rig sometimes builds them so) are told apart by where their feet stand
+    anchors = [body.heads[leg["bones"][0]] for leg in legs]
+    if legs and np.ptp([float(a @ forward) for a in anchors]) < 0.1 * body.size:
+        anchors = [body.heads[leg["bones"][-1]] for leg in legs]
+    middle = np.mean(anchors, axis=0) if legs else centre
+    for leg, anchor in zip(legs, anchors):
         foot = body.heads[leg["bones"][-1]]
         leg["side"] = _side(float((foot - centre) @ left), body.size)
-        along = float((body.heads[leg["fork"]] - centre) @ forward)
+        along = float((anchor - middle) @ forward)
         leg["end"] = "front" if along > 0.05 * body.size else "back" if along < -0.05 * body.size else "mid"
         leg["digitigrade"], leg["ankle"] = _digitigrade(body, leg["bones"], forward, soles)
 
@@ -412,6 +418,26 @@ def classify_glb(glb: Path, family: str | None = None) -> dict:
 
 
 # ---------------------------------------------------------------------- on disk
+
+PROCEDURAL_LICENSE = {
+    "name": "MIT",
+    "note": "Procedural test clip made by AssetFurnace (scripts/creature_motion.py); no motion data or model.",
+}
+
+
+def clip_record(rig_record: dict | None, clip: str, family: str | None, tool: str) -> dict:
+    """Provenance for a test clip: the rig's record (its licences), plus how the motion was
+    made. Without a rig record the licence stays unknown rather than invented."""
+    import time
+
+    record = dict(rig_record or {"license": None})
+    record.update({
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "tool": tool,
+        "motion": {"clip": clip, "family": family, "made_with": "procedural test clip",
+                   "license": PROCEDURAL_LICENSE},
+    })
+    return record
 
 
 def family_path(glb: Path) -> Path:

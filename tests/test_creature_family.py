@@ -158,3 +158,19 @@ def test_a_flat_snake_is_a_serpent_facing_its_head():
     assert found["family"] == "serpent" and found["legs"] == []
     assert found["body"][0] == n["seg0"] and found["body"][-1] == n["seg12"]
     assert found["frame"]["forward"][0] < -0.3  # along the body, towards the head at -X
+
+
+def test_legs_on_one_hub_still_split_front_and_back():
+    parents, heads, _ = quadruped(hub=True)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "quadruped"
+    assert sorted((leg["end"], leg["side"]) for leg in found["legs"]) == [
+        ("back", "L"), ("back", "R"), ("front", "L"), ("front", "R")]
+
+
+def test_a_clip_record_carries_the_rigs_licence(tmp_path):
+    rig = {"license": {"name": "MIT"}, "rig": {"tool": "SkinTokens"}}
+    record = cf.clip_record(rig, "digitigrade-walk", "digitigrade", tool="test")
+    assert record["license"] == {"name": "MIT"} and record["rig"] == {"tool": "SkinTokens"}
+    assert record["motion"]["clip"] == "digitigrade-walk" and record["motion"]["license"]["name"] == "MIT"
+    assert cf.clip_record(None, "x-walk", "x", tool="test")["license"] is None  # unknown, never invented
