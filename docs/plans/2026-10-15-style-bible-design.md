@@ -4,6 +4,9 @@ Data: 15 ottobre 2026. Stato: **proposta, in attesa di approvazione**. Niente è
 Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 3.
 Il LoRA dello stile è **fuori** da questo lavoro (rimandato dall'utente il 15/10/2026).
 
+**AssetFurnace è una repo a sé**: la bibbia è un formato generico, ogni progetto ha la sua e la tiene nella propria
+repo. Dentro AssetFurnace non entrano immagini, nomi o stile di un progetto; gli esempi qui sotto sono inventati.
+
 In breve: una cartella che contiene le immagini approvate di un progetto con le loro note, i modelli di prompt per tipo di
 asset, e un punteggio che dice quanto un concept nuovo somiglia a quelle immagini. Il punteggio esce nel formato dei
 controlli della funzione 7, così lo studio lo mostra e i lotti lo usano come soglia.
@@ -17,7 +20,7 @@ prompt non bastano a garantire lo stile**: serve una misura che lo dica prima di
 Una bibbia è **una cartella** autosufficiente. Si copia, si mette sotto git nella repo del gioco, si apre da un altro PC.
 
 ```
-auroconts-style/
+my-game-style/
   bible.json
   images/
     3f9a1c2e-knight.png
@@ -33,10 +36,10 @@ auroconts-style/
 ```json
 {
   "schema_version": 1,
-  "name": "auroconts",
-  "description": "Faithful and stylised: saturated colours, slightly exaggerated proportions, showy armour.",
+  "name": "my-game",
+  "description": "Hand-painted fantasy: saturated colours, slightly exaggerated proportions.",
   "style": {
-    "wording": "stylised hand-painted fantasy game art, bold saturated colours, slightly exaggerated proportions, chunky ornate armour, clean readable shapes",
+    "wording": "stylised hand-painted fantasy game art, bold saturated colours, slightly exaggerated proportions, clean readable shapes",
     "avoid": "photorealistic, photo, dark, gloomy, muted colours, desaturated"
   },
   "kinds": {
@@ -64,8 +67,8 @@ auroconts-style/
 - `kind` è facoltativo: un'immagine senza tipo vale per tutti i tipi.
 - `score.warn` e `score.fail` vuoti significano "calcolate dalla bibbia stessa" (sezione 3); un numero li fissa.
 - **Più bibbie**: AssetFurnace tiene un elenco in `output/styles/bibles.json` (`[{"name", "path"}]`). Una bibbia nuova
-  nasce in `output/styles/<nome>/`; una cartella esterna (per esempio nella repo di Auroconts) si **registra** con il
-  suo percorso, senza copiarla. Una è quella attiva nello studio; la CLI e i lotti la nominano con `--style-bible`.
+  nasce in `output/styles/<nome>/`; una cartella esterna (per esempio nella repo del gioco, il posto normale) si
+  **registra** con il suo percorso, senza copiarla. `output/` è fuori da git: AssetFurnace non conserva bibbie di progetti. Una è quella attiva nello studio; la CLI e i lotti la nominano con `--style-bible`.
 
 Il codice: `image_to_3dlab/style/bible.py` (leggere, validare, aggiungere, togliere; scrittura atomica del JSON),
 senza dipendenze nuove. Controlla che ogni file elencato esista e abbia il suo hash.
@@ -191,7 +194,8 @@ attiva aggiunto al prompt; da coordinare con la funzione 2 se tocca lo stesso fi
 
 "Su un campione etichettato il punteggio separa i concept che l'utente approverebbe da quelli che rimanderebbe."
 
-1. **Bibbia di prova**: 16 concept nello stile, generati con i modelli di prompt (3-4 per ciascuno dei 5 tipi, semi
+1. **Bibbia di esempio**, costruita con i concept e i modelli già in `output/` più quelli generati per la prova, e
+   **lasciata fuori da git** (`output/style-acceptance-20261016/bible/`). 16 concept nello stile, generati con i modelli di prompt (3-4 per ciascuno dei 5 tipi, semi
    diversi). In mancanza di concept già approvati dall'utente faccio io da approvatore e lo dichiaro; il foglio di
    contatto va all'utente, che può togliere quelli che non approverebbe.
 2. **Campione di prova**, soggetti **diversi** da quelli della bibbia:
