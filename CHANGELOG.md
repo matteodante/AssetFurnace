@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Creature families: after rigging, the skeleton is read for legs, arms, wings, tail and
+  neck and the creature is recognised as humanoid, digitigrade biped, quadruped, many-legged,
+  winged, serpent or plant (`image_to_3dlab/creature_family.py`, `<rig>.family.json`).
+  Digitigrade bipeds and quadrupeds get two procedural test clips, a walk or trot and an
+  attack (`scripts/creature_motion.py`, `scripts/creature_clips.py`). In Studio the Rig step
+  asks what the creature is (or recognises it) and Animate names its test clips.
+- `rig.deformation` check: plays every clip of a rig and measures stretched edges, folded
+  triangles and feet that cross sides (warn only until calibrated).
 - Asset checks (`image_to_3dlab/checks`): one JSON contract for every check, profiles of
   thresholds per asset type, and the generic checks (flipped faces, holes, floating specks,
   non-manifold edges, UV overlap, triangle/material/texture budgets, texel density, size

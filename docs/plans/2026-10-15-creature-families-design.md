@@ -1,6 +1,7 @@
 # Funzione 6: famiglie di creature (progetto)
 
-Data: 15 ottobre 2026. Stato: **progetto, in attesa di approvazione**. Niente è implementato.
+Data: 15 ottobre 2026. Stato: **approvato; PR 1 implementata** (riconoscimento, controllo, bipede digitigrado e
+quadrupede, studio). Le differenze rispetto al progetto sono nella sezione 11.
 Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 6.
 
 In una riga: dopo il rig automatico, AssetFurnace **riconosce la famiglia** della creatura dallo scheletro (umanoide,
@@ -117,15 +118,16 @@ retarget standard.
   - **bipede digitigrado**: passo a due gambe con IK sulla punta e il metatarso che resta inclinato;
   - **attacchi**: riuso la forma "carica, colpo, ritorno" di `attack_pose.py` applicata al ruolo giusto (zampe
     anteriori, testa, mascelle se ci sono).
-- **Lato Blender**, `scripts/blender_creature_clips.py`: applica le curve alle ossa per ruolo, con IK sulle zampe che
-  toccano terra, e scrive le clip in posto (nessuno spostamento della radice). Gira con il Blender 5.2 trovato da
-  `image_to_3dlab/blender.py`, su CPU.
+- **Lato Blender**, `scripts/creature_clips.py` (*implementato*: nel Python di SkinTokens con il suo `bpy`, come
+  `kimodo_retarget.py`, non con il Blender 5.2 di sistema): applica le curve alle ossa per ruolo, con IK sulle zampe
+  che toccano terra, e scrive le clip in posto (nessuno spostamento della radice), su CPU.
 - **Quadrupedi rigati da SkinTokens**: con i ruoli, le stesse curve di `quadruped_gait.py` danno anche a loro un trotto
   di prova, quasi gratis. Non sostituisce il flusso Rigify di `docs/quadruped-pipeline.md`, che resta per la qualità
   di produzione.
 
 Le clip seguono la convenzione che lo studio già legge: un GLB per clip accanto al rigato,
-`<base>_<famiglia>-move.glb` e `<base>_<famiglia>-attack.glb` (`viewer/assets_api.py`, `_rigs`).
+`<base>_<famiglia>-<movimento>.glb`, per esempio `wolf_digitigrade-walk.glb` e `wolf_digitigrade-attack.glb`
+(`viewer/assets_api.py`, `_rigs`). Il trattino evita ogni scontro con le mosse preimpostate, che non ne hanno.
 
 ### Lupo mannaro: due strade, entrambe
 
@@ -238,3 +240,42 @@ Accettazione dal piano: una creatura per famiglia rigata e animata con una clip 
 5. Un'immagine per creatura a metà clip e un video corto in `output/creature-families/`, e ogni creatura nella coda
    di revisione per l'approvazione dell'utente.
 6. Test: `PYTHONPATH=. pytest -q` e `ruff check` verdi sui file toccati; i test Blender con `--factory-startup`.
+
+## 11. Com'è andata la PR 1 (15/10/2026)
+
+**Su cosa ho cambiato idea, misurando.**
+- **Digitigrado si riconosce dalla pianta, non dalle articolazioni.** SkinTokens mette il garretto del lupo e la
+  caviglia del cavaliere (con gli stivali) quasi alla stessa altezza: 18% e 16% della gamba. La mesh invece li separa
+  nettamente: misurando quanto la pianta poggia dietro la caviglia, in lunghezze di piede, il cavaliere e gli altri
+  quattro umanoidi rigati in `output/` stanno fra −0,53 e −0,74 (il tallone), il lupo fra −0,03 e −0,07. Soglia −0,25.
+  Senza mesh, solo un garretto oltre il 25% della gamba dice digitigrado.
+- **Il fronte viene dalle anche, non dai piedi.** I piedi del lupo sono girati di 17° rispetto al corpo (uno più aperto
+  dell'altro). Dalle anche (perpendicolare alla linea fra le due), il fronte è esatto; i piedi dicono solo da che
+  parte.
+- **Ipotesi nuova sulle gambe incrociate in Unreal**, da verificare nella PR 4: il profilo della funzione 5 e
+  `kimodo_retarget.py` orientano il personaggio dai piedi (`character_frame`). Sul lupo questo lo gira di 17°; se il
+  retarget mette i piedi con obiettivi IK nel mondo mentre le anche sono girate, i piedi passano uno davanti
+  all'altro. Basterebbe orientarlo dalle anche, come fa `creature_family.py`.
+- **Le soglie di `rig.deformation`**: le mosse Kimodo già usate sugli umanoidi generati misurano 0,25–1,2% di lati
+  stirati e 0,3–1,7% di triangoli rovesciati (ascelle e anche che si piegano). Soglie: avviso a 0,5%, errore a 1,5%
+  (lati) e 1,0% (triangoli), e **solo avviso** finché il pilota non le tara.
+- **La pelle che si attraversa** (`BVHTree.overlap`) non è nella PR 1: va nei seguiti. Bastano per ora lati, triangoli e
+  piedi incrociati.
+
+**Risultati sul lupo mannaro** (rig esistente, nessuna GPU per le clip: 4 secondi):
+
+| Clip | Lati stirati | Triangoli rovesciati | Piedi incrociati |
+|---|---|---|---|
+| `digitigrade-walk` | 0,05% | 0,09% | no |
+| `digitigrade-attack` | 0,47% | 0,46% | no |
+
+Le immagini a metà clip (di fianco e di fronte) mostrano piedi fermi in appoggio, gambe che si alternano senza
+incrociarsi, braccia alzate senza strappi alle spalle. Il ginocchio della gamba in volo rientra un po' verso il centro:
+lo segnalo, non è una deformazione.
+
+**Seguiti**
+- Pelle che si attraversa (`BVHTree.overlap` fra parti lontane), quando servirà davvero.
+- Orientare dalle anche anche `kimodo_retarget.character_frame` e il profilo Unreal (PR 4, dopo la #6 e la #7).
+- La coda del lupo è nella mesh ma non nello scheletro di SkinTokens: segue il bacino. Con la famiglia giusta si
+  potrebbe chiedere a SkinTokens un altro tentativo (altro seme) quando manca una coda visibile.
+
