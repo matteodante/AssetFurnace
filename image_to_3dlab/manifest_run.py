@@ -1,0 +1,182 @@
+"""Run a manifest through a registered generator: Pixal3D today.
+
+`pipeline.py --run-manifest` handles SF3D, TRELLIS.2 and Hunyuan in `cli.py`; a backend
+listed in `GENERATORS` comes here instead. Batches use the same function for every row, so
+one row of a batch and a single run of that row's manifest are the same code.
+
+A generator is registered with a readiness check that only looks at the disk. It runs
+before the generator, and a missing install stops the run with the command to fix it:
+nothing here downloads weights (AGENTS.md). That is also why SF3D and TRELLIS.2 are not
+registered yet: both fetch weights from Hugging Face on first use.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import shutil
+import subprocess
+import sys
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .provenance import finalize_output, load_run_manifest, validate_run_policy
+
+REPO = Path(__file__).resolve().parents[1]
+
+
+class ManifestRunError(Exception):
+    """A run that did not happen. `code` is the exit code: 2 for a bad manifest or a
+    missing install, 1 for a generator that failed."""
+
+    def __init__(self, message: str, code: int = 2):
+        super().__init__(message)
+        self.code = code
+
+
+@dataclass
+class Generated:
+    glb: Path
+    parameters: dict[str, Any]   # what really ran, for the provenance record
+    # Files the generator writes beside its GLB, by suffix. They move with it, so the
+    # final GLB keeps them under its own name (`<stem>.json`, `<stem>.svviews/`).
+    companions: dict[str, Path] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class Generator:
+    name: str
+    run: Callable[[list[Path], Path, dict[str, Any], Callable[[str], None]], Generated]
+    readiness: Callable[[], list[str]]   # what is missing; empty when ready
+    parameters: frozenset[str]           # the manifest parameters it accepts
+    max_images: int = 1
+    repo: Path | None = None             # backend checkout, for its git revision
+
+
+# ------------------------------------------------------------------------------ Pixal3D
+
+PIXAL3D_SCRIPT = REPO / "scripts" / "pixal3d_generate.py"
+PIXAL3D_ROOT = REPO / "vendor" / "pixal3d-cpp"
+PIXAL3D_PARAMETERS = frozenset({"seed", "steps", "gss", "gsh", "fov", "matte"})
+PIXAL3D_BOOTSTRAP = "python scripts/bootstrap_pixal3d.py (8.4 GB of weights; it asks first)"
+
+
+def _pixal3d_state() -> dict[str, Any]:
+    """`readiness()` from the wrapper itself, so "ready" has one definition."""
+    spec = importlib.util.spec_from_file_location("pixal3d_generate", PIXAL3D_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.readiness()
+
+
+def pixal3d_readiness() -> list[str]:
+    state = _pixal3d_state()
+    if state.get("ready"):
+        return []
+    problem = (f"Pixal3D is not ready (built: {state.get('cli_built')}, weight files: "
+               f"{state.get('weights_present')} of 9). Install it with {PIXAL3D_BOOTSTRAP}")
+    return [problem]
+
+
+def pixal3d_command(image: Path, output: Path, parameters: dict[str, Any]) -> list[str]:
+    command = [sys.executable, "-u", str(PIXAL3D_SCRIPT), str(image), str(output)]
+    for key in ("seed", "steps", "gss", "gsh", "fov"):
+        if parameters.get(key) is not None:
+            command += [f"--{key}", str(parameters[key])]
+    if parameters.get("matte") is True:
+        command.append("--matte")
+    elif parameters.get("matte") is False:
+        command.append("--no-matte")
+    return command
+
+
+def run_pixal3d(images: list[Path], working: Path, parameters: dict[str, Any],
+                log: Callable[[str], None]) -> Generated:
+    """`scripts/pixal3d_generate.py` in a subprocess, as the studio runs it."""
+    working.mkdir(parents=True, exist_ok=True)
+    output = (working / f"{images[0].stem}.glb").resolve()
+    log_path = working / "pixal3d.log"
+    log(f"pixal3d: {images[0].name} -> {output.name} (log: {log_path})")
+    with log_path.open("w", encoding="utf-8") as handle:
+        process = subprocess.run(pixal3d_command(images[0], output, parameters),
+                                 stdout=handle, stderr=subprocess.STDOUT, text=True,
+                                 check=False)
+    if process.returncode != 0 or not output.is_file():
+        tail = "\n".join(log_path.read_text(encoding="utf-8", errors="replace")
+                         .splitlines()[-12:])
+        raise RuntimeError(f"pixal3d exited with code {process.returncode}:\n{tail}")
+    record = output.with_name(f"{output.stem}.json")
+    companions = {".json": record} if record.is_file() else {}
+    views = output.with_suffix(".svviews")
+    if views.is_dir():
+        companions[".svviews"] = views
+    applied = parameters
+    if record.is_file():
+        applied = json.loads(record.read_text(encoding="utf-8")).get("parameters", parameters)
+    return Generated(glb=output, parameters=dict(applied), companions=companions)
+
+
+GENERATORS: dict[str, Generator] = {
+    "pixal3d": Generator(name="pixal3d", run=run_pixal3d, readiness=pixal3d_readiness,
+                         parameters=PIXAL3D_PARAMETERS, repo=PIXAL3D_ROOT),
+}
+
+
+# ------------------------------------------------------------------------- the run
+
+def run_manifest(path: Path, log: Callable[[str], None] = print) -> tuple[Path, Path]:
+    """Generate, then file the result with its `.provenance.json`. Returns both paths."""
+    source = path.expanduser().resolve()
+    try:
+        data = load_run_manifest(source)
+        backend = data["model"]["backend"]
+        generator = GENERATORS[backend]
+        manifest_input = data["input"]
+        names = manifest_input["views"] if "views" in manifest_input else [manifest_input["path"]]
+        parameters = dict(data["model"].get("parameters", {}))
+        intent = {
+            "use_case": data.get("use_case", "showcase"),
+            "distribution": data.get("distribution", "private"),
+            "commercial_intent": data.get("commercial_intent", False),
+        }
+        policy = data.get("license_policy", {})
+        output_root = Path(data.get("output", {}).get("directory", "output"))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ManifestRunError(f"invalid run manifest: {exc}") from exc
+
+    images = [(source.parent / name).resolve() for name in names]
+    if len(images) > generator.max_images:
+        raise ManifestRunError(f"{backend} takes one image" if generator.max_images == 1
+                               else f"{backend} takes at most {generator.max_images} images")
+    missing = [str(image) for image in images if not image.is_file()]
+    if missing:
+        raise ManifestRunError(f"input image does not exist: {', '.join(missing)}")
+    unknown = sorted(set(parameters) - generator.parameters)
+    if unknown:
+        raise ManifestRunError(f"{backend} does not take parameter(s) {', '.join(unknown)}; "
+                               f"it takes {', '.join(sorted(generator.parameters))}")
+    try:
+        profile = validate_run_policy(backend, intent["use_case"], intent["distribution"],
+                                      policy.get("allow_conditional", True))
+    except ValueError as exc:
+        raise ManifestRunError(f"license policy: {exc}") from exc
+    problems = generator.readiness()
+    if problems:
+        raise ManifestRunError("; ".join(problems))
+
+    working = output_root / ".working"
+    try:
+        generated = generator.run(images, working, parameters, log)
+    except (RuntimeError, OSError, ValueError) as exc:
+        raise ManifestRunError(f"{backend}: {exc}", code=1) from exc
+    result, sidecar = finalize_output(
+        generated=generated.glb, image=images[0], output_root=output_root, backend=backend,
+        profile=profile, intent=intent, parameters=generated.parameters,
+        source_manifest=source, backend_repo=generator.repo,
+    )
+    for suffix, companion in generated.companions.items():
+        if companion.exists():
+            shutil.move(str(companion), str(result.with_suffix(suffix)))
+    return result, sidecar

@@ -1,0 +1,183 @@
+"""The shipped batch steps, `generate` and `finish`, with their workers replaced."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from pathlib import Path
+
+import pytest
+from batch_fakes import install_fake_generator, tiny_png, write_spec
+
+from image_to_3dlab import batch
+from image_to_3dlab.batch_steps import StepContext
+from image_to_3dlab.batch_steps import finish as finish_step
+from image_to_3dlab.batch_steps import generate as generate_step
+
+
+def _context(tmp_path: Path, row: batch.BatchRow, asset=None, sidecar=None, options=None):
+    row_dir = tmp_path / "rows" / row.id
+    return StepContext(
+        row=row, row_dir=row_dir, step_dir=row_dir / "step", asset=asset, sidecar=sidecar,
+        intent={"use_case": "game", "distribution": "private", "commercial_intent": True},
+        license_policy={"allow_conditional": True}, options=options or {}, log=lambda line: None)
+
+
+def _row(tmp_path: Path, **fields) -> batch.BatchRow:
+    values = {"id": "SM_Cat", "images": (tiny_png(tmp_path / "refs" / "cat.png"),),
+              "asset": None, "kind": "prop", "faces": 3000, "profile": None,
+              "steps": ("generate", "finish"), "backend": "fake",
+              "parameters": {"seed": 2}, "options": {}}
+    values.update(fields)
+    return batch.BatchRow(**values)
+
+
+# ------------------------------------------------------------------------- generate
+
+def test_generate_writes_a_row_manifest_and_keeps_inputs_in_the_row(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    side = tiny_png(tmp_path / "refs" / "cat_side.png", 9)
+    row = _row(tmp_path, images=(tmp_path / "refs" / "cat.png", side))
+    ctx = _context(tmp_path, row)
+    result = generate_step.run(ctx)
+
+    manifest = json.loads((ctx.row_dir / "manifest.json").read_text())
+    assert manifest["schema_version"] == 1
+    assert manifest["model"] == {"backend": "fake", "parameters": {"seed": 2}}
+    assert Path(manifest["input"]["path"]) == ctx.row_dir / "input" / "cat.png"
+    assert manifest["batch"]["references"] == [str(ctx.row_dir / "input" / "cat_side.png")]
+    assert manifest["batch"]["faces"] == 3000 and manifest["batch"]["kind"] == "prop"
+    assert (ctx.row_dir / "input" / "cat_side.png").is_file()
+    assert result.asset.parent == ctx.step_dir / "clear"
+    assert result.sidecar == result.asset.with_suffix(".provenance.json")
+    assert result.asset in result.files and result.sidecar in result.files
+    assert not (ctx.step_dir / ".working").exists()
+
+
+def test_generate_preflight_reports_each_backend_once(monkeypatch, tmp_path):
+    install_fake_generator(monkeypatch, ready=False)
+    rows = [_row(tmp_path, id="A"), _row(tmp_path, id="B")]
+    assert generate_step.preflight(rows) == ["fake weights missing: run bootstrap_fake.py"]
+
+
+# --------------------------------------------------------------------------- finish
+
+@pytest.fixture
+def generated(tmp_path):
+    asset = tmp_path / "gen" / "cat__pixal3d.glb"
+    asset.parent.mkdir()
+    asset.write_bytes(b"glTFraw")
+    sidecar = asset.with_suffix(".provenance.json")
+    sidecar.write_text(json.dumps({
+        "input": {"path": str(tmp_path / "refs" / "cat.png")},
+        "output": {"classification": "commercial-conditional"},
+        "license": {"name": "MIT + DINOv3", "url": "https://example.invalid"},
+    }))
+    return asset, sidecar
+
+
+def test_finish_command_skips_the_repaint_unless_asked(tmp_path, generated):
+    asset, sidecar = generated
+    ctx = _context(tmp_path, _row(tmp_path), asset, sidecar)
+    command = finish_step.command(ctx, Path("blender.exe"))
+    assert command[3:6] == [str(asset), str(tmp_path / "refs" / "cat.png"),
+                            str(ctx.step_dir / "SM_Cat.glb")]
+    assert command[command.index("--faces") + 1] == "3000"
+    assert "--skip-paint" in command and "--views" not in command
+    assert command[command.index("--blender") + 1] == "blender.exe"
+    painted = finish_step.command(_context(tmp_path, _row(tmp_path), asset, sidecar,
+                                           {"paint": True, "atlas": 1024}), Path("b"))
+    assert "--skip-paint" not in painted
+    assert painted[painted.index("--atlas") + 1] == "1024"
+
+
+def test_finish_uses_the_saved_camera_for_pixel_match(tmp_path, generated):
+    asset, sidecar = generated
+    views = asset.with_suffix(".svviews")
+    views.mkdir()
+    (views / "transforms.json").write_text("{}")
+    command = finish_step.command(_context(tmp_path, _row(tmp_path), asset, sidecar), Path("b"))
+    assert command[command.index("--views") + 1] == str(views)
+    off = finish_step.command(_context(tmp_path, _row(tmp_path), asset, sidecar,
+                                       {"photo": False}), Path("b"))
+    assert "--views" not in off
+
+
+def test_finish_falls_back_to_the_source_records_image(tmp_path, generated):
+    asset, sidecar = generated
+    tiny_png(tmp_path / "refs" / "cat.png")
+    row = _row(tmp_path, images=(), steps=("finish",), asset=asset)
+    command = finish_step.command(_context(tmp_path, row, asset, sidecar), Path("b"))
+    assert command[4] == str(tmp_path / "refs" / "cat.png")
+
+
+def test_finish_preflight_checks_options_blender_and_the_repaint(tmp_path, monkeypatch):
+    monkeypatch.setattr(finish_step, "find_blender", lambda: None)
+    rows = [_row(tmp_path, options={"finish": {"atlass": 1}})]
+    problems = finish_step.preflight(rows)
+    assert any("atlass" in problem for problem in problems)
+    assert any("Blender" in problem for problem in problems)
+
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"")
+    monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
+    monkeypatch.setattr(finish_step, "host_platform", lambda: "nvidia")
+    painted = [_row(tmp_path, options={"finish": {"paint": True}})]
+    assert any("Apple Silicon" in problem for problem in finish_step.preflight(painted))
+    assert finish_step.preflight([_row(tmp_path)]) == []
+
+
+def test_finish_writes_a_derived_provenance_sidecar(tmp_path, monkeypatch, generated):
+    asset, sidecar = generated
+    monkeypatch.setattr(finish_step, "find_blender", lambda: Path("blender.exe"))
+
+    def fake_run(command, stdout, **kwargs):
+        output = Path(command[5])
+        output.write_bytes(b"glTFfinished")
+        output.with_suffix(".retopo-repaint.json").write_text(json.dumps({"stages": ["x"]}))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(finish_step.subprocess, "run", fake_run)
+    ctx = _context(tmp_path, _row(tmp_path), asset, sidecar)
+    result = finish_step.run(ctx)
+    assert result.ok and result.asset == ctx.step_dir / "SM_Cat.glb"
+    record = json.loads(result.sidecar.read_text())
+    assert record["license"] == {"name": "MIT + DINOv3", "url": "https://example.invalid"}
+    assert record["classification"] == "commercial-conditional"
+    assert record["source_record"]["output"]["classification"] == "commercial-conditional"
+    assert record["parameters"]["faces"] == 3000 and record["parameters"]["paint"] is False
+    assert record["output"]["sha256"] and record["input"]["source"] == "generated"
+    assert record["worker_record"] == {"stages": ["x"]}
+    assert ctx.step_dir / "SM_Cat.retopo-repaint.json" in result.files
+
+
+def test_finish_failure_reports_the_log_tail(tmp_path, monkeypatch, generated):
+    asset, sidecar = generated
+    monkeypatch.setattr(finish_step, "find_blender", lambda: Path("blender.exe"))
+
+    def fake_run(command, stdout, **kwargs):
+        stdout.write("[bake] failed: no UVs\n")
+        return subprocess.CompletedProcess(command, 1)
+
+    monkeypatch.setattr(finish_step.subprocess, "run", fake_run)
+    result = finish_step.run(_context(tmp_path, _row(tmp_path), asset, sidecar))
+    assert not result.ok and "no UVs" in result.reason
+
+
+def test_the_real_steps_run_inside_a_batch(tmp_path, monkeypatch):
+    """generate (fake generator) feeds the real finish step (fake worker) its GLB."""
+    install_fake_generator(monkeypatch)
+    monkeypatch.setattr(finish_step, "find_blender", lambda: tmp_path / "blender.exe")
+    (tmp_path / "blender.exe").write_bytes(b"")
+    seen = []
+
+    def fake_run(command, stdout, **kwargs):
+        seen.append(Path(command[3]).name)
+        Path(command[5]).write_bytes(b"glTFfinished")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(finish_step.subprocess, "run", fake_run)
+    spec_path = write_spec(tmp_path, rows=2)
+    report = batch.run_batch(batch.load_batch(spec_path))
+    assert report.exit_code == 0
+    assert all(name.startswith("row0") and "__fake__" in name for name in seen)
