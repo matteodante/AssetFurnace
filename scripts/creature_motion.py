@@ -486,15 +486,36 @@ def pose_path(rig: Rig, path: list[str], desired: dict[str, np.ndarray], turn: d
         raise ValueError("the skeleton's root is not on the body chain")
     kids = rig.kids
     total: dict[str, np.ndarray] = {}
+    actual = {root: np.asarray(desired[root], float)}
     for b in rig.order:
         parent = rig.parents[b]
         inherited = total[parent] if parent is not None else np.eye(3)
-        child = next((c for c in kids[b] if c in on_path), None) if b in on_path else None
-        if child is not None:
-            have = inherited @ (rig.heads[child] - rig.heads[b])
-            turn[b] = rotation_between(have, desired[child] - desired[b])
+        if parent is not None:
+            actual[b] = actual[parent] + total[parent] @ (rig.heads[b] - rig.heads[parent])
+        children = [c for c in kids[b] if c in on_path] if b in on_path else []
+        if children:  # aim from where this joint really is, so no error carries down the chain
+            have = [inherited @ (rig.heads[c] - rig.heads[b]) for c in children]
+            want = [desired[c] - actual[b] for c in children]
+            turn[b] = rotation_between(have[0], want[0]) if len(children) == 1 else _fit(have, want)
         total[b] = turn.get(b, np.eye(3)) @ inherited
-    return np.asarray(desired[root], float)
+    return actual[root]
+
+
+def _fit(have: list[np.ndarray], want: list[np.ndarray]) -> np.ndarray:
+    """The rotation turning the `have` directions closest onto `want` (Kabsch)."""
+    u, _, vt = np.linalg.svd(sum(np.outer(w, h) for h, w in zip(have, want)))
+    fix = np.diag([1.0, 1.0, float(np.sign(np.linalg.det(u @ vt)) or 1.0)])
+    return u @ fix @ vt
+
+
+def _rigid_at_root(rig: Rig, path: list[str], order: list[str], bends: list[np.ndarray]) -> list[np.ndarray]:
+    """No bend where the root sits in the middle of the chain: both of its segments hang
+    from the one root bone, so the angle between them cannot change."""
+    root = rig.order[0]
+    if root in order[1:-1]:
+        bends = list(bends)
+        bends[order.index(root)] = np.eye(3)
+    return bends
 
 
 def _bent(rig: Rig, path: list[str], anchor: str, bends: list[np.ndarray]) -> dict[str, np.ndarray]:
@@ -529,6 +550,7 @@ def serpent_slither(rig: Rig, family: dict, frames: int | None = None) -> list[t
         u = (index % frames) / frames
         bends = [axis_angle(up, SLITHER["bend"] * s[i] * math.sin(2 * math.pi * (u - SLITHER["waves"] * s[i])))
                  for i in range(len(path) - 1)]
+        bends = _rigid_at_root(rig, path, path, bends)
         turn: dict[str, np.ndarray] = {}
         root = pose_path(rig, path, _bent(rig, path, path[0], bends), turn)
         out.append((turn, root))
@@ -546,12 +568,13 @@ def serpent_strike(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[
     for index in range(frames + 1):
         t = index / frames
         coil = _blend(t, 0.0, 0.5, 1.0, -0.15, 0.0)
-        rear = _blend(t, 0.0, 0.4, 1.0, -0.3, 0.0)
+        rear = _blend(t, 0.0, 0.4, 1.0, 0.0, 0.0)  # never below rest: the head must not dive into the ground
         bends = []
         for k in range(len(path) - 1, 0, -1):  # the joint each segment starts from, tail to head
             neck = max(0.0, (STRIKE["neck"] - s[k]) / STRIKE["neck"])  # 1 at the head, 0 past the neck
             lateral = STRIKE["coil"] * coil * math.sin(2 * math.pi * (1.0 - s[k])) * (1.0 - neck)
             bends.append(axis_angle(up, lateral) @ axis_angle(left, -STRIKE["rear"] * rear * neck))
+        bends = _rigid_at_root(rig, path, path[::-1], bends)
         turn: dict[str, np.ndarray] = {}
         root = pose_path(rig, path, _bent(rig, path, path[-1], bends), turn)
         out.append((turn, root))

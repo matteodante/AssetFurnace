@@ -56,7 +56,7 @@ DIGITIGRADE_JOINTS = 0.25  # of leg length: without a mesh, only a hock this hig
 SOLE = 0.03              # of the mesh height: vertices this low are a sole on the ground
 HEEL = -0.25             # of the foot's length: a sole reaching further behind the ankle has a heel
 DRAG_SPREAD = 0.3        # of the drop: ground contact spread wider than this is dragging
-DESCENT = 0.25           # of its length along the bones: a leg drops at least this much
+DESCENT = 0.1            # of its length along the bones: a leg drops at least this much
 LATERAL = 0.15           # of body size: a branch reaching this far sideways is an arm or wing
 
 
@@ -155,7 +155,9 @@ def _legs(body: _Body) -> list[dict]:
             if any(body.above(x) > 0.25 * top and sum(_reaches_down(body, c, x) for c in body.kids[x]) >= 2
                    for x in path[:-1]):
                 continue
-            contact = [body.flat(body.heads[x]) for x in path if body.above(x) <= GROUND * body.height]
+            # the same band as "reaches down": a tail hanging just above the ground drags too
+            band = max(GROUND * body.height, NEAR_GROUND * body.above(fork))
+            contact = [body.flat(body.heads[x]) for x in path if body.above(x) <= band]
             spread = max((float(np.linalg.norm(a - b)) for a in contact for b in contact), default=0.0)
             if len(contact) >= 2 and spread > DRAG_SPREAD * body.above(fork):
                 continue  # lies along the ground: a tail or tentacle

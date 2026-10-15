@@ -96,3 +96,24 @@ def test_two_chains_inside_one_leg_move_as_one():
     for f in frames:
         p = positions(rig, f)
         assert np.allclose(p[twin] - rig.heads[twin], p[own] - rig.heads[own], atol=1e-4)
+
+
+@pytest.mark.parametrize("root", ["seg0", "seg11", "seg5", "seg6"])
+def test_a_serpent_rooted_anywhere_keeps_its_anchor(root):
+    rig, fam, n = rig_of(reroot(snake(), root))
+    body = fam["body"]
+    for f in cm.serpent_slither(rig, fam):  # the head is held
+        assert np.linalg.norm(positions(rig, f)[body[0]] - rig.heads[body[0]]) < 1e-3
+    for f in cm.serpent_strike(rig, fam):  # the tail is held
+        assert np.linalg.norm(positions(rig, f)[body[-1]] - rig.heads[body[-1]]) < 1e-3
+
+
+def test_a_strike_never_drives_the_head_into_the_ground():
+    parents, heads, names = snake()
+    heads = dict(heads)
+    heads[names["seg0"]] = heads[names["seg1"]] + np.array([0, 0.001, 0.15])  # head barely raised
+    rig, fam, _ = rig_of((parents, heads, names))
+    floor = min(rig.heads[b][1] for b in fam["body"])
+    for f in cm.serpent_strike(rig, fam):
+        p = positions(rig, f)
+        assert min(p[b][1] for b in fam["body"]) >= floor - 1e-6

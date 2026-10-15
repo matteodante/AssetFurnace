@@ -174,3 +174,19 @@ def test_a_clip_record_carries_the_rigs_licence(tmp_path):
     assert record["license"] == {"name": "MIT"} and record["rig"] == {"tool": "SkinTokens"}
     assert record["motion"]["clip"] == "digitigrade-walk" and record["motion"]["license"]["name"] == "MIT"
     assert cf.clip_record(None, "x-walk", "x", tool="test")["license"] is None  # unknown, never invented
+
+
+def test_a_low_slung_spider_is_still_a_spider():
+    parents, heads, _ = spider(8)
+    low = {b: p * np.array([1, 0.6, 1]) for b, p in heads.items()}  # the same spider, squatting
+    found = cf.classify(parents, low)
+    assert found["family"] == "multileg" and len(found["legs"]) == 8
+
+
+def test_a_tail_hanging_just_above_the_ground_is_not_a_leg():
+    parents, heads, n = quadruped()
+    heads = dict(heads)
+    for k, z in enumerate((-0.6, -0.85, -1.1)):
+        heads[n[f"tail{k}"]] = np.array([0, (0.0 if k else 0.3) + 0.1, z])
+    found = cf.classify(parents, heads)
+    assert found["family"] == "quadruped" and len(found["legs"]) == 4
