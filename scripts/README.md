@@ -117,6 +117,7 @@ The asset's surface, as opposed to its shape.
 | `feature_mask.py` | Build a UV-space mask for one feature of a mesh, from a point in 3D. |
 | `bake_stiffness.py` | Bake foliage stiffness into a GLB as vertex colours, for engine-side wind. |
 | `classify_thickness.py` | Separate solid body from thin foliage by measuring local thickness. |
+| `material_label_set.py` | Queue assets for the user's material labels, follow the progress, export what is complete. |
 | `game_materials.py` | Pack a generated GLB's own maps as a game-ready ORM, with its sidecar and licence record. |
 
 ## Measure and judge
