@@ -32,6 +32,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import image_api
 import blender_edit_api
+import batch_api
 import review_api
 import unreal_export_api
 from image_to_3dlab import processes
@@ -2079,6 +2080,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if unreal_export_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
+        if batch_api.handle(self, OUTPUT_ROOT, mutation=True):
+            return
         parts = self._path_parts()
         if parts == ["api", "chains"]:
             try:
@@ -2320,6 +2323,8 @@ class Handler(SimpleHTTPRequestHandler):
         if blender_edit_api.handle(self, OUTPUT_ROOT) or review_api.handle(self, OUTPUT_ROOT):
             return
         if unreal_export_api.handle(self, OUTPUT_ROOT):
+            return
+        if batch_api.handle(self, OUTPUT_ROOT):
             return
         if urlparse(self.path).path in ("", "/", "/viewer", "/viewer/"):
             self.send_response(HTTPStatus.FOUND)  # the front door is the studio

@@ -1,0 +1,3 @@
+id,images,kind,faces,profile,steps,backend,seed
+SM_Barrel_01,../your-barrel.png,prop,3000,unreal,generate;finish,pixal3d,42
+SK_Spider_01,../your-spider.png;../your-spider-side.png,creature,20000,unreal,generate;finish,pixal3d,42
