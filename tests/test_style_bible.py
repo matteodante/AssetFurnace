@@ -190,3 +190,36 @@ def test_a_lock_left_by_a_crash_is_taken_over(tmp_path, root, monkeypatch):
     os.utime(lock, (old, old))
     sb.add(root, picture(tmp_path / "a.png"), "note")
     assert sb.load(root)["images"]
+
+
+def test_the_copied_provenance_is_recorded_and_checked(tmp_path, root):
+    """Codex review 2 (P1): a picture must not lose its licence record without anyone noticing."""
+    source = picture(tmp_path / "a.png")
+    source.with_suffix(".provenance.json").write_text('{"license": "x"}', encoding="utf-8")
+    entry = sb.add(root, source, "good")
+    sidecar = (root / entry["file"]).with_suffix(".provenance.json")
+    assert entry["provenance_sha256"] == sb.sha256_file(sidecar)
+    assert sb.problems(root) == []
+    sidecar.write_text('{"license": "changed"}', encoding="utf-8")
+    assert any("provenance" in p and "changed" in p for p in sb.problems(root))
+    sidecar.unlink()
+    assert any("provenance" in p and "missing" in p for p in sb.problems(root))
+    without = sb.add(root, picture(tmp_path / "b.png", (5, 5, 5)), "no sidecar")
+    assert "provenance_sha256" not in without
+
+
+def test_a_removal_finishes_before_the_next_edit_starts(tmp_path, root, monkeypatch):
+    """Codex review 2: the files go while the bible is still held, so a re-add cannot lose its copy."""
+    source = picture(tmp_path / "a.png")
+    entry = sb.add(root, source, "good")
+    seen = []
+    real_unlink = type(root).unlink
+
+    def watching(self, *args, **kwargs):
+        seen.append((self.name, (root / sb.LOCK_FILE).exists()))
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(root), "unlink", watching)
+    sb.remove(root, entry["sha256"])
+    picture_name = entry["file"].split("/")[-1]
+    assert (picture_name, True) in seen  # the picture was deleted while the lock was held

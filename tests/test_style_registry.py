@@ -60,3 +60,16 @@ def test_find_takes_a_name_or_a_folder(tmp_path):
     assert registry.find(tmp_path, str(root)) == root.resolve()
     with pytest.raises(sb.BibleError, match="no bible"):
         registry.find(tmp_path, "unknown")
+
+
+def test_registry_edits_wait_for_another_process(tmp_path, monkeypatch):
+    """Codex review 2: two processes editing bibles.json must not drop each other's change."""
+    root = sb.create(tmp_path / "a", "first")
+    monkeypatch.setattr(sb, "LOCK_WAIT_SECONDS", 0.3)
+    (tmp_path / "styles").mkdir(exist_ok=True)
+    (tmp_path / "styles" / registry.LOCK_FILE).write_text("1", encoding="utf-8")
+    with pytest.raises(sb.BibleError, match="busy"):
+        registry.register(tmp_path, root)
+    (tmp_path / "styles" / registry.LOCK_FILE).unlink()
+    registry.register(tmp_path, root)
+    assert not (tmp_path / "styles" / registry.LOCK_FILE).exists()
