@@ -1,0 +1,7 @@
+{
+  "description": "A monster or character, rigged later.",
+  "checks": {
+    "budget.faces": {"max": 40000},
+    "budget.materials": {"warn": 3, "fail": 6}
+  }
+}

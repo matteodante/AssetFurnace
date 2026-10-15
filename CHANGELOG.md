@@ -18,6 +18,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   queue (`output/review-log.jsonl`). Rows can state their real size (`size_cm`,
   `measure`) for the Unreal export. See [Batches](docs/batches.md).
 - `--run-manifest` runs Pixal3D manifests.
+- Style bibles (`image_to_3dlab/style`): a self-contained folder per project with approved and
+  rejected pictures, each with a note and its provenance, so a game keeps its look in its own
+  repository. Prompt templates per asset kind put the 3D recipe first and the project's style
+  after it; `refs.pick` chooses 1-3 approved pictures as style references for generation.
+  `scripts/style_bible.py` makes, registers and edits bibles and prints prompts and references.
+- Prompt recipes for three more asset kinds: creature, piece of equipment and map object.
+- Asset checks (`image_to_3dlab/checks`): one JSON contract for every check, profiles of
+  thresholds per asset type, and the generic checks (flipped faces, holes, floating specks,
+  non-manifold edges, UV overlap, triangle/material/texture budgets, texel density, size
+  against a reference, silhouette at a common scale from four views, glTF-Validator,
+  component licences from provenance). Results go to `<name>.checks.json`.
+- `scripts/bootstrap_gltf_validator.py` installs Khronos' glTF-Validator (Apache-2.0,
+  2.2 MB) after asking, for the `gltf.valid` check.
+- Review queue (`output/review-log.jsonl`): checked assets wait for a person to approve them
+  or send them back with a note; a sent-back asset stays in the queue with its note until a
+  new version is checked. `scripts/check_asset.py` checks and queues a GLB,
+  `scripts/review_queue.py` lists and decides, and the studio serves `/api/review/...`.
+  Decisions are also recorded as `mark_asset` verdicts.
+  `image_to_3dlab.checks.enqueue_for_review(glb, key, source=..., kind=...)` lets a batch queue
+  an output before or after its checks.
+- **Review** in Studio: the queue of checked assets, a form to check a Library asset against
+  a reference, and a review panel in place of Steps: the model turns 360°, the reference turns
+  beside the checks, four silhouette overlays show where the outlines differ, and Approve or
+  Send back (with a note) records the decision.
 - **Edit in Blender** in Studio: open a separate editing copy, export a GLB from
   Blender and import it as a new Library version. Originals and provenance stay
   available; imported versions preview their own rig, materials and animations.
@@ -27,6 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Guided editor feasibility CLI (`scripts/inspect_edit_asset.py`): bounded GLB inspection,
   lossless container checks and numerical bind/reweight probes with saved evidence.
   The web editor remains in development; passing inspection does not enable editing.
+- **Unreal export profile** (`scripts/export_unreal.py`): a finished object, creature or
+  equipment piece becomes a GLB that Unreal Engine 5.8 imports with Interchange and no
+  touch-ups: real size in centimetres, origin on the ground, `SM_`/`SK_`/`MI_`/`T_` names,
+  baked LODs, box collision, one ORM texture per material, Mannequin bone names and a
+  `root` bone for humanoids, equipment on its body's Skeleton. `scripts/unreal_import_check.py`
+  imports the result headless, checks it and photographs Manny's idle and walk retargeted onto it.
+  In Studio, **Export for Unreal** on any Library asset does the same and hands back the files.
 - Experimental canonical editing snapshots and a Blender no-op bridge, preserving
   untouched GLB data and reporting geometry, UV and weight round-trip checks.
   This is a feasibility tool; interactive editing and rig reconstruction are pending.

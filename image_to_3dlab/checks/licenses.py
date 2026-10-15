@@ -1,0 +1,253 @@
+"""Licences of every component, read from the provenance that travels with the asset.
+
+Three record shapes are in use, and all are read: `provenance.finalize_output`'s
+`<name>.provenance.json`, Pixal3D's `<name>.json`, and the rig's record, which nests the
+records of what it was made from under `source_record`. Every licence anywhere in a record
+counts, however deep.
+
+Models finished before the batch runner wrote their own sidecar have none beside them.
+For those the record is found through the finish run's folder name
+(`<generated run>__finish__<time>`) and accepted only when the generated GLB has the same
+sha256 as the finish run's `input/source.glb`.
+
+Rules: no record at all fails (provenance is this repo's guardrail); a Tencent/Hunyuan
+licence, a territory-restricted class, or a blocked component that was loaded fails; a
+licence nobody recognises warns; licences with conditions pass and list their conditions,
+so they reach the game's credits.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+from image_to_3dlab.checks.registry import register, result
+
+# The props run keeps one record for all its props and no hash per prop, so a licence found
+# that way is inherited, not bound to the file: it can pass at most as a warn.
+INHERITED = "inherited from the props run, not bound to this file by a hash:"
+INHERITED_FINISH = "inherited from the generated run, not bound to this file by a hash:"
+PROPS_RUN = re.compile(r"^[A-Za-z0-9_-]{1,200}__props__\d{8}-\d{6}(?:-\d+)?$")
+FINISH_RUN = re.compile(r"^(?P<source>[A-Za-z0-9_-]{1,200})__finish__\d{8}-\d{6}(?:-\d+)?$")
+
+# Pattern -> (class, condition). Matched anywhere in a licence name, case-insensitive.
+KNOWN = [
+    (r"tencent|hunyuan", "blocked", "Not licensed in the EU, UK or South Korea."),
+    (r"non-?commercial|\bnc\b", "blocked", "Non-commercial: not usable in a game that is sold."),
+    (r"dinov3", "conditional", "DINOv3 License terms apply to the image encoder."),
+    (r"qwen", "conditional", "Attribution: say 'Built with Qwen'."),
+    (r"stability ai community", "conditional", "Stability AI Community License: registration and revenue cap."),
+    (r"\bmit\b", "clear", None),
+    (r"apache", "clear", None),
+    (r"\bbsd\b", "clear", None),
+    (r"\bcc0\b|cc-by|creative commons attribution", "clear", None),
+]
+# research-only is non-commercial in this repo's policy (provenance.validate_run_policy).
+BLOCKED_CLASSES = {"territory-restricted", "blocked", "non-commercial", "research-only"}
+
+
+def _read(path: Path) -> dict | None:
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return record if isinstance(record, dict) and _has_licence(record) else None
+
+
+def _has_licence(record: Any) -> bool:
+    if isinstance(record, dict):
+        return any(k in ("license", "license_name") for k in record) or any(map(_has_licence, record.values()))
+    if isinstance(record, list):
+        return any(map(_has_licence, record))
+    return False
+
+
+def _licence_name(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, dict) and isinstance(value.get("name"), str) and value["name"].strip():
+        return value["name"].strip()
+    return None
+
+
+def own_licence(record: Any) -> str | None:
+    """The licence of the model itself: on the record, or down its chain of `source_record`s.
+
+    A rig or motion tool's licence (`rig.license`, a clip's) says nothing about the model's
+    own rights, so a record whose own licence is empty does not pass on those alone.
+    """
+    while isinstance(record, dict):
+        name = _licence_name(record.get("license", record.get("license_name")))
+        if name:
+            return name
+        record = record.get("source_record")
+    return None
+
+
+def declared_hash_matches(record: dict, glb: Path) -> bool:
+    """False only when the record names an output sha256 and `glb` is another file."""
+    from image_to_3dlab.provenance import sha256_file
+
+    output = record.get("output")
+    declared = output.get("sha256") if isinstance(output, dict) else None
+    return not declared or declared == sha256_file(glb)
+
+
+def _beside(glb: Path) -> list[Path]:
+    return [glb.with_name(glb.stem + ".provenance.json"), glb.with_name(glb.stem + ".json")]
+
+
+def find_records(glb: Path, explicit: Path | None = None,
+                 output_root: Path | None = None) -> tuple[list[tuple[Path, dict]], str | None]:
+    """Every provenance record for `glb`, and a note on how they were found."""
+    from image_to_3dlab.provenance import sha256_file
+
+    if explicit is not None:
+        record = _read(explicit)
+        if record and not declared_hash_matches(record, glb):
+            return [], f"{explicit.name} records a different file: its output sha256 does not match this GLB"
+        return ([(explicit, record)] if record else []), "given"
+    found = [(p, r) for p in _beside(glb) if (r := _read(p))]
+    stale = [p for p, r in found if not declared_hash_matches(r, glb)]
+    if stale:
+        return [], f"{stale[0].name} records a different file: its output sha256 does not match this GLB"
+    if found:
+        return found, "beside the model"
+    for folder in [glb.parent, *glb.parents][:4]:
+        if PROPS_RUN.match(folder.name):
+            # Props keep one record for the whole run, bound to the run's copy of its source.
+            record_path, source = folder / "props.provenance.json", folder / "source.glb"
+            record = _read(record_path)
+            if record is None:
+                return [], f"props run, but {record_path.name} is missing or has no licence"
+            declared = (record.get("input") or {}).get("sha256")
+            if declared and (not source.is_file() or sha256_file(source) != declared):
+                return [], f"props run, but its source.glb is not the model {record_path.name} records"
+            return [(record_path, record)], f"{INHERITED} {record_path}"
+        match = FINISH_RUN.match(folder.name)
+        if not match:
+            continue
+        source = folder / "input" / "source.glb"
+        root = output_root or folder.parent.parent
+        name = f"{match['source']}.glb"
+        # A studio run sits in output/<stem>/; pipeline.py writes output/<licence folder>/<stem>.glb.
+        candidates = [root / match["source"] / name, *sorted(root.glob(f"*/{name}"))]
+        found_files = [c for c in candidates if c.is_file()]
+        if not (source.is_file() and found_files):
+            return [], f"finish run, but its generated model {name} is not there to trace it"
+        wanted = sha256_file(source)
+        generated = next((c for c in found_files if sha256_file(c) == wanted), None)
+        if generated is None:
+            return [], f"finish run, but no {name} found is the model it was finished from"
+        traced = [(p, r) for p in _beside(generated) if (r := _read(p)) and declared_hash_matches(r, generated)]
+        # Nothing in an older finish run binds the finished bytes to it: inherited, so at most a warn.
+        return traced, f"{INHERITED_FINISH} {generated}"
+    return [], None
+
+
+def collect(record: Any, found: dict | None = None) -> dict:
+    """Licence names, classes, conditions and loaded blocked components, at any depth."""
+    found = found if found is not None else {"licenses": [], "classes": [], "conditions": [], "blocked": []}
+
+    def add(key, value):
+        if value and value not in found[key]:
+            found[key].append(value)
+
+    if isinstance(record, dict):
+        licence = record.get("license", record.get("license_name"))
+        if isinstance(licence, str):
+            add("licenses", licence)
+        elif isinstance(licence, dict):
+            add("licenses", licence.get("name"))
+            for condition in licence.get("conditions", []) or []:
+                add("conditions", condition)
+        if isinstance(record.get("classification"), str):
+            add("classes", record["classification"])
+        if isinstance(record.get("attribution"), str):
+            add("conditions", f"Attribution: say '{record['attribution']}'.")
+        if record.get("commercial_status") == "blocked" and record.get("loaded", True) is not False:
+            add("blocked", record.get("component") or "unnamed component")
+        for value in record.values():
+            if isinstance(value, (dict, list)):
+                collect(value, found)
+    elif isinstance(record, list):
+        for value in record:
+            collect(value, found)
+    return found
+
+
+def parts(name: str) -> list[str]:
+    """The licences a combined name lists: "MIT + DINOv3 License (encoder)" -> ["MIT", "DINOv3 License"].
+
+    Parenthetical asides go first, since they hold "+" and "," of their own ("code + flow weights").
+    """
+    plain = re.sub(r"\([^)]*\)", " ", name)
+    return [p.strip() for p in re.split(r"\s*(?:\+|;|,|/|\band\b)\s*", plain, flags=re.IGNORECASE) if p.strip()]
+
+
+def classify(name: str) -> tuple[list[str], list[str]]:
+    """(classes, conditions) for one licence name; no classes means unknown."""
+    classes, conditions = [], []
+    for pattern, kind, condition in KNOWN:
+        if re.search(pattern, name, re.IGNORECASE):
+            classes.append(kind)
+            if condition:
+                conditions.append(condition)
+    return classes, conditions
+
+
+@register("license.components")
+def components(asset, config):
+    found = _judge(asset, config)
+    how = (found.get("details") or {}).get("found") or ""
+    if how.startswith((INHERITED, INHERITED_FINISH)) and found["status"] == "pass":
+        found = result("license.components", "warn", found["value"], found["threshold"],
+                       f"{found['message']}; licence {how.split(':')[0]} (a provenance sidecar with this file's "
+                       f"output.sha256 would bind it)", found.get("details"))
+    return found
+
+
+def _judge(asset, config):
+    records, how = find_records(asset.glb, asset.provenance, asset.output_root)
+    threshold = {"fail": "no provenance, or a blocked licence", "warn": "an unknown licence"}
+    if not records:
+        why = f" ({how})" if how else ""
+        return result("license.components", "fail", None, threshold,
+                      f"no provenance record found for this model{why}")
+    if not any(own_licence(record) for _, record in records):
+        return result("license.components", "fail", None, threshold,
+                      "the provenance gives no own licence for this model, only its tools', so its rights are unknown",
+                      {"records": [str(p) for p, _ in records], "found": how})
+    found = {"licenses": [], "classes": [], "conditions": [], "blocked": []}
+    for _, record in records:
+        collect(record, found)
+    blocked, unknown, conditional = [], [], []
+    for name in found["licenses"]:
+        classes, conditions = classify(name)
+        if not classes or any(not classify(part)[0] for part in parts(name)):
+            unknown.append(name)  # one recognised part must not clear an unknown one
+        if "blocked" in classes:
+            blocked.append(name)
+        if "conditional" in classes:
+            conditional.append(name)
+        for condition in conditions:
+            if condition not in found["conditions"]:
+                found["conditions"].append(condition)
+    blocked += [c for c in found["classes"] if c in BLOCKED_CLASSES]
+    blocked += [f"{c} (blocked, but loaded)" for c in found["blocked"]]
+    value = {"licenses": found["licenses"], "conditions": found["conditions"]}
+    details = {"records": [str(p) for p, _ in records], "found": how}
+    if blocked:
+        return result("license.components", "fail", value, threshold,
+                      f"blocked for this project: {', '.join(blocked)}", details)
+    if unknown:
+        return result("license.components", "warn", value, threshold,
+                      f"licence not recognised, check it by hand: {', '.join(unknown)}", details)
+    if conditional:
+        status = "warn" if config.get("conditional") == "warn" else "pass"
+        return result("license.components", status, value, threshold,
+                      f"usable with conditions: {'; '.join(found['conditions'])}", details)
+    return result("license.components", "pass", value, threshold,
+                  f"all clear: {', '.join(found['licenses'])}", details)
