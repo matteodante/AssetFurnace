@@ -3,6 +3,7 @@
     my-game-style/
       bible.json
       images/<sha8>-<name>.png       approved, each with its .provenance.json when it had one
+                                     (its hash is recorded, so a lost licence record is reported)
       rejected/<sha8>-<name>.png     sent back: what the style is NOT
       .cache/                        regenerable (embeddings, judgements); ignore it in git
 
@@ -85,7 +86,13 @@ def _locked(root: Path):
     """Hold the bible for one read-modify-write, in this process and against others."""
     if not (Path(root) / FILE).is_file():
         load(root)  # says there is no bible here, rather than failing on the lock file
-    lock = Path(root) / LOCK_FILE
+    with file_lock(Path(root) / LOCK_FILE, f"the bible in {root}"):
+        yield
+
+
+@contextmanager
+def file_lock(lock: Path, what: str):
+    """An exclusive lock file shared by every process; one older than STALE_LOCK_SECONDS is taken over."""
     with _LOCK:
         deadline = time.monotonic() + LOCK_WAIT_SECONDS
         while True:
@@ -102,8 +109,7 @@ def _locked(root: Path):
                 except FileNotFoundError:
                     continue
                 if time.monotonic() > deadline:
-                    raise BibleError(f"the bible in {root} is busy (another edit holds {LOCK_FILE}); "
-                                     "try again") from None
+                    raise BibleError(f"{what} is busy (another edit holds {lock.name}); try again") from None
                 time.sleep(0.05)
         try:
             yield
@@ -186,6 +192,8 @@ def _check_entry(root: Path, path: Path, folder: str, entry: Any) -> None:
         raise BibleError(f"{path}: {file} has no valid sha256")
     if not str(entry.get("note", "")).strip():
         raise BibleError(f"{path}: {file} has no note")
+    if "provenance_sha256" in entry and not SHA256.fullmatch(str(entry["provenance_sha256"])):
+        raise BibleError(f"{path}: {file} has an invalid provenance_sha256")
     if entry.get("kind") is not None and entry["kind"] not in KINDS:
         raise BibleError(f"{path}: {file} has unknown kind {entry['kind']!r}")
 
@@ -201,6 +209,12 @@ def problems(root: Path) -> list[str]:
                 found.append(f"{entry['file']}: missing")
             elif sha256_file(target) != entry["sha256"]:
                 found.append(f"{entry['file']}: changed since it was added")
+            if "provenance_sha256" in entry:
+                sidecar = target.with_suffix(".provenance.json")
+                if not sidecar.is_file():
+                    found.append(f"{entry['file']}: its provenance record is missing")
+                elif sha256_file(sidecar) != entry["provenance_sha256"]:
+                    found.append(f"{entry['file']}: its provenance record changed since it was added")
     return found
 
 
@@ -244,11 +258,14 @@ def add(root: Path, image: Path, note: str, kind: str | None = None, rejected: b
         target = root / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(image, target)
-        sidecar = image.with_suffix(".provenance.json")
-        if sidecar.is_file():
-            shutil.copyfile(sidecar, target.with_suffix(".provenance.json"))
         entry: dict[str, Any] = {"file": relative, "sha256": digest, "kind": kind, "note": note,
                                  "added": _now()}
+        sidecar = image.with_suffix(".provenance.json")
+        if sidecar.is_file():
+            copied = target.with_suffix(".provenance.json")
+            shutil.copyfile(sidecar, copied)
+            # Recorded, so a licence record that goes missing later is reported, not silent.
+            entry["provenance_sha256"] = sha256_file(copied)
         if source_label:
             entry["source"] = source_label
         data[key].append(entry)
@@ -277,9 +294,10 @@ def remove(root: Path, selector: str) -> dict[str, Any]:
         key, index = _find(data, selector)
         entry = data[key].pop(index)
         _write(root, data)
-    target = root / entry["file"]
-    target.unlink(missing_ok=True)
-    target.with_suffix(".provenance.json").unlink(missing_ok=True)
+        # Inside the lock: a re-add of the same picture must not have its new copy deleted.
+        target = root / entry["file"]
+        target.unlink(missing_ok=True)
+        target.with_suffix(".provenance.json").unlink(missing_ok=True)
     return entry
 
 

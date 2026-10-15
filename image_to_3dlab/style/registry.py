@@ -11,13 +11,19 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-import threading
 from pathlib import Path
 from typing import Any
 
-from image_to_3dlab.style.bible import BibleError, load
+from image_to_3dlab.style.bible import BibleError, file_lock, load
 
-_LOCK = threading.Lock()
+LOCK_FILE = ".bibles.lock"
+
+
+def _locked(output_root: Path):
+    """Every read-modify-write of bibles.json, against this process and the others."""
+    folder = Path(output_root) / "styles"
+    folder.mkdir(parents=True, exist_ok=True)
+    return file_lock(folder / LOCK_FILE, "the list of bibles")
 
 
 def _file(output_root: Path) -> Path:
@@ -75,7 +81,7 @@ def register(output_root: Path, root: Path) -> dict[str, Any]:
     """Add an existing bible folder to the list. Names must be unique among registered bibles."""
     output_root, root = Path(output_root), Path(root).resolve()
     name = load(root)["name"]
-    with _LOCK:
+    with _locked(output_root):
         check_free(output_root, name, root)
         data = _read(output_root)
         inside = root.is_relative_to(output_root.resolve())
@@ -86,7 +92,7 @@ def register(output_root: Path, root: Path) -> dict[str, Any]:
 
 
 def unregister(output_root: Path, name: str) -> None:
-    with _LOCK:
+    with _locked(output_root):
         data = _read(output_root)
         kept = [b for b in data["bibles"] if b["name"] != name]
         if len(kept) == len(data["bibles"]):
@@ -99,7 +105,7 @@ def unregister(output_root: Path, name: str) -> None:
 
 def set_active(output_root: Path, name: str | None) -> None:
     """Make `name` the bible the studio and `-` on the command line mean; None clears it."""
-    with _LOCK:
+    with _locked(output_root):
         data = _read(output_root)
         if name is not None and not any(b["name"] == name for b in data["bibles"]):
             raise BibleError(f"no bible is registered as {name!r}")
