@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   1.16 GB, Apache-2.0), which lets the model read reference pictures; text to image works
   without it. The Setup page counts it on its own, beside the text encoder in the same
   cache folder, and Remove deletes only that file.
+- Style bibles (`image_to_3dlab/style`): a self-contained folder per project with approved and
+  rejected pictures, each with a note and its provenance, so a game keeps its look in its own
+  repository. Prompt templates per asset kind put the 3D recipe first and the project's style
+  after it; `refs.pick` chooses 1-3 approved pictures as style references for generation.
+  `scripts/style_bible.py` makes, registers and edits bibles and prints prompts and references.
+- Prompt recipes for three more asset kinds: creature, piece of equipment and map object.
 - Asset checks (`image_to_3dlab/checks`): one JSON contract for every check, profiles of
   thresholds per asset type, and the generic checks (flipped faces, holes, floating specks,
   non-manifold edges, UV overlap, triangle/material/texture budgets, texel density, size
