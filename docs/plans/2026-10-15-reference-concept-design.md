@@ -1,7 +1,8 @@
 # Funzione 2: dal riferimento al concept (progetto)
 
 Data: 15 ottobre 2026. Stato: **proposta, in attesa di approvazione**. Niente scaricato, niente installato.
-Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 2.
+Piano delle funzioni: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 2. La
+funzione è generica: vale per qualunque riferimento e qualunque progetto.
 
 In breve: si parte da un riferimento (un'immagine o un GLB), se ne ricava una **mappa di controllo** (sagoma, bordi,
 lineart o profondità) e una **palette**, e Qwen-Image 2.1 disegna un oggetto nuovo che rispetta la forma. Il risultato
@@ -99,8 +100,18 @@ a 768 px, 8 passi. Si misurano IoU, ΔE, copia, tempo per immagine; più un fogl
 sono nei limiti **e** l'utente, guardando il foglio, la giudica un disegno nuovo. Se passa, si costruisce su quella. Se
 nessuna passa, **fase B**: ComfyUI con il Fun ControlNet (download sotto, da approvare a parte).
 
-**I 5 riferimenti**: da decidere con l'utente. Proposta: 5 render di modelli del censimento di Auroconts (una creatura,
-un'arma, un oggetto di mappa, un pezzo d'armatura, un PNG), uno per tipo. In mancanza, 5 modelli nostri in `output/`.
+**I 5 riferimenti**: modelli e immagini già in `output/` (locali, non nella repo), scelti per coprire entrambi i tipi
+di riferimento e forme diverse:
+
+| Riferimento | Tipo | Perché |
+|---|---|---|
+| `compare-20261015/knight/knight.glb` | GLB (umanoide) | Sagoma articolata; profondità dal modello |
+| `compare-20261015/werewolf/werewolf.glb` | GLB (creatura) | Sagoma irregolare, pelo |
+| `compare-20261015/chest/chest.glb` | GLB (oggetto) | Forma squadrata: la copia si vede subito |
+| `images/a-single-friendly-orange-toy-robot-full__20261013-183055/` | Immagine | Palette forte e semplice |
+| `images/full-body-original-northern-fantasy-huma__20261013-184920/` | Immagine | Figura intera con dettagli interni |
+
+Dai GLB si usa la vista frontale e quella a tre quarti; dalle immagini l'unica vista.
 
 ## 4. Download (ognuno solo dopo un sì esplicito)
 
@@ -134,13 +145,13 @@ GGUF che abbiamo già, si risparmierebbero 13,6 GB: da verificare all'inizio del
    tratta come "commerciale con condizioni" perché Qwen ha dichiarato il 21/09/2026 che le immagini prodotte non sono
    Materials. Quella dichiarazione riguarda **di chi sono le immagini**, non se si possa **usare il modello** per un
    prodotto commerciale. Il Fun ControlNet ha la stessa identica licenza, quindi non cambia l'esposizione, ma prima di
-   produrre in grande per un gioco commerciale va deciso dall'utente (eventualmente scrivendo a Qwen, o passando alla
+   produrre in grande per un prodotto commerciale va deciso dall'utente (eventualmente scrivendo a Qwen, o passando alla
    strada tutta Apache-2.0: Qwen-Image 1 con InstantX).
 2. **La strada edit potrebbe non seguire bene una mappa di bordi**: Qwen-Image-Edit 2509 lo faceva per addestramento,
    per la 2.1 c'è solo l'esempio dello schizzo. Lo dice la prova.
 3. **Copia invece di disegno nuovo**: con img2img a forza bassa il risultato ricalca il riferimento. Lo ferma
    `concept.copy`, e il limite superiore della fascia di sagoma.
-4. **Riferimenti di terzi** (render dei modelli di 4Story): il riferimento guida solo la forma; nel sidecar resta il suo
+4. **Riferimenti di terzi** (render o immagini di modelli altrui): il riferimento guida solo la forma; nel sidecar resta il suo
    SHA-256, così si sa sempre da cosa è nato un concept. La soglia di copia serve anche a questo.
 5. **La palette nel prompt è imprecisa**: Qwen capisce i nomi dei colori meglio dei codici esadecimali. La strada init
    porta i colori nell'immagine iniziale; la prova misura entrambe.
@@ -171,8 +182,7 @@ Review di Codex con la regola di stop (P1 sempre; P2 solo se errori veri visibil
 ## 9. Domande per l'approvazione
 
 1. Va bene la prova in fase A prima del ControlNet (e il download di 1,16 GB per la strada edit)?
-2. Quali 5 riferimenti?
-3. La licenza di Qwen-Image 2.1 per un gioco commerciale: si accetta come oggi, o si tiene pronta la strada Apache-2.0?
+2. La licenza di Qwen-Image 2.1 per un uso commerciale: si accetta come oggi, o si tiene pronta la strada Apache-2.0?
 
 ## 10. Seguiti
 
