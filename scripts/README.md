@@ -202,6 +202,18 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 | `blender_idle_cycle.py` | Author a looping idle for the rigged fox. |
 | `blender_attack_cycle.py` | Author a slam-attack clip on a rigged quadruped in the live Blender scene. |
 
+## Export for Unreal
+
+A finished asset in, files Unreal Engine 5.8 imports with no touch-ups out: real size, on
+the ground, Unreal names, LODs, collision, ORM textures, Mannequin bone names. The design
+and its measurements are in [the Unreal profile design](../docs/plans/2026-10-15-unreal-profile-design.md).
+
+| Script | What it does |
+|---|---|
+| `export_unreal.py` | Turn a finished GLB into files Unreal Engine 5.8 imports with no touch-ups. |
+| `blender_export_unreal.py` | Reshape a finished GLB for Unreal in headless Blender: size, ground, facing, bones, LODs. |
+| `unreal_import_check.py` | Import exported assets into Unreal with Interchange and check them, with no editor window. |
+
 ## Project upkeep
 
 Numbers about the project itself, not about any asset.

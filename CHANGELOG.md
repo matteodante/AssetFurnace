@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Guided editor feasibility CLI (`scripts/inspect_edit_asset.py`): bounded GLB inspection,
   lossless container checks and numerical bind/reweight probes with saved evidence.
   The web editor remains in development; passing inspection does not enable editing.
+- **Unreal export profile** (`scripts/export_unreal.py`): a finished object, creature or
+  equipment piece becomes a GLB that Unreal Engine 5.8 imports with Interchange and no
+  touch-ups: real size in centimetres, origin on the ground, `SM_`/`SK_`/`MI_`/`T_` names,
+  baked LODs, box collision, one ORM texture per material, Mannequin bone names and a
+  `root` bone for humanoids, equipment on its body's Skeleton. `scripts/unreal_import_check.py`
+  imports the result headless, checks it and photographs Manny's idle and walk retargeted onto it.
 - Experimental canonical editing snapshots and a Blender no-op bridge, preserving
   untouched GLB data and reporting geometry, UV and weight round-trip checks.
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
