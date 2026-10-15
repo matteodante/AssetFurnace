@@ -61,7 +61,7 @@ def write_provenance(rigged: Path, clip: Path, name: str, family: str | None) ->
         rig_record = json.loads(rigged.with_suffix(".provenance.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         rig_record = None
-    record = cf.clip_record(rig_record, name, family, tool="scripts/creature_clips.py")
+    record = cf.clip_record(rig_record, name, family, tool="scripts/creature_clips.py", output=clip)
     path = clip.with_suffix(".provenance.json")
     path.write_text(json.dumps(record, indent=2), encoding="utf-8")
     return path

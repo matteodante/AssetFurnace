@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mesh leg, are handled.
 - `rig.deformation` check: plays every clip of a rig and measures stretched edges, folded
   triangles and feet that cross sides (warn only until calibrated).
+- Qwen-Image's setup also fetches Qwen3-VL-8B's vision file (`mmproj-Qwen3VL-8B-Instruct-F16.gguf`,
+  1.16 GB, Apache-2.0), which lets the model read reference pictures; text to image works
+  without it. The Setup page counts it on its own, beside the text encoder in the same
+  cache folder, and Remove deletes only that file.
 - **Batches**: `pipeline.py --run-batch spec.json` (or `.csv`) runs one row per asset
   through `generate` and `finish`, with a state per row, resume from where it stopped,
   `--retry-failed`, and a `.provenance.json` for every output. Reserved step names

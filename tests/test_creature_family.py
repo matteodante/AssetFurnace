@@ -190,3 +190,14 @@ def test_a_tail_hanging_just_above_the_ground_is_not_a_leg():
         heads[n[f"tail{k}"]] = np.array([0, (0.0 if k else 0.3) + 0.1, z])
     found = cf.classify(parents, heads)
     assert found["family"] == "quadruped" and len(found["legs"]) == 4
+
+
+def test_a_clip_record_names_the_clip_not_the_rig(tmp_path):
+    clip = tmp_path / "wolf_digitigrade-walk.glb"
+    clip.write_bytes(b"clip bytes")
+    rig = {"license": {"name": "MIT"}, "output": {"path": "wolf_rigged.glb", "sha256": "0" * 64,
+                                                   "classification": "commercial"}}
+    record = cf.clip_record(rig, "digitigrade-walk", "digitigrade", tool="test", output=clip)
+    from image_to_3dlab.provenance import sha256_file
+    assert record["output"]["sha256"] == sha256_file(clip) and record["output"]["path"] == str(clip)
+    assert record["output"]["classification"] == "commercial"  # the licence class carries over

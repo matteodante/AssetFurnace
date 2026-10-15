@@ -152,7 +152,11 @@ def deformation(asset, config):
     clips, statuses = {}, []
     for path in clip_files(asset.glb):
         rig = SkinnedGLB(path)
-        for index, (name, duration) in enumerate(rig.animations()):
+        animations = rig.animations()
+        names = [name for name, _ in animations]
+        for index, (name, duration) in enumerate(animations):
+            if names.count(name) > 1:  # glTF names need not be unique; keep every result
+                name = f"{name} #{index}"
             label = name if Path(path) == Path(asset.glb) else f"{Path(path).name}: {name}"
             found = measure_clip(rig, index, duration, config, feet, left_axis)
             clips[label] = found

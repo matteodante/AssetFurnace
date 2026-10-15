@@ -126,6 +126,9 @@ class SkinnedGLB:
         if not verts:
             raise LookupError(f"{self.path.name} has no skinned triangles")
         bind = np.vstack(verts)
+        width = max(j.shape[1] for j in joints)  # primitives may carry 4 or 8 influences: pad with zeros
+        joints = [np.pad(j, ((0, 0), (0, width - j.shape[1]))) for j in joints]
+        weights = [np.pad(w, ((0, 0), (0, width - w.shape[1]))) for w in weights]
         rest = Skinned(bind, bind, np.vstack(faces), np.vstack(joints), np.vstack(weights))
         rest.vertices = self.deform(self.world(self.rest_locals()), rest)
         return rest

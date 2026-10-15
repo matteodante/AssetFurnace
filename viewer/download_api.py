@@ -217,8 +217,14 @@ class DownloadRun:
             self.condition.notify_all()
 
     def bytes_present(self) -> int:
+        # A file still arriving sits under a temporary blob name, so a named unit reads as
+        # nothing until it lands. Progress counts its whole folder instead, once however
+        # many units share it, or the readout freezes and calls a healthy download stalled.
         from backend_catalog import _dir_state
-        return sum(_dir_state(w.path)[1] for w in self.backend.weights)
+
+        folders = {w.path for w in self.backend.weights if w.filename is not None}
+        return (sum(w.measure()[1] for w in self.backend.weights if w.filename is None)
+                + sum(_dir_state(folder)[1] for folder in folders))
 
 
 DOWNLOADS: dict[str, DownloadRun] = {}
@@ -298,6 +304,26 @@ def remove(backend_id: str) -> dict[str, Any]:
         path = weight.path.resolve()
         if not _inside_known_roots(path):
             raise RuntimeError(f"refusing to delete outside the repo or cache: {path}")
+        if weight.filename is not None:
+            # One file in a folder that holds others (Qwen3-VL's vision half beside its
+            # text encoder): that file and the blob it links to, never the folder.
+            # Snapshots may link one blob more than once: unlink every entry, then delete and
+            # count each real file once. A cancelled download's partial blob goes too; it
+            # has no file name yet, and the route being removed is what was fetching it.
+            from backend_catalog import named_files
+            items = named_files(path, weight.filename)
+            targets = {item.resolve() for item in items}
+            for target in targets:
+                if not _inside_known_roots(target):
+                    raise RuntimeError(f"refusing to delete outside the repo or cache: {target}")
+            doomed = targets | set(path.rglob("*.incomplete"))
+            freed += sum(target.stat().st_size for target in doomed if target.is_file())
+            for item in items:
+                item.unlink()
+                removed.append(str(item))
+            for target in doomed:
+                target.unlink(missing_ok=True)  # a plain file went with its entry above
+            continue
         if path.is_file():
             # A single-file model (BiRefNet-lite) shares its folder with u2net: remove the
             # file, never the folder.

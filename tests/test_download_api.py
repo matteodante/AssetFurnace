@@ -441,3 +441,73 @@ def test_the_removers_own_card_can_still_remove_it(tmp_path, monkeypatch):
     shared, _ = _sharing(tmp_path, monkeypatch)
     dl.remove("remover")
     assert not shared.exists()
+
+
+def test_removing_a_named_file_keeps_the_rest_of_its_folder(tmp_path, monkeypatch):
+    """The vision file sits beside the text encoder in one cache folder. Removing a route
+    that names a file must delete that file, not the folder the encoder lives in."""
+    import dataclasses
+
+    snaps = tmp_path / "models--org--name" / "snapshots" / "rev"
+    snaps.mkdir(parents=True)
+    (snaps / "vision.gguf").write_bytes(b"v" * 7)
+    (snaps / "encoder.gguf").write_bytes(b"keep me")
+    real = dl.BY_ID["qwen-image"]
+    named = dataclasses.replace(real.weights[0], path=tmp_path / "models--org--name",
+                                filename="vision.gguf")
+    monkeypatch.setitem(dl.BY_ID, "route-n", dataclasses.replace(real, id="route-n",
+                                                                 weights=(named,)))
+    monkeypatch.setattr(dl, "_inside_known_roots", lambda path: True)
+
+    result = dl.remove("route-n")
+    assert result["freed_bytes"] == 7
+    assert not (snaps / "vision.gguf").exists()
+    assert (snaps / "encoder.gguf").read_bytes() == b"keep me"
+
+
+def _named_route(tmp_path, monkeypatch, *names):
+    import dataclasses
+
+    folder = tmp_path / "models--org--name"
+    real = dl.BY_ID["qwen-image"]
+    weights = tuple(dataclasses.replace(real.weights[0], path=folder, filename=name) for name in names)
+    route = dataclasses.replace(real, id="route-n", weights=weights)
+    monkeypatch.setitem(dl.BY_ID, "route-n", route)
+    monkeypatch.setattr(dl, "_inside_known_roots", lambda path: True)
+    return folder, route
+
+
+def test_download_progress_counts_a_named_file_still_arriving(tmp_path, monkeypatch):
+    """Until it finishes, a Hugging Face download sits under a temporary blob name. Counting
+    only finished files froze the readout and reported a healthy download as stalled."""
+    folder, route = _named_route(tmp_path, monkeypatch, "encoder.gguf", "vision.gguf")
+    (folder / "snapshots" / "rev").mkdir(parents=True)
+    (folder / "snapshots" / "rev" / "encoder.gguf").write_bytes(b"e" * 100)
+    (folder / "blobs").mkdir()
+    (folder / "blobs" / "abc.incomplete").write_bytes(b"v" * 50)
+    assert dl.DownloadRun(route).bytes_present() == 150, "the shared folder once, partial bytes included"
+
+
+def test_removing_a_named_file_clears_its_unfinished_download(tmp_path, monkeypatch):
+    folder, _ = _named_route(tmp_path, monkeypatch, "vision.gguf")
+    (folder / "blobs").mkdir(parents=True)
+    (folder / "blobs" / "abc.incomplete").write_bytes(b"v" * 9)
+    assert dl.remove("route-n")["freed_bytes"] == 9
+    assert not (folder / "blobs" / "abc.incomplete").exists()
+
+
+def test_removing_a_named_file_linked_from_two_snapshots(tmp_path, monkeypatch):
+    """Two snapshots link one blob: delete and count it once, and drop both links."""
+    folder, _ = _named_route(tmp_path, monkeypatch, "vision.gguf")
+    (folder / "blobs").mkdir(parents=True)
+    blob = folder / "blobs" / "sha"
+    blob.write_bytes(b"v" * 7)
+    links = []
+    for rev in ("r1", "r2"):
+        (folder / "snapshots" / rev).mkdir(parents=True)
+        link = folder / "snapshots" / rev / "vision.gguf"
+        link.symlink_to(blob)
+        links.append(link)
+    assert dl.remove("route-n")["freed_bytes"] == 7
+    assert not blob.exists()
+    assert not any(link.is_symlink() or link.exists() for link in links)
