@@ -183,3 +183,14 @@ controlli e l'immagine di Unreal.
 - **Nanite**: Interchange lo accende sugli Static Mesh del progetto vuoto. È una scelta del progetto del gioco, non del file.
 - Su Windows 5 test della repo falliscono già su `main` (file letti senza `encoding="utf-8"`), e `ruff check .` segnala
   errori preesistenti fuori da questi file (soprattutto `hunyuan_mlx/`). I file di questa funzione sono puliti.
+
+## Seguiti
+
+Punti della review di Codex rimandati perché non danno un risultato sbagliato, dati persi o un crash:
+
+- **Unreal fuori da Windows**: `scripts/unreal_import_check.py` cerca `UnrealEditor-Cmd.exe` in `Win64`. Su macOS e
+  Linux il controllo si ferma con un errore, non dà un esito falso. Va aggiunto il nome dell'eseguibile per ogni
+  piattaforma quando servirà ([PR #6](https://github.com/matteodante/AssetFurnace/pull/6#discussion_r4287542338)).
+- **"Show folder" su Linux senza desktop**: lo studio lo offre anche quando non c'è `DISPLAY`, e il pulsante non apre
+  nulla. I file restano scaricabili; va usato lo stesso controllo di `blender_edit_api.desktop_reason`
+  ([PR #7](https://github.com/matteodante/AssetFurnace/pull/7#discussion_r4287526165)).

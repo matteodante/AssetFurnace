@@ -587,3 +587,29 @@ def test_unreal_report_wants_the_root_bone_on_the_floor():
     assert results["root"]["ok"] is False and "92.9" in results["root"]["detail"]
     measured["root_cm"] = [0.0, 0.0, 0.0]
     assert {r["check"]: r["ok"] for r in up.evaluate_unreal(measured, sidecar)}["root"] is True
+
+
+# --- review round 1 ----------------------------------------------------------------------
+
+def test_a_folder_of_other_assets_records_is_not_guessed(tmp_path):
+    run = tmp_path / "animate"
+    run.mkdir()
+    (run / "a.provenance.json").write_text("{}")
+    (run / "b.provenance.json").write_text("{}")
+    model = run / "c.glb"
+    model.write_bytes(b"")
+    assert up.find_provenance(model) is None
+
+
+def test_the_unreal_check_skips_orm_when_none_was_exported():
+    sidecar = _prop_sidecar(orm=False)
+    results = {r["check"] for r in up.evaluate_unreal(_measured(orm_srgb=[]), sidecar)}
+    assert "orm" not in results
+    assert up.sidecar(kind="prop", names=up.asset_names("prop", "B"), glb="SM_B.glb", size_cm=1, measure="height",
+                      lods=1, collision=None, humanoid=False, skeleton_from=None, animations=[], tint=None,
+                      problems=[], orm=False)["orm"] is False
+
+
+def test_problems_the_export_reported_fail_the_unreal_check():
+    results = {r["check"]: r for r in up.evaluate_unreal(_measured(), _prop_sidecar(problems=["material 'X'"]))}
+    assert results["export"]["ok"] is False and "material 'X'" in results["export"]["detail"]

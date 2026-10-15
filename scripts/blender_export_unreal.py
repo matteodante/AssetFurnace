@@ -57,6 +57,19 @@ def _import(bpy, path):
             removed.append(obj.name)
             new.remove(obj)
             bpy.data.objects.remove(obj, do_unlink=True)
+    # A GLB may hang its model under empty nodes (a scene root, a scale node). Their
+    # transforms are kept on the objects themselves and the empties dropped, so every
+    # mesh and skeleton is a root the reshape below can move.
+    for obj in [o for o in new if o.type != "EMPTY"]:
+        parent = obj.parent
+        if parent is not None and parent.type == "EMPTY":
+            world = obj.matrix_world.copy()
+            obj.parent = None
+            obj.matrix_world = world
+    for obj in [o for o in new if o.type == "EMPTY"]:
+        new.remove(obj)
+        bpy.data.objects.remove(obj, do_unlink=True)
+    bpy.context.view_layer.update()
     return new, removed
 
 
@@ -178,9 +191,16 @@ def _transform_matrix(t):
 
 
 def _rename_bones(bpy, arm, plan, actions):
-    for bone in arm.data.bones:
-        if bone.name in plan:
-            bone.name = plan[bone.name]
+    # Blender keeps bone names unique on every assignment: renaming `bone.0` to `bone_0`
+    # while another bone still owns `bone_0` would give `bone_0.001`. Every bone moves to
+    # a name nobody has first, then to its planned one.
+    planned = [bone for bone in arm.data.bones if bone.name in plan]
+    final = {}
+    for index, bone in enumerate(planned):
+        final[f"__af_rename_{index}"] = plan[bone.name]
+        bone.name = f"__af_rename_{index}"
+    for bone in planned:
+        bone.name = final[bone.name]
     names = {b.name for b in arm.data.bones}
     for action in actions:
         for curve in _fcurves(action):
@@ -330,8 +350,9 @@ def run(job):
         for extra in job.get("animations", []):
             extra_objects, _ = _import(bpy, extra["path"])
             extra_arm = next((o for o in extra_objects if o.type == "ARMATURE"), None)
-            if extra_arm and extra_arm.animation_data and extra_arm.animation_data.action:
-                actions.append((extra["name"], extra_arm.animation_data.action))
+            if not (extra_arm and extra_arm.animation_data and extra_arm.animation_data.action):
+                raise ValueError(f"{Path(extra['path']).name} holds no animation")
+            actions.append((extra["name"], extra_arm.animation_data.action))
             for obj in extra_objects:
                 bpy.data.objects.remove(obj, do_unlink=True)
         transform = body or _measure_skeleton(bpy, arm, meshes, job)
