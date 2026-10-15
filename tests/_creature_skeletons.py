@@ -89,3 +89,23 @@ def plant():
     rows += chain("leafR", "stem1", [(-0.1, 0.32, 0), (-0.3, 0.25, 0)])
     rows += chain("root", "stem0", [(0.15, -0.02, 0.05), (0.3, -0.03, 0.1)])
     return build(rows)
+
+
+def reroot(skeleton, new_root):
+    """The same skeleton with `new_root` (a role) as its root: SkinTokens may root a snake at
+    its head, its tail or its middle."""
+    parents, heads, names = skeleton
+    root = names[new_root]
+    links = {b: set() for b in parents}
+    for b, p in parents.items():
+        if p is not None:
+            links[b].add(p)
+            links[p].add(b)
+    out, todo = {root: None}, [root]
+    while todo:
+        b = todo.pop()
+        for n in links[b]:
+            if n not in out:
+                out[n] = b
+                todo.append(n)
+    return out, heads, names

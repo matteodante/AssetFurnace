@@ -32,9 +32,10 @@ from quadruped_gait import GAITS, follow_through, foot_offset
 
 FPS = 30
 CLIPS = {"digitigrade": ("walk", "attack"), "humanoid": ("walk", "attack"),
-         "quadruped": ("trot", "attack")}
+         "quadruped": ("trot", "attack"), "multileg": ("walk", "attack"),
+         "serpent": ("slither", "attack")}
 # humanoids already have the preset moves; they get test clips only when asked for
-DEFAULT_CLIPS = {"digitigrade", "quadruped"}
+DEFAULT_CLIPS = {"digitigrade", "quadruped", "multileg", "serpent"}
 
 # Biped walk, as fractions of leg length (hip to toe, vertically).
 WALK = {"frames": 32, "duty": 0.6, "stride": 0.42, "lift": 0.12, "bob": 0.018, "sway": 0.012,
@@ -43,6 +44,12 @@ WALK = {"frames": 32, "duty": 0.6, "stride": 0.42, "lift": 0.12, "bob": 0.018, "
 TROT = {"frames": GAITS["trot"]["frames"], "stride": 0.32, "lift_per_stride": 0.3, "bob": 0.02,
         "crouch": 0.03, "head_nod": 4.0, "tail_swing": 6.0, "tail_lag": 0.09}
 ATTACK_FRAMES = 30
+# Many legs: two alternating groups (a tripod for six, a tetrapod for eight), as fractions
+# of each leg's own length along its bones -- a spider's legs reach out further than down.
+CRAWL = {"frames": 24, "duty": 0.6, "stride": 0.16, "lift_per_stride": 0.6, "ripple": 0.04, "bob": 0.01}
+# Serpents: a wave travelling from head to tail, growing towards the tail. Degrees per joint.
+SLITHER = {"frames": 40, "bend": 9.0, "waves": 1.2}
+STRIKE = {"neck": 0.35, "coil": 14.0, "rear": 12.0}
 
 
 @dataclass
@@ -348,9 +355,179 @@ def quadruped_attack(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> lis
     return out
 
 
-MOTIONS = {"walk": biped_walk, "trot": quadruped_trot,
-           "attack": lambda rig, family, **kw: (quadruped_attack if family["family"] == "quadruped"
-                                                 else biped_attack)(rig, family, **kw)}
+def leg_rows(family: dict) -> dict[str, list[int]]:
+    """Indices of the legs on each side, front first, by where each foot stands at rest
+    (`foot`, added by `_with_feet`), else in the order they were found."""
+    forward = np.asarray(family["frame"]["forward"], float)
+    rows: dict[str, list[int]] = {"L": [], "R": []}
+    for i, leg in enumerate(family["legs"]):
+        if leg["side"] in rows:
+            rows[leg["side"]].append(i)
+
+    def ahead(i: int) -> float:
+        foot = family["legs"][i].get("foot")
+        return -float(np.asarray(foot, float) @ forward) if foot is not None else float(i)
+
+    return {side: sorted(row, key=ahead) for side, row in rows.items()}
+
+
+def _chain_length(rig: Rig, bones: list[str]) -> float:
+    return float(sum(np.linalg.norm(rig.heads[b] - rig.heads[a]) for a, b in zip(bones, bones[1:])))
+
+
+def _with_feet(rig: Rig, family: dict) -> dict:
+    """`family` with each leg's rest foot position, which `leg_rows` sorts by."""
+    legs = [{**leg, "foot": rig.heads[leg["bones"][-1]].tolist()} for leg in family["legs"]]
+    return {**family, "legs": legs}
+
+
+def multileg_walk(rig: Rig, family: dict, frames: int | None = None) -> list[tuple[dict, np.ndarray]]:
+    """Two alternating groups: each leg steps opposite its neighbours and its partner."""
+    family = _with_feet(rig, family)
+    rows = leg_rows(family)
+    if len(rows["L"]) < 2 or len(rows["L"]) != len(rows["R"]):
+        raise ValueError(f"a crawl needs pairs of legs, found {len(rows['L'])} left and {len(rows['R'])} right")
+    up, forward, _ = _frame(family)
+    frames = frames or CRAWL["frames"]
+    phase = {}
+    for side, offset in (("L", 0), ("R", 1)):
+        for rank, i in enumerate(rows[side]):
+            phase[i] = 0.5 * ((rank + offset) % 2) + CRAWL["ripple"] * rank
+    legs = family["legs"]
+    root = rig.order[0]
+    bob = CRAWL["bob"] * float(np.mean([_chain_length(rig, leg["bones"]) for leg in legs]))
+    out = []
+    for index in range(frames + 1):
+        u = (index % frames) / frames
+        root_pos = rig.heads[root] + up * bob * math.sin(4 * math.pi * u)
+        turn: dict[str, np.ndarray] = {}
+        toes = []
+        for i, leg in enumerate(legs):
+            stride = CRAWL["stride"] * _chain_length(rig, leg["bones"])
+            fore_aft, rise = foot_offset(u, phase[i], CRAWL["duty"], stride, stride * CRAWL["lift_per_stride"])
+            toes.append(rig.heads[leg["bones"][-1]] + forward * fore_aft + up * rise)
+        root_pos = plant(rig, legs, turn, root_pos, toes, up)
+        out.append((turn, root_pos))
+    return out
+
+
+def multileg_attack(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[tuple[dict, np.ndarray]]:
+    """Rear up on the back legs and lash out with the front pair."""
+    family = _with_feet(rig, family)
+    rows = leg_rows(family)
+    front = {rows["L"][0], rows["R"][0]} if rows["L"] and rows["R"] else set()
+    up, forward, left = _frame(family)
+    root = rig.order[0]
+    legs = family["legs"]
+    reach = float(np.mean([_chain_length(rig, legs[i]["bones"]) for i in front])) if front else 0.0
+    standing = [i for i in range(len(legs)) if i not in front]
+    out = []
+    for index in range(frames + 1):
+        t = index / frames
+        rear = _blend(t, 0.0, -3.0, -12.0, 4.0, 1.0)
+        lift = _blend(t, 0.0, 0.05, 0.45, 0.05, 0.0) * reach
+        lunge = _blend(t, 0.0, -0.02, 0.05, 0.3, 0.05) * reach
+        turn = {root: axis_angle(left, rear)}
+        root_pos = plant(rig, [legs[i] for i in standing], turn, rig.heads[root] + up * 0.3 * lift,
+                         [rig.heads[legs[i]["bones"][-1]] for i in standing], up)
+        for i in front:
+            solve_leg(rig, legs[i], turn, root_pos, rig.heads[legs[i]["bones"][-1]] + up * lift + forward * lunge)
+        out.append((turn, root_pos))
+    return out
+
+
+def pose_path(rig: Rig, path: list[str], desired: dict[str, np.ndarray], turn: dict[str, np.ndarray]) -> np.ndarray:
+    """Turn the bones along `path` so its joints land on `desired`; returns the root's head.
+
+    The path may run with or against the tree (a snake can be rooted at its head, its tail
+    or its middle): each bone is turned towards its own child on the path. Bones off the
+    path follow their parents.
+    """
+    on_path = set(path)
+    root = rig.order[0]
+    if root not in on_path:
+        raise ValueError("the skeleton's root is not on the body chain")
+    kids = rig.kids
+    total: dict[str, np.ndarray] = {}
+    for b in rig.order:
+        parent = rig.parents[b]
+        inherited = total[parent] if parent is not None else np.eye(3)
+        child = next((c for c in kids[b] if c in on_path), None) if b in on_path else None
+        if child is not None:
+            have = inherited @ (rig.heads[child] - rig.heads[b])
+            turn[b] = rotation_between(have, desired[child] - desired[b])
+        total[b] = turn.get(b, np.eye(3)) @ inherited
+    return np.asarray(desired[root], float)
+
+
+def _bent(rig: Rig, path: list[str], anchor: str, bends: list[np.ndarray]) -> dict[str, np.ndarray]:
+    """Joint positions along `path`, walked out from the `anchor` end, each segment turned by
+    the accumulated `bends` (one rotation per joint). Segment lengths are kept."""
+    order = path if anchor == path[0] else path[::-1]
+    out = {order[0]: rig.heads[order[0]].copy()}
+    total = np.eye(3)
+    for bend, a, b in zip(bends, order, order[1:]):
+        total = bend @ total
+        out[b] = out[a] + total @ (rig.heads[b] - rig.heads[a])
+    return out
+
+
+def _arc(rig: Rig, path: list[str]) -> np.ndarray:
+    """Distance along the path from its first joint, as a fraction of its length."""
+    steps = [0.0] + [float(np.linalg.norm(rig.heads[b] - rig.heads[a])) for a, b in zip(path, path[1:])]
+    s = np.cumsum(steps)
+    return s / max(float(s[-1]), 1e-12)
+
+
+def serpent_slither(rig: Rig, family: dict, frames: int | None = None) -> list[tuple[dict, np.ndarray]]:
+    """A side-to-side wave from head to tail, in place, the head held steady."""
+    path = family.get("body") or []
+    if len(path) < 4:
+        raise ValueError("a slither needs a body chain of at least four joints")
+    up = np.asarray(family["frame"]["up"], float)
+    frames = frames or SLITHER["frames"]
+    s = _arc(rig, path)
+    out = []
+    for index in range(frames + 1):
+        u = (index % frames) / frames
+        bends = [axis_angle(up, SLITHER["bend"] * s[i] * math.sin(2 * math.pi * (u - SLITHER["waves"] * s[i])))
+                 for i in range(len(path) - 1)]
+        turn: dict[str, np.ndarray] = {}
+        root = pose_path(rig, path, _bent(rig, path, path[0], bends), turn)
+        out.append((turn, root))
+    return out
+
+
+def serpent_strike(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[tuple[dict, np.ndarray]]:
+    """Coil into an S and raise the head, then straighten and drive it forward. The tail stays."""
+    path = family.get("body") or []
+    if len(path) < 4:
+        raise ValueError("a strike needs a body chain of at least four joints")
+    up, forward, left = _frame(family)
+    s = _arc(rig, path)
+    out = []
+    for index in range(frames + 1):
+        t = index / frames
+        coil = _blend(t, 0.0, 0.5, 1.0, -0.15, 0.0)
+        rear = _blend(t, 0.0, 0.4, 1.0, -0.3, 0.0)
+        bends = []
+        for k in range(len(path) - 1, 0, -1):  # the joint each segment starts from, tail to head
+            neck = max(0.0, (STRIKE["neck"] - s[k]) / STRIKE["neck"])  # 1 at the head, 0 past the neck
+            lateral = STRIKE["coil"] * coil * math.sin(2 * math.pi * (1.0 - s[k])) * (1.0 - neck)
+            bends.append(axis_angle(up, lateral) @ axis_angle(left, -STRIKE["rear"] * rear * neck))
+        turn: dict[str, np.ndarray] = {}
+        root = pose_path(rig, path, _bent(rig, path, path[-1], bends), turn)
+        out.append((turn, root))
+    return out
+
+
+MOTIONS = {
+    ("humanoid", "walk"): biped_walk, ("digitigrade", "walk"): biped_walk,
+    ("humanoid", "attack"): biped_attack, ("digitigrade", "attack"): biped_attack,
+    ("quadruped", "trot"): quadruped_trot, ("quadruped", "attack"): quadruped_attack,
+    ("multileg", "walk"): multileg_walk, ("multileg", "attack"): multileg_attack,
+    ("serpent", "slither"): serpent_slither, ("serpent", "attack"): serpent_strike,
+}
 
 
 def clips_for(family: str) -> tuple[str, ...]:
@@ -365,7 +542,8 @@ def clip_name(family: str, motion: str) -> str:
 
 
 def make(motion: str, rig: Rig, family: dict) -> list[tuple[dict, np.ndarray]]:
-    if motion not in MOTIONS:
-        raise ValueError(f"unknown motion {motion!r}")
-    return MOTIONS[motion](rig, family)
+    key = (family["family"], motion)
+    if key not in MOTIONS:
+        raise ValueError(f"no {motion!r} clip for a {family['family']}")
+    return MOTIONS[key](rig, family)
 
