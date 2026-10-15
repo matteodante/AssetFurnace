@@ -84,7 +84,7 @@ def batch_detail(output: Path, name: str) -> dict[str, Any] | None:
         asset = entry.get("asset") if row["status"] == "done" else None
         row["kind"] = rows_in_spec.get(row["id"], {}).get("kind")
         row["file"] = _from_output(directory / asset, output) if asset else None
-        row["review"] = (batch.review_state(log, row["id"], batch.asset_sha(entry))
+        row["review"] = (batch.review_state(log, row["id"], batch.asset_sha(entry, directory))
                          if asset else None)
     status["directory"] = _from_output(directory, output)
     return status

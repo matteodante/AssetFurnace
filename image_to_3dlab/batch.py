@@ -50,7 +50,7 @@ from typing import Any
 from . import manifest_run
 from .batch_steps import StepContext
 from .processes import process_alive
-from .provenance import validate_run_policy
+from .provenance import LICENSES, validate_run_policy
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = REPO / "output" / "batches"
@@ -122,15 +122,52 @@ class BatchRow:
         def digest(path: Path) -> str:
             return hashlib.sha256(path.read_bytes()).hexdigest()
 
+        # a row with only an asset takes its concept from the asset's record: both count
+        record = recorded_sidecar(self.asset) if self.asset and not self.images else None
+        image = recorded_image(self.asset) if record else None
         payload = {
             "images": [digest(image) for image in self.images],
             "asset": digest(self.asset) if self.asset else None,
+            "asset_record": digest(record) if record else None,
+            "asset_image": digest(image) if image else None,
             "kind": self.kind, "faces": self.faces, "profile": self.profile,
             "steps": list(self.steps), "backend": self.backend,
             "parameters": self.parameters, "options": self.options,
             "size_cm": self.size_cm, "measure": self.measure,
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def recorded_sidecar(asset: Path | None) -> Path | None:
+    """The licence record kept beside an existing GLB: its provenance, else the run
+    manifest some backends write."""
+    if asset is None:
+        return None
+    for candidate in (asset.with_suffix(".provenance.json"), asset.with_suffix(".json")):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def recorded_image(asset: Path | None) -> Path | None:
+    """The source image an existing GLB's records name, if it still exists."""
+    if asset is None:
+        return None
+    for candidate in (asset.with_suffix(".provenance.json"), asset.with_suffix(".json")):
+        record = read_json(candidate) if candidate.is_file() else None
+        path = ((record or {}).get("input") or {}).get("path") if isinstance(record, dict) else None
+        if isinstance(path, str) and Path(path).is_file():
+            return Path(path)
+    return None
+
+
+def recorded_backend(asset: Path | None) -> str | None:
+    """The model an existing GLB was generated with, as its record names it."""
+    record = read_json(recorded_sidecar(asset)) if recorded_sidecar(asset) else None
+    if not isinstance(record, dict):
+        return None
+    backend = (record.get("model") or {}).get("backend") or record.get("backend")
+    return backend if isinstance(backend, str) else None
 
 
 @dataclass
@@ -196,6 +233,10 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
     if not isinstance(policy, dict):
         problems.append("license_policy must be an object")
         policy = {}
+    elif not isinstance(policy.get("allow_conditional", True), bool):
+        # "false" as a string is truthy: the licence gate must not fail open on a typo
+        problems.append("license_policy.allow_conditional must be true or false")
+        policy = {**policy, "allow_conditional": False}
     output_field = top.get("output", {})
     if not isinstance(output_field, dict):
         problems.append('output must be an object, like {"directory": "../output/batches"}')
@@ -234,15 +275,17 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
 
     for row in rows:
         # every model a row would run is gated: its generator, and the repaint if asked
-        gated = ([row.backend] if "generate" in row.steps else []) + (
-            [REPAINT_BACKEND] if row.options.get("finish", {}).get("paint") else [])
-        for backend in gated:
+        source = None if "generate" in row.steps else recorded_backend(row.asset)
+        gated = ([(row.backend, row.backend)] if "generate" in row.steps else []) + (
+            [(source, f"its source ({source})")] if source in LICENSES else []) + (
+            [(REPAINT_BACKEND, "the repaint")]
+            if row.options.get("finish", {}).get("paint") else [])
+        for backend, what in gated:
             try:
                 validate_run_policy(backend, resolved_intent["use_case"],
                                     resolved_intent["distribution"],
                                     policy.get("allow_conditional", True))
             except ValueError as exc:
-                what = "the repaint" if backend == REPAINT_BACKEND else backend
                 problems.append(f"row {row.id}: license policy for {what}: {exc}")
     if problems:
         raise BatchError(problems)
@@ -311,7 +354,14 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path,
     if "generate" in steps and steps[0] != "generate":
         problems.append(f"{label}: generate makes the asset, so it must come first")
 
-    images = tuple((base / image).resolve() for image in value.get("images", []) or [])
+    raw_images = value.get("images", []) or []
+    if not isinstance(raw_images, list) or not all(isinstance(i, str) for i in raw_images):
+        problems.append(f"{label}: images must be a list of file paths")
+        raw_images = []
+    if value.get("asset") is not None and not isinstance(value.get("asset"), str):
+        problems.append(f"{label}: asset must be a file path")
+        value = {**value, "asset": None}
+    images = tuple((base / image).resolve() for image in raw_images)
     problems += [f"{label}: image does not exist: {image}"
                  for image in images if not image.is_file()]
     names = [image.name.lower() for image in images]
@@ -411,15 +461,34 @@ def available_steps() -> dict[str, bool]:
     return {name: load_step(name) is not None for name in STEP_NAMES}
 
 
-def preflight(spec: BatchSpec) -> list[str]:
-    """Everything that would stop a row, found before the first one runs."""
+def preflight(spec: BatchSpec, rows: list[BatchRow] | None = None) -> list[str]:
+    """Everything that would stop a row, found before the first one runs. `rows` limits it
+    to the rows this run will execute (a resume skips the done ones)."""
     problems = []
+    candidates = spec.rows if rows is None else rows
     for name in STEP_NAMES:
-        rows = [row for row in spec.rows if name in row.steps]
-        step = load_step(name) if rows else None
+        using = [row for row in candidates if name in row.steps]
+        step = load_step(name) if using else None
         if step is not None and hasattr(step, "preflight"):
-            problems += [f"{name}: {problem}" for problem in step.preflight(rows)]
+            problems += [f"{name}: {problem}" for problem in step.preflight(using)]
     return problems
+
+
+def pending_rows(spec: BatchSpec, state: dict[str, Any] | None,
+                 retry_failed: bool) -> list[BatchRow]:
+    """The rows a run would execute, given the saved state: not the done ones (unless a
+    step they skipped now exists), not the failed ones unless retrying."""
+    previous = (state or {}).get("rows", {})
+    pending = []
+    for row in spec.rows:
+        entry = previous.get(row.id)
+        if entry is not None and entry.get("fingerprint") == row.fingerprint():
+            if entry.get("status") == "done" and not _newly_available(entry):
+                continue
+            if entry.get("status") == "failed" and not retry_failed:
+                continue
+        pending.append(row)
+    return pending
 
 
 # ------------------------------------------------------------------------ the state
@@ -512,6 +581,8 @@ def acquire_lock(output_dir: Path, name: str, pid: int, token: str) -> None:
     for _ in range(3):
         try:
             handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except PermissionError:   # Windows: the old lock is being deleted this instant
+            raise BatchError("another batch is starting in this folder; try again") from None
         except FileExistsError:
             lock = _read_lock(output_dir)
             if lock is None and time.time() - _mtime(path) < 5:
@@ -524,12 +595,34 @@ def acquire_lock(output_dir: Path, name: str, pid: int, token: str) -> None:
                     raise BatchError(f"batch {name} is already running (pid {lock['pid']})") from None
                 raise BatchError(f"another batch is using the GPU: {lock.get('batch')}. "
                                  "One batch runs at a time") from None
-            path.unlink(missing_ok=True)   # left by a process that is gone
+            _clear_stale_lock(output_dir, lock)
             continue
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             stream.write(json.dumps(record))
         return
     raise BatchError("could not take the batch lock; try again")
+
+
+def _clear_stale_lock(output_dir: Path, stale: dict[str, Any] | None) -> None:
+    """Remove a dead process's lock, unless someone replaced it meanwhile.
+
+    Two callers can both see the same stale lock; deleting it blind would let the second
+    delete the fresh lock the first just took. Removal happens under a claim file created
+    with O_EXCL, and only if the lock is still the one seen stale.
+    """
+    claim = output_dir / f"{LOCK_FILE}.claim"
+    try:
+        handle = os.open(claim, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except (FileExistsError, PermissionError):   # PermissionError: Windows, being deleted
+        if claim.exists() and time.time() - _mtime(claim) > 30:   # killed mid-claim
+            _unlink(claim)
+        raise BatchError("another batch is starting in this folder; try again") from None
+    try:
+        if _read_lock(output_dir) == stale and not _unlink(output_dir / LOCK_FILE):
+            raise BatchError("another batch is starting in this folder; try again")
+    finally:
+        os.close(handle)
+        _unlink(claim)
 
 
 def _mtime(path: Path) -> float:
@@ -539,10 +632,24 @@ def _mtime(path: Path) -> float:
         return 0.0
 
 
+def _unlink(path: Path) -> bool:
+    """Delete a file, retrying while Windows says another process has it open for a
+    moment (a status reader). False when it is still there."""
+    for _ in range(20):
+        try:
+            path.unlink(missing_ok=True)
+            return True
+        except PermissionError:
+            time.sleep(0.05)
+    return False
+
+
 def release_lock(output_dir: Path, token: str) -> None:
     lock = _read_lock(output_dir)
     if lock and lock.get("token") == token:
-        (output_dir / LOCK_FILE).unlink(missing_ok=True)
+        # if it stays held open, it names this process, about to end: the next taker
+        # finds it stale
+        _unlink(output_dir / LOCK_FILE)
 
 
 def lock_holder(directory: Path) -> int | None:
@@ -575,13 +682,16 @@ def summary(state: dict[str, Any], running: bool = False) -> dict[str, int]:
     return counts
 
 
-def asset_sha(entry: dict[str, Any]) -> str | None:
-    """The sha256 recorded for a row's final asset."""
+def asset_sha(entry: dict[str, Any], directory: Path) -> str | None:
+    """The sha256 of a row's final asset: as a step recorded it, else of the file itself
+    (a row whose asset no step replaced)."""
     for step in entry.get("steps", {}).values():
         for record in step.get("files", []):
             if record.get("path") == entry.get("asset"):
                 return record.get("sha256")
-    return None
+    asset = entry.get("asset")
+    path = directory / asset if asset else None
+    return sha256_file(path) if path is not None and path.is_file() else None
 
 
 # --------------------------------------------------------------------------- running
@@ -591,7 +701,8 @@ def run_batch(spec: BatchSpec, retry_failed: bool = False,
     """Run every row that is not done. Raises BatchError when the batch cannot start;
     a KeyboardInterrupt leaves the state as it was, ready to resume."""
     log = log or (lambda line: print(line, flush=True))
-    problems = preflight(spec)
+    problems = preflight(spec, pending_rows(spec, read_json(spec.directory / STATE_FILE),
+                                            retry_failed))
     if problems:
         raise BatchError(problems)
     directory = spec.directory

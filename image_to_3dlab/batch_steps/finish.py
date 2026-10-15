@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from image_to_3dlab.batch import recorded_image
 from image_to_3dlab.batch_steps import StepContext, StepResult
 from image_to_3dlab.blender import find_blender, missing_help
 from image_to_3dlab.host import APPLE, host_platform
@@ -41,6 +42,10 @@ REPAINT_OFF_MAC = ("the repaint runs on Apple Silicon only (it uses MLX); remove
 PAINT_ROOT = REPO / "hunyuan_mlx" / "paint"
 PAINT_PYTHON = PAINT_ROOT / ".venv" / "bin" / "python"
 PAINT_WEIGHTS = PAINT_ROOT / "weights" / "hunyuan3d-paintpbr-v2-1"
+# What run_paint_pbr.py opens: a folder from an interrupted install is not enough.
+PAINT_FILES = ("vae/config.json", "vae/diffusion_pytorch_model.safetensors",
+               "unet/config.json", "unet/diffusion_pytorch_model.safetensors",
+               "dinov2/model.safetensors")
 PAINT_PROFILE = LICENSES["hunyuan-comfyui"]
 # Worst last: a finished asset is as restricted as the most restricted model in it.
 CLASS_ORDER = ("commercial-clear", "commercial-conditional", "territory-restricted",
@@ -50,12 +55,15 @@ CLASS_ORDER = ("commercial-clear", "commercial-conditional", "territory-restrict
 def preflight(rows) -> list[str]:
     problems = []
     for row in rows:
-        unknown = sorted(set(row.options.get("finish", {})) - OPTIONS)
+        settings = row.options.get("finish", {})
+        unknown = sorted(set(settings) - OPTIONS)
         if unknown:
             problems.append(f"row {row.id}: unknown finish option(s) {', '.join(unknown)}; "
                             f"options are {', '.join(sorted(OPTIONS))}")
+        problems += [f"row {row.id}: finish option {problem}"
+                     for problem in _bad_values(settings)]
     for row in rows:
-        if not row.images and _recorded_image(row.asset) is None:
+        if not row.images and recorded_image(row.asset) is None:
             problems.append(f"row {row.id}: finish needs the source image: give the row "
                             "an image, or an asset whose provenance names one that exists")
     blender = find_blender()
@@ -67,9 +75,35 @@ def preflight(rows) -> list[str]:
         else:
             if not PAINT_PYTHON.is_file():
                 problems.append(f"the repaint needs its environment: uv sync in {PAINT_ROOT}")
-            if not PAINT_WEIGHTS.is_dir():
-                problems.append(f"the repaint needs its weights in {PAINT_WEIGHTS}; the Setup "
-                                "page installs them after asking")
+            missing = [name for name in PAINT_FILES if not (PAINT_WEIGHTS / name).is_file()]
+            if missing:
+                problems.append(f"the repaint needs its weights in {PAINT_WEIGHTS} (missing: "
+                                f"{', '.join(missing)}); the Setup page installs them after asking")
+    return problems
+
+
+# What each option takes, checked before the batch rather than by the worker's argparse
+# after the generation it depends on.
+WHOLE = {"atlas": (256, 8192), "texture_size": (256, 8192)}
+FRACTION = {"metallic": (0.0, 1.0), "roughness": (0.0, 1.0), "ior": (1.0, 3.0),
+            "voxel": (0.0, 0.1)}
+SWITCHES = ("paint", "photo", "skip_bake", "skip_compress")
+
+
+def _bad_values(settings: dict[str, Any]) -> list[str]:
+    problems = []
+    for key, (low, high) in WHOLE.items():
+        value = settings.get(key)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int)
+                                  or not low <= value <= high):
+            problems.append(f"{key} must be a whole number from {low} to {high}, not {value!r}")
+    for key, (low, high) in FRACTION.items():
+        value = settings.get(key)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                                  or not low <= value <= high):
+            problems.append(f"{key} must be a number from {low} to {high}, not {value!r}")
+    problems += [f"{key} must be true or false, not {settings[key]!r}"
+                 for key in SWITCHES if key in settings and not isinstance(settings[key], bool)]
     return problems
 
 
@@ -86,15 +120,7 @@ def _image_in(record: dict[str, Any]) -> Path | None:
     return Path(path) if path and Path(path).is_file() else None
 
 
-def _recorded_image(asset: Path | None) -> Path | None:
-    """The source image the provenance beside an existing GLB names, if it still exists."""
-    if asset is None:
-        return None
-    for candidate in (asset.with_suffix(".provenance.json"), asset.with_suffix(".json")):
-        image = _image_in(_read(candidate))
-        if image is not None:
-            return image
-    return None
+
 
 
 def views_for(asset: Path) -> Path | None:
@@ -205,12 +231,16 @@ def provenance_record(ctx: StepContext, output: Path,
     }
 
 
-def _worst(first: str | None, second: str) -> str:
-    """The more restricted of two classifications; an unknown one counts as the worst."""
-    def rank(name: str | None) -> int:
+def _worst(first: str | None, second: str) -> str | None:
+    """The more restricted of two classifications. A source whose class is unknown stays
+    unknown (None): adding a known restriction must not make it look settled."""
+    if first is None:
+        return None
+
+    def rank(name: str) -> int:
         return CLASS_ORDER.index(name) if name in CLASS_ORDER else len(CLASS_ORDER)
 
-    return first if first is not None and rank(first) >= rank(second) else second
+    return first if rank(first) >= rank(second) else second
 
 
 def _read(path: Path | None) -> dict[str, Any]:

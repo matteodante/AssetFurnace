@@ -125,6 +125,8 @@ def test_intent_flags_apply_to_a_csv_and_are_refused_for_json(tmp_path, monkeypa
     ({"id": "SM_A", "steps": []}, "at least one step"),
     ({"id": "SM_A", "images": ["refs/row01.png"], "parameters": "seed=1"}, "parameters"),
     ({"id": "SM_A", "images": ["refs/row01.png"], "finish": "fast"}, "settings for finish"),
+    ({"id": "SM_A", "images": [42]}, "list of file paths"),
+    ({"id": "SM_A", "asset": 42, "steps": ["finish"]}, "asset must be a file path"),
     ({"id": "SM_A", "images": ["refs/row01.png", "other/row01.png"]}, "same file name"),
 ])
 def test_a_bad_row_stops_the_batch_before_anything_runs(tmp_path, monkeypatch, row, message):
@@ -721,3 +723,82 @@ def test_a_row_stopped_after_queueing_is_queued_once_and_finished(tmp_path, monk
     batch.run_batch(batch.load_batch(spec_path))
     assert _state(spec_path)["rows"]["SM_row01"]["status"] == "done"
     assert len((tmp_path / batch.REVIEW_LOG).read_text().splitlines()) == 1
+
+
+
+def test_a_string_for_allow_conditional_never_opens_the_licence_gate(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1, license_policy={"allow_conditional": "false"})
+    with pytest.raises(batch.BatchError, match="true or false"):
+        batch.load_batch(spec_path)
+
+
+def test_a_stale_lock_is_only_cleared_if_nobody_replaced_it(tmp_path):
+    batch.acquire_lock(tmp_path, "old", 999999, "dead")
+    stale = batch._read_lock(tmp_path)
+    (tmp_path / batch.LOCK_FILE).unlink()
+    batch.acquire_lock(tmp_path, "fresh", os.getpid(), "alive")   # someone got there first
+    batch._clear_stale_lock(tmp_path, stale)
+    assert batch._read_lock(tmp_path)["batch"] == "fresh"
+
+
+def test_of_many_takers_of_a_stale_lock_exactly_one_wins(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setattr(batch, "process_alive", lambda pid: pid != 999999)
+    batch.acquire_lock(tmp_path, "old", 999999, "dead")
+
+    def take(index):
+        try:
+            batch.acquire_lock(tmp_path, f"batch{index}", 1000 + index, f"token{index}")
+            return True
+        except batch.BatchError:
+            return False
+
+    with ThreadPoolExecutor(8) as pool:
+        won = list(pool.map(take, range(8)))
+    assert won.count(True) == 1
+
+
+def test_the_hash_of_an_asset_no_step_replaced(tmp_path):
+    asset = tmp_path / "crate.glb"
+    asset.write_bytes(b"glTFcrate")
+    entry = {"asset": "crate.glb", "steps": {"checks": {"status": "done", "files": []}}}
+    assert batch.asset_sha(entry, tmp_path) == _sha(asset)
+
+
+def test_a_finish_only_rows_source_goes_through_the_licence_gate(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    asset = tmp_path / "old" / "knight.glb"
+    asset.parent.mkdir()
+    asset.write_bytes(b"glTF")
+    asset.with_suffix(".provenance.json").write_text(json.dumps(
+        {"model": {"backend": "hunyuan-comfyui"}, "input": {"path": "x"}}))
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1, "use_case": "game", "distribution": "worldwide",
+        "rows": [{"id": "SK_Knight", "asset": "old/knight.glb", "steps": ["finish"]}]}))
+    with pytest.raises(batch.BatchError, match="its source"):
+        batch.load_batch(tmp_path / "lot.json")
+
+
+def test_a_resume_checks_only_what_it_will_run(tmp_path, monkeypatch, fake_finish):
+    """A failed row that is not retried does not need its generator installed."""
+    install_fake_generator(monkeypatch, FakeGenerator(fail_on="row02"))
+    spec_path = write_spec(tmp_path, rows=2)
+    batch.run_batch(batch.load_batch(spec_path))
+    install_fake_generator(monkeypatch, ready=False)
+    assert batch.run_batch(batch.load_batch(spec_path)).counts == {"done": 1, "failed": 1}
+    with pytest.raises(batch.BatchError, match="bootstrap_fake"):
+        batch.run_batch(batch.load_batch(spec_path), retry_failed=True)
+
+
+def test_a_finish_only_rows_recorded_image_is_part_of_its_fingerprint(tmp_path):
+    asset = tmp_path / "crate.glb"
+    asset.write_bytes(b"glTF")
+    image = tiny_png(tmp_path / "crate.png", 1)
+    asset.with_suffix(".provenance.json").write_text(json.dumps({"input": {"path": str(image)}}))
+    row = batch.BatchRow(id="SM_Crate", images=(), asset=asset, kind="prop", faces=None,
+                         profile=None, steps=("finish",), backend="pixal3d")
+    before = row.fingerprint()
+    tiny_png(image, 2)
+    assert row.fingerprint() != before

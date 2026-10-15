@@ -252,3 +252,46 @@ def test_a_top_level_classification_is_kept(tmp_path, monkeypatch):
     painted = finish_step.provenance_record(
         _context(tmp_path, _row(tmp_path), asset, sidecar, {"paint": True}), output, None)
     assert painted["classification"] == "territory-restricted"
+
+
+
+def test_finish_option_values_are_checked_before_the_batch(tmp_path, monkeypatch):
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"")
+    monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
+    row = _row(tmp_path, options={"finish": {"atlas": "large", "photo": "yes",
+                                             "roughness": 2.0, "voxel": 0.004}})
+    problems = finish_step.preflight([row])
+    assert any("atlas" in p for p in problems)
+    assert any("photo" in p for p in problems)
+    assert any("roughness" in p for p in problems)
+    assert not any("voxel" in p for p in problems)
+
+
+def test_a_half_installed_repaint_is_caught(tmp_path, monkeypatch):
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"")
+    monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
+    monkeypatch.setattr(finish_step, "host_platform", lambda: finish_step.APPLE)
+    python = tmp_path / "venv" / "python"
+    python.parent.mkdir()
+    python.write_bytes(b"")
+    weights = tmp_path / "weights"
+    for name in finish_step.PAINT_FILES[:-1]:   # all but the DINOv2 weights
+        (weights / name).parent.mkdir(parents=True, exist_ok=True)
+        (weights / name).write_bytes(b"x")
+    monkeypatch.setattr(finish_step, "PAINT_PYTHON", python)
+    monkeypatch.setattr(finish_step, "PAINT_WEIGHTS", weights)
+    (problem,) = finish_step.preflight([_row(tmp_path, options={"finish": {"paint": True}})])
+    assert "dinov2/model.safetensors" in problem
+
+
+def test_an_unknown_source_stays_unknown_after_a_repaint(tmp_path):
+    asset = tmp_path / "upload.glb"
+    asset.write_bytes(b"glTF")
+    output = tmp_path / "out.glb"
+    output.write_bytes(b"glTFdone")
+    record = finish_step.provenance_record(
+        _context(tmp_path, _row(tmp_path), asset, None, {"paint": True}), output, None)
+    assert record["classification"] is None
+    assert record["input"]["source"] == "unknown" and record["components"]
