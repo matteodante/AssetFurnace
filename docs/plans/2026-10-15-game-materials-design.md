@@ -197,7 +197,7 @@ Codice: `image_to_3dlab/materials.py` (`make_game_materials`, `run_checks`), `sc
 
 | Punto | Proposta | Ora | Perché |
 |---|---|---|---|
-| Soglie `baked_light_direction` | 1,5 / 2,0 | **1,3 / 1,45** | Una luce cotta apposta nell'albedo del guerriero (ambiente 35 %) misura solo 1,55: ombre proiettate e colori mescolati diluiscono quello che una sfera mostra pulito (2,7). Con 1,5 / 2,0 passava con un avviso. Gli albedo puliti stanno fra 1,00 e 1,22. **Da confermare con l'utente**; si torna indietro cambiando una riga (`LIGHT_RATIO`) |
+| Soglie `baked_light_direction` | 1,5 / 2,0 | **1,3 / 1,45** | Una luce cotta apposta nell'albedo del guerriero (ambiente 35 %) misura solo 1,77 (1,55 prima di usare le normali dei vertici): ombre proiettate e colori mescolati diluiscono quello che una sfera mostra pulito (2,7). Con 1,5 / 2,0 passava con un avviso. Gli albedo puliti stanno fra 1,01 e 1,26. **Da confermare con l'utente**; si torna indietro cambiando una riga (`LIGHT_RATIO`) |
 | Gruppi di colore | k-means fino a 6, fusione sotto ΔE 10 | fino a **12**, fusione sotto 10 **o se sono lo stesso pigmento** (stessa tinta ±12°, stesso rapporto saturazione/luminosità ±20 %) | Con 6 la pelle del guerriero finiva nella stoffa rossa e si tingeva di verde; con 12 la stoffa rossa si spezzava in "rosso in luce" e "rosso in ombra". Un'ombra cambia luminosità e saturazione insieme, non la tinta |
 | Gruppi per i controlli della luce | luminosità a peso 0,25 | gli **stessi** delle zone (peso 0,5) | A 0,25 nero e grigio dell'armatura si fondevano e la loro differenza vera sembrava luce (1,73 su un asset pulito) |
 | `baked_light_highlights` | quota di punti chiari e senza colore | conta solo se i punti sono **rivolti nella stessa direzione** (≥ 70 % entro 45° dalla loro normale media; rampa da 40 % a 70 %) | La stoffa color crema accanto al viola scuro di una ragazza dava il 3,4 % (rifiuto falso). Un riflesso dipinto viene da una luce sola e guarda da una parte; un materiale chiaro guarda ovunque |
@@ -208,15 +208,15 @@ Codice: `image_to_3dlab/materials.py` (`make_game_materials`, `run_checks`), `sc
 | Asset | Zone | Luce (rapporto) | Riflessi |
 |---|---|---|---|
 | Guerriero grezzo Pixal3D | 3 | 1,04 | 0 |
-| Guerriero 9k / 18k finiti | 3 / 3 | 1,22 / 1,21 | 0 / 0,02 % |
-| Guerriero 18k con luce cotta apposta | 2 | **1,55, rifiutato** | 0,11 % |
-| Ragazza grezza → finita 40k | 1 → 2 | 1,02 → **1,52, rifiutata** | 0 |
+| Guerriero 9k / 18k finiti | 3 / 3 | 1,26 / 1,22 | 0 / 0 |
+| Guerriero 18k con luce cotta apposta | 2 | **1,77, rifiutato** | 0,11 % |
+| Ragazza grezza → finita 40k | 1 → 2 | 1,02 → **1,56, rifiutata** | 0 |
 | Altra ragazza grezza → finita 100k | 3 → 2 | 1,02 → 1,09 | 0 |
 | Ragazza giovane grezza | 3 | 1,11 | 0 |
 | Testuggine (albedo bianco) | **1, rifiutata** | 1,01 | 0 |
 
 La finitura che proietta la foto del concept sull'asset (passo `photo` di `retopo_repaint.py`) porta con sé la luce del
-concept: la ragazza 40k passa da 1,02 a 1,52. È proprio il caso che il controllo deve rimandare indietro.
+concept: la ragazza 40k passa da 1,02 a 1,56. È proprio il caso che il controllo deve rimandare indietro.
 
 **Prova in Blender** (`blender_tint_preview.py`, Cycles su CPU, guerriero 18k: nel parco non c'è un mostro): originale
 con la luce del concept, zone ricolorate da parametri, le stesse due con una luce bassa laterale, e la versione con luce
@@ -244,6 +244,12 @@ partenza, e rifare il passo li sostituisce. Righe di aggancio nei file condivisi
 `assets_api.py` (la cartella `materials` non è un modello nuovo), `studio.html` (2), `app.js` (5), `viewer.js` (2).
 
 La maschera si chiama `T_<Nome>_Tint.png`, come deciso con il profilo Unreal.
+
+**Dalla review di Codex sulla PR** (4 giri, tutti i punti verificati e corretti con un test): il passo legge l'albedo
+come lo disegna il renderer (solo la scena mostrata, ripetizione e trasformazione della texture, trasparenze, colori e
+normali dei vertici, strip e fan), conserva occlusione già presente, provenienza e scheletro (nello studio parte dal
+modello riggato), rifiuta le combinazioni che non può impacchettare senza errori (mappe su altre UV, AO con trasformazione,
+materiali unlit) e dice quali materiali senza texture restano come sono.
 
 **Fuori dal mio perimetro, da fare dopo il merge**: il passo `materials` in `cli.py` (sessione della funzione 1); la
 registrazione dei controlli nella coda (funzione 7); il Material Function di Unreal che rifà la formula dal
