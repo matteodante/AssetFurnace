@@ -61,17 +61,23 @@ def bibles(output_root: Path) -> list[dict[str, Any]]:
     return [{"name": b["name"], "path": _absolute(output_root, b["path"])} for b in _read(output_root)["bibles"]]
 
 
+def check_free(output_root: Path, name: str, root: Path) -> None:
+    """Refuse, before anything is made, a name or folder that is already registered."""
+    root = Path(root).resolve()
+    for known in _read(output_root)["bibles"]:
+        if _absolute(output_root, known["path"]) == root:
+            raise BibleError(f"{root} is already registered as {known['name']!r}")
+        if known["name"] == name:
+            raise BibleError(f"another bible is already registered as {name!r}; rename one first")
+
+
 def register(output_root: Path, root: Path) -> dict[str, Any]:
     """Add an existing bible folder to the list. Names must be unique among registered bibles."""
     output_root, root = Path(output_root), Path(root).resolve()
     name = load(root)["name"]
     with _LOCK:
+        check_free(output_root, name, root)
         data = _read(output_root)
-        for known in data["bibles"]:
-            if _absolute(output_root, known["path"]) == root:
-                raise BibleError(f"{root} is already registered as {known['name']!r}")
-            if known["name"] == name:
-                raise BibleError(f"another bible is already registered as {name!r}; rename one first")
         inside = root.is_relative_to(output_root.resolve())
         stored = root.relative_to(output_root.resolve()).as_posix() if inside else str(root)
         data["bibles"].append({"name": name, "path": stored})

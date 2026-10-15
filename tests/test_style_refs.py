@@ -60,3 +60,11 @@ def test_missing_files_are_skipped_and_k_is_bounded(root):
 
 def test_an_empty_bible_gives_no_references(tmp_path):
     assert refs.pick(sb.create(tmp_path / "e", "e"), "prop", k=3) == []
+
+
+def test_a_picture_changed_since_it_was_approved_is_not_a_reference(root):
+    """Codex review 1: the hash is what was approved; other bytes in the same file are not."""
+    data = sb.load(root)
+    troll = root / data["images"][1]["file"]
+    Image.new("RGB", (8, 8), (9, 9, 9)).save(troll)
+    assert names(refs.pick(root, "creature", k=2)) == ["wolf.png", "any.png"]
