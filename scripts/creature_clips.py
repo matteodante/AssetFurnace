@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Recognise a rigged creature's family and write its test clips, one animated GLB each.
+
+Runs after the auto-rig, in the same Python that runs SkinTokens (it has the `bpy` wheel):
+
+    python scripts/creature_clips.py --rig out/wolf_rigged.glb [--family auto|digitigrade|...]
+
+Writes `wolf_rigged.family.json` (the family and the role of every chain, in glTF space)
+and, for a family that has them, `wolf_<family>-<motion>.glb` beside the rig: the names
+the studio already lists as clips of `wolf_rigged.glb`. The maths is in
+`creature_motion.py`; this file only reads the armature and keys it.
+
+A test clip is a bonus on top of a rig, so a clip that cannot be made does not undo the
+rig: the reason goes into the family file and the exit code stays 0.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+import traceback
+from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from image_to_3dlab import creature_family as cf  # noqa: E402
+
+AUTO = "auto"
+RIGGED = "_rigged"
+
+
+def clip_path(rigged: Path, name: str) -> Path:
+    """`wolf_rigged.glb` + `digitigrade-walk` -> `wolf_digitigrade-walk.glb`."""
+    stem = rigged.stem.removesuffix(RIGGED)
+    return rigged.with_name(f"{stem}_{name}.glb")
+
+
+def wanted_motions(family: str, chosen: bool) -> tuple[str, ...]:
+    """The clips to make: a family's own, but for humanoids (who have the preset moves)
+    only when a person asked for that family."""
+    import creature_motion
+
+    if family not in creature_motion.DEFAULT_CLIPS and not chosen:
+        return ()
+    return creature_motion.clips_for(family)
+
+
+def main() -> None:  # pragma: no cover - needs bpy
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--rig", required=True, type=Path, help="rigged GLB (SkinTokens output)")
+    ap.add_argument("--family", default=AUTO, choices=(AUTO, *cf.FAMILIES))
+    ap.add_argument("--blend", type=Path, help="also save the last clip as a .blend for inspection")
+    args = ap.parse_args()
+
+    chosen = None if args.family == AUTO else args.family
+    found = cf.classify_glb(args.rig, family=chosen)
+    motions = wanted_motions(found["family"], chosen is not None)
+    found["clips"], found["clips_error"] = [], None
+    try:
+        for motion in motions:
+            name = _write_clip(args.rig, found["family"], motion, args.blend)
+            found["clips"].append(name)
+            print(f"wrote test clip {name}")
+    except Exception as exc:  # noqa: BLE001 - a missing clip must not cost the rig
+        traceback.print_exc()
+        found["clips_error"] = f"{type(exc).__name__}: {exc}"
+    cf.write_family(args.rig, found)
+    print(f"family: {found['family']} ({found['confidence']} confidence; {found['detail']})")
+
+
+def _write_clip(rigged: Path, family: str, motion: str, blend: Path | None) -> str:  # pragma: no cover
+    import bpy
+    from mathutils import Matrix
+
+    import creature_motion as cm
+    from kimodo_retarget import pose_basis
+
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    bpy.ops.import_scene.gltf(filepath=str(rigged))
+    for o in list(bpy.data.objects):  # SkinTokens' `glTF_not_exported` helper
+        if o.type == "MESH" and o.name.startswith("Icosphere"):
+            bpy.data.objects.remove(o, do_unlink=True)
+    for action in list(bpy.data.actions):
+        bpy.data.actions.remove(action)
+    arm = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+    bones = arm.data.bones
+    parents = {b.name: (b.parent.name if b.parent else None) for b in bones}
+    order = [b.name for b in bones if b.parent is None]
+    i = 0
+    while i < len(order):
+        order += [c.name for c in bones[order[i]].children]
+        i += 1
+    rest = {b.name: np.array(b.matrix_local) for b in bones}
+    heads = {n: m[:3, 3].copy() for n, m in rest.items()}
+    to_arm = np.array(arm.matrix_world.inverted())
+    points = [(to_arm @ np.array(o.matrix_world) @ np.append(np.array(v.co), 1.0))[:3]
+              for o in bpy.data.objects if o.type == "MESH" and o.find_armature() == arm for v in o.data.vertices]
+    arm_rot = np.array(arm.matrix_world.to_3x3().normalized())
+    up, front = arm_rot.T @ np.array([0.0, 0.0, 1.0]), arm_rot.T @ np.array([0.0, -1.0, 0.0])  # glTF +Z is Blender -Y
+    roles = cf.classify(parents, heads, up=up, front=front, family=family, points=np.array(points))
+    rig = cm.Rig(parents, order, heads)
+    frames = cm.make(motion, rig, roles)
+
+    scene = bpy.context.scene
+    scene.render.fps = cm.FPS
+    scene.frame_start, scene.frame_end = 1, len(frames)
+    for pb in arm.pose.bones:
+        pb.rotation_mode = "QUATERNION"
+    rest_rot = {b: m[:3, :3] for b, m in rest.items()}
+    for t, (turn, root) in enumerate(frames, start=1):
+        world_rot, root_pos = cm.frame_rotations(rig, rest_rot, turn, root)
+        for name, mtx in pose_basis(rest, parents, order, world_rot, root_pos).items():
+            pb = arm.pose.bones[name]
+            pb.matrix_basis = Matrix(mtx.tolist())
+            pb.keyframe_insert("rotation_quaternion", frame=t)
+            if parents[name] is None:
+                pb.keyframe_insert("location", frame=t)
+    name = cm.clip_name(family, motion)
+    arm.animation_data.action.name = name
+    out = clip_path(rigged, name)
+    bpy.ops.export_scene.gltf(filepath=str(out), export_format="GLB", export_animations=True)
+    if blend:
+        bpy.ops.wm.save_as_mainfile(filepath=str(blend))
+    return name
+
+
+if __name__ == "__main__":
+    main()
