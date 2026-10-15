@@ -679,8 +679,10 @@ def readiness(backend_id: str, host: str | None = None) -> dict[str, Any] | None
     if backend is None:
         return None
     described = backend.describe(host)
+    # Keyed by repo, plus the file when one repo gives two (Qwen3-VL's encoder and vision).
     weights = {
-        w["source"]: {"label": w["label"], "present": w["present"], "human": w["human_present"]}
+        (f"{w['source']}/{w['filename']}" if w["filename"] else w["source"]):
+            {"label": w["label"], "present": w["present"], "human": w["human_present"]}
         for w in described["weights"]
     }
     missing = [w["label"] for w in described["weights"] if not w["present"]]

@@ -637,3 +637,9 @@ def test_qwen_image_lists_the_vision_file_that_reads_reference_pictures():
     assert vision.source == "Qwen/Qwen3-VL-8B-Instruct-GGUF"
     assert vision.bytes_expected == 1_159_029_824
     assert "Qwen3VL-8B-Instruct-Q4_K_M.gguf" in weights
+
+
+def test_readiness_keeps_one_row_per_weight_even_from_one_repo():
+    """The encoder and its vision file share a repo; keyed by repo, one hid the other."""
+    payload = bc.readiness("qwen-image")
+    assert len(payload["weights"]) == len(bc.BY_ID["qwen-image"].weights)
