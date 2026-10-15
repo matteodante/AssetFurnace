@@ -149,11 +149,20 @@ def recorded_sidecar(asset: Path | None) -> Path | None:
     manifest some backends write."""
     if asset is None:
         return None
-    for candidate in (asset.with_suffix(".provenance.json"), asset.with_suffix(".json")):
-        # a damaged provenance file must not hide the backend's own record behind it
-        if candidate.is_file() and isinstance(read_json(candidate), dict) and read_json(candidate):
+    candidates = [c for c in (asset.with_suffix(".provenance.json"), asset.with_suffix(".json"))
+                  if c.is_file() and isinstance(read_json(c), dict) and read_json(c)]
+    # a damaged or thin provenance file must not hide the backend's own record: the one
+    # finish copies the licence from is the first that has licence data at all
+    for candidate in candidates:
+        if _has_licence_data(read_json(candidate)):
             return candidate
-    return None
+    return candidates[0] if candidates else None
+
+
+def _has_licence_data(record: dict[str, Any]) -> bool:
+    return any(level.get(key) for level in _records(record)
+               for key in ("license", "classification", "model", "backend", "components")) or any(
+        (level.get("output") or {}).get("classification") for level in _records(record))
 
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
@@ -245,6 +254,8 @@ def class_problem(classification: str, intent: dict[str, Any],
         return f"its licence class {classification!r} is not one this repo has reviewed"
     if not policy.get("allow_conditional", True):
         return f"it is {classification}; the policy disallows conditional models"
+    if classification == "research-only" and policy.get("allow_research_only") is False:
+        return "it is research-only; the policy disallows research-only models"
     if classification == "research-only" and not (
             intent["use_case"] == "showcase" and intent["distribution"] == "private"
             and not intent.get("commercial_intent")):
@@ -332,10 +343,11 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         problems.append(f"license_policy: unknown field(s) "
                         f"{', '.join(sorted(set(policy) - POLICY_KEYS))}")
         policy = {**policy, "allow_conditional": False}
-    elif not isinstance(policy.get("allow_conditional", True), bool):
+    elif not all(isinstance(policy.get(key, True), bool) for key in POLICY_KEYS):
         # "false" as a string is truthy: the licence gate must not fail open on a typo
-        problems.append("license_policy.allow_conditional must be true or false")
-        policy = {**policy, "allow_conditional": False}
+        problems.append("license_policy.allow_conditional and allow_research_only must be "
+                        "true or false")
+        policy = {**policy, "allow_conditional": False, "allow_research_only": False}
     output_field = top.get("output", {})
     if not isinstance(output_field, dict):
         problems.append('output must be an object, like {"directory": "../output/batches"}')
@@ -349,9 +361,10 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         output = None
     output_dir = (base / output).resolve() if output else DEFAULT_OUTPUT
     name = str(top.get("name", path.stem))
-    if not ID_PATTERN.fullmatch(name):
+    if not ID_PATTERN.fullmatch(name) or not _usable_folder_name(name):
         problems.append(f"batch name {name!r}: use letters, digits, '_', '.', '-' "
-                        "(up to 64), starting with a letter or digit")
+                        "(up to 64), starting with a letter or digit, not ending in a dot, "
+                        "and not a name Windows reserves (CON, AUX, NUL, COM1...)")
 
     raw_rows = top.get("rows")
     if isinstance(raw_rows, str):
@@ -420,6 +433,16 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
                      license_policy=policy, output_dir=output_dir)
 
 
+WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
+                    *(f"LPT{i}" for i in range(1, 10))}
+
+
+def _usable_folder_name(name: str) -> bool:
+    """A name every OS makes into its own folder: Windows refuses CON or AUX (with any
+    extension) and drops a trailing dot, so `crate.` would be `crate`."""
+    return not name.endswith(".") and name.split(".")[0].upper() not in WINDOWS_RESERVED
+
+
 def _is_glb(path: Path) -> bool:
     """Whether a file starts like a binary glTF; a broken one fails before the batch, not
     in Blender's importer after earlier rows have run."""
@@ -482,9 +505,10 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
     if not isinstance(row_id, str):   # 7 or null would become a folder name and a review key
         problems.append(f"{label}: id must be text, not {row_id!r}")
         row_id = ""
-    elif not ID_PATTERN.fullmatch(row_id):
+    elif not ID_PATTERN.fullmatch(row_id) or not _usable_folder_name(row_id):
         problems.append(f"{label}: id {row_id!r}: use letters, digits, '_', '.', '-' "
-                        "(up to 64), starting with a letter or digit")
+                        "(up to 64), starting with a letter or digit, not ending in a dot, "
+                        "and not a name Windows reserves (CON, AUX, NUL, COM1...)")
 
     steps = value.get("steps", list(DEFAULT_STEPS))
     if not isinstance(steps, list) or not all(isinstance(step, str) for step in steps):
@@ -652,7 +676,12 @@ def pending_rows(spec: BatchSpec, state: dict[str, Any] | None,
     pending = []
     for row in spec.rows:
         entry = previous.get(row.id)
-        if entry is not None and entry.get("fingerprint") == row.fingerprint():
+        try:
+            fingerprint = row.fingerprint()
+        except OSError:   # an input gone since validation: the run will fail that row
+            pending.append(row)
+            continue
+        if entry is not None and entry.get("fingerprint") == fingerprint:
             if _still_done(entry, spec.directory):
                 continue
             if entry.get("status") == "failed" and not retry_failed:
@@ -909,8 +938,10 @@ def summary(state: dict[str, Any], running: bool = False) -> dict[str, int]:
 
 
 def asset_sha(entry: dict[str, Any], directory: Path) -> str | None:
-    """The sha256 of a row's final asset: as a step recorded it, else of the file itself
-    (a row whose asset no step replaced)."""
+    """The sha256 of a row's final asset: as kept when the row finished, as a step recorded
+    it, else of the file itself (a row from before the hash was kept)."""
+    if entry.get("asset_sha256"):
+        return entry["asset_sha256"]
     for step in entry.get("steps", {}).values():
         for record in step.get("files", []):
             if record.get("path") == entry.get("asset"):
@@ -960,7 +991,13 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
     rows: dict[str, Any] = {}
     for row in spec.rows:
         entry = previous.get(row.id)
-        fingerprint = row.fingerprint()
+        try:
+            fingerprint = row.fingerprint()
+        except OSError as exc:
+            # an input gone or unreadable since validation fails this row, not the batch
+            rows[row.id] = {**(entry or {}), "status": "failed", "steps": (entry or {}).get("steps", {}),
+                            "reason": f"input: {exc}", "fingerprint": None}
+            continue
         if entry is None or entry.get("fingerprint") != fingerprint:
             entry = {"status": "queued", "fingerprint": fingerprint, "steps": {},
                      **({"note": "the row changed in the spec"} if entry else {})}
@@ -1043,13 +1080,17 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     if "generate" not in row.steps and staged:
         # generate copies a row's images; a finish-only row's (or the picture its asset's
         # record leads to) are staged here, so its folder and outputs.json carry it too
-        (row_dir / "input").mkdir(parents=True, exist_ok=True)
-        for image in staged:
-            if image.resolve() != (row_dir / "input" / image.name).resolve():
-                shutil.copyfile(image, row_dir / "input" / image.name)
-        # recorded on the row, not on a step: a checks-only row has them too
-        entry["staged"] = [record for image in staged
-                           for record in _file_records(row_dir / "input" / image.name, directory)]
+        try:
+            (row_dir / "input").mkdir(parents=True, exist_ok=True)
+            for image in staged:
+                if image.resolve() != (row_dir / "input" / image.name).resolve():
+                    shutil.copyfile(image, row_dir / "input" / image.name)
+            # recorded on the row, not on a step: a checks-only row has them too
+            entry["staged"] = [record for image in staged for record in
+                               _file_records(row_dir / "input" / image.name, directory)]
+        except OSError as exc:   # gone or unreadable since the preflight: this row fails
+            _fail(entry, entry.setdefault("steps", {}), "stage", str(exc), save, log)
+            return
     asset = row.asset
     sidecar = recorded_sidecar(asset) if asset else None
     steps = entry.setdefault("steps", {})
@@ -1105,6 +1146,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     # queues it (the same version is never queued twice) before recording it done.
     if asset is not None:
         queue_for_review(spec, row, asset)
+    entry["asset_sha256"] = sha256_file(asset) if asset is not None else None
     entry.update(status="done", finished_at=now(),
                  asset=_relative(asset, directory) if asset else None,
                  sidecar=_relative(sidecar, directory) if sidecar else None)

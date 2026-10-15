@@ -1310,3 +1310,86 @@ def test_an_asset_rows_moved_concept_is_read_from_its_staged_copy(tmp_path, monk
     fake_finish.calls.clear()
     batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
     assert fake_finish.calls == []   # same bytes, same fingerprint: still done
+
+
+
+def test_the_record_handed_to_finish_has_licence_data(tmp_path):
+    asset = tmp_path / "knight.glb"
+    asset.write_bytes(b"glTF")
+    asset.with_suffix(".provenance.json").write_text(json.dumps({"input": {"path": "x.png"}}))
+    asset.with_suffix(".json").write_text(json.dumps({"backend": "pixal3d",
+                                                      "license": {"name": "MIT"}}))
+    assert batch.recorded_sidecar(asset) == asset.with_suffix(".json")
+
+
+def test_allow_research_only_false_is_honoured(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec = _asset_row_spec(tmp_path, {"output": {"classification": "research-only"}},
+                           license_policy={"allow_conditional": True,
+                                           "allow_research_only": False})
+    with pytest.raises(batch.BatchError, match="disallows research-only"):
+        batch.load_batch(spec)
+    spec = _asset_row_spec(tmp_path, {}, license_policy={"allow_research_only": "no"})
+    with pytest.raises(batch.BatchError, match="true or false"):
+        batch.load_batch(spec)
+
+
+@pytest.mark.parametrize("bad", ["CON", "aux", "nul.glb", "COM3", "crate."])
+def test_names_windows_cannot_make_into_folders_are_refused(tmp_path, monkeypatch, bad):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    spec = json.loads(spec_path.read_text())
+    spec["rows"][0]["id"] = bad
+    spec_path.write_text(json.dumps(spec))
+    with pytest.raises(batch.BatchError, match="Windows reserves"):
+        batch.load_batch(spec_path)
+
+
+def test_a_staging_failure_fails_its_row_and_the_batch_goes_on(tmp_path, monkeypatch):
+    from image_to_3dlab.batch_steps import StepResult
+
+    monkeypatch.setitem(batch.STEPS, "checks", fake_step(lambda ctx: StepResult()))
+    for name in ("a", "b"):
+        (tmp_path / f"{name}.glb").write_bytes(b"glTF")
+        tiny_png(tmp_path / f"{name}.png")
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1, "output": {"directory": "out"}, "defaults": {"steps": ["checks"]},
+        "rows": [{"id": "SM_A", "asset": "a.glb", "images": ["a.png"]},
+                 {"id": "SM_B", "asset": "b.glb", "images": ["b.png"]}]}))
+    spec = batch.load_batch(tmp_path / "lot.json")
+    (tmp_path / "a.png").unlink()   # gone after validation, before the run began
+    report = batch.run_batch(spec)
+    assert report.counts == {"failed": 1, "done": 1}
+    assert report.failed["SM_A"].startswith("input:")
+
+
+def test_a_picture_gone_while_earlier_rows_run_fails_only_its_row(tmp_path, monkeypatch):
+    from image_to_3dlab.batch_steps import StepResult
+
+    def checks(ctx):
+        if ctx.row.id == "SM_A":
+            (tmp_path / "b.png").unlink()   # removed while row A runs
+        return StepResult()
+
+    monkeypatch.setitem(batch.STEPS, "checks", fake_step(checks))
+    for name in ("a", "b"):
+        (tmp_path / f"{name}.glb").write_bytes(b"glTF")
+        tiny_png(tmp_path / f"{name}.png")
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1, "output": {"directory": "out"}, "defaults": {"steps": ["checks"]},
+        "rows": [{"id": "SM_A", "asset": "a.glb", "images": ["a.png"]},
+                 {"id": "SM_B", "asset": "b.glb", "images": ["b.png"]}]}))
+    report = batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
+    assert report.counts == {"done": 1, "failed": 1}
+    assert report.failed["SM_B"].startswith("stage:")
+
+
+def test_a_rows_final_hash_is_kept_not_recomputed(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    batch.run_batch(batch.load_batch(spec_path))
+    entry = _state(spec_path)["rows"]["SM_row01"]
+    directory = spec_path.parent / "out" / "test-batch"
+    assert entry["asset_sha256"] == _sha(directory / entry["asset"])
+    monkeypatch.setattr(batch, "sha256_file", lambda path: pytest.fail("hashed again"))
+    assert batch.asset_sha(entry, directory) == entry["asset_sha256"]

@@ -394,3 +394,35 @@ def test_pixel_match_views_are_checked_before_the_batch(tmp_path, monkeypatch, g
     off = _row(tmp_path, images=(), steps=("finish",), asset=asset,
                options={"finish": {"photo": False}})
     assert finish_step.preflight([off]) == []
+
+
+
+def test_pixel_match_cameras_are_read_with_the_real_loader(tmp_path, monkeypatch, generated):
+    asset, sidecar = generated
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"")
+    monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
+    tiny_png(tmp_path / "refs" / "cat.png")
+    views = asset.with_suffix(".svviews")
+    views.mkdir()
+    tiny_png(views / "front.png")
+    (views / "transforms.json").write_text(json.dumps({"frames": [{"file_path": "front.png"}]}))
+    row = _row(tmp_path, images=(), steps=("finish",), asset=asset)
+    (problem,) = finish_step.preflight([row])
+    assert "cameras cannot be read" in problem
+
+
+def test_an_old_picture_left_in_input_is_not_a_finish_file(tmp_path, monkeypatch, generated):
+    asset, sidecar = generated
+    monkeypatch.setattr(finish_step, "find_blender", lambda: Path("blender.exe"))
+
+    def fake_run(command, stdout, **kwargs):
+        Path(command[5]).write_bytes(b"glTFdone")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(finish_step, "run_worker", fake_run)
+    ctx = _context(tmp_path, _row(tmp_path), asset, sidecar)
+    current = tiny_png(ctx.row_dir / "input" / "cat.png")
+    old = tiny_png(ctx.row_dir / "input" / "old_concept.png")
+    files = finish_step.run(ctx).files
+    assert current in files and old not in files

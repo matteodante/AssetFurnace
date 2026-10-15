@@ -391,3 +391,31 @@ def test_a_duplicate_models_batch_picture_joins_the_kept_model(output, monkeypat
     (asset,) = assets_api.list_assets(output)
     assert asset["model"] == f"{run.name}/{run.name}.glb"
     assert asset["picture"] == "batches/checked/rows/SK_Knight/input/knight_ref.png"
+
+
+
+def test_two_rows_on_one_library_glb_both_join_it(output, monkeypatch):
+    from image_to_3dlab.batch_steps import StepResult
+
+    monkeypatch.setitem(batch.STEPS, "checks", fake_step(lambda ctx: StepResult()))
+    run = output / "knight__pixal3d__1"
+    run.mkdir()
+    glb = run / f"{run.name}.glb"
+    glb.write_bytes(b"glTFknight")
+    rows = []
+    for index in (1, 2):
+        picture = tiny_png(output.parent / f"ref{index}.png", index)
+        rows.append({"id": f"SK_Knight{index}", "asset": str(glb), "images": [str(picture)],
+                     "steps": ["checks"]})
+    spec = output.parent / "checks.json"
+    spec.write_text(json.dumps({"schema_version": 1, "name": "checked", "rows": rows}))
+    batch.run_batch(batch.load_batch(spec))
+    assert len(assets_api.list_assets(output)) == 1
+
+
+def test_stop_reaches_a_batch_that_has_no_state_yet(server, output, monkeypatch):
+    batch.acquire_lock(output / "batches", "fresh", os.getpid(), "runner")
+    stopped = []
+    monkeypatch.setattr(mcp_server, "terminate_group", stopped.append)
+    status, body = request(server, "POST", "/api/batches/fresh/cancel", {})
+    assert status == 200 and body["cancelled"] is True and stopped == [os.getpid()]

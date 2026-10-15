@@ -242,6 +242,10 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
             handler._send_json(*submit(output, _body(handler)))
         elif mutation and len(parts) == 4 and parts[3] in ("resume", "cancel"):
             directory = _directory(output, parts[2])
+            lock = batch.live_lock(batches_root(output))
+            if directory is None and parts[3] == "cancel" and lock and lock.get("batch") == parts[2]:
+                # starting: listed (and offered Stop) before its runner wrote any state
+                directory = batches_root(output) / parts[2]
             if directory is None:
                 handler._send_json(404, {"error": "No such batch"})
             elif parts[3] == "resume":

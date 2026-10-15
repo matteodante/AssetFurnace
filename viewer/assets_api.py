@@ -199,7 +199,7 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
     for model in batched["model"]:
         kept = known.get(model["file"].resolve())
         if kept is not None:   # its picture and finish join the kept node instead
-            kept.setdefault("link", model["link"])
+            kept.setdefault("links", []).append(model["link"])
     batched["model"] = [model for model in batched["model"] if model["file"].resolve() not in known]
     pictures, models = pictures + batched["picture"], models + batched["model"]
     finishes = finishes + batched["finished"]
@@ -253,8 +253,9 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
                 join(index_of[id(prop_set)], match)
     linked: dict[str, int] = {}   # nodes that name their asset outright (batch rows)
     for i, (_, node) in enumerate(nodes):
-        if node.get("link") is not None:
-            join(i, linked.setdefault(node["link"], i))
+        for link in [node.get("link"), *node.get("links", [])]:
+            if link is not None:
+                join(i, linked.setdefault(link, i))
     hashes.save()
 
     groups: dict[int, list[int]] = {}

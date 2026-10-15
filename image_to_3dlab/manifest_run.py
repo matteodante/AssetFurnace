@@ -242,9 +242,12 @@ def run_manifest(path: Path, log: Callable[[str], None] = print) -> tuple[Path, 
         raise ManifestRunError(f"{backend}: {'; '.join(wrong)}")
     if not isinstance(intent["commercial_intent"], bool):
         raise ManifestRunError("commercial_intent must be true or false")
-    if not isinstance(policy, dict) or not isinstance(policy.get("allow_conditional", True), bool):
+    if not isinstance(policy, dict) or not all(
+            isinstance(policy.get(key, True), bool)
+            for key in ("allow_conditional", "allow_research_only")):
         # "false" as a string is truthy: the licence gate must not fail open on a typo
-        raise ManifestRunError("license_policy.allow_conditional must be true or false")
+        raise ManifestRunError("license_policy.allow_conditional and allow_research_only "
+                               "must be true or false")
     unknown_policy = sorted(set(policy) - {"allow_conditional", "allow_research_only"})
     if unknown_policy:
         # a misspelt key would leave the permissive default in force

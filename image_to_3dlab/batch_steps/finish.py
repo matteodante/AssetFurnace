@@ -145,6 +145,13 @@ def _views_problems(views: Path) -> list[str]:
         broken = _unreadable(views / path) if isinstance(path, str) else "no file_path"
         if broken:
             problems.append(f"view {path!r} in {views.name}: {broken}")
+    if not problems:
+        try:   # the cameras too, read by the very loader Pixel Match uses
+            from image_to_3dlab.photo_paint import load_views
+
+            load_views(views)
+        except Exception as exc:  # noqa: BLE001 - any way it fails, it fails before the work
+            problems.append(f"{views.name}: the cameras cannot be read: {exc!r}")
     return problems
 
 
@@ -227,7 +234,9 @@ def run(ctx: StepContext) -> StepResult:
     steps = ctx.step_dir / "steps"
     diagnostics = sorted(path for path in steps.rglob("*") if path.is_file()) if steps.is_dir() else []
     inputs = ctx.row_dir / "input"
-    staged = sorted(path for path in inputs.glob("*") if path.is_file()) if inputs.is_dir() else []
+    # this run's pictures, not a leftover from an earlier one under another name
+    current = ctx.row.images or ((ctx.row.concept,) if ctx.row.concept else ())
+    staged = [inputs / image.name for image in current if (inputs / image.name).is_file()]
     # the staged pictures too: one changed or gone after the row finished makes it run again
     files = [output, sidecar, *([worker_record] if worker_record.is_file() else []),
              log_path, *diagnostics, *staged]

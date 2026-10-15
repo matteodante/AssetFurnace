@@ -147,7 +147,9 @@ def resume_batch(batch_ref: str, retry_failed: bool = False) -> dict[str, Any]:
 def _directory(target: str) -> Path:
     """A batch folder, or the spec that names one."""
     path = Path(target).expanduser().resolve()
-    if path.is_dir():
+    # a folder, or one not made yet (a batch whose runner is just starting); a spec by its
+    # .json or .csv file
+    if path.is_dir() or (not path.exists() and path.suffix.lower() not in (".json", ".csv")):
         return path
     return batch.load_batch(path).directory
 
