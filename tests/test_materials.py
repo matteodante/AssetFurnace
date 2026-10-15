@@ -633,3 +633,31 @@ def test_ktx2_textures_are_refused_with_a_reason(tmp_path):
     asset.write_bytes(build_glb(document, binary))
     with pytest.raises(ValueError, match="KTX2"):
         m.make_game_materials(asset, tmp_path / "out")
+
+
+def test_optional_meshopt_is_refused_too(tmp_path):
+    """Its payload lives outside the core bufferViews and would be lost when the buffer is relaid."""
+    asset = make_glb(tmp_path / "meshopt.glb", banded_albedo())
+    document, binary = parse_glb(asset.read_bytes())
+    document["extensionsUsed"] = ["EXT_meshopt_compression"]
+    asset.write_bytes(build_glb(document, binary))
+    with pytest.raises(ValueError, match="meshopt"):
+        m.make_game_materials(asset, tmp_path / "out")
+
+
+def test_a_texture_used_by_a_mesh_extension_is_never_overwritten(tmp_path):
+    rng = np.random.default_rng(12)
+    mr = np.zeros((SIZE, SIZE, 3), np.uint8)
+    mr[..., 1] = rng.integers(40, 220, (SIZE, SIZE))
+    asset = make_glb(tmp_path / "features.glb", banded_albedo(), mr=mr)
+    document, binary = parse_glb(asset.read_bytes())
+    document["meshes"][0]["primitives"][0]["extensions"] = {
+        "EXT_mesh_features": {"featureIds": [{"featureCount": 2, "texture": {"index": 1, "channels": [0]}}]}}
+    asset.write_bytes(build_glb(document, binary))
+    result = m.make_game_materials(asset, tmp_path / "out")
+    out = EditGLB(result.glb_path.read_bytes())
+    image = out.document["images"][out.document["textures"][1]["source"]]
+    view = out.document["bufferViews"][image["bufferView"]]
+    start = view.get("byteOffset", 0)
+    kept = np.asarray(Image.open(io.BytesIO(out.binary[start:start + view["byteLength"]])).convert("RGB"))
+    np.testing.assert_array_equal(kept, mr)

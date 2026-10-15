@@ -91,3 +91,19 @@ def test_cut_out_texels_are_not_rendered_as_solid(tmp_path):
     _, seen = mv.reproject(views, surface, lambda view: view.color).mean()
     assert seen[: SIZE // 2 - 4].mean() > 0.3
     assert seen[SIZE // 2 + 4:].mean() < 0.01     # nothing behind a cut-out is a texel of it
+
+
+@needs_blender
+def test_mask_cut_off_follows_the_cutoff_not_the_raw_alpha(tmp_path):
+    """Alpha 0.63 is kept and 0.39 is discarded at the default cutoff 0.5, never half-shown."""
+    rgba = np.dstack([banded_albedo(), np.full((SIZE, SIZE), 160, np.uint8)])
+    rgba[SIZE // 2:, :, 3] = 100
+    asset = make_glb(tmp_path / "soft.glb", rgba)
+    document, binary = parse_glb(asset.read_bytes())
+    document["materials"][0]["alphaMode"] = "MASK"
+    asset.write_bytes(build_glb(document, binary))
+    views = mv.render_views(asset, tmp_path / "views", size=96, around=8, blender=BLENDER)
+    surface = m.surfaces(EditGLB(asset.read_bytes()))[0]
+    _, seen = mv.reproject(views, surface, lambda view: view.color).mean()
+    assert seen[: SIZE // 2 - 4].mean() > 0.5
+    assert seen[SIZE // 2 + 4:].mean() < 0.01

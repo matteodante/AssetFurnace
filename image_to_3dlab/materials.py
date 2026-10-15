@@ -258,9 +258,19 @@ def referenced_outside_materials(document: dict, texture_index: int) -> bool:
             return any(walk(v) for v in node)
         return False
 
+    def extensions_in(node):
+        # Inside meshes and nodes, core "index" fields are accessors; only their extensions
+        # (EXT_mesh_features feature-ID textures, say) can name a texture.
+        if isinstance(node, dict):
+            return any(walk(v) if k == "extensions" else extensions_in(v) for k, v in node.items())
+        if isinstance(node, list):
+            return any(extensions_in(v) for v in node)
+        return False
+
     skip = {"materials", "textures", "images", "samplers", "accessors", "bufferViews", "buffers",
             "nodes", "meshes", "skins", "animations", "scenes", "cameras", "asset"}
-    return any(walk(value) for key, value in document.items() if key not in skip)
+    return (any(walk(value) for key, value in document.items() if key not in skip)
+            or extensions_in(document.get("meshes", [])) or extensions_in(document.get("nodes", [])))
 
 
 def _decode_image(glb: EditGLB, image_index: int, mode: str = "RGB") -> np.ndarray:
@@ -497,6 +507,10 @@ def surfaces(glb: EditGLB) -> dict[int, Surface]:
     """Every textured material the displayed scene draws, keyed by glTF material index."""
     document = glb.document
     packed = [e for e in COMPRESSED_GEOMETRY if e in document.get("extensionsRequired", [])]
+    if "EXT_meshopt_compression" in document.get("extensionsUsed", []) and not packed:
+        # Even with a fallback, its payload is addressed by raw buffer offsets that rewriting
+        # the buffer would leave pointing at the wrong bytes.
+        packed = ["EXT_meshopt_compression"]
     if packed:
         raise ValueError(f"the geometry is compressed ({', '.join(packed)}): decompress the GLB first, "
                          "or its bytes would be read as plain positions and UVs")
