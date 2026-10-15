@@ -73,7 +73,7 @@ def test_rig_job_copies_the_source_and_records_both_licences(tmp_path):
     assert job.directory.name.startswith("My-Knight__rig__")
     assert (job.directory / "input" / "source.glb").read_bytes() == b"glTF-data"
     assert job.result.name == "My-Knight_rigged.glb"
-    (rig, rig_cwd), (clean, _) = job.commands
+    (rig, rig_cwd), (clean, _), _clips = job.commands  # the clip step: test_creature_family_api.py
     assert rig[1:3] == ["demo.py", "--input"] and "--use_transfer" in rig and rig_cwd == aa.SKINTOKENS
     # The clean-up rewrites SkinTokens' result in place, after it.
     assert clean[1].endswith("clean_skin_weights.py") and clean[-1] == str(job.result)

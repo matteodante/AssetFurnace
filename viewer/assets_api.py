@@ -30,6 +30,8 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))  # rig_check, for whether a rig fits the moves
 
+import creature_family_api  # noqa: E402 - the family a rig was given
+
 FINISH_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__finish__\d{8}-\d{6}(?:-\d+)?$")
 RIG_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__rig__\d{8}-\d{6}(?:-\d+)?$")
 PROPS_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__props__\d{8}-\d{6}(?:-\d+)?$")
@@ -285,6 +287,7 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
             "finished": rel(fin["file"]) if fin else None,
             "rigged": rel(rig["file"]) if rig else None,
             **(hashes.rig_facts(rig["file"]) if rig else {"fits_moves": None, "facing": None}),
+            **creature_family_api.facts(rig["file"] if rig else None),
             "clips": [{"name": c["name"], "file": rel(c["file"])} for c in clips],
             "props": [{"name": p["name"], "file": rel(p["file"])} for p in (prop_set["props"] if prop_set else [])],
             "updated": max((f.stat().st_mtime for f in files), default=0),
