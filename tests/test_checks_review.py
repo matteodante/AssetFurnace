@@ -163,3 +163,17 @@ def test_only_a_version_waiting_for_review_can_be_decided(log):
     review.decide(log, "mob_0412", "approved", "", now=T[3])
     with pytest.raises(review.ReviewConflict, match="already"):
         review.decide(log, "mob_0412", "sent_back", "changed my mind")
+
+
+def test_approval_needs_checks_that_ran_and_a_licence_that_passed(log, tmp_path):
+    """Codex review 2: nothing unchecked, and nothing whose licence check failed, is approved."""
+    glb = fx.clean(tmp_path / "row.glb")
+    review.enqueue_for_review(glb, "row", source="batch:x", log=log, now=T[0])
+    with pytest.raises(review.ReviewConflict, match="checks"):
+        review.decide(log, "row", "approved", "")
+    review.enqueue(log, report_for("c" * 64, "fail", key="lic", fails=["license.components"]), "r.json", now=T[1])
+    with pytest.raises(review.ReviewConflict, match="licence"):
+        review.decide(log, "lic", "approved", "")
+    # Sending either back is always possible.
+    assert review.decide(log, "lic", "sent_back", "fix the provenance")["state"] == "sent_back"
+    assert review.decide(log, "row", "sent_back", "run the checks")["state"] == "sent_back"

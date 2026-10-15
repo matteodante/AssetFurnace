@@ -63,11 +63,29 @@ export function checkableModel(asset) {
 export function checkChoices(assets) {
   return (assets ?? []).filter((a) => !a.hidden).flatMap((a) => {
     const base = { id: a.id, name: a.name, picture: a.picture ?? null };
+    // A prop set's game-ready outputs are its props (what the Library shows), not the sheet;
+    // each is its own asset in the queue.
+    const props = (a.kind === 'prop set' ? a.props ?? [] : []).filter((p) => p?.file);
+    if (props.length) {
+      return props.map((p) => ({ ...base, id: propKey(a.id, p.name), name: `${a.name} · ${p.name}`, file: p.file, version: null }));
+    }
     const versions = [...(a.blender_versions ?? [])].reverse()
       .filter((v) => v?.file).map((v) => ({ ...base, file: v.file, version: v.label || v.id }));
     const original = checkableModel(a) ? [{ ...base, file: checkableModel(a), version: versions.length ? 'original' : null }] : [];
     return [...versions, ...original];
   });
+}
+
+/** A prop's key in the queue: its set's id and its own name, kept to the server's key rules. */
+export function propKey(setId, propName) {
+  return `${setId}-${String(propName ?? 'prop').replace(/[^A-Za-z0-9_.-]+/g, '-')}`.slice(0, 120);
+}
+
+/** Whether the server will take an approval (see review.approval_blocker): the checks ran and
+ *  the licence check did not fail. Sending back is always possible. */
+export function canApprove(item) {
+  if (item?.status == null) return false;
+  return !(item?.summary?.fail ?? []).includes('license.components');
 }
 
 /** The request body for POST /api/review/checks. `reference` is a path under output/, or ''. */

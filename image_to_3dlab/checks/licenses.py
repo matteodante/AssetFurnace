@@ -30,6 +30,7 @@ FINISH_RUN = re.compile(r"^(?P<source>[A-Za-z0-9_-]{1,200})__finish__\d{8}-\d{6}
 # Pattern -> (class, condition). Matched anywhere in a licence name, case-insensitive.
 KNOWN = [
     (r"tencent|hunyuan", "blocked", "Not licensed in the EU, UK or South Korea."),
+    (r"non-?commercial|\bnc\b", "blocked", "Non-commercial: not usable in a game that is sold."),
     (r"dinov3", "conditional", "DINOv3 License terms apply to the image encoder."),
     (r"qwen", "conditional", "Attribution: say 'Built with Qwen'."),
     (r"stability ai community", "conditional", "Stability AI Community License: registration and revenue cap."),
@@ -38,7 +39,8 @@ KNOWN = [
     (r"\bbsd\b", "clear", None),
     (r"\bcc0\b|cc-by|creative commons attribution", "clear", None),
 ]
-BLOCKED_CLASSES = {"territory-restricted", "blocked", "non-commercial"}
+# research-only is non-commercial in this repo's policy (provenance.validate_run_policy).
+BLOCKED_CLASSES = {"territory-restricted", "blocked", "non-commercial", "research-only"}
 
 
 def _read(path: Path) -> dict | None:
@@ -99,6 +101,8 @@ def find_records(glb: Path, explicit: Path | None = None,
 
     if explicit is not None:
         record = _read(explicit)
+        if record and not declared_hash_matches(record, glb):
+            return [], f"{explicit.name} records a different file: its output sha256 does not match this GLB"
         return ([(explicit, record)] if record else []), "given"
     found = [(p, r) for p in _beside(glb) if (r := _read(p))]
     stale = [p for p, r in found if not declared_hash_matches(r, glb)]

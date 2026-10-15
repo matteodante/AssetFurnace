@@ -133,3 +133,30 @@ def test_reference_measurements_must_be_positive_numbers(tmp_path, numbers):
     """Codex review: a negative height made every size check pass."""
     with pytest.raises(ValueError, match="positive"):
         checks.Asset(glb=tmp_path / "a.glb", reference_numbers=numbers)
+
+
+def test_a_prerequisite_that_crashes_fails_its_check_and_the_run_goes_on(tmp_path, monkeypatch):
+    """Codex review 2: an error while deciding what a check needs is that check's failure."""
+    glb = fx.clean(tmp_path / "a.glb")
+
+    def broken(self, needs):
+        if "texture" in needs:
+            raise ValueError("malformed GLB")
+
+    monkeypatch.setattr(checks.Asset, "missing", broken)
+    report = checks.run_checks(checks.Asset(glb=glb), only=["budget.texel_density", "mesh.holes"])
+    by_name = {r["check"]: r for r in report["results"]}
+    assert by_name["budget.texel_density"]["status"] == "fail"
+    assert "malformed GLB" in by_name["budget.texel_density"]["message"]
+    assert by_name["mesh.holes"]["status"] == "pass"
+
+
+def test_a_report_where_nothing_was_measured_is_not_a_pass(tmp_path):
+    """Codex review 2: every check skipped must not read as 'all checks pass'."""
+    report = checks.run_checks(checks.Asset(glb=fx.clean(tmp_path / "a.glb")), only=["silhouette"])
+    assert report["results"] == [] and report["status"] == "warn"
+
+
+def test_a_bmp_reference_is_a_picture(tmp_path):
+    """Codex review 2: the studio accepts BMP pictures, so the checks must too."""
+    assert checks.Asset(glb=tmp_path / "a.glb", reference=tmp_path / "concept.BMP").reference_kind == "image"

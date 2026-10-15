@@ -17,7 +17,7 @@ import numpy as np
 
 from image_to_3dlab.checks import geometry
 
-IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}  # what the studio accepts as a picture
 REPO = Path(__file__).resolve().parents[2]
 VALIDATOR_ENV = "I2L_GLTF_VALIDATOR"
 

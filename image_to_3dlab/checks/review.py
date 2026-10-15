@@ -147,6 +147,19 @@ def enqueue_for_review(glb: str | Path, key: str, *, source: str | None = None, 
     return enqueue(log, empty, "", key, now, source, kind)
 
 
+def approval_blocker(item: dict) -> str | None:
+    """Why this version cannot be approved, or None. Sending it back is always possible.
+
+    The licence is the guardrail: an asset whose checks never ran, or whose licence check
+    failed, is not approved by a click.
+    """
+    if item.get("status") is None:
+        return "its checks have not run yet"
+    if "license.components" in (item.get("summary") or {}).get("fail", []):
+        return "its licence check failed"
+    return None
+
+
 def decide(log: Path, key: str, decision: str, note: str = "", now: str | None = None,
            asset_sha256: str | None = None) -> dict:
     """Approve the version waiting for review, or send it back with a note; return the new state.
@@ -170,6 +183,10 @@ def decide(log: Path, key: str, decision: str, note: str = "", now: str | None =
             raise ReviewConflict(f"{key} was sent back; it waits for a new version to be checked")
         if current["state"] != "to_review":
             raise ReviewConflict(f"{key} is already {current['state'].replace('_', ' ')}")
+        if decision == "approved":
+            blocker = approval_blocker(current)
+            if blocker:
+                raise ReviewConflict(f"{key} cannot be approved: {blocker}")
         _append(log, {"event": decision, "key": key, "at": _now(now), "note": note,
                       "asset": current.get("asset"), "asset_sha256": current.get("asset_sha256")})
     return fold(load(log))[key]

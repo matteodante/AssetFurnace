@@ -6,6 +6,7 @@ import json
 import shutil
 
 import _check_fixtures as fx
+import pytest
 
 from image_to_3dlab import checks
 from image_to_3dlab.checks import licenses
@@ -130,3 +131,31 @@ def test_a_blender_version_takes_its_licence_from_its_source_record(tmp_path):
     glb = fx.clean(tmp_path / "model.glb")
     fx.sidecar(glb, {"license": None, "tool": "Blender", "source_record": fx.PIXAL3D_RECORD})
     assert check(glb)["status"] == "pass"
+
+
+def test_an_explicit_record_for_another_file_is_not_trusted(tmp_path):
+    """Codex review 2: the --provenance path checks the declared hash too."""
+    glb = fx.clean(tmp_path / "a.glb")
+    record = tmp_path / "elsewhere.json"
+    record.write_text(json.dumps({**fx.PIXAL3D_RECORD, "output": {"sha256": "0" * 64}}))
+    found = check(glb, provenance=record)
+    assert found["status"] == "fail" and "does not match" in found["message"]
+
+
+def test_a_research_only_model_is_blocked(tmp_path):
+    """Codex review 2: research-only is non-commercial in this repo's policy (provenance.py)."""
+    glb = fx.clean(tmp_path / "a.glb")
+    fx.sidecar(glb, {"license": "MIT", "classification": "research-only"})
+    assert check(glb)["status"] == "fail"
+
+
+
+@pytest.mark.parametrize("name, status", [
+    ("CC-BY-NC 4.0", "fail"), ("Creative Commons Attribution-NonCommercial 4.0", "fail"),
+    ("CC BY-NC-SA 4.0", "fail"), ("CC-BY 4.0", "pass"),
+])
+def test_non_commercial_creative_commons_is_blocked(tmp_path, name, status):
+    """Codex review 2: the NC variants must not match the plain CC-BY pattern."""
+    glb = fx.clean(tmp_path / "a.glb")
+    fx.sidecar(glb, {"license": name})
+    assert check(glb)["status"] == status

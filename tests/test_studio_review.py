@@ -111,3 +111,18 @@ def test_review_is_wired_into_the_page_and_puts_a_sheet_away_first():
 def test_review_changes_carry_the_studio_header():
     review = (STUDIO / "review.js").read_text(encoding="utf-8")
     assert "'X-AssetFurnace-Request': 'review'" in review
+
+
+@needs_node
+def test_a_prop_set_offers_its_props_not_the_sheet_and_approval_follows_the_rules():
+    """Codex review 2: the Library shows a prop set's props, so those are what get reviewed."""
+    out = _run("""
+      const sets = [{id:'s1', name:'tavern', kind:'prop set', model:'a/sheet.glb',
+                     props:[{name:'barrel', file:'props/s/barrel_LOD0.glb'}, {name:'stool', file:'props/s/stool_LOD0.glb'}]}];
+      console.log(JSON.stringify({
+        choices: m.checkChoices(sets).map((c) => [c.id, c.file]),
+        unchecked: m.canApprove({state:'to_review', status:null, summary:{fail:[], warn:[]}}),
+        licence: m.canApprove({state:'to_review', status:'fail', summary:{fail:['license.components'], warn:[]}}),
+        other: m.canApprove({state:'to_review', status:'fail', summary:{fail:['mesh.holes'], warn:[]}}) }));""")
+    assert out["choices"] == [["s1-barrel", "props/s/barrel_LOD0.glb"], ["s1-stool", "props/s/stool_LOD0.glb"]]
+    assert out["unchecked"] is False and out["licence"] is False and out["other"] is True

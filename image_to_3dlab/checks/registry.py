@@ -143,7 +143,10 @@ def _apply_warn_only(found: dict) -> dict:
 
 def run_checks(asset, profile: str = "prop", overrides: dict | None = None,
                only: Iterable[str] | None = None, now: datetime | None = None) -> dict:
-    """Run every registered check that applies to `asset`; return the report."""
+    """Run every registered check that applies to `asset`; return the report.
+
+    The report's status is the worst result, or "warn" when every check was skipped.
+    """
     settings = load_profile(profile, overrides)
     wanted = set(only) if only is not None else None
     results, skipped = [], []
@@ -154,16 +157,17 @@ def run_checks(asset, profile: str = "prop", overrides: dict | None = None,
         if config.get("enabled") is False:
             skipped.append({"check": name, "reason": "disabled in the profile"})
             continue
-        reason = asset.missing(spec.needs)
-        if reason:
-            skipped.append({"check": name, "reason": reason})
-            continue
         try:
+            reason = asset.missing(spec.needs)
+            if reason:
+                skipped.append({"check": name, "reason": reason})
+                continue
             found = validate_result(spec.func(asset, config))
+            # warn_only softens thresholds still being calibrated, never a check that broke.
+            if config.get("warn_only"):
+                found = _apply_warn_only(found)
         except Exception as exc:  # noqa: BLE001 - a check that cannot measure has not passed
             found = result(name, "fail", None, None, f"check could not run: {type(exc).__name__}: {exc}")
-        if config.get("warn_only"):
-            found = _apply_warn_only(found)
         results.append(found)
     return {
         "schema_version": SCHEMA_VERSION,
@@ -173,7 +177,8 @@ def run_checks(asset, profile: str = "prop", overrides: dict | None = None,
         "reference": asset.reference_record(),
         "profile": settings["name"],
         "ran_at": (now or datetime.now(timezone.utc)).isoformat(timespec="seconds"),  # noqa: UP017 - 3.10
-        "status": worst(r["status"] for r in results),
+        # Nothing measured is not a pass: "pass" always means measured and good.
+        "status": worst(r["status"] for r in results) if results else "warn",
         "results": results,
         "skipped": skipped,
     }

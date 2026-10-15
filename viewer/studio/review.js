@@ -5,7 +5,7 @@
 import { createModelViewport, disposeModelViewport } from '../components/model-viewport.js';
 import { closeSheet } from './pages.js';
 import {
-  STATE_LABELS, STATUS_LABELS, statusLabel, queueSections, summaryLine, checkRows, overlays, canDecide,
+  STATE_LABELS, STATUS_LABELS, statusLabel, queueSections, summaryLine, checkRows, overlays, canDecide, canApprove,
   checkChoices, checksRequest,
 } from './review-model.js';
 
@@ -132,7 +132,8 @@ function decisionBlock(item) {
   if (item.state === 'sent_back') return '<p class="meta">Sent back. A new version comes back here once it has been checked.</p>';
   if (item.state !== 'to_review') return `<p class="meta">${esc(STATE_LABELS[item.state] || item.state)}.</p>`;
   return `<label class="field">Note<textarea data-note rows="3" placeholder="What to change (needed to send back)"></textarea></label>
-    <div class="row"><button class="primary" data-decide="approved">Approve</button><button class="ghost" data-decide="sent_back" disabled>Send back</button></div>`;
+    <div class="row"><button class="primary" data-decide="approved"${canApprove(item) ? '' : ' disabled'}>Approve</button><button class="ghost" data-decide="sent_back" disabled>Send back</button></div>
+    ${canApprove(item) ? '' : `<p class="meta">${item.status == null ? 'Run the checks before approving.' : 'The licence check failed: send it back.'}</p>`}`;
 }
 
 /** The review panel in the Steps column for one asset; `viewer` is the studio viewer. */
@@ -174,7 +175,7 @@ export function renderReviewPanel(root, item, { viewer, onDecided }) {
       onDecided?.(updated);
     } catch (error) {
       status.textContent = `Not saved: ${error.message}`;
-      root.querySelector('[data-decide="approved"]').disabled = false;
+      root.querySelector('[data-decide="approved"]').disabled = !canApprove(item);
       back.disabled = !canDecide('sent_back', note.value);
     }
   }));
