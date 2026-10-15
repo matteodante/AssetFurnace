@@ -20,6 +20,7 @@ The design and its calibration are in ``docs/plans/2026-10-15-game-materials-des
 from __future__ import annotations
 
 import copy
+import hashlib
 import io
 import json
 import re
@@ -596,6 +597,22 @@ def transform_uv(uv: np.ndarray, transform: dict | None) -> np.ndarray:
     return np.c_[sx * (c * u + s * v) + ox, sy * (-s * u + c * v) + oy]
 
 
+def primitive_triangles(indices: np.ndarray, mode: int) -> np.ndarray | None:
+    """Triangles of a primitive: plain lists, strips and fans; None for points and lines."""
+    indices = np.asarray(indices, dtype=np.int64)
+    if mode == 4:
+        return indices[: len(indices) // 3 * 3].reshape(-1, 3)
+    if mode == 5:
+        count = max(len(indices) - 2, 0)
+        tri = np.stack([indices[:count], indices[1:count + 1], indices[2:count + 2]], axis=1)
+        tri[1::2, [0, 1]] = tri[1::2, [1, 0]]   # every other strip triangle flips to keep winding
+        return tri
+    if mode == 6:
+        count = max(len(indices) - 2, 0)
+        return np.stack([np.full(count, indices[0]), indices[1:count + 1], indices[2:count + 2]], axis=1)
+    return None
+
+
 def scene_nodes(document: dict) -> list[int]:
     """The nodes the displayed scene draws, parents before children; every node if no scene."""
     nodes = document.get("nodes", [])
@@ -643,8 +660,8 @@ def _surfaces(glb: EditGLB) -> dict[int, _Surface]:
             continue
         matrix = globals_[node_index]
         for primitive in document["meshes"][node["mesh"]]["primitives"]:
-            if primitive.get("mode", 4) != 4 or "material" not in primitive:
-                continue
+            if primitive.get("mode", 4) not in (4, 5, 6) or "material" not in primitive:
+                continue   # points and lines have no surface to paint
             material_index = primitive["material"]
             material = document["materials"][material_index]
             pbr = material.get("pbrMetallicRoughness", {})
@@ -664,8 +681,9 @@ def _surfaces(glb: EditGLB) -> dict[int, _Surface]:
             surface = surfaces[material_index]
             positions = glb.accessor(primitive["attributes"]["POSITION"]).astype(np.float64)
             positions = positions @ matrix[:3, :3].T + matrix[:3, 3]
-            faces = (glb.accessor(primitive["indices"]).astype(np.int64).reshape(-1, 3)
-                     if "indices" in primitive else np.arange(len(positions)).reshape(-1, 3))
+            order = (glb.accessor(primitive["indices"]) if "indices" in primitive
+                     else np.arange(len(positions)))
+            faces = primitive_triangles(order, primitive.get("mode", 4))
             surface.positions.append(positions)
             surface.faces.append(faces)
             surface.uv.append(transform_uv(glb.accessor(primitive["attributes"][uv_key]).astype(np.float64),
@@ -924,20 +942,25 @@ def _orm(surface: _Surface, material: dict, glb: EditGLB, mask: np.ndarray, cove
 OPERATION = "Game materials: tint mask, baked-light checks, normal, roughness, ORM (no models)"
 
 
-def write_provenance(source: Path, output: Path) -> Path:
-    """Carry the source's licence record to the result, adding no models.
-
-    The step only does image maths, so the result is licensed exactly as its source;
-    a source with no record gets one that says its licence is unknown, never a guess.
-    """
+def source_provenance(source: Path) -> dict:
+    """The source's licence record, or one that says its licence is unknown, never a guess."""
     sidecar = source.with_suffix(".provenance.json")
     if sidecar.is_file():
-        record = json.loads(sidecar.read_text(encoding="utf-8"))
-    else:
-        record = {"schema_version": 1, "license": None, "classification": "unknown", "models": [],
-                  "note": "the source carried no provenance record"}
+        return json.loads(sidecar.read_text(encoding="utf-8"))
+    return {"schema_version": 1, "license": None, "classification": "unknown", "models": [],
+            "note": "the source carried no provenance record"}
+
+
+def write_provenance(source: Path, source_sha256: str, record: dict, output: Path) -> Path:
+    """Carry the source's licence record to the result, adding no models.
+
+    The step only does image maths, so the result is licensed exactly as its source.
+    `source_sha256` and `record` are taken when the source is read, so a file replaced
+    while the step runs cannot lend the result another hash or licence.
+    """
+    record = copy.deepcopy(record)
     record["operation"] = OPERATION
-    record["input"] = {"path": str(source), "sha256": sha256_file(source)}
+    record["input"] = {"path": str(source), "sha256": source_sha256}
     # finalize_output keeps the licence classification under "output": update, never replace
     record["output"] = {**(record.get("output") or {}), "path": str(output), "sha256": sha256_file(output)}
     path = output.with_suffix(".provenance.json")
@@ -994,7 +1017,9 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
     target = out_dir / f"{asset.stem}.glb"
     if target.exists() and target.samefile(asset):
         raise ValueError("out_dir is the asset's own folder: the result would overwrite the source")
-    glb = EditGLB(asset.read_bytes())
+    data = asset.read_bytes()
+    source_sha256, licence = hashlib.sha256(data).hexdigest(), source_provenance(asset)
+    glb = EditGLB(data)
     analysis = _analyse(glb, ao, zones_from, samples, seed)
     status = worst(r["status"] for r in analysis.checks)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1029,9 +1054,9 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
         name = prefix
         if many:
             name = f"{prefix}_{safe_name(material.get('name') or str(surface.material))}"
-            if name in used:
+            if name.casefold() in used:   # Skin and skin are one file on Windows and macOS
                 name = f"{name}-{surface.material}"
-        used.add(name)
+        used.add(name.casefold())
         written: dict[str, Path] = {}
 
         mask = _mask_image(surface, analysis, coverage, zones_from)
@@ -1108,6 +1133,6 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
     sidecar["maps"] = first_maps
     sidecar["materials"] = per_material
     sidecar_path.write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
-    write_provenance(asset, glb_path)
+    write_provenance(asset, source_sha256, licence, glb_path)
     return MaterialsResult(status, analysis.checks, analysis.zones, glb_path, sidecar_path,
                            first_textures, first_maps)

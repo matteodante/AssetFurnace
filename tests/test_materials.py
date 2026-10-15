@@ -784,3 +784,53 @@ def test_only_nodes_in_the_scene_are_analysed(tmp_path):
     document["nodes"].append({"mesh": 1, "name": "not in any scene"})
     asset.write_bytes(build_glb(document, binary))
     assert list(m._surfaces(EditGLB(asset.read_bytes()))) == [0]
+
+
+# --------------------------------------------------------------------------- third review
+
+def test_names_differing_only_in_case_get_separate_files(tmp_path):
+    """Skin and skin are one file on a case-insensitive disk (Windows, macOS)."""
+    asset = two_material_glb(tmp_path / "case.glb", ["Skin", "skin"])
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    files = [x["textures"]["tint_mask"] for x in json.loads(result.sidecar_path.read_text())["materials"]]
+    assert len({f.casefold() for f in files}) == 2
+
+
+def test_strips_and_fans_are_triangles_too():
+    strip = m.primitive_triangles(np.arange(5), 5)
+    np.testing.assert_array_equal(strip, [[0, 1, 2], [2, 1, 3], [2, 3, 4]])
+    fan = m.primitive_triangles(np.arange(5), 6)
+    np.testing.assert_array_equal(fan, [[0, 1, 2], [0, 2, 3], [0, 3, 4]])
+    np.testing.assert_array_equal(m.primitive_triangles(np.arange(6), 4), [[0, 1, 2], [3, 4, 5]])
+    assert m.primitive_triangles(np.arange(6), 1) is None        # lines have no surface
+
+
+def test_a_strip_primitive_is_analysed(tmp_path):
+    asset = make_glb(tmp_path / "strip.glb", banded_albedo())
+    document, binary = parse_glb(asset.read_bytes())
+    primitive = document["meshes"][0]["primitives"][0]
+    # The same sphere again, as one long strip over its first faces' vertices.
+    document["meshes"][0]["primitives"].append({"attributes": primitive["attributes"], "mode": 5, "material": 0})
+    asset.write_bytes(build_glb(document, binary))
+    surface = m._surfaces(EditGLB(asset.read_bytes()))[0]
+    assert len(surface.faces) == 2 and len(surface.faces[1]) > 0
+
+
+def test_provenance_describes_the_bytes_that_were_read(tmp_path, monkeypatch):
+    """If the source is replaced mid-run, the record still names what produced the result."""
+    asset = make_glb(tmp_path / "knight.glb", banded_albedo())
+    (tmp_path / "knight.provenance.json").write_text(json.dumps({"classification": "commercial-clear"}))
+    original = m.sha256_file(asset)
+    analyse = m._analyse
+
+    def swap_midway(*args, **kwargs):
+        result = analyse(*args, **kwargs)
+        make_glb(asset, banded_albedo(colours=(BLUE, GREEN, RED)))
+        (tmp_path / "knight.provenance.json").write_text(json.dumps({"classification": "research-only"}))
+        return result
+
+    monkeypatch.setattr(m, "_analyse", swap_midway)
+    m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    record = json.loads((tmp_path / "out" / "knight.provenance.json").read_text())
+    assert record["input"]["sha256"] == original
+    assert record["classification"] == "commercial-clear"
