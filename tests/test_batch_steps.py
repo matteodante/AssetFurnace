@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from batch_fakes import install_fake_generator, tiny_png, write_spec
+from batch_fakes import install_fake_generator, tiny_glb, tiny_png, write_spec
 
 from image_to_3dlab import batch
 from image_to_3dlab.batch_steps import StepContext
@@ -68,7 +68,7 @@ def test_generate_preflight_reports_each_backend_once(monkeypatch, tmp_path):
 def generated(tmp_path):
     asset = tmp_path / "gen" / "cat__pixal3d.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTFraw")
+    tiny_glb(asset, "raw")
     sidecar = asset.with_suffix(".provenance.json")
     sidecar.write_text(json.dumps({
         "input": {"path": str(tmp_path / "refs" / "cat.png")},
@@ -135,7 +135,7 @@ def test_finish_writes_a_derived_provenance_sidecar(tmp_path, monkeypatch, gener
 
     def fake_run(command, stdout, **kwargs):
         output = Path(command[5])
-        output.write_bytes(b"glTFfinished")
+        tiny_glb(output, "finished")
         output.with_suffix(".retopo-repaint.json").write_text(json.dumps({"stages": ["x"]}))
         return subprocess.CompletedProcess(command, 0)
 
@@ -231,7 +231,7 @@ def test_a_finish_only_row_without_a_source_image_is_caught_before_the_batch(tmp
     monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
     asset = tmp_path / "old" / "crate.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     row = _row(tmp_path, images=(), steps=("finish",), asset=asset)
     assert any("source image" in p for p in finish_step.preflight([row]))
     image = tiny_png(tmp_path / "old" / "crate.png")
@@ -242,12 +242,12 @@ def test_a_finish_only_row_without_a_source_image_is_caught_before_the_batch(tmp
 def test_a_top_level_classification_is_kept(tmp_path, monkeypatch):
     asset = tmp_path / "props" / "barrel_LOD0.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     sidecar = asset.with_suffix(".provenance.json")
     sidecar.write_text(json.dumps({"classification": "commercial-conditional",
                                    "license": {"name": "MIT + DINOv3"}}))
     output = tmp_path / "out.glb"
-    output.write_bytes(b"glTFdone")
+    tiny_glb(output, "done")
     record = finish_step.provenance_record(
         _context(tmp_path, _row(tmp_path), asset, sidecar), output, None)
     assert record["classification"] == "commercial-conditional"
@@ -290,9 +290,9 @@ def test_a_half_installed_repaint_is_caught(tmp_path, monkeypatch):
 
 def test_an_unknown_source_stays_unknown_after_a_repaint(tmp_path):
     asset = tmp_path / "upload.glb"
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     output = tmp_path / "out.glb"
-    output.write_bytes(b"glTFdone")
+    tiny_glb(output, "done")
     record = finish_step.provenance_record(
         _context(tmp_path, _row(tmp_path), asset, None, {"paint": True}), output, None)
     assert record["classification"] is None
@@ -313,7 +313,7 @@ def test_the_finish_record_names_the_picture_it_used(tmp_path, generated):
     asset, sidecar = generated
     image = tiny_png(tmp_path / "refs" / "cat.png")
     output = tmp_path / "out.glb"
-    output.write_bytes(b"glTFdone")
+    tiny_glb(output, "done")
     record = finish_step.provenance_record(_context(tmp_path, _row(tmp_path), asset, sidecar),
                                            output, None)
     assert record["input"]["image"]["path"] == str(image)
@@ -347,7 +347,7 @@ def test_a_finish_only_rows_broken_picture_is_caught_before_the_batch(tmp_path, 
     broken.parent.mkdir(exist_ok=True)
     broken.write_bytes(b"not a picture")
     asset = tmp_path / "crate.glb"
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     row = _row(tmp_path, images=(broken,), steps=("finish",), asset=asset)
     (problem,) = finish_step.preflight([row])
     assert "not a readable picture" in problem
@@ -371,7 +371,7 @@ def test_the_staged_pictures_are_finish_files(tmp_path, monkeypatch, generated):
 def test_the_finish_record_carries_this_runs_intent(tmp_path, generated):
     asset, sidecar = generated
     output = tmp_path / "out.glb"
-    output.write_bytes(b"glTFdone")
+    tiny_glb(output, "done")
     record = finish_step.provenance_record(_context(tmp_path, _row(tmp_path), asset, sidecar),
                                            output, None)
     assert record["intent"] == {"use_case": "game", "distribution": "private",
@@ -426,3 +426,27 @@ def test_an_old_picture_left_in_input_is_not_a_finish_file(tmp_path, monkeypatch
     old = tiny_png(ctx.row_dir / "input" / "old_concept.png")
     files = finish_step.run(ctx).files
     assert current in files and old not in files
+
+
+
+def test_the_repaints_upscaler_weights_are_checked(tmp_path, monkeypatch):
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"")
+    monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
+    monkeypatch.setattr(finish_step, "host_platform", lambda: finish_step.APPLE)
+    python = tmp_path / "venv" / "python"
+    python.parent.mkdir()
+    python.write_bytes(b"")
+    weights = tmp_path / "weights"
+    for name in finish_step.PAINT_FILES:
+        (weights / name).parent.mkdir(parents=True, exist_ok=True)
+        (weights / name).write_bytes(b"x")
+    monkeypatch.setattr(finish_step, "PAINT_PYTHON", python)
+    monkeypatch.setattr(finish_step, "PAINT_WEIGHTS", weights)
+    upscaler = (tmp_path / "rrdbnet_mlx.safetensors", tmp_path / "rrdbnet.npz")
+    monkeypatch.setattr(finish_step, "PAINT_UPSCALER", upscaler)
+    row = _row(tmp_path, options={"finish": {"paint": True}})
+    (problem,) = finish_step.preflight([row])
+    assert "realesrgan" in problem
+    upscaler[1].write_bytes(b"x")   # the older converted file will do
+    assert finish_step.preflight([row]) == []

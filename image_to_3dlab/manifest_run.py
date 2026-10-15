@@ -217,6 +217,10 @@ def run_manifest(path: Path, log: Callable[[str], None] = print) -> tuple[Path, 
         output = data.get("output", {})
         if not isinstance(output, dict) or not isinstance(output.get("directory", "output"), str):
             raise ValueError('output must be an object like {"directory": "output"}')
+        if set(output) - {"directory"}:   # a misspelt directory would write elsewhere
+            raise ValueError(f"output: unknown field(s) {', '.join(sorted(set(output) - {'directory'}))}")
+        if not all(isinstance(intent[key], str) for key in ("use_case", "distribution")):
+            raise ValueError("use_case and distribution must be text")
         output_root = Path(output.get("directory", "output"))
     except (KeyError, TypeError, ValueError) as exc:
         raise ManifestRunError(f"invalid run manifest: {exc}") from exc

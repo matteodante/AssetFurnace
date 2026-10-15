@@ -27,6 +27,17 @@ FAKE_PROFILE = LicenseProfile(
 )
 
 
+def tiny_glb(path: Path, note: str = "") -> Path:
+    """A minimal but whole binary glTF 2: header, length and a JSON chunk. `note` makes
+    two files' bytes differ."""
+    document = json.dumps({"asset": {"version": "2.0"}, "extras": {"note": note}}).encode()
+    document += b" " * (-len(document) % 4)
+    body = struct.pack("<II", len(document), 0x4E4F534A) + document
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(struct.pack("<4sII", b"glTF", 2, 12 + len(body)) + body)
+    return path
+
+
 def tiny_png(path: Path, seed: int = 0) -> Path:
     """A valid 1x1 PNG whose colour depends on `seed`, so every row has its own bytes."""
     def chunk(kind: bytes, data: bytes) -> bytes:

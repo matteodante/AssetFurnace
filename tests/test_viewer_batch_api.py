@@ -20,6 +20,7 @@ from batch_fakes import (
     FakeGenerator,
     fake_step,
     install_fake_generator,
+    tiny_glb,
     tiny_png,
 )
 
@@ -347,7 +348,7 @@ def test_a_checks_only_rows_glb_inside_output_is_in_the_library(output, monkeypa
     monkeypatch.setitem(batch.STEPS, "checks", fake_step(lambda ctx: StepResult()))
     source = output / "imported" / "crate.glb"
     source.parent.mkdir()
-    source.write_bytes(b"glTFcrate")
+    tiny_glb(source, "crate")
     spec = output.parent / "checks.json"
     spec.write_text(json.dumps({"schema_version": 1, "name": "checked", "rows": [
         {"id": "SM_Crate", "asset": str(source), "steps": ["checks"]}]}))
@@ -365,7 +366,7 @@ def test_a_batch_never_takes_over_a_library_models_node(output, monkeypatch):
     run = output / "knight__pixal3d__1"
     run.mkdir()
     glb = run / f"{run.name}.glb"
-    glb.write_bytes(b"glTFknight")
+    tiny_glb(glb, "knight")
     spec = output.parent / "checks.json"
     spec.write_text(json.dumps({"schema_version": 1, "name": "checked", "rows": [
         {"id": "SK_Knight", "asset": str(glb), "steps": ["checks"]}]}))
@@ -382,7 +383,7 @@ def test_a_duplicate_models_batch_picture_joins_the_kept_model(output, monkeypat
     run = output / "knight__pixal3d__1"
     run.mkdir()
     glb = run / f"{run.name}.glb"
-    glb.write_bytes(b"glTFknight")
+    tiny_glb(glb, "knight")
     picture = tiny_png(output.parent / "knight_ref.png")
     spec = output.parent / "checks.json"
     spec.write_text(json.dumps({"schema_version": 1, "name": "checked", "rows": [
@@ -401,7 +402,7 @@ def test_two_rows_on_one_library_glb_both_join_it(output, monkeypatch):
     run = output / "knight__pixal3d__1"
     run.mkdir()
     glb = run / f"{run.name}.glb"
-    glb.write_bytes(b"glTFknight")
+    tiny_glb(glb, "knight")
     rows = []
     for index in (1, 2):
         picture = tiny_png(output.parent / f"ref{index}.png", index)
@@ -419,3 +420,23 @@ def test_stop_reaches_a_batch_that_has_no_state_yet(server, output, monkeypatch)
     monkeypatch.setattr(mcp_server, "terminate_group", stopped.append)
     status, body = request(server, "POST", "/api/batches/fresh/cancel", {})
     assert status == 200 and body["cancelled"] is True and stopped == [os.getpid()]
+
+
+
+def test_a_batch_copy_with_a_library_models_bytes_does_not_take_its_rigs(output, monkeypatch):
+    """Same bytes at another path: the Library's own model keeps the hash."""
+    run = output / "knight__pixal3d__1"
+    run.mkdir()
+    original = tiny_glb(run / f"{run.name}.glb", "knight")
+    copy = tiny_glb(output / "batches" / "lot" / "rows" / "K" / "generate" / "k.glb", "knight")
+    sha = batch.sha256_file(original)
+    assert batch.sha256_file(copy) == sha
+    monkeypatch.setattr(batch_api, "library_nodes", lambda out: {
+        "picture": [], "finished": [],
+        "model": [{"stem": "K__x__batch", "file": copy, "link": "K__x"}]})
+    props = output / "props" / "knight__props__20261015-120000"
+    tiny_glb(props / "source.glb", "knight")                      # cut from the original
+    tiny_glb(props / "finished" / "barrel" / "barrel_LOD0.glb", "barrel")
+    assets = assets_api.list_assets(output)
+    prop_set = next(a for a in assets if a["kind"] == "prop set")
+    assert prop_set["model"] == f"{run.name}/{run.name}.glb"     # not the batch copy

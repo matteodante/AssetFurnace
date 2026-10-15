@@ -107,6 +107,8 @@ def test_run_manifest_refuses_before_the_generator_when_weights_are_missing(tmp_
     ({"seed": 1}, {"input": {"views": ["cat.png", 7]}}, "file paths"),
     ({"seed": 1}, {"license_policy": {"allow_conditionals": False}}, "allow_conditionals"),
     ({"seed": 1}, {"output": ["out"]}, "output must be an object"),
+    ({"seed": 1}, {"output": {"direcotry": "/big-disk"}}, "direcotry"),
+    ({"seed": 1}, {"use_case": []}, "must be text"),
 ])
 def test_run_manifest_rejects_bad_manifests_with_code_2(tmp_path, monkeypatch, parameters,
                                                         extra, message):

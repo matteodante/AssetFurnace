@@ -15,6 +15,7 @@ from batch_fakes import (
     FakeGenerator,
     fake_step,
     install_fake_generator,
+    tiny_glb,
     tiny_png,
     write_spec,
 )
@@ -486,7 +487,7 @@ def test_an_asset_row_skips_generation(tmp_path, monkeypatch, fake_finish):
     generator = install_fake_generator(monkeypatch)
     asset = tmp_path / "old" / "crate.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTFold")
+    tiny_glb(asset, "old")
     asset.with_suffix(".provenance.json").write_text(json.dumps({"license": {"name": "MIT"}}))
     (tmp_path / "lot.json").write_text(json.dumps({
         "schema_version": 1, "output": {"directory": "out"},
@@ -811,7 +812,7 @@ def test_of_many_takers_of_a_stale_lock_exactly_one_wins(tmp_path, monkeypatch):
 
 def test_the_hash_of_an_asset_no_step_replaced(tmp_path):
     asset = tmp_path / "crate.glb"
-    asset.write_bytes(b"glTFcrate")
+    tiny_glb(asset, "crate")
     entry = {"asset": "crate.glb", "steps": {"checks": {"status": "done", "files": []}}}
     assert batch.asset_sha(entry, tmp_path) == _sha(asset)
 
@@ -820,7 +821,7 @@ def test_a_finish_only_rows_source_goes_through_the_licence_gate(tmp_path, monke
     install_fake_generator(monkeypatch)
     asset = tmp_path / "old" / "knight.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     asset.with_suffix(".provenance.json").write_text(json.dumps(
         {"model": {"backend": "hunyuan-comfyui"}, "input": {"path": "x"}}))
     (tmp_path / "lot.json").write_text(json.dumps({
@@ -843,7 +844,7 @@ def test_a_resume_checks_only_what_it_will_run(tmp_path, monkeypatch, fake_finis
 
 def test_a_finish_only_rows_recorded_image_is_part_of_its_fingerprint(tmp_path):
     asset = tmp_path / "crate.glb"
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     image = tiny_png(tmp_path / "crate.png", 1)
     asset.with_suffix(".provenance.json").write_text(json.dumps({"input": {"path": str(image)}}))
     row = batch.BatchRow(id="SM_Crate", images=(), asset=asset, kind="prop", faces=None,
@@ -886,7 +887,7 @@ def test_the_repaint_is_gated_only_where_finish_runs(tmp_path, monkeypatch):
 def test_nested_provenance_leads_to_the_source_backend_and_image(tmp_path):
     image = tiny_png(tmp_path / "concept.png")
     asset = tmp_path / "SK_Knight.glb"
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     asset.with_suffix(".provenance.json").write_text(json.dumps({
         "input": {"path": str(tmp_path / "older.glb")},          # a finish record
         "source_record": {"input": {"path": str(image)},
@@ -897,7 +898,7 @@ def test_nested_provenance_leads_to_the_source_backend_and_image(tmp_path):
 
 def test_an_asset_rows_record_counts_even_with_its_own_image(tmp_path):
     asset = tmp_path / "crate.glb"
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     record = asset.with_suffix(".provenance.json")
     record.write_text(json.dumps({"classification": "commercial-conditional"}))
     row = batch.BatchRow(id="SM_Crate", images=(tiny_png(tmp_path / "c.png"),), asset=asset,
@@ -943,7 +944,7 @@ def test_a_row_reset_to_the_queue_leaves_the_index_at_once(tmp_path, monkeypatch
 def test_a_finish_only_rows_picture_is_staged_and_indexed(tmp_path, monkeypatch, fake_finish):
     asset = tmp_path / "old" / "crate.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTFold")
+    tiny_glb(asset, "old")
     tiny_png(tmp_path / "old" / "crate.png")
     (tmp_path / "lot.json").write_text(json.dumps({
         "schema_version": 1, "output": {"directory": "out"},
@@ -968,7 +969,7 @@ def test_a_source_backend_without_a_reviewed_licence_is_refused(tmp_path, monkey
     install_fake_generator(monkeypatch)
     asset = tmp_path / "old" / "thing.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     asset.with_suffix(".provenance.json").write_text(json.dumps(
         {"model": {"backend": "mystery3d"}, "input": {"path": "x"}}))
     (tmp_path / "lot.json").write_text(json.dumps({
@@ -983,7 +984,7 @@ def test_a_source_backend_without_a_reviewed_licence_is_refused(tmp_path, monkey
 def test_the_intent_must_be_real_values_for_every_batch(tmp_path, monkeypatch, field, value):
     install_fake_generator(monkeypatch)
     asset = tmp_path / "crate.glb"
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     (tmp_path / "lot.json").write_text(json.dumps({
         "schema_version": 1, field: value,
         "rows": [{"id": "SM_Crate", "asset": "crate.glb", "steps": ["finish"]}]}))
@@ -1009,7 +1010,7 @@ def test_a_finish_only_row_stages_the_picture_its_record_leads_to(tmp_path, monk
                                                                   fake_finish):
     asset = tmp_path / "old" / "crate.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTFold")
+    tiny_glb(asset, "old")
     image = tiny_png(tmp_path / "old" / "crate_concept.png")
     asset.with_suffix(".provenance.json").write_text(json.dumps({"input": {"path": str(image)}}))
     (tmp_path / "lot.json").write_text(json.dumps({
@@ -1049,7 +1050,7 @@ def test_an_output_directory_must_be_a_path(tmp_path, monkeypatch):
 def _asset_row_spec(tmp_path, record, **top):
     asset = tmp_path / "old" / "knight.glb"
     asset.parent.mkdir(exist_ok=True)
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     asset.with_suffix(".provenance.json").write_text(json.dumps(record))
     (tmp_path / "lot.json").write_text(json.dumps({
         "schema_version": 1, **top,
@@ -1109,7 +1110,7 @@ def test_a_checks_only_rows_staged_picture_is_its_own_artifact(tmp_path, monkeyp
     monkeypatch.setitem(batch.STEPS, "checks", fake_step(lambda ctx: StepResult()))
     asset = tmp_path / "old" / "crate.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTFold")
+    tiny_glb(asset, "old")
     tiny_png(tmp_path / "old" / "crate.png")
     (tmp_path / "lot.json").write_text(json.dumps({
         "schema_version": 1, "output": {"directory": "out"},
@@ -1157,7 +1158,7 @@ def test_an_unknown_licence_class_in_the_source_fails_closed(tmp_path, monkeypat
 
 def test_a_damaged_provenance_file_does_not_hide_the_backends_record(tmp_path):
     asset = tmp_path / "knight.glb"
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     asset.with_suffix(".provenance.json").write_text("{ half a record")
     asset.with_suffix(".json").write_text(json.dumps({"backend": "hunyuan-comfyui"}))
     assert batch.recorded_sidecar(asset) == asset.with_suffix(".json")
@@ -1181,7 +1182,7 @@ def test_a_resume_from_a_staged_copy_regenerates_without_copying_it_onto_itself(
 def test_the_index_lists_this_runs_picture_not_a_leftover(tmp_path, monkeypatch, fake_finish):
     asset = tmp_path / "old" / "crate.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTFold")
+    tiny_glb(asset, "old")
     first = tiny_png(tmp_path / "old" / "first.png", 1)
     record = asset.with_suffix(".provenance.json")
     record.write_text(json.dumps({"input": {"path": str(first)}}))
@@ -1218,7 +1219,7 @@ def test_the_run_reads_the_usable_record_past_a_damaged_one(tmp_path, monkeypatc
     monkeypatch.setitem(batch.STEPS, "finish", fake_step(finish))
     asset = tmp_path / "old" / "knight.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     asset.with_suffix(".provenance.json").write_text("{ broken")
     asset.with_suffix(".json").write_text(json.dumps({"backend": "pixal3d"}))
     (tmp_path / "lot.json").write_text(json.dumps({
@@ -1297,7 +1298,7 @@ def test_an_asset_rows_moved_concept_is_read_from_its_staged_copy(tmp_path, monk
                                                                   fake_finish):
     asset = tmp_path / "old" / "crate.glb"
     asset.parent.mkdir()
-    asset.write_bytes(b"glTFold")
+    tiny_glb(asset, "old")
     concept = tiny_png(tmp_path / "old" / "concept.png")
     asset.with_suffix(".provenance.json").write_text(json.dumps({"input": {"path": str(concept)}}))
     (tmp_path / "lot.json").write_text(json.dumps({
@@ -1315,10 +1316,14 @@ def test_an_asset_rows_moved_concept_is_read_from_its_staged_copy(tmp_path, monk
 
 def test_the_record_handed_to_finish_has_licence_data(tmp_path):
     asset = tmp_path / "knight.glb"
-    asset.write_bytes(b"glTF")
+    tiny_glb(asset, "")
     asset.with_suffix(".provenance.json").write_text(json.dumps({"input": {"path": "x.png"}}))
-    asset.with_suffix(".json").write_text(json.dumps({"backend": "pixal3d",
-                                                      "license": {"name": "MIT"}}))
+    asset.with_suffix(".json").write_text(json.dumps({
+        "backend": "pixal3d", "license": {"name": "MIT"},
+        "output": {"classification": "commercial-conditional"}}))
+    assert batch.recorded_sidecar(asset) == asset.with_suffix(".json")
+    # a backend name alone is not what finish inherits: still passed over
+    asset.with_suffix(".provenance.json").write_text(json.dumps({"backend": "pixal3d"}))
     assert batch.recorded_sidecar(asset) == asset.with_suffix(".json")
 
 
@@ -1350,7 +1355,7 @@ def test_a_staging_failure_fails_its_row_and_the_batch_goes_on(tmp_path, monkeyp
 
     monkeypatch.setitem(batch.STEPS, "checks", fake_step(lambda ctx: StepResult()))
     for name in ("a", "b"):
-        (tmp_path / f"{name}.glb").write_bytes(b"glTF")
+        tiny_glb(tmp_path / f"{name}.glb", name)
         tiny_png(tmp_path / f"{name}.png")
     (tmp_path / "lot.json").write_text(json.dumps({
         "schema_version": 1, "output": {"directory": "out"}, "defaults": {"steps": ["checks"]},
@@ -1373,7 +1378,7 @@ def test_a_picture_gone_while_earlier_rows_run_fails_only_its_row(tmp_path, monk
 
     monkeypatch.setitem(batch.STEPS, "checks", fake_step(checks))
     for name in ("a", "b"):
-        (tmp_path / f"{name}.glb").write_bytes(b"glTF")
+        tiny_glb(tmp_path / f"{name}.glb", name)
         tiny_png(tmp_path / f"{name}.png")
     (tmp_path / "lot.json").write_text(json.dumps({
         "schema_version": 1, "output": {"directory": "out"}, "defaults": {"steps": ["checks"]},
@@ -1393,3 +1398,47 @@ def test_a_rows_final_hash_is_kept_not_recomputed(tmp_path, monkeypatch, fake_fi
     assert entry["asset_sha256"] == _sha(directory / entry["asset"])
     monkeypatch.setattr(batch, "sha256_file", lambda path: pytest.fail("hashed again"))
     assert batch.asset_sha(entry, directory) == entry["asset_sha256"]
+
+
+
+def test_a_review_queue_error_fails_its_row_not_the_batch(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch)
+
+    def broken(spec, row, asset):
+        if row.id == "SM_row01":
+            raise OSError("review log is read-only")
+        return real(spec, row, asset)
+
+    real = batch.queue_for_review
+    monkeypatch.setattr(batch, "queue_for_review", broken)
+    spec_path = write_spec(tmp_path, rows=2)
+    report = batch.run_batch(batch.load_batch(spec_path))
+    assert report.counts == {"failed": 1, "done": 1}
+    assert report.failed["SM_row01"].startswith("review:")
+    monkeypatch.setattr(batch, "queue_for_review", real)
+    assert batch.run_batch(batch.load_batch(spec_path), retry_failed=True).counts == {"done": 2}
+
+
+def test_a_batch_name_must_be_text(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1, name=7)
+    with pytest.raises(batch.BatchError, match="name must be text"):
+        batch.load_batch(spec_path)
+
+
+@pytest.mark.parametrize("damage", ["truncated", "version", "no json"])
+def test_a_source_must_be_a_whole_glb(tmp_path, monkeypatch, damage):
+    install_fake_generator(monkeypatch)
+    spec = _asset_row_spec(tmp_path, {})
+    glb = tmp_path / "old" / "knight.glb"
+    tiny_glb(glb)
+    data = bytearray(glb.read_bytes())
+    if damage == "truncated":
+        data = data[:-4]
+    elif damage == "version":
+        data[4] = 1
+    else:
+        data[16:20] = b"BIN\x00"
+    glb.write_bytes(bytes(data))
+    with pytest.raises(batch.BatchError, match="not a GLB"):
+        batch.load_batch(spec)

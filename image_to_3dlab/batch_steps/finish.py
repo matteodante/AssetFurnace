@@ -46,6 +46,10 @@ PAINT_WEIGHTS = PAINT_ROOT / "weights" / "hunyuan3d-paintpbr-v2-1"
 PAINT_FILES = ("vae/config.json", "vae/diffusion_pytorch_model.safetensors",
                "unet/config.json", "unet/diffusion_pytorch_model.safetensors",
                "dinov2/model.safetensors")
+# RealESRGAN, which the repaint runs at the end: the MLX copy beside the paint weights, or
+# the older converted file (hy3dpaint_mlx/realesrgan.py, pick_rrdbnet_weights)
+PAINT_UPSCALER = (PAINT_WEIGHTS / "realesrgan" / "rrdbnet_mlx.safetensors",
+                  PAINT_ROOT / "weights" / "realesrgan" / "rrdbnet.npz")
 PAINT_PROFILE = LICENSES["hunyuan-comfyui"]
 # Worst last: a finished asset is as restricted as the most restricted model in it.
 CLASS_ORDER = ("commercial-clear", "commercial-conditional", "territory-restricted",
@@ -88,6 +92,8 @@ def preflight(rows) -> list[str]:
             if not PAINT_PYTHON.is_file():
                 problems.append(f"the repaint needs its environment: uv sync in {PAINT_ROOT}")
             missing = [name for name in PAINT_FILES if not (PAINT_WEIGHTS / name).is_file()]
+            if not any(path.is_file() for path in PAINT_UPSCALER):
+                missing.append("realesrgan/rrdbnet_mlx.safetensors")
             if missing:
                 problems.append(f"the repaint needs its weights in {PAINT_WEIGHTS} (missing: "
                                 f"{', '.join(missing)}); the Setup page installs them after asking")

@@ -160,9 +160,9 @@ def recorded_sidecar(asset: Path | None) -> Path | None:
 
 
 def _has_licence_data(record: dict[str, Any]) -> bool:
-    return any(level.get(key) for level in _records(record)
-               for key in ("license", "classification", "model", "backend", "components")) or any(
-        (level.get("output") or {}).get("classification") for level in _records(record))
+    """Whether a record has what finish inherits: a licence and a licence class."""
+    return bool(record.get("license")) and bool(
+        record.get("classification") or (record.get("output") or {}).get("classification"))
 
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
@@ -360,7 +360,10 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         problems.append(f"output.directory must be a folder path, not {output!r}")
         output = None
     output_dir = (base / output).resolve() if output else DEFAULT_OUTPUT
-    name = str(top.get("name", path.stem))
+    name = top.get("name", path.stem)
+    if not isinstance(name, str):   # null or 7 would become a folder, a lock and a source
+        problems.append(f"batch name must be text, not {name!r}")
+        name = path.stem
     if not ID_PATTERN.fullmatch(name) or not _usable_folder_name(name):
         problems.append(f"batch name {name!r}: use letters, digits, '_', '.', '-' "
                         "(up to 64), starting with a letter or digit, not ending in a dot, "
@@ -444,13 +447,23 @@ def _usable_folder_name(name: str) -> bool:
 
 
 def _is_glb(path: Path) -> bool:
-    """Whether a file starts like a binary glTF; a broken one fails before the batch, not
-    in Blender's importer after earlier rows have run."""
+    """Whether a file is a whole binary glTF 2 (header, declared length, JSON chunk): a
+    truncated one fails before the batch, not in Blender's importer after earlier rows."""
+    import struct
+
     try:
         with path.open("rb") as handle:
-            return handle.read(4) == b"glTF"
-    except OSError:
+            header = handle.read(20)
+            if len(header) < 20:
+                return False
+            magic, version, length, chunk_length, chunk_type = struct.unpack("<4sIIII", header)
+            if (magic != b"glTF" or version != 2 or length != path.stat().st_size
+                    or chunk_type != 0x4E4F534A or 20 + chunk_length > length):
+                return False
+            gltf = json.loads(handle.read(chunk_length))
+    except (OSError, ValueError, struct.error):
         return False
+    return isinstance(gltf, dict) and isinstance(gltf.get("asset"), dict)
 
 
 def _read_csv(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
@@ -1145,7 +1158,12 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     # Queued first: a runner stopped in between leaves the row running, and its resume
     # queues it (the same version is never queued twice) before recording it done.
     if asset is not None:
-        queue_for_review(spec, row, asset)
+        try:
+            queue_for_review(spec, row, asset)
+        except Exception as exc:  # noqa: BLE001 - one row's queue error must not stop the batch
+            # the row's steps are done and kept; --retry-failed just queues it
+            _fail(entry, steps, "review", f"could not queue it for review: {exc}", save, log)
+            return
     entry["asset_sha256"] = sha256_file(asset) if asset is not None else None
     entry.update(status="done", finished_at=now(),
                  asset=_relative(asset, directory) if asset else None,
