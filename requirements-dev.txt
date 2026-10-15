@@ -1,4 +1,5 @@
 -r requirements.txt
 pytest>=8.2
 ruff>=0.5
-
+# The batch MCP server (image_to_3dlab/mcp_server.py) and its test; optional at run time.
+mcp>=2.3,<3
