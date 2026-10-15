@@ -120,6 +120,35 @@ Vince quella che dopo l'adattamento al corpo dà la qualità migliore con meno r
 - **Accettazione**: un asset difettoso costruito apposta viene fermato dal controllo giusto; un rimando torna in coda
   con la sua nota.
 
+## Ruote già fatte: cosa si riusa e cosa si costruisce (verifica del 15/10/2026)
+
+Prima di scrivere codice si cerca chi lo fa già bene. Stato e licenze verificati su GitHub il 15/10/2026.
+
+| # | Proposta | Si riusa | Si costruisce | Note |
+|---|---|---|---|---|
+| 1 | Lotti e MCP | Manifest e CLI di AssetFurnace; SDK MCP ufficiale | Il lettore dei lotti, la ripresa e il server MCP: poco codice sopra ciò che c'è | ComfyUI (con [ComfyUI-3D-Pack](https://github.com/MrForExample/ComfyUI-3D-Pack), MIT, fermo da dicembre 2025) sarebbe un'alternativa come orchestratore, ma ci farebbe perdere provenienza e regole di AssetFurnace |
+| 2 | Dal riferimento al concept | **Qwen-Image 2.1 Fun ControlNet Union** (Alibaba PAI, settembre 2026: canny, profondità, lineart, posa e altri 4 controlli in un file) oppure [InstantX Qwen-Image ControlNet Union](https://huggingface.co/InstantX/Qwen-Image-ControlNet-Union) | L'aggancio in AssetFurnace, che usa già Qwen-Image 2.1 | Licenze dei pesi da verificare; supporto ComfyUI della 2.1 ancora in revisione a fine settembre |
+| 3 | Bibbia dello stile | [ai-toolkit](https://github.com/ostris/ai-toolkit) (MIT, molto attivo) per un LoRA dello stile; Qwen-Image-Edit-2511 per la coerenza fra immagini | Il punteggio di coerenza (distanza fra embedding) e la sua soglia nei lotti | musubi-tuner non dichiara una licenza: da evitare |
+| 4 | Parti e adattamento al corpo | **Generazione**: OmniPart, HoloPart, PartCrafter (MIT). **Segmentazione di una mesh intera**: [SAMPart3D](https://github.com/Pointcept/SAMPart3D) (MIT); PartField ha licenza da verificare. **Adattamento**: la tecnica standard con gli strumenti di Blender: gabbia low-poly con Shrinkwrap e piccolo scostamento, armatura spinta con Surface Deform o Mesh Deform, pesi copiati dal corpo (Data Transfer), massimo 4 influenze | Lo script che applica la tecnica in automatico e i suoi test | Non c'è un adattatore open source affidabile: i componenti aggiuntivi seri di Blender sono a pagamento o proprietari (RadFit, FitClick). L'Outfit Asset di Unreal è pensato per la stoffa simulata, non per gusci rigidi |
+| 5 | Profilo Unreal | [Send to Unreal / BlenderTools](https://github.com/EpicGamesExt/BlenderTools) (MIT, ora mantenuto dalla comunità, attivo a settembre 2026): nomi, LOD, collisioni, scheletri verso Unreal; [glTF-Transform](https://github.com/donmccurdy/glTF-Transform) (MIT) e [meshoptimizer](https://github.com/zeux/meshoptimizer) (MIT, già usato come gltfpack) per LOD e compressione; Interchange di Unreal importa il glTF | Il profilo che mette insieme queste opzioni | Il supporto di Send to Unreal per Blender 5.x e UE 5.8 non è dichiarato: da provare |
+| 6 | Famiglie di creature | **SkinTokens**, già in AssetFurnace, è il successore di [UniRig](https://github.com/VAST-AI-Research/UniRig) (MIT), che rigga scheletri diversi, animali compresi; [Puppeteer](https://github.com/Seed3D/Puppeteer) (Apache-2.0) rigga e anima forme qualsiasi | Prima si provano su ragno, drago e pianta; i modelli Rigify per famiglia solo dove falliscono | — |
+| 7 | Controlli e revisione | [glTF-Validator](https://github.com/KhronosGroup/glTF-Validator) (Apache-2.0); analisi delle mesh di Blender; statistiche di meshoptimizer; Data Validation di Unreal | I controlli specifici (sagoma, misure, compenetrazioni) e la coda nello studio | — |
+
+### Lato Unreal (non in AssetFurnace)
+
+- **Le parti seguono il corpo** con Set Leader Pose Component: un solo AnimBP.
+- **Il corpo sotto l'armatura si nasconde con maschere**, non tagliando la mesh per ogni pezzo. Si cuoce una maschera
+  (colori dei vertici, o vertici entro pochi millimetri dal guscio) e il materiale del corpo usa la maschera di
+  opacità dei pezzi indossati.
+- **Più corpi**: due mesh adattate per lo stesso scheletro, oppure **Mutable** (beta), con parametro del tipo di corpo,
+  morph fra gli adattamenti e visibilità per sezione. In 5.8 c'è una segnalazione di artefatti quando si combina Clip
+  Mesh With Mesh con il reshape: da provare prima di affidarcisi.
+- Le correzioni rimaste si fanno con correttivi di posa solo sugli attacchi peggiori.
+
+Fonte principale della tecnica di adattamento: la discussione
+[Fitting armour/clothing to MetaHumans in UE 5.8.3](https://forums.unrealengine.com/t/fitting-armour-clothing-to-metahumans-in-ue-5-8-3-best-workflow-to-avoid-hours-of-manual-fitting-per-set/2839852)
+sul forum di Epic (una risposta esperta, non una verifica ufficiale).
+
 ## Ordine
 
 1. Fondamenta: 1, 5, 7.
