@@ -432,4 +432,3 @@ def test_feet_turned_out_unevenly_do_not_turn_the_character():
     hips = [heads[roles["Lleg"]], heads[roles["Rleg"]]]
     frame = kr.character_frame(heads, [roles["Ltoe"], roles["Rtoe"]], [roles["Lfoot"], roles["Rfoot"]], hips=hips)
     assert np.allclose(frame[:, 2], [0, 1, 0], atol=1e-9)
-

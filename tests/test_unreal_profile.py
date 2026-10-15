@@ -719,4 +719,3 @@ def test_the_walk_check_says_when_the_feet_cross():
     check = {r["check"]: r for r in crossing}
     assert check["walk_feet"]["ok"] is False and "cross" in check["walk_feet"]["detail"]
     assert {r["check"]: r for r in apart}["walk_feet"]["ok"] is True
-
