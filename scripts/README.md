@@ -118,6 +118,7 @@ The asset's surface, as opposed to its shape.
 | `bake_stiffness.py` | Bake foliage stiffness into a GLB as vertex colours, for engine-side wind. |
 | `classify_thickness.py` | Separate solid body from thin foliage by measuring local thickness. |
 | `material_label_set.py` | Queue assets for the user's material labels, follow the progress, export what is complete. |
+| `game_materials.py` | Pack a generated GLB's own maps as a game-ready ORM, with its sidecar and licence record. |
 
 ## Measure and judge
 
@@ -151,6 +152,7 @@ These talk to a running Blender over the `execute_code` socket on port 9876 unle
 | `blender_render_asset.py` | Import a GLB into the local Blender MCP scene and render cardinal previews. |
 | `blender_turntable.py` | Render a seamlessly looping 360-degree turntable of a GLB via the Blender MCP scene. |
 | `blender_light_orbit.py` | Render a GLB under an orbiting key light, holding the camera still. |
+| `blender_render_views.py` | Render a GLB's albedo unlit from an orbit of views, with the UV and normal of every pixel. |
 | `blender_lineup_sweep.py` | Render a camera sweep past a line-up of assets, headless. |
 | `blender_orbit_camera.py` | Point an orbit camera at a target and (optionally) render. |
 | `blender_inspect.py` | Inspect a Blender scene or an unopened .blend file's contents. |
