@@ -137,6 +137,48 @@ def test_the_sdk_serves_every_tool():
         return tools, result
 
     tools, result = asyncio.run(talk())
-    assert tools == {"validate_batch", "submit_batch", "batch_status", "list_outputs",
-                     "cancel_batch", "list_steps"}
+    assert tools == {"validate_batch", "submit_batch", "resume_batch", "batch_status",
+                     "list_outputs", "cancel_batch", "list_steps"}
     assert json.loads(result.content[0].text)["steps"]["finish"] is True
+
+
+def _csv_spec(tmp_path):
+    from batch_fakes import tiny_png
+
+    tiny_png(tmp_path / "a.png")
+    path = tmp_path / "lot.csv"
+    path.write_text("id,images,backend\nSM_A,a.png,fake\n")
+    return path
+
+
+def test_a_csv_takes_its_intent_from_the_call(tmp_path, monkeypatch, launched):
+    install_fake_generator(monkeypatch)
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(FakeFinish().run))
+    monkeypatch.setattr(batch, "DEFAULT_OUTPUT", tmp_path / "output" / "batches")
+    spec = _csv_spec(tmp_path)
+    checked = mcp_server.validate_batch(str(spec), use_case="game", commercial=True)
+    assert checked["ok"] and checked["intent"]["use_case"] == "game"
+    started = mcp_server.submit_batch(str(spec), use_case="game", distribution="private",
+                                      commercial=True)
+    assert started["started"] is True
+    assert launched[0][0][-5:] == ["--use-case", "game", "--distribution", "private",
+                                   "--commercial"]
+
+
+def test_resume_reuses_the_spec_and_the_intent_it_ran_with(tmp_path, monkeypatch, launched):
+    install_fake_generator(monkeypatch, FakeGenerator(interrupt_on="a"))
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(FakeFinish().run))
+    monkeypatch.setattr(batch, "DEFAULT_OUTPUT", tmp_path / "output" / "batches")
+    spec = batch.load_batch(_csv_spec(tmp_path), intent={"use_case": "game"})
+    with pytest.raises(KeyboardInterrupt):
+        batch.run_batch(spec)
+    result = mcp_server.resume_batch(str(spec.directory), retry_failed=True)
+    assert result["started"] is True
+    command = launched[0][0]
+    assert command[3] == str(spec.path) and "--retry-failed" in command
+    assert command[command.index("--use-case") + 1] == "game"
+
+
+def test_resume_of_a_batch_that_never_ran(tmp_path):
+    result = mcp_server.resume_batch(str(tmp_path))
+    assert result["started"] is False and "never ran" in result["problems"][0]

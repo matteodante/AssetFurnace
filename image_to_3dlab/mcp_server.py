@@ -34,23 +34,33 @@ RUN_LOG = "run.log"
 INSTALL_HINT = 'The MCP server needs the MCP SDK: pip install "mcp>=2.3,<3"'
 
 
-def _check(spec_path: str) -> tuple[batch.BatchSpec | None, list[str]]:
+def _intent(use_case: str | None, distribution: str | None,
+            commercial: bool | None) -> dict[str, Any]:
+    return {key: value for key, value in (("use_case", use_case),
+                                          ("distribution", distribution),
+                                          ("commercial_intent", commercial))
+            if value is not None}
+
+
+def _check(spec_path: str, intent: dict[str, Any]) -> tuple[batch.BatchSpec | None, list[str]]:
     try:
-        spec = batch.load_batch(Path(spec_path))
+        spec = batch.load_batch(Path(spec_path), intent=intent)
     except batch.BatchError as exc:
         return None, exc.problems
     return spec, batch.preflight(spec)
 
 
-def validate_batch(spec: str) -> dict[str, Any]:
+def validate_batch(spec: str, use_case: str | None = None, distribution: str | None = None,
+                   commercial: bool | None = None) -> dict[str, Any]:
     """Check a batch spec (JSON or CSV) and everything its steps need, without running
-    anything or downloading anything. Returns the problems, if any."""
-    loaded, problems = _check(spec)
+    anything or downloading anything. Returns the problems, if any. use_case,
+    distribution and commercial are for a CSV spec; a JSON spec states its own."""
+    loaded, problems = _check(spec, _intent(use_case, distribution, commercial))
     result: dict[str, Any] = {"ok": not problems, "problems": problems,
                               "steps": batch.available_steps()}
     if loaded is not None:
         result.update(name=loaded.name, directory=str(loaded.directory),
-                      rows=len(loaded.rows))
+                      rows=len(loaded.rows), intent=loaded.intent)
     return result
 
 
@@ -64,10 +74,14 @@ def launch(command: list[str], log_path: Path) -> int:
     return process.pid
 
 
-def submit_batch(spec: str, retry_failed: bool = False) -> dict[str, Any]:
+def submit_batch(spec: str, retry_failed: bool = False, use_case: str | None = None,
+                 distribution: str | None = None, commercial: bool | None = None,
+                 ) -> dict[str, Any]:
     """Start a batch in the background and return at once. Running the same spec again
-    resumes it; retry_failed also re-runs rows that failed. One batch runs at a time."""
-    loaded, problems = _check(spec)
+    resumes it; retry_failed also re-runs rows that failed. One batch runs at a time.
+    use_case, distribution and commercial are for a CSV spec, as in validate_batch."""
+    intent = _intent(use_case, distribution, commercial)
+    loaded, problems = _check(spec, intent)
     if loaded is None or problems:
         return {"started": False, "problems": problems}
     directory = loaded.directory
@@ -82,12 +96,34 @@ def submit_batch(spec: str, retry_failed: bool = False) -> dict[str, Any]:
     command = [sys.executable, str(PIPELINE), "--run-batch", str(loaded.path)]
     if retry_failed:
         command.append("--retry-failed")
+    if "use_case" in intent:
+        command += ["--use-case", intent["use_case"]]
+    if "distribution" in intent:
+        command += ["--distribution", intent["distribution"]]
+    if intent.get("commercial_intent"):
+        command.append("--commercial")
     log_path = directory / RUN_LOG
     pid = launch(command, log_path)
     directory.mkdir(parents=True, exist_ok=True)
     (directory / batch.LOCK_FILE).write_text(str(pid))
     return {"started": True, "pid": pid, "name": loaded.name, "directory": str(directory),
             "log": str(log_path)}
+
+
+def resume_batch(batch_ref: str, retry_failed: bool = False) -> dict[str, Any]:
+    """Start a stopped batch again from where it left off, with the spec and intent it ran
+    with. retry_failed also re-runs the rows that failed."""
+    directory = Path(batch_ref).expanduser().resolve()
+    state = batch.read_json(directory / batch.STATE_FILE) if directory.is_dir() else None
+    if not state:
+        return {"started": False, "problems": [f"{directory.name} never ran: submit its spec"]}
+    spec = state["spec"]["path"]
+    if Path(spec).suffix.lower() != ".csv":
+        return submit_batch(spec, retry_failed=retry_failed)
+    intent = state.get("intent", {})
+    return submit_batch(spec, retry_failed=retry_failed, use_case=intent.get("use_case"),
+                        distribution=intent.get("distribution"),
+                        commercial=intent.get("commercial_intent") or None)
 
 
 def _directory(target: str) -> Path:
@@ -154,7 +190,8 @@ def list_steps() -> dict[str, Any]:
     return {"steps": batch.available_steps()}
 
 
-TOOLS = (validate_batch, submit_batch, batch_status, list_outputs, cancel_batch, list_steps)
+TOOLS = (validate_batch, submit_batch, resume_batch, batch_status, list_outputs, cancel_batch,
+         list_steps)
 
 
 def build_server():
