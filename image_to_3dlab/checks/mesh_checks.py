@@ -82,35 +82,31 @@ def _uv_charts(faces: np.ndarray) -> np.ndarray:
 def uv_overlap_pixels(groups: list[tuple[np.ndarray, np.ndarray]], resolution: int = 1024) -> tuple[float, int]:
     """(texture pixels the surface uses in all, distinct pixels) for UVs sharing one texture.
 
-    The two are equal when no texture pixel is used twice; the gap is the reuse.
-
-    Each group is (uv, faces) for one primitive. Every chart is drawn on its own and added
-    to a count, so two charts on the same pixels show as overlap. A chart folded onto
-    itself does not add up that way, so it is caught by area instead: its triangles' areas
-    sum to clearly more than the pixels it covers.
+    The two are equal when no texture pixel is used twice; the gap is the reuse. Each chart
+    counts each pixel once, so two charts on the same pixels add up to two. A chart folded
+    onto itself does not add up that way, so it is caught by area instead: its triangles'
+    areas sum to clearly more than the pixels it covers. All charts are drawn in one pass.
     """
-    count = np.zeros((resolution, resolution), dtype=np.uint16)
-    folded = 0.0
+    pairs, folded, offset = [], 0.0, 0
     for uv, faces in groups:
         labels = _uv_charts(faces)
         if not len(labels):
             continue
         pixels = uv * resolution
         pixels[:, 1] = resolution - pixels[:, 1]
-        areas = geometry.triangle_areas(pixels, faces)
-        order = np.argsort(labels, kind="stable")
-        bounds = np.searchsorted(labels[order], np.arange(labels.max() + 2))
-        for chart in range(len(bounds) - 1):
-            members = faces[order[bounds[chart]:bounds[chart + 1]]]
-            corners = pixels[members].reshape(-1, 2)
-            lo = np.clip(np.floor(corners.min(axis=0)).astype(int), 0, resolution - 1)
-            hi = np.clip(np.ceil(corners.max(axis=0)).astype(int) + 1, lo + 1, resolution)
-            drawn = geometry.rasterize(pixels - lo, members, int(hi[0] - lo[0]), int(hi[1] - lo[1]))
-            count[lo[1]:hi[1], lo[0]:hi[0]] += drawn
-            area, covered = float(areas[order[bounds[chart]:bounds[chart + 1]]].sum()), float(drawn.sum())
-            if area > covered * 1.05:
-                folded += area - covered
-    return float(count.sum()) + folded, int((count > 0).sum())
+        hit, owner = geometry.raster_hits(pixels, faces, resolution, resolution)
+        chart = labels[owner] + offset
+        unique = np.unique(np.stack([chart, hit], axis=1), axis=0)
+        pairs.append(unique)
+        areas = np.bincount(labels, weights=geometry.triangle_areas(pixels, faces))
+        covered = np.bincount(unique[:, 0] - offset, minlength=len(areas)).astype(float)
+        excess = areas - covered
+        folded += float(excess[areas > covered * 1.05].sum())
+        offset += int(labels.max()) + 1
+    if not pairs:
+        return 0.0, 0
+    every = np.vstack(pairs)
+    return float(len(every)) + folded, len(np.unique(every[:, 1]))
 
 
 @register("uv.overlap")

@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   component licences from provenance). Results go to `<name>.checks.json`.
 - `scripts/bootstrap_gltf_validator.py` installs Khronos' glTF-Validator (Apache-2.0,
   2.2 MB) after asking, for the `gltf.valid` check.
+- Review queue (`output/review-log.jsonl`): checked assets wait for a person to approve them
+  or send them back with a note; a sent-back asset stays in the queue with its note until a
+  new version is checked. `scripts/check_asset.py` checks and queues a GLB,
+  `scripts/review_queue.py` lists and decides, and the studio serves `/api/review/...`.
+  Decisions are also recorded as `mark_asset` verdicts.
 - **Edit in Blender** in Studio: open a separate editing copy, export a GLB from
   Blender and import it as a new Library version. Originals and provenance stay
   available; imported versions preview their own rig, materials and animations.

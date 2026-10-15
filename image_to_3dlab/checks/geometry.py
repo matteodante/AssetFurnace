@@ -156,26 +156,29 @@ def orientation(vertices: np.ndarray, faces: np.ndarray) -> tuple[np.ndarray, fl
     return flipped, volume
 
 
-def rasterize(points: np.ndarray, faces: np.ndarray, width: int, height: int,
-              batch: int = 200_000) -> np.ndarray:
-    """Union of 2D triangles as a boolean image (x right, y down, in pixels).
+def raster_hits(points: np.ndarray, faces: np.ndarray, width: int, height: int,
+                batch: int = 200_000) -> tuple[np.ndarray, np.ndarray]:
+    """Every (pixel, triangle) pair where a 2D triangle covers a pixel (x right, y down).
+
+    Pixels are flat indices (row * width + column). A pixel counts when its centre is
+    inside the triangle, tested in bulk with numpy; the pixel under each triangle's centre
+    counts too, so triangles smaller than a pixel still leave a mark. Triangles more than
+    8 pixels across are drawn one at a time with `cv2.fillConvexPoly`.
 
     Not `cv2.fillPoly` with many polygons: it fills by the even-odd rule, so where two
     triangles overlap they cancel, and a closed mesh (front and back over every pixel)
-    comes out nearly empty. Here a pixel is set when its centre is inside any triangle,
-    tested in bulk with numpy; the pixel under each triangle's centre is set too, so
-    triangles smaller than a pixel still leave a mark. Triangles more than 8 pixels
-    across are drawn one at a time with `cv2.fillConvexPoly`, which has no such rule.
+    comes out nearly empty.
     """
     import cv2
 
-    out = np.zeros((height, width), dtype=bool)
+    pixels, owners = [], []
     if len(faces) == 0:
-        return out
+        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
     tri = np.asarray(points, dtype=np.float64)[np.asarray(faces)]
     centre = np.floor(tri.mean(axis=1)).astype(np.int64)
     inside = (centre[:, 0] >= 0) & (centre[:, 0] < width) & (centre[:, 1] >= 0) & (centre[:, 1] < height)
-    out[centre[inside, 1], centre[inside, 0]] = True
+    pixels.append(centre[inside, 1] * width + centre[inside, 0])
+    owners.append(np.flatnonzero(inside))
     lo = np.ceil(tri.min(axis=1) - 0.5).astype(np.int64)
     hi = np.floor(tri.max(axis=1) - 0.5).astype(np.int64)
     lo = np.maximum(lo, 0)
@@ -183,31 +186,43 @@ def rasterize(points: np.ndarray, faces: np.ndarray, width: int, height: int,
     span = (hi - lo).max(axis=1) + 1
     empty = (hi - lo).min(axis=1) < 0  # no pixel centre inside: the centre mark covers it
     large = (span > 8) & ~empty
-    for corners, low, high in zip(tri[large], lo[large], hi[large]):
+    for index in np.flatnonzero(large):
+        low, high = lo[index], hi[index]
         canvas = np.zeros((high[1] - low[1] + 1, high[0] - low[0] + 1), dtype=np.uint8)
-        local = np.round((corners - low - 0.5) * 16).astype(np.int32)  # cv2 puts pixel centres on integers
+        local = np.round((tri[index] - low - 0.5) * 16).astype(np.int32)  # cv2 puts pixel centres on integers
         cv2.fillConvexPoly(canvas, local, 1, lineType=cv2.LINE_8, shift=4)
-        out[low[1]:high[1] + 1, low[0]:high[0] + 1] |= canvas.astype(bool)
+        rows, cols = np.nonzero(canvas)
+        pixels.append((rows + low[1]) * width + cols + low[0])
+        owners.append(np.full(len(rows), index))
+
+    def side(p, q, r):
+        return (q[..., 0] - p[..., 0]) * (r[..., 1] - p[..., 1]) - (q[..., 1] - p[..., 1]) * (r[..., 0] - p[..., 0])
+
     for size in (1, 2, 4, 8):
         chosen = np.flatnonzero(~large & ~empty & (span > (size // 2 if size > 1 else 0)) & (span <= size))
         if not len(chosen):
             continue
         dy, dx = np.mgrid[0:size, 0:size]
         offsets = np.stack([dx.ravel(), dy.ravel()], axis=1)
-        for start in range(0, len(chosen), max(1, batch // (size * size))):
-            pick = chosen[start:start + max(1, batch // (size * size))]
+        step = max(1, batch // (size * size))
+        for start in range(0, len(chosen), step):
+            pick = chosen[start:start + step]
             px = lo[pick][:, None, :] + offsets[None]          # (n, k, 2) pixel indices
             centres = px + 0.5
             a, b, c = (tri[pick][:, i][:, None, :] for i in range(3))
-
-            def side(p, q, r):
-                return (q[..., 0] - p[..., 0]) * (r[..., 1] - p[..., 1]) - (q[..., 1] - p[..., 1]) * (r[..., 0] - p[..., 0])
-
             e0, e1, e2 = side(a, b, centres), side(b, c, centres), side(c, a, centres)
             hit = ((e0 >= 0) & (e1 >= 0) & (e2 >= 0)) | ((e0 <= 0) & (e1 <= 0) & (e2 <= 0))
             hit &= (px[..., 0] <= hi[pick][:, None, 0]) & (px[..., 1] <= hi[pick][:, None, 1])
-            out[px[hit][:, 1], px[hit][:, 0]] = True
-    return out
+            pixels.append(px[hit][:, 1] * width + px[hit][:, 0])
+            owners.append(np.broadcast_to(pick[:, None], hit.shape)[hit])
+    return np.concatenate(pixels), np.concatenate(owners)
+
+
+def rasterize(points: np.ndarray, faces: np.ndarray, width: int, height: int) -> np.ndarray:
+    """Union of 2D triangles as a boolean image (x right, y down, in pixels)."""
+    out = np.zeros(height * width, dtype=bool)
+    out[raster_hits(points, faces, width, height)[0]] = True
+    return out.reshape(height, width)
 
 
 def triangle_areas(points: np.ndarray, faces: np.ndarray) -> np.ndarray:

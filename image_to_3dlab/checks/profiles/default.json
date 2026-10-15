@@ -12,7 +12,7 @@
     "budget.texel_density": {"min": 256, "max": 2048, "warn_only": true},
     "measure.height": {"warn": 5.0, "fail": 15.0},
     "measure.footprint": {"warn": 5.0, "fail": 15.0},
-    "silhouette": {"min": 0.65, "max": 0.95, "min_view": 0.5, "resolution": 256, "warn_only": true},
+    "silhouette": {"min": 0.65, "max": 0.95, "min_view": 0.6, "resolution": 256, "warn_only": true},
     "gltf.valid": {"timeout": 120},
     "license.components": {"conditional": "pass"}
   }

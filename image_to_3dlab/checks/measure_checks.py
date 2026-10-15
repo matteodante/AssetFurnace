@@ -30,7 +30,7 @@ def _limits(config):
     return {"warn": config.get("warn", 5.0), "fail": config.get("fail", 15.0)}
 
 
-@register("measure.height", needs=("glb", "reference_size"))
+@register("measure.height", needs=("glb", "reference_height"))
 def height(asset, config):
     wanted = reference_extents(asset).get("height")
     limits = _limits(config)
@@ -44,7 +44,7 @@ def height(asset, config):
                   f"height {got:.3f} m against {wanted:.3f} m ({error:.1f}% off)")
 
 
-@register("measure.footprint", needs=("glb", "reference_size"))
+@register("measure.footprint", needs=("glb", "reference_footprint"))
 def footprint(asset, config):
     wanted = reference_extents(asset)
     got = extents(asset.bounds)

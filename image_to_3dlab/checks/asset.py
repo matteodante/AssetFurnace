@@ -131,8 +131,11 @@ class Asset:
         reasons = {
             "glb": lambda: None if self.glb.is_file() else f"{self.glb} does not exist",
             "reference_shape": lambda: None if self.reference_kind else "no reference model or picture given",
-            "reference_size": lambda: None if (self.reference_kind == "glb" or self.reference_numbers)
-            else "no reference model or measurements given",
+            "reference_height": lambda: None if (self.reference_kind == "glb" or (self.reference_numbers or {}).get("height"))
+            else "no reference model or height given",
+            "reference_footprint": lambda: None if (self.reference_kind == "glb" or any(
+                (self.reference_numbers or {}).get(k) for k in ("width", "depth")))
+            else "no reference model, width or depth given",
             "rig": lambda: None if self.document.get("skins") else "the model has no rig",
             "texture": lambda: None if self.has_texture else "the model has no texture",
             "gltf_validator": lambda: None if self.validator_path else

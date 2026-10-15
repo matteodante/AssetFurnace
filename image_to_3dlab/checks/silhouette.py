@@ -142,7 +142,7 @@ def silhouette(asset, config):
 
     resolution = int(config.get("resolution", 256))
     band = {"min": config.get("min", 0.65), "max": config.get("max", 0.95),
-            "min_view": config.get("min_view", 0.5)}
+            "min_view": config.get("min_view", 0.6)}
     scores, images = compare(asset, resolution)
     mean = round(float(np.mean(list(scores.values()))), 4)
     status = grade_band(mean, band["min"], band["max"])
