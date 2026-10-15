@@ -56,7 +56,7 @@ def _check(spec_path: str, intent: dict[str, Any], retry_failed: bool | None = N
     if retry_failed is None:
         return spec, batch.preflight(spec)
     state = batch.read_json(spec.directory / batch.STATE_FILE)
-    return spec, batch.preflight(spec, batch.pending_rows(spec, state, retry_failed))
+    return spec, batch.preflight(spec, batch.pending_work(spec, state, retry_failed))
 
 
 def validate_batch(spec: str, use_case: str | None = None, distribution: str | None = None,
@@ -151,7 +151,7 @@ def _directory(target: str) -> Path:
     # .json or .csv file
     if path.is_dir() or (not path.exists() and path.suffix.lower() not in (".json", ".csv")):
         return path
-    return batch.load_batch(path).directory
+    return batch.spec_directory(path)   # its name and output only: rows may have gone stale
 
 
 def batch_status(batch_ref: str) -> dict[str, Any]:

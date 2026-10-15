@@ -254,3 +254,16 @@ def test_resume_takes_the_spec_as_well_as_the_folder(tmp_path, monkeypatch, laun
     with pytest.raises(KeyboardInterrupt):
         batch.run_batch(batch.load_batch(spec_path))
     assert mcp_server.resume_batch(str(spec_path))["started"] is True
+
+
+
+def test_status_and_stop_find_a_batch_whose_rows_went_stale(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch, FakeGenerator(interrupt_on="row02"))
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(FakeFinish().run))
+    spec_path = write_spec(tmp_path, rows=2)
+    with pytest.raises(KeyboardInterrupt):
+        batch.run_batch(batch.load_batch(spec_path))
+    (tmp_path / "refs" / "row02.png").unlink()
+    status = mcp_server.batch_status(str(spec_path))
+    assert status["name"] == "test-batch" and status["counts"]["done"] == 1
+    assert mcp_server.cancel_batch(str(spec_path))["cancelled"] is False   # not running

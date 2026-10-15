@@ -1387,7 +1387,7 @@ def test_a_picture_gone_while_earlier_rows_run_fails_only_its_row(tmp_path, monk
                  {"id": "SM_B", "asset": "b.glb", "images": ["b.png"]}]}))
     report = batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
     assert report.counts == {"done": 1, "failed": 1}
-    assert report.failed["SM_B"].startswith("stage:")
+    assert report.failed["SM_B"].startswith("input:")   # caught as the row starts
 
 
 def test_a_rows_final_hash_is_kept_not_recomputed(tmp_path, monkeypatch, fake_finish):
@@ -1443,3 +1443,76 @@ def test_a_source_must_be_a_whole_glb(tmp_path, monkeypatch, damage):
     glb.write_bytes(bytes(data))
     with pytest.raises(batch.BatchError, match="not a GLB"):
         batch.load_batch(spec)
+
+
+
+def test_a_resume_does_not_need_the_generator_for_a_row_past_generation(tmp_path, monkeypatch):
+    """Interrupted in finish: the resume starts at finish, and does not ask for Pixal3D."""
+    install_fake_generator(monkeypatch)
+
+    def crash(ctx):
+        raise KeyboardInterrupt
+
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(crash))
+    spec_path = write_spec(tmp_path, rows=1)
+    with pytest.raises(KeyboardInterrupt):
+        batch.run_batch(batch.load_batch(spec_path))
+    install_fake_generator(monkeypatch, ready=False)          # the weights went away
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(FakeFinish().run))
+    spec = batch.load_batch(spec_path)
+    work = batch.pending_work(spec, json.loads((spec.directory / batch.STATE_FILE).read_text()), False)
+    assert work == {"SM_row01": ("finish",)}
+    assert batch.run_batch(spec).counts == {"done": 1}
+
+
+def test_a_done_rows_moved_source_glb_does_not_block_the_rest(tmp_path, monkeypatch, fake_finish):
+    for name in ("a", "b"):
+        tiny_glb(tmp_path / f"{name}.glb", name)
+        tiny_png(tmp_path / f"{name}.png")
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1, "output": {"directory": "out"}, "defaults": {"steps": ["finish"]},
+        "rows": [{"id": "SM_A", "asset": "a.glb", "images": ["a.png"]},
+                 {"id": "SM_B", "asset": "b.glb", "images": ["b.png"]}]}))
+    original = fake_finish.run
+
+    def stop_at_b(ctx):
+        if ctx.row.id == "SM_B":
+            raise KeyboardInterrupt
+        return original(ctx)
+
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(stop_at_b))
+    with pytest.raises(KeyboardInterrupt):
+        batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
+    (tmp_path / "a.glb").unlink()   # row A is done; its source moved away
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(original))
+    assert batch.run_batch(batch.load_batch(tmp_path / "lot.json")).counts == {"done": 2}
+
+
+def test_a_source_replaced_while_earlier_rows_run_is_not_used(tmp_path, monkeypatch):
+    from image_to_3dlab.batch_steps import StepResult
+
+    def checks(ctx):
+        if ctx.row.id == "SM_A":   # while row A runs, B's record is swapped for Hunyuan's
+            (tmp_path / "b.provenance.json").write_text(json.dumps(
+                {"model": {"backend": "hunyuan-comfyui"}}))
+        return StepResult()
+
+    monkeypatch.setitem(batch.STEPS, "checks", fake_step(checks))
+    for name in ("a", "b"):
+        tiny_glb(tmp_path / f"{name}.glb", name)
+        tiny_png(tmp_path / f"{name}.png")
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1, "output": {"directory": "out"}, "defaults": {"steps": ["checks"]},
+        "rows": [{"id": "SM_A", "asset": "a.glb", "images": ["a.png"]},
+                 {"id": "SM_B", "asset": "b.glb", "images": ["b.png"]}]}))
+    report = batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
+    assert report.failed["SM_B"].startswith("input: changed since the batch was checked")
+
+
+def test_a_specs_folder_is_found_without_checking_its_rows(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    (tmp_path / "refs" / "row01.png").unlink()   # the rows no longer validate
+    assert batch.spec_directory(spec_path) == (tmp_path / "out" / "test-batch").resolve()
+    (tmp_path / "lot.csv").write_text("id,images\nSM_A,missing.png\n")
+    assert batch.spec_directory(tmp_path / "lot.csv") == batch.DEFAULT_OUTPUT / "lot"

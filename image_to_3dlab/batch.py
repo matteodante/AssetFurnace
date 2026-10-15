@@ -297,6 +297,22 @@ class BatchReport:
 
 # --------------------------------------------------------------------------- the spec
 
+def spec_directory(path: Path) -> Path:
+    """The folder a spec's batch lives in, read from its name and output alone: finding a
+    running batch must not depend on every row's inputs still being valid."""
+    path = path.expanduser().resolve()
+    if path.suffix.lower() == ".csv":
+        return DEFAULT_OUTPUT / path.stem
+    top = read_json(path)
+    if not isinstance(top, dict):
+        raise BatchError(f"could not read batch spec {path}")
+    output = top.get("output") if isinstance(top.get("output"), dict) else {}
+    directory = output.get("directory")
+    root = (path.parent / directory).resolve() if isinstance(directory, str) and directory else DEFAULT_OUTPUT
+    name = top.get("name") if isinstance(top.get("name"), str) else path.stem
+    return root / name
+
+
 def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
     """Read and check a JSON or CSV spec. Every problem is reported at once.
 
@@ -390,13 +406,15 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
                 for row in (last or {}).get("rows", []) if isinstance(row, dict)}
     # and the pictures staged for each row, for an asset row whose recorded picture moved
     saved = (read_json(output_dir / name / STATE_FILE) or {}).get("rows", {})
+    saved = saved if isinstance(saved, dict) else {}
     staged_copies = {row_id: [output_dir / name / record["path"] for record in entry.get("staged", [])]
                      for row_id, entry in saved.items() if isinstance(entry, dict)}
     rows, seen = [], set()
     for number, raw in enumerate(raw_rows, start=1):
         row, row_problems = _parse_row(raw, defaults, base, number,
                                        staged=output_dir / name / "rows",
-                                       ran_with=ran_with, staged_copies=staged_copies)
+                                       ran_with=ran_with, staged_copies=staged_copies,
+                                       saved=saved)
         problems += row_problems
         if row is None:
             continue
@@ -507,6 +525,7 @@ def _read_csv(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
 def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
                staged: Path | None = None, ran_with: dict[str, set[str]] | None = None,
                staged_copies: dict[str, list[Path]] | None = None,
+               saved: dict[str, Any] | None = None,
                ) -> tuple[BatchRow | None, list[str]]:
     if not isinstance(raw, dict):
         return None, [f"row {number}: must be an object"]
@@ -563,7 +582,10 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
         # they are copied into one input folder, where one would overwrite the other
         problems.append(f"{label}: two images have the same file name; rename one")
     asset = (base / value["asset"]).resolve() if value.get("asset") else None
-    if asset is not None and not asset.is_file():
+    finished = (saved or {}).get(row_id, {}).get("status") == "done"
+    if asset is not None and not asset.is_file() and finished:
+        pass   # its result is in the batch already: a resume of the rest goes on without it
+    elif asset is not None and not asset.is_file():
         problems.append(f"{label}: asset does not exist: {asset}")
     elif asset is not None and not _is_glb(asset):
         problems.append(f"{label}: asset is not a GLB file: {asset}")
@@ -672,39 +694,55 @@ def available_steps() -> dict[str, bool]:
     return {name: load_step(name) is not None for name in STEP_NAMES}
 
 
-def preflight(spec: BatchSpec, rows: list[BatchRow] | None = None) -> list[str]:
-    """Everything that would stop a row, found before the first one runs. `rows` limits it
-    to the rows this run will execute (a resume skips the done ones)."""
+def preflight(spec: BatchSpec, work: dict[str, tuple[str, ...]] | None = None) -> list[str]:
+    """Everything that would stop a row, found before the first one runs. `work` limits it
+    to what this run will execute, row by row and step by step (a resume skips the done
+    rows, and the done steps of an interrupted one)."""
     problems = []
-    candidates = spec.rows if rows is None else rows
     for name in STEP_NAMES:
-        using = [row for row in candidates if name in row.steps]
+        using = [row for row in spec.rows
+                 if name in (row.steps if work is None else work.get(row.id, ()))]
         step = load_step(name) if using else None
         if step is not None and hasattr(step, "preflight"):
             problems += [f"{name}: {problem}" for problem in step.preflight(using)]
     return problems
 
 
-def pending_rows(spec: BatchSpec, state: dict[str, Any] | None,
-                 retry_failed: bool) -> list[BatchRow]:
-    """The rows a run would execute, given the saved state: not the done ones (unless a
-    step they skipped now exists), not the failed ones unless retrying."""
+def pending_work(spec: BatchSpec, state: dict[str, Any] | None,
+                 retry_failed: bool) -> dict[str, tuple[str, ...]]:
+    """What a run would execute, given the saved state: per pending row, the steps from
+    its first unfinished one. Done rows (unless a step they skipped now exists) and
+    failed ones (unless retrying) are not there."""
     previous = (state or {}).get("rows", {})
-    pending = []
+    work: dict[str, tuple[str, ...]] = {}
     for row in spec.rows:
         entry = previous.get(row.id)
         try:
             fingerprint = row.fingerprint()
-        except OSError:   # an input gone since validation: the run will fail that row
-            pending.append(row)
+        except OSError:   # an input gone: a done row keeps its result, others will fail
+            if entry is None or not _still_done(entry, spec.directory):
+                work[row.id] = ()
             continue
-        if entry is not None and entry.get("fingerprint") == fingerprint:
-            if _still_done(entry, spec.directory):
-                continue
-            if entry.get("status") == "failed" and not retry_failed:
-                continue
-        pending.append(row)
-    return pending
+        if entry is None or entry.get("fingerprint") != fingerprint:
+            work[row.id] = row.steps
+            continue
+        if _still_done(entry, spec.directory):
+            continue
+        if entry.get("status") == "failed" and not retry_failed:
+            continue
+        work[row.id] = _remaining(row, entry, spec.directory)
+    return work
+
+
+def _remaining(row: BatchRow, entry: dict[str, Any], directory: Path) -> tuple[str, ...]:
+    """The steps from the first one not done with its files still in place."""
+    for index, name in enumerate(row.steps):
+        step = entry.get("steps", {}).get(name, {})
+        files = step.get("files", [])
+        if step.get("status") != "done" or not all(
+                (directory / record["path"]).is_file() for record in files):
+            return row.steps[index:]
+    return ()
 
 
 # ------------------------------------------------------------------------ the state
@@ -975,7 +1013,7 @@ def run_batch(spec: BatchSpec, retry_failed: bool = False,
     """Run every row that is not done. Raises BatchError when the batch cannot start;
     a KeyboardInterrupt leaves the state as it was, ready to resume."""
     log = log or (lambda line: print(line, flush=True))
-    problems = preflight(spec, pending_rows(spec, read_json(spec.directory / STATE_FILE),
+    problems = preflight(spec, pending_work(spec, read_json(spec.directory / STATE_FILE),
                                             retry_failed))
     if problems:
         raise BatchError(problems)
@@ -1011,6 +1049,9 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
         try:
             fingerprint = row.fingerprint()
         except OSError as exc:
+            if entry is not None and _still_done(entry, directory):
+                rows[row.id] = entry   # its result is in the batch; the source moved on
+                continue
             # an input gone or unreadable since validation fails this row, not the batch
             rows[row.id] = {**(entry or {}), "status": "failed", "steps": (entry or {}).get("steps", {}),
                             "reason": f"input: {exc}", "fingerprint": None}
@@ -1092,6 +1133,18 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     entry.pop("reason", None)
     entry.pop("finished_at", None)
     save()
+    # Inputs checked at the start of the batch can change while earlier rows run (another
+    # GLB, another record, another licence): the row runs only on what was checked.
+    try:
+        current = row.fingerprint()
+    except OSError as exc:
+        _fail(entry, entry.setdefault("steps", {}), "input", str(exc), save, log)
+        return
+    if current != entry.get("fingerprint"):
+        _fail(entry, entry.setdefault("steps", {}), "input",
+              "changed since the batch was checked; run it again to check the new one",
+              save, log)
+        return
 
     staged = row.images or ((row.concept,) if row.concept else ())
     if "generate" not in row.steps and staged:
