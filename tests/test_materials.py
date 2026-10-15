@@ -673,6 +673,16 @@ def test_uv_transform_follows_the_three_js_reading_of_the_extension():
     np.testing.assert_allclose(turned, [[0.0, -1.0]], atol=1e-12)
 
 
+def test_uv_transform_rotates_before_scaling_like_three_js():
+    """three.js Matrix3.setUvTransform: u' = sx (c u + s v) + tx, v' = sy (-s u + c v) + ty."""
+    r, sx, sy, tx, ty = 0.7, 2.0, 0.5, 0.1, -0.3
+    u, v = 0.3, 0.8
+    c, s_ = np.cos(r), np.sin(r)
+    expected = [[sx * (c * u + s_ * v) + tx, sy * (-s_ * u + c * v) + ty]]
+    got = m.transform_uv(np.array([[u, v]]), {"rotation": r, "scale": [sx, sy], "offset": [tx, ty]})
+    np.testing.assert_allclose(got, expected)
+
+
 def test_height_does_not_leak_between_nearby_uv_islands():
     """A bright island 4 texels from a dark one must not tilt the dark one's border."""
     lum = np.zeros((64, 64))
@@ -683,3 +693,94 @@ def test_height_does_not_leak_between_nearby_uv_islands():
     lum[:, 30:] = 0.1
     normal = m.normal_from_albedo(lum, coverage, strength=64.0).astype(int)
     assert np.abs(normal[coverage][:, :2] - 128).max() <= 1
+
+
+# --------------------------------------------------------------------------- second review
+
+def test_provenance_keeps_the_classification_finalize_output_stores_under_output(tmp_path):
+    asset = make_glb(tmp_path / "knight.glb", banded_albedo())
+    (tmp_path / "knight.provenance.json").write_text(json.dumps({
+        "schema_version": 1, "license": {"name": "MIT"},
+        "output": {"path": "x.glb", "sha256": "0", "classification": "commercial-clear"}}))
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    record = json.loads((tmp_path / "out" / "knight.provenance.json").read_text())
+    assert record["output"]["classification"] == "commercial-clear"
+    assert record["output"]["sha256"] == m.sha256_file(result.glb_path)
+
+
+def test_maps_on_another_uv_set_are_refused_not_scrambled(tmp_path):
+    mr = np.zeros((SIZE, SIZE, 3), np.uint8)
+    mr[..., 1] = np.random.default_rng(7).integers(40, 220, (SIZE, SIZE))
+    asset = make_glb(tmp_path / "uv1.glb", banded_albedo(), mr=mr)
+    document, binary = parse_glb(asset.read_bytes())
+    document["materials"][0]["pbrMetallicRoughness"]["metallicRoughnessTexture"]["texCoord"] = 1
+    asset.write_bytes(build_glb(document, binary))
+    with pytest.raises(ValueError, match="UV"):
+        m.make_game_materials(asset, tmp_path / "out", samples=20000)
+
+
+def test_derived_roughness_starts_from_the_materials_own_value(tmp_path):
+    """A glossy material (roughnessFactor 0.1) with no map stays glossy."""
+    asset = make_glb(tmp_path / "glossy.glb", banded_albedo(), roughness_factor=0.1)
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    orm = np.asarray(Image.open(result.textures["orm"])).astype(int)
+    assert result.maps["roughness"] == "derived"
+    assert abs(np.median(orm[..., 1]) - 0.1 * 255) < 8
+
+
+def test_derived_maps_see_the_colour_the_factor_leaves(tmp_path):
+    """baseColorFactor (1, 0, 0) hides green; stripes painted only in green are not relief."""
+    albedo = np.full((SIZE, SIZE, 3), 120, np.uint8)
+    albedo[:, ::8, 1] = 250
+    asset = make_glb(tmp_path / "red.glb", albedo)
+    document, binary = parse_glb(asset.read_bytes())
+    document["materials"][0]["pbrMetallicRoughness"]["baseColorFactor"] = [1.0, 0.0, 0.0, 1.0]
+    asset.write_bytes(build_glb(document, binary))
+    surface = next(iter(m._surfaces(EditGLB(asset.read_bytes())).values()))
+    lum = m.surface_luminance(surface)
+    assert float(np.ptp(lum)) < 1e-6
+
+
+def test_transparent_texels_do_not_count(tmp_path):
+    """A MASK material's transparent black half is not a colour zone."""
+    rgba = np.zeros((SIZE, SIZE, 4), np.uint8)
+    rgba[:SIZE // 4, :, :3] = RED                 # visible: the top cap...
+    rgba[SIZE // 4:SIZE // 2, :, :3] = GREEN      # ...and the band down to the equator
+    rgba[:SIZE // 2, :, 3] = 255                  # the lower half is transparent black
+    asset = make_glb(tmp_path / "cutout.glb", rgba)
+    document, binary = parse_glb(asset.read_bytes())
+    document["materials"][0]["alphaMode"] = "MASK"
+    asset.write_bytes(build_glb(document, binary))
+    zones = {r["check"]: r for r in m.run_checks(asset, samples=20000)}["tint_zones"]
+    # Of the visible half, the cap is 29% and the band 71%; black would have been a third zone.
+    assert zones["details"]["shares"] == [pytest.approx(0.71, abs=0.04), pytest.approx(0.29, abs=0.04)]
+
+
+@pytest.mark.parametrize("mode, uv, expected", [
+    (10497, 1.25, 0.25),        # REPEAT
+    (33071, 1.25, 0.999),       # CLAMP_TO_EDGE
+    (33648, 1.25, 0.75),        # MIRRORED_REPEAT
+    (33648, 2.25, 0.25),
+])
+def test_lookup_honours_the_sampler_wrap(mode, uv, expected):
+    image = np.arange(1000, dtype=np.int32).reshape(1, 1000)
+    got = m._lookup(image, np.array([[uv, 0.0]]), (mode, 10497))
+    assert got[0] == int(expected * 1000)
+
+
+def test_coverage_wraps_tiled_triangles_under_repeat():
+    uv = np.array([[1.1, 0.1], [1.4, 0.1], [1.1, 0.4]])
+    covered = m.uv_coverage(uv, np.array([[0, 1, 2]]), (20, 20), (10497, 10497))
+    assert covered[2:8, 2:8].any()
+    clamped = m.uv_coverage(uv, np.array([[0, 1, 2]]), (20, 20), (33071, 33071))
+    assert not clamped[2:8, 2:8].any()
+
+
+def test_only_nodes_in_the_scene_are_analysed(tmp_path):
+    asset = make_glb(tmp_path / "extra.glb", banded_albedo())
+    document, binary = parse_glb(asset.read_bytes())
+    document["materials"].append({"name": "hidden", "pbrMetallicRoughness": {"baseColorTexture": {"index": 0}}})
+    document["meshes"].append({"primitives": [{**document["meshes"][0]["primitives"][0], "material": 1}]})
+    document["nodes"].append({"mesh": 1, "name": "not in any scene"})
+    asset.write_bytes(build_glb(document, binary))
+    assert list(m._surfaces(EditGLB(asset.read_bytes()))) == [0]

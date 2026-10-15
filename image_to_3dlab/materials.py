@@ -69,8 +69,9 @@ HIGHLIGHT_NEIGHBOURS = 100    # out of a 5,000-point subsample: about 2% of the 
 HIGHLIGHT_CONE_DEGREES = 45.0
 HIGHLIGHT_CONCENTRATION = (0.4, 0.7)
 
-DEFAULT_ROUGHNESS = 0.8
-ROUGHNESS_DETAIL = 0.15
+DEFAULT_ROUGHNESS = 0.8      # only for a material with no roughness of its own at all
+ROUGHNESS_DETAIL = 0.2       # +-20% of the baseline, darker texels rougher
+REPEAT, CLAMP, MIRROR = 10497, 33071, 33648
 HEIGHT_SIGMAS = (1, 2, 4, 8, 16)
 HEIGHT_WEIGHTS = (0.5, 0.8, 1.0, 0.7, 0.4)
 GUTTER_PX = 8
@@ -357,21 +358,48 @@ def tint_zones_record(zones: list[dict], source: str, distance: float | None) ->
 
 # --------------------------------------------------------------------------- image maths
 
-def uv_coverage(uv: np.ndarray, faces: np.ndarray, size: tuple[int, int]) -> np.ndarray:
-    """Texels covered by at least one UV triangle (glTF UVs: v = 0 is the top row)."""
+def wrap_uv(values: np.ndarray, mode: int) -> np.ndarray:
+    """One UV axis wrapped as the sampler would: repeat, clamp to edge or mirrored repeat."""
+    if mode == CLAMP:
+        return np.clip(values, 0.0, 1.0)
+    if mode == MIRROR:
+        period = np.mod(values, 2.0)
+        return np.where(period > 1.0, 2.0 - period, period)
+    return np.mod(values, 1.0)
+
+
+def uv_coverage(uv: np.ndarray, faces: np.ndarray, size: tuple[int, int],
+                wrap: tuple = (REPEAT, REPEAT)) -> np.ndarray:
+    """Texels covered by at least one UV triangle (glTF UVs: v = 0 is the top row).
+
+    Under REPEAT a triangle outside 0..1 is moved into it, and drawn once more one tile
+    back where it crosses the edge; under CLAMP_TO_EDGE the part outside is dropped;
+    MIRRORED_REPEAT folds each corner, which is exact unless a triangle crosses a fold.
+    """
     width, height = size
-    tri = uv[faces] * np.array([width, height])
+    tri = uv[faces].astype(np.float64)
+    shifts = [(0, 0)]
+    for axis in (0, 1):
+        if wrap[axis] == REPEAT:
+            tri[..., axis] -= np.floor(tri[..., axis].min(axis=1, keepdims=True))
+        elif wrap[axis] == MIRROR:
+            tri[..., axis] = wrap_uv(tri[..., axis], MIRROR)
+    if REPEAT in wrap:
+        shifts = [(-du, -dv) for du in (0, 1) if du == 0 or wrap[0] == REPEAT
+                  for dv in (0, 1) if dv == 0 or wrap[1] == REPEAT]
     coverage = np.zeros((height, width), np.uint8)
-    try:
-        import cv2
-        cv2.fillPoly(coverage, np.round(tri * 16).astype(np.int32), 1, lineType=cv2.LINE_8, shift=4)
-    except ImportError:  # pragma: no cover - opencv ships with rembg in this repo
-        from PIL import ImageDraw
-        canvas = Image.new("L", (width, height), 0)
-        draw = ImageDraw.Draw(canvas)
-        for t in tri:
-            draw.polygon([tuple(p) for p in t], fill=1)
-        coverage = np.asarray(canvas)
+    for du, dv in shifts:
+        pixels = (tri + np.array([du, dv])) * np.array([width, height])
+        try:
+            import cv2
+            cv2.fillPoly(coverage, np.round(pixels * 16).astype(np.int32), 1, lineType=cv2.LINE_8, shift=4)
+        except ImportError:  # pragma: no cover - opencv ships with rembg in this repo
+            from PIL import ImageDraw
+            canvas = Image.fromarray(coverage * 255)
+            draw = ImageDraw.Draw(canvas)
+            for t in pixels:
+                draw.polygon([tuple(p) for p in t], fill=255)
+            coverage = (np.asarray(canvas) > 0).astype(np.uint8)
     # Sub-texel triangles fill nothing; one texel of growth catches them.
     return ndimage.binary_dilation(coverage.astype(bool), iterations=1)
 
@@ -523,6 +551,9 @@ class _Surface:
     image: np.ndarray            # base colour, sRGB uint8 HxWx3
     factor: np.ndarray           # baseColorFactor rgb
     texcoord: int
+    wrap: tuple = (REPEAT, REPEAT)
+    alpha: np.ndarray | None = None   # 0..1 where the material is cut out or blended
+    cutoff: float = 0.5
     uv: list = field(default_factory=list)
     faces: list = field(default_factory=list)
     positions: list = field(default_factory=list)
@@ -555,21 +586,59 @@ def _texture_image(glb: EditGLB, info: dict | None, mode: str = "RGB") -> np.nda
 
 
 def transform_uv(uv: np.ndarray, transform: dict | None) -> np.ndarray:
-    """Apply KHR_texture_transform the way three.js does: scale, rotate, then offset."""
+    """Apply KHR_texture_transform as three.js does (Matrix3.setUvTransform): rotate, scale, offset."""
     if not transform:
         return uv
     sx, sy = transform.get("scale", [1.0, 1.0])
     ox, oy = transform.get("offset", [0.0, 0.0])
     c, s = np.cos(transform.get("rotation", 0.0)), np.sin(transform.get("rotation", 0.0))
-    u, v = uv[:, 0] * sx, uv[:, 1] * sy
-    return np.c_[c * u + s * v + ox, -s * u + c * v + oy]
+    u, v = uv[:, 0], uv[:, 1]
+    return np.c_[sx * (c * u + s * v) + ox, sy * (-s * u + c * v) + oy]
+
+
+def scene_nodes(document: dict) -> list[int]:
+    """The nodes the displayed scene draws, parents before children; every node if no scene."""
+    nodes = document.get("nodes", [])
+    scenes = document.get("scenes") or []
+    if not scenes:
+        return list(range(len(nodes)))
+    stack = list(reversed(scenes[document.get("scene", 0)].get("nodes", [])))
+    order, seen = [], set()
+    while stack:
+        index = stack.pop()
+        if index in seen:
+            continue
+        seen.add(index)
+        order.append(index)
+        stack.extend(reversed(nodes[index].get("children", [])))
+    return order
+
+
+def _sampler_wrap(document: dict, info: dict) -> tuple:
+    texture = document["textures"][info["index"]]
+    sampler = document.get("samplers", [])[texture["sampler"]] if "sampler" in texture else {}
+    return sampler.get("wrapS", REPEAT), sampler.get("wrapT", REPEAT)
+
+
+def _alpha(glb: EditGLB, material: dict, info: dict) -> np.ndarray | None:
+    """Per-texel opacity for MASK and BLEND materials; None when everything counts."""
+    mode = material.get("alphaMode", "OPAQUE")
+    if mode == "OPAQUE":
+        return None
+    factor = (material.get("pbrMetallicRoughness", {}).get("baseColorFactor") or [1, 1, 1, 1])[3]
+    return _texture_image(glb, info, "RGBA")[..., 3] / 255.0 * factor
+
+
+def _visible(material: dict) -> float:
+    return float(material.get("alphaCutoff", 0.5)) if material.get("alphaMode") == "MASK" else 0.5
 
 
 def _surfaces(glb: EditGLB) -> dict[int, _Surface]:
     document = glb.document
     globals_, _ = glb.node_globals()
     surfaces: dict[int, _Surface] = {}
-    for node_index, node in enumerate(document.get("nodes", [])):
+    for node_index in scene_nodes(document):
+        node = document["nodes"][node_index]
         if "mesh" not in node:
             continue
         matrix = globals_[node_index]
@@ -590,7 +659,8 @@ def _surfaces(glb: EditGLB) -> dict[int, _Surface]:
             if material_index not in surfaces:
                 surfaces[material_index] = _Surface(
                     material_index, _texture_image(glb, base),
-                    np.array(pbr.get("baseColorFactor", [1, 1, 1, 1])[:3], dtype=np.float64), texcoord)
+                    np.array(pbr.get("baseColorFactor", [1, 1, 1, 1])[:3], dtype=np.float64), texcoord,
+                    _sampler_wrap(document, base), _alpha(glb, material, base), _visible(material))
             surface = surfaces[material_index]
             positions = glb.accessor(primitive["attributes"]["POSITION"]).astype(np.float64)
             positions = positions @ matrix[:3, :3].T + matrix[:3, 3]
@@ -605,10 +675,10 @@ def _surfaces(glb: EditGLB) -> dict[int, _Surface]:
     return surfaces
 
 
-def _lookup(image: np.ndarray, uv: np.ndarray) -> np.ndarray:
+def _lookup(image: np.ndarray, uv: np.ndarray, wrap: tuple = (REPEAT, REPEAT)) -> np.ndarray:
     height, width = image.shape[:2]
-    x = np.clip((np.mod(uv[:, 0], 1.0) * width).astype(int), 0, width - 1)
-    y = np.clip((np.mod(uv[:, 1], 1.0) * height).astype(int), 0, height - 1)
+    x = np.clip((wrap_uv(uv[:, 0], wrap[0]) * width).astype(int), 0, width - 1)
+    y = np.clip((wrap_uv(uv[:, 1], wrap[1]) * height).astype(int), 0, height - 1)
     return image[y, x]
 
 
@@ -647,11 +717,19 @@ def _sample(surfaces: dict[int, _Surface], count: int, seed: int) -> _Samples:
     material = owner[chosen]
     srgb = np.zeros((count, 3))
     linear = np.zeros((count, 3))
+    keep = np.ones(count, bool)
     for index, surface in surfaces.items():
         here = material == index
-        texels = _lookup(surface.image, uv[here]) / 255.0
+        texels = _lookup(surface.image, uv[here], surface.wrap) / 255.0
         srgb[here] = texels
         linear[here] = srgb_to_linear(texels) * surface.factor
+        if surface.alpha is not None:
+            # cut-out padding is often black RGB: it is not paint and must not make a zone
+            keep[here] = _lookup(surface.alpha, uv[here], surface.wrap) >= surface.cutoff
+    if not keep.any():
+        raise ValueError("every sampled texel is transparent")
+    points, normals, uv, material, srgb, linear = (
+        a[keep] for a in (points, normals, uv, material, srgb, linear))
     lab = color.rgb2lab(linear_to_srgb(linear)[None])[0]
     return _Samples(points, normals, uv, material, srgb, linear, lab, luminance(linear))
 
@@ -696,6 +774,19 @@ def _zones(samples: _Samples, clusters: Clusters, surfaces, zones_from: str):
     return zones, ids, distance
 
 
+def surface_luminance(surface: _Surface) -> np.ndarray:
+    """Linear luminance of the colour the material shows: texture times baseColorFactor."""
+    return luminance(srgb_to_linear(surface.image / 255.0) * surface.factor)
+
+
+def _uv_layout(info: dict) -> tuple:
+    return info.get("texCoord", 0), (info.get("extensions") or {}).get("KHR_texture_transform")
+
+
+def _same_uv_layout(base: dict, other: dict | None) -> bool:
+    return not other or _uv_layout(other) == _uv_layout(base)
+
+
 def _load_ao(path: Path | None, surfaces) -> dict[int, np.ndarray]:
     if path is None:
         return {}
@@ -716,7 +807,7 @@ def _analyse(glb: EditGLB, ao_path, zones_from: str, samples: int, seed: int) ->
         ao_samples = np.zeros(len(s.y))
         for index, ao in ao_maps.items():
             here = s.material == index
-            ao_samples[here] = _lookup(ao, s.uv[here])
+            ao_samples[here] = _lookup(ao, s.uv[here], surfaces[index].wrap)
     checks = [
         tint_zones_record(zones, zones_from, distance),
         light_direction_record(s.y, s.normals, light_groups),
@@ -771,6 +862,11 @@ def _orm(surface: _Surface, material: dict, glb: EditGLB, mask: np.ndarray, cove
          ao: np.ndarray | None, roughness_by_zone: dict, metallic_by_zone: dict):
     height, width = coverage.shape
     pbr = material.get("pbrMetallicRoughness", {})
+    for slot, info in (("metallic-roughness", pbr.get("metallicRoughnessTexture")),
+                       ("occlusion", material.get("occlusionTexture"))):
+        if not _same_uv_layout(pbr["baseColorTexture"], info):
+            raise ValueError(f"the {slot} texture uses another UV set or transform than the base colour; "
+                             "repack it onto the base colour's UVs before making game materials")
     rough_factor = float(pbr.get("roughnessFactor", 1.0))
     mr = _texture_image(glb, pbr.get("metallicRoughnessTexture"))
     # glTF's own default is 1, but a colour-only asset that never mentions metal is not
@@ -785,16 +881,19 @@ def _orm(surface: _Surface, material: dict, glb: EditGLB, mask: np.ndarray, cove
         rough = mr[..., 1] / 255.0 * rough_factor
         maps["roughness"] = "kept"
     else:
-        lum = luminance(srgb_to_linear(surface.image / 255.0))
-        base = np.array([roughness_by_zone.get(c, DEFAULT_ROUGHNESS) for c in CHANNELS]
-                        + [DEFAULT_ROUGHNESS])[zone]
+        lum = surface_luminance(surface)
+        # Start from the material's own roughness: its factor, times the constant map if any.
+        own = rough_factor * (float(np.median(mr[..., 1][coverage])) / 255.0 if mr is not None else 1.0)
+        if "roughnessFactor" not in pbr and mr is None:
+            own = DEFAULT_ROUGHNESS
+        base = np.array([roughness_by_zone.get(c, own) for c in CHANNELS] + [own])[zone]
         detail = np.zeros_like(lum)
         for z in range(4):
             here = (zone == z) & coverage
             if here.any():
                 median = max(float(np.median(lum[here])), 0.02)
                 detail[zone == z] = (median - lum[zone == z]) / median
-        rough = base + ROUGHNESS_DETAIL * np.clip(detail, -1, 1)
+        rough = base * (1.0 + ROUGHNESS_DETAIL * np.clip(detail, -1, 1))
         maps["roughness"] = "derived"
 
     if mr is not None:
@@ -839,7 +938,8 @@ def write_provenance(source: Path, output: Path) -> Path:
                   "note": "the source carried no provenance record"}
     record["operation"] = OPERATION
     record["input"] = {"path": str(source), "sha256": sha256_file(source)}
-    record["output"] = {"path": str(output), "sha256": sha256_file(output)}
+    # finalize_output keeps the licence classification under "output": update, never replace
+    record["output"] = {**(record.get("output") or {}), "path": str(output), "sha256": sha256_file(output)}
     path = output.with_suffix(".provenance.json")
     path.write_text(json.dumps(record, indent=2), encoding="utf-8")
     return path
@@ -925,7 +1025,7 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
         coverage = uv_coverage(np.concatenate(surface.uv),
                                np.concatenate([f + sum(len(u) for u in surface.uv[:i])
                                                for i, f in enumerate(surface.faces)]),
-                               (width, height))
+                               (width, height), surface.wrap)
         name = prefix
         if many:
             name = f"{prefix}_{safe_name(material.get('name') or str(surface.material))}"
@@ -979,7 +1079,7 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
         if "normalTexture" in material:
             maps["normal"] = "kept"
         else:
-            lum = (surface.image.astype(np.float64) / 255.0) @ np.array(LUMINANCE_WEIGHTS)
+            lum = linear_to_srgb(surface_luminance(surface))
             normal = fill_gutter(normal_from_albedo(lum, coverage, normal_strength), coverage)
             written["normal"] = out_dir / f"{name}_N.png"
             Image.fromarray(normal).save(written["normal"])
