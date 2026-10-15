@@ -209,8 +209,9 @@ export function createStudioViewer({ stage, logoUrl, onClipChange, onModelLoaded
 
   let embeddedAnimations = [];
 
-  function load(url, { label = '', autoplay = false, embeddedClips = false } = {}) {
+  function load(url, { label = '', autoplay = false, embeddedClips = false, turntable = false } = {}) {
     const token = ++loadToken;
+    turning = turntable;
     dispose();
     embeddedAnimations = [];
     if (embeddedClips) { clipBar.hidden = true; clipBar.innerHTML = ''; }
@@ -262,6 +263,7 @@ export function createStudioViewer({ stage, logoUrl, onClipChange, onModelLoaded
           if (loaded.rig.bones.length) setSkeleton(true);
           else tools.querySelector('[data-act="bones"]').setAttribute('aria-pressed', 'false');
         }
+        setTurntable(turning);
         resize();
         drawGizmo();
         onModelLoaded?.(loaded, requestRender);
@@ -273,6 +275,16 @@ export function createStudioViewer({ stage, logoUrl, onClipChange, onModelLoaded
     });
     view = created;
     resize();
+  }
+
+  // Review turns the model round on its own; any drag still orbits it as usual.
+  let turning = false;
+  function setTurntable(on) {
+    turning = !!on;
+    if (!view?.controls) return;
+    view.controls.autoRotate = turning;
+    view.controls.autoRotateSpeed = 4;  // one turn in about 15 seconds
+    requestRender();
   }
 
   function showImage(url, caption) {
@@ -372,5 +384,5 @@ export function createStudioViewer({ stage, logoUrl, onClipChange, onModelLoaded
   });
 
   drawGizmo();
-  return { load, showImage, showEmpty, setClips, setFacing, snap, dispose };
+  return { load, showImage, showEmpty, setClips, setFacing, setTurntable, snap, dispose };
 }

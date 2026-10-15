@@ -1,0 +1,7 @@
+{
+  "description": "A map object: a barrel, a fence, a rock.",
+  "checks": {
+    "budget.faces": {"max": 10000},
+    "budget.materials": {"warn": 2, "fail": 4}
+  }
+}

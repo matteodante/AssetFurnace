@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Asset checks (`image_to_3dlab/checks`): one JSON contract for every check, profiles of
+  thresholds per asset type, and the generic checks (flipped faces, holes, floating specks,
+  non-manifold edges, UV overlap, triangle/material/texture budgets, texel density, size
+  against a reference, silhouette at a common scale from four views, glTF-Validator,
+  component licences from provenance). Results go to `<name>.checks.json`.
+- `scripts/bootstrap_gltf_validator.py` installs Khronos' glTF-Validator (Apache-2.0,
+  2.2 MB) after asking, for the `gltf.valid` check.
+- Review queue (`output/review-log.jsonl`): checked assets wait for a person to approve them
+  or send them back with a note; a sent-back asset stays in the queue with its note until a
+  new version is checked. `scripts/check_asset.py` checks and queues a GLB,
+  `scripts/review_queue.py` lists and decides, and the studio serves `/api/review/...`.
+  Decisions are also recorded as `mark_asset` verdicts.
+  `image_to_3dlab.checks.enqueue_for_review(glb, key, source=..., kind=...)` lets a batch queue
+  an output before or after its checks.
+- **Review** in Studio: the queue of checked assets, a form to check a Library asset against
+  a reference, and a review panel in place of Steps: the model turns 360°, the reference turns
+  beside the checks, four silhouette overlays show where the outlines differ, and Approve or
+  Send back (with a note) records the decision.
 - **Edit in Blender** in Studio: open a separate editing copy, export a GLB from
   Blender and import it as a new Library version. Originals and provenance stay
   available; imported versions preview their own rig, materials and animations.
