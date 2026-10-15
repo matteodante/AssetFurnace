@@ -12,6 +12,8 @@ import importlib.util
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "audit_model_weights.py"
 
 
@@ -26,6 +28,34 @@ def _load():
 audit = _load()
 
 
+def _sparse(path: Path, size: int) -> None:
+    """Make `path` report `size` bytes without occupying them.
+
+    macOS and Linux leave a truncated-up file sparse. Windows does not: Python's
+    `truncate` there extends the file by writing every zero, and one run of this file
+    left 23 GB in pytest's temp folder, which keeps the last three runs. So on Windows
+    the file is marked sparse and only its last byte is written, which leaves the rest a
+    hole; a volume that cannot hold sparse files skips the test rather than fill the disk.
+    """
+    with path.open("wb") as handle:
+        if sys.platform == "win32":
+            import ctypes
+            import msvcrt
+            from ctypes import wintypes
+
+            fsctl_set_sparse = 0x000900C4
+            returned = wintypes.DWORD()
+            if not ctypes.windll.kernel32.DeviceIoControl(
+                    wintypes.HANDLE(msvcrt.get_osfhandle(handle.fileno())), fsctl_set_sparse,
+                    None, 0, None, 0, ctypes.byref(returned), None):
+                pytest.skip("this volume cannot hold sparse files; the test would write gigabytes")
+            if size:
+                handle.seek(size - 1)
+                handle.write(bytes(1))
+            return
+        handle.truncate(size)
+
+
 def _weights(root: Path, name: str, size: int) -> Path:
     """A file that *reports* `size` without occupying it.
 
@@ -34,8 +64,7 @@ def _weights(root: Path, name: str, size: int) -> Path:
     """
     path = root / name
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("wb") as handle:
-        handle.truncate(size)
+    _sparse(path, size)
     return path
 
 
@@ -69,8 +98,7 @@ def _cache_entry(hub: Path, repo_id: str, files: dict[str, int]) -> Path:
     snap.mkdir(parents=True)
     for index, (name, size) in enumerate(files.items()):
         blob = blobs / f"blob{index}"
-        with blob.open("wb") as handle:
-            handle.truncate(size)
+        _sparse(blob, size)
         link = snap / name
         link.parent.mkdir(parents=True, exist_ok=True)
         link.symlink_to(blob)
