@@ -19,7 +19,7 @@ import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from blender_edit_api import body, check_request
+from blender_edit_api import body, check_request, private_file
 
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "game_materials.py"
@@ -37,6 +37,8 @@ def source_path(output: Path, relative: str) -> Path:
     path = (root / relative).resolve()
     if not path.is_relative_to(root) or path.suffix.lower() != ".glb" or not path.is_file():
         raise ValueError("That model is not in the Library")
+    if private_file(output, root / relative):
+        raise ValueError("That file is a private editing copy; use a saved version instead")
     return path
 
 

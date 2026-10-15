@@ -75,6 +75,15 @@ def test_only_existing_glbs_under_output_are_accepted(output, bad):
         api.source_path(output, bad)
 
 
+def test_private_blender_edit_snapshots_are_refused(output):
+    """Studio never serves an editing session's snapshot, so the step must not read it either."""
+    private = output / "blender-edits" / "sessions" / ("a" * 32) / "input" / "source.glb"
+    private.parent.mkdir(parents=True)
+    private.write_bytes((output / FILE).read_bytes())
+    with pytest.raises(ValueError):
+        api.source_path(output, private.relative_to(output).as_posix())
+
+
 def test_status_before_any_run_says_so(server):
     status, body = request(server, "GET", f"/api/materials?file={FILE}")
     assert status == 200, body
