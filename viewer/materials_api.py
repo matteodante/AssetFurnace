@@ -101,6 +101,17 @@ def start(output: Path, relative: str, popen=None) -> dict:
     return job_state(output, relative)
 
 
+def _discard_body(handler, limit: int = 65536) -> None:
+    """Read a small request body a refusal left unread, so closing does not reset the
+    client mid-send. Only for refusals raised before `body` ran."""
+    try:
+        length = int(handler.headers.get("Content-Length", "0"))
+    except ValueError:
+        return
+    if 0 < length <= limit:
+        handler.rfile.read(length)
+
+
 def handle(handler, output: Path, *, mutation: bool = False) -> bool:
     url = urlsplit(handler.path)
     if not url.path.startswith("/api/materials"):
@@ -122,6 +133,7 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
         else:
             handler._send_json(404, {"error": "Unknown materials endpoint"})
     except PermissionError as exc:
+        _discard_body(handler)
         handler.close_connection = True
         handler._send_json(403, {"error": str(exc)})
     except RuntimeError as exc:

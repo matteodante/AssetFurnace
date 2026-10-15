@@ -72,3 +72,11 @@ def test_each_blender_material_gets_its_own_mask():
     twins = {"materials": [{"material": 0, "name": "arm", "textures": {"tint_mask": "a.png"}},
                            {"material": 1, "name": "arm", "textures": {"tint_mask": "b.png"}}]}
     assert mask_for_material(twins, "arm") is None                         # ambiguous: leave it alone
+
+
+def test_an_exact_blender_name_wins_over_the_suffix_rule():
+    """'metal.001' can be the material's real name, not only Blender's duplicate suffix."""
+    sidecar = {"materials": [{"material": 0, "name": "metal.001", "textures": {"tint_mask": "a.png"}},
+                             {"material": 1, "name": "metal", "textures": {"tint_mask": "b.png"}}]}
+    assert mask_for_material(sidecar, "metal.001") == "a.png"
+    assert mask_for_material(sidecar, "metal") == "b.png"

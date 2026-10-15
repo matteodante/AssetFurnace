@@ -120,6 +120,13 @@ def test_a_run_needs_the_studio_header(server):
     assert status == 403
 
 
+def test_a_refused_post_is_answered_cleanly_every_time(server):
+    """403 before reading the body used to reset the connection now and then on Windows."""
+    for _ in range(25):
+        status, _ = request(server, "POST", "/api/materials/run", {"file": FILE}, {"X-AssetFurnace-Request": ""})
+        assert status == 403
+
+
 def test_a_bad_file_is_refused_with_a_reason(server):
     status, body = request(server, "POST", "/api/materials/run", {"file": "../outside.glb"})
     assert status == 422

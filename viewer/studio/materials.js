@@ -89,13 +89,22 @@ export function checkRows(checks) {
   }).filter(Boolean);
 }
 
-/** The GLB whose paint the step reads: the finished model, else the raw one, else the rig.
- *  A prop set follows the prop on screen; a character's moves all share one paint. */
+/** The GLB the step works on: the rig when there is one, so the game-ready file keeps its
+ *  skeleton, else the finished model, else the raw one. A prop set follows the prop on
+ *  screen; a character's moves all share the rig's paint. */
 export function materialSource(asset, revision = null, displayed = null) {
   if (revision?.file) return revision.file;
   if (!asset) return null;
   if (asset.kind === 'prop set') return displayed || asset.props?.[0]?.file || asset.model || null;
-  return asset.finished || asset.model || asset.rigged || null;
+  return asset.rigged || asset.finished || asset.model || null;
+}
+
+/** Sample the mask the way the albedo is sampled, tiles and mirrors included. */
+export function matchWrapping(texture, map) {
+  texture.wrapS = map.wrapS;
+  texture.wrapT = map.wrapT;
+  texture.needsUpdate = true;
+  return texture;
 }
 
 /** What the panel offers to download: the game-ready GLB, once one was made. */
@@ -221,7 +230,7 @@ export function createMaterialsPanel({ root, url }) {
         material.customProgramCacheKey = () => 'af-tint';
         material.needsUpdate = true;
       }
-      material.userData.afUniforms.afTintMask.value = texture;
+      material.userData.afUniforms.afTintMask.value = matchWrapping(texture, material.map);
     }
     updateUniforms();
   }

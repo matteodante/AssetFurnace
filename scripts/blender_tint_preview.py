@@ -80,9 +80,11 @@ def mask_for_material(sidecar: dict, name: str) -> str | None:
     materials = sidecar.get("materials") or []
     if len(materials) <= 1:
         return (sidecar.get("textures") or {}).get("tint_mask")
-    base = re.sub(r"\.\d{3}$", "", name or "")
-    matches = [m for m in materials if m.get("name") == base]
-    return matches[0].get("textures", {}).get("tint_mask") if len(matches) == 1 else None
+    for wanted in (name or "", re.sub(r"\.\d{3}$", "", name or "")):   # exact name first
+        matches = [m for m in materials if m.get("name") == wanted]
+        if matches:
+            return matches[0].get("textures", {}).get("tint_mask") if len(matches) == 1 else None
+    return None
 
 
 def light_rotation(toward) -> tuple[float, float, float]:

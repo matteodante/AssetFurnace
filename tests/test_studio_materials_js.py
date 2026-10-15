@@ -108,13 +108,13 @@ def test_check_rows_read_plainly():
 @needs_node
 def test_the_step_runs_on_the_model_the_paint_comes_from():
     out = run("""console.log(JSON.stringify([
-      m.materialSource({finished:'f.glb', model:'m.glb', rigged:'r.glb'}),
+      m.materialSource({finished:'f.glb', model:'m.glb', rigged:'r.glb'}),   // the rig keeps its skeleton
       m.materialSource({model:'m.glb'}),
       m.materialSource({rigged:'r.glb'}),
       m.materialSource({kind:'prop set', props:[{file:'p.glb'}], model:'s.glb'}),
       m.materialSource({finished:'f.glb'}, {file:'v.glb'}),
       m.materialSource({picture:'p.png'})]));""")
-    assert out == ["f.glb", "m.glb", "r.glb", "p.glb", "v.glb", None]
+    assert out == ["r.glb", "m.glb", "r.glb", "p.glb", "v.glb", None]
 
 
 @needs_node
@@ -122,7 +122,7 @@ def test_a_prop_set_follows_the_prop_on_screen_and_a_character_does_not():
     out = run("""console.log(JSON.stringify([
       m.materialSource({kind:'prop set', props:[{file:'a.glb'},{file:'b.glb'}]}, null, 'b.glb'),
       m.materialSource({kind:'character', finished:'f.glb', rigged:'r.glb'}, null, 'animate/walk.glb')]));""")
-    assert out == ["b.glb", "f.glb"]
+    assert out == ["b.glb", "r.glb"]
 
 
 @needs_node
@@ -154,3 +154,11 @@ def test_a_rejected_rerun_takes_the_old_tint_off():
       m.shouldTint({files:{sidecar:'k.materials.json'}}),
       m.shouldTint(null)]));""")
     assert out == [True, False, False]
+
+
+@needs_node
+def test_the_mask_repeats_the_way_the_albedo_does():
+    out = run("""const mask = {wrapS: 1001, wrapT: 1001, needsUpdate: false};
+      m.matchWrapping(mask, {wrapS: 1000, wrapT: 1002});
+      console.log(JSON.stringify(mask));""")
+    assert out == {"wrapS": 1000, "wrapT": 1002, "needsUpdate": True}
