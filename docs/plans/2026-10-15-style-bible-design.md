@@ -125,8 +125,10 @@ il valore di base di AssetFurnace, il prompt negativo non ha effetto: lo stile v
 
 ### Cosa costruisco io e cosa fa la funzione 2
 
-La **funzione 2** possiede il motore: la gara fra Qwen-Image 2.1 in modifica e Qwen-Image-Edit-2511, i comandi
-`sd-cli`, l'aggancio in `viewer/image_api.py`. Non tocco niente di questo. Io fornisco:
+**Motore deciso dall'utente**: solo Qwen-Image 2.1 in modifica dentro `sd-cli` (Qwen-Image-Edit-2511 è fuori dal
+progetto). La **funzione 2** possiede il motore, il comando e l'aggancio in `viewer/image_api.py`, e offre una funzione
+pura `generate(prompt, references, seed) -> Path`; `-r` è ripetibile: prima la mappa di forma, poi 1-3 riferimenti di
+stile, in quest'ordine. Non tocco niente di questo. Io fornisco:
 
 - `image_to_3dlab/style/refs.py: pick(bible, kind, k)`: sceglie 1-3 immagini approvate da usare come riferimento. Prima
   quelle dello stesso tipo; a parità, quelle che il giudice ritiene più tipiche della bibbia (le più vicine alle altre).
@@ -135,18 +137,17 @@ La **funzione 2** possiede il motore: la gara fra Qwen-Image 2.1 in modifica e Q
   brushwork, colours and proportions"), in `compose()`.
 - Il giudice, per scegliere il migliore fra N tentativi.
 
-**Prova** (girata con la funzione di generazione della funzione 2): stessi soggetti e semi, tre bracci: solo prompt,
-prompt + 1 riferimento, prompt + 3 riferimenti. Si misura quanti escono nello stile secondo i giudizi dell'utente, e
-quanto costa in tempo. Ho scritto alla sessione della funzione 2 per inserire questi bracci nella sua gara invece di
-farne una seconda.
+**Prova** (la conduco e la misuro io, con `generate` della funzione 2): stessi soggetti e semi, tre bracci: solo
+prompt, prompt + 1 riferimento, prompt + 3 riferimenti. Si misura quanti escono nello stile secondo i giudizi
+dell'utente, e quanto costa in tempo. Concordato con la sessione della funzione 2 il 15/10/2026.
 
 **Licenze dei motori** (verificate sulle schede Hugging Face, 15/10/2026):
 
 | Motore | Pesi | Riferimenti | Nota |
 |---|---|---|---|
 | Qwen-Image 2.1 (quello in uso) | **Qwen Research License: §2a solo uso non commerciale** (trovato dalla funzione 2) | fino a 10 | Va bene per le prove; per produrre un gioco commerciale va deciso a parte |
-| **Qwen-Image-Edit-2511** | **Apache-2.0** | più immagini | In `sd-cli` serve `--model-args qwen_image_zero_cond_t=true`, altrimenti la qualità cala molto |
-| FLUX.2 klein 4B | **Apache-2.0** | fino a 4 | Circa 13 GB di VRAM, supportato da `sd-cli` (codificatore Qwen3-4B). Il 9B ha licenza non commerciale |
+| Qwen-Image-Edit-2511 | Apache-2.0 | più immagini | **Fuori dal progetto per decisione dell'utente.** Resta la strada Apache-2.0 se la licenza della 2.1 diventa un problema (in `sd-cli` serve `--model-args qwen_image_zero_cond_t=true`) |
+| FLUX.2 klein 4B | Apache-2.0 | fino a 4 | Non adottato. Circa 13 GB di VRAM, supportato da `sd-cli`; il 9B ha licenza non commerciale |
 | FLUX 3 Image Klein (uscito oggi, 15/10/2026) | FLUX Kommunity License: commerciale gratis solo sotto 5 M$ di fatturato, con condizioni su filtri e ridistribuzione | sì | Da guardare, non da adottare ora |
 | Qwen-Image-Style-Transfer (QwenStyle, LoRA su Edit-2509) | codice Apache-2.0, **licenza dei pesi non dichiarata** | stile + contenuto | Escluso finché i pesi non hanno una licenza: ripristinerebbe lo stile di un concept venuto male |
 
@@ -188,7 +189,8 @@ due terne di riferimenti e soglie tarate sui giudizi dell'utente sono le controm
 
 Il modello: Qwen3-VL-8B-Instruct (Apache-2.0). **Il file del modello è già sul disco** (`Qwen3VL-8B-Instruct-Q4_K_M.gguf`,
 5,03 GB, lo usa Qwen-Image come codificatore); manca la parte visiva (`mmproj`, 1,16 GB), la stessa che serve alla
-strada edit della funzione 2: un download per due funzioni. Gira con **llama.cpp** (MIT, supporta Qwen3-VL), in
+strada edit della funzione 2: la aggiunge **la funzione 2** al catalogo (nel backend qwen-image); io la leggo da lì,
+senza duplicarla. Gira con **llama.cpp** (MIT, supporta Qwen3-VL), in
 `vendor/llama-cpp/` come `sd-cli` sta in `vendor/sdcpp/`. Usa la GPU: lucchetto condiviso. Tempo per concept da
 misurare nella prova (stima: decine di secondi).
 
@@ -227,11 +229,11 @@ agente. Niente ComfyUI.
 | SigLIP 2 base/16 224 | `google/siglip2-base-patch16-224` → `model.safetensors` | 1,5 GB | Apache-2.0 (scheda; big_vision: "including models") | 4.1 |
 | CSD ViT-L | `tomg-group-umd/CSD-ViT-L` → `pytorch_model.bin` | 2,44 GB | CC-BY-4.0 (attribuzione), derivato da OpenAI CLIP ViT-L/14 (MIT) | 4.2. È un file pickle: si carica con `torch.load(weights_only=True)` |
 | Qwen3-VL-8B-Instruct Q4_K_M | `Qwen/Qwen3-VL-8B-Instruct-GGUF` | 5,03 GB, **già in cache** | Apache-2.0 | 4.3 |
-| mmproj di Qwen3-VL-8B | `mmproj-Qwen3VL-8B-Instruct-F16.gguf` | 1,16 GB (condiviso con la funzione 2) | Apache-2.0 | 4.3 |
+| mmproj di Qwen3-VL-8B | `mmproj-Qwen3VL-8B-Instruct-F16.gguf` | 1,16 GB, **catalogato dalla funzione 2** (non lo duplico) | Apache-2.0 | 4.3 |
 | llama.cpp | release `b11669` (15/10/2026): Vulkan x64 | 30 MB; con CUDA 13.4: 147 MB + 403 MB di runtime | MIT | 4.3. Si parte con Vulkan; CUDA solo se la prova lo mostra troppo lento |
 | `transformers` (pip) | — | piccolo | Apache-2.0 | Carica SigLIP 2 e CSD (torch c'è già) |
 
-Per la gara: circa **4,1 GB** di pesi nuovi e 30 MB di motore. Dopo la gara si tengono solo quelli del vincitore; il
+Per la gara: circa **4 GB** di pesi nuovi miei (SigLIP 2 e CSD) più il mmproj della funzione 2 e 30 MB di motore. Dopo la gara si tengono solo quelli del vincitore; il
 catalogo permette di togliere gli altri.
 
 **Esclusi**, con il motivo: DINOv3 (licenza con condizioni); Cell-DINO e XRay-DINO (non commerciali, nella stessa repo
@@ -299,7 +301,7 @@ escludere; la misura vera si raffina con i giudizi del pilota (sezione 4.4).
 - **I riferimenti fanno copiare** (la generazione ricalca un'immagine della bibbia invece di prenderne lo stile): la
   funzione 2 ha già un controllo di copia (`concept.copy`); lo si usa anche qui.
 - **Licenza di Qwen-Image 2.1** (non commerciale): riguarda la generazione, non questa funzione, ma i riferimenti di
-  stile la usano. Qwen-Image-Edit-2511 e FLUX.2 klein 4B sono le strade Apache-2.0.
+  stile la usano. L'utente ha scelto la 2.1; Qwen-Image-Edit-2511 resta la strada Apache-2.0 di riserva.
 - **CSD**: pesi in formato pickle e risultati non del tutto riprodotti dagli autori. Caricamento sicuro e prova nostra.
 
 ## Seguiti
@@ -308,12 +310,12 @@ escludere; la misura vera si raffina con i giudizi del pilota (sezione 4.4).
 
 ## Domande per l'approvazione
 
-1. Va bene la gara fra SigLIP 2, CSD e il giudice Qwen3-VL, con circa 4,1 GB di pesi e llama.cpp Vulkan (30 MB)?
+1. Va bene la gara fra SigLIP 2, CSD e il giudice Qwen3-VL, con circa 4 GB di pesi (SigLIP 2 e CSD; il mmproj lo scarica la funzione 2) e llama.cpp Vulkan (30 MB)?
    Scarico solo dopo il tuo sì.
 2. Etichette dell'utente: circa 5 minuti per approvare la bibbia di esempio e 10 per etichettare il campione, dalla
    pagina Stile o da un foglio. Va bene?
-3. La prova dei riferimenti di stile la faccio girare dentro la gara della funzione 2 (ho chiesto alla sessione): va
-   bene così?
+3. ~~La prova dei riferimenti di stile dentro la gara della funzione 2~~: risolta con la funzione 2 (motore suo,
+   bracci e misura miei).
 
 ## Fonti (verificate il 15/10/2026)
 
