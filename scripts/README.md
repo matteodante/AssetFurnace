@@ -129,6 +129,7 @@ Numbers and renders to decide whether a change helped. Read `docs/` before trust
 | `mark_asset.py` | Record a human verdict on a generated asset, so winners stay findable. |
 | `check_asset.py` | Run the automatic checks on a GLB, write `<name>.checks.json` and put it in the review queue. |
 | `review_queue.py` | See the review queue, and approve an asset or send it back with a note. |
+| `style_bible.py` | Keep a project's style bible: approved and rejected pictures with notes, prompts and style references. |
 | `ribbon_metric.py` | Measure how torn a generated mesh is, and gate post-processing on it. |
 | `tear_provenance.py` | Ask of every large tear: could the input view see it?. |
 | `glb_forensics.py` | Dump what a GLB actually contains, so a reference asset can be diffed against ours. |
