@@ -1,0 +1,70 @@
+// The review queue's plain logic: no DOM, no three.js, so Node can test it as shipped.
+
+export const STATE_LABELS = { to_review: 'To review', sent_back: 'Sent back', approved: 'Approved' };
+export const STATUS_LABELS = { pass: 'Pass', warn: 'Warn', fail: 'Fail' };
+export const VIEW_LABELS = { front: 'Front', side: 'Side', three_quarter: 'Three-quarter', top: 'Top' };
+
+/** The queue split the way the sheet shows it: to review first, then sent back, then approved. */
+export function queueSections(payload) {
+  const items = payload?.items ?? [];
+  return [
+    { id: 'to_review', title: 'To review', items: items.filter((i) => i.state === 'to_review') },
+    { id: 'sent_back', title: 'Sent back, waiting for a new version', items: items.filter((i) => i.state === 'sent_back') },
+    { id: 'approved', title: 'Recently approved', items: payload?.approved ?? [] },
+  ];
+}
+
+/** How many assets wait for a person: the number on the Review button. */
+export function waitingCount(payload) {
+  return (payload?.items ?? []).filter((i) => i.state === 'to_review').length;
+}
+
+/** "2 fail · 1 warn", or "All checks pass". */
+export function summaryLine(item) {
+  const fail = item?.summary?.fail?.length ?? 0, warn = item?.summary?.warn?.length ?? 0;
+  const parts = [fail && `${fail} fail`, warn && `${warn} warn`].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'All checks pass';
+}
+
+/** The checks report as rows, failures first, then warnings, then passes; skipped last. */
+export function checkRows(report) {
+  const rank = { fail: 0, warn: 1, pass: 2 };
+  const rows = [...(report?.results ?? [])]
+    .sort((a, b) => rank[a.status] - rank[b.status] || a.check.localeCompare(b.check))
+    .map((r) => ({ check: r.check, status: r.status, message: r.message }));
+  const skipped = (report?.skipped ?? []).map((s) => ({ check: s.check, status: 'skip', message: s.reason }));
+  return [...rows, ...skipped];
+}
+
+/** The silhouette overlays to show, in view order, with their scores. */
+export function overlays(report) {
+  const found = (report?.results ?? []).find((r) => r.check === 'silhouette');
+  const urls = found?.details?.overlay_urls ?? {};
+  return Object.keys(VIEW_LABELS).filter((v) => urls[v])
+    .map((v) => ({ view: v, label: VIEW_LABELS[v], url: urls[v], score: found.details.views?.[v] }));
+}
+
+/** A send-back needs a note; an approval does not. */
+export function canDecide(decision, note) {
+  return decision === 'approved' || (decision === 'sent_back' && String(note ?? '').trim().length > 0);
+}
+
+/** The GLB a Library asset would be checked as: the furthest step it reached. */
+export function checkableModel(asset) {
+  return asset?.rigged || asset?.finished || asset?.model || null;
+}
+
+/** Library assets that have a model to check, as choices for the "Check an asset" form. */
+export function checkChoices(assets) {
+  return (assets ?? []).filter((a) => !a.hidden && checkableModel(a))
+    .map((a) => ({ id: a.id, name: a.name, file: checkableModel(a), picture: a.picture ?? null }));
+}
+
+/** The request body for POST /api/review/checks. `reference` is a path under output/, or ''. */
+export function checksRequest(choice, { reference = '', profile = 'prop', height = '' } = {}) {
+  const body = { asset: choice.file, key: choice.id, profile };
+  if (reference) body.reference = reference;
+  const metres = Number(height);
+  if (height !== '' && Number.isFinite(metres) && metres > 0) body.height = metres;
+  return body;
+}
