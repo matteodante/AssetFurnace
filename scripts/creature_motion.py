@@ -441,7 +441,7 @@ def multileg_walk(rig: Rig, family: dict, frames: int | None = None) -> list[tup
             stride = CRAWL["stride"] * _chain_length(rig, legs[lead[i]]["bones"])
             fore_aft, rise = foot_offset(u, phase[lead[i]], CRAWL["duty"], stride, stride * CRAWL["lift_per_stride"])
             toes.append(rig.heads[leg["bones"][-1]] + forward * fore_aft + up * rise)
-        root_pos = plant(rig, legs, turn, root_pos, toes, up)
+        root_pos = plant(rig, legs, turn, root_pos, toes, up, bend=forward)
         out.append((turn, root_pos))
     return out
 

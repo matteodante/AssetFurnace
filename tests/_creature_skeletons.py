@@ -126,3 +126,13 @@ def reroot(skeleton, new_root):
                 out[n] = b
                 todo.append(n)
     return out, heads, names
+
+
+def flat_snake():
+    """The real chain SkinTokens gave a generated serpent lying stretched out along X: 13
+    joints, a few centimetres of height over almost a metre, head (bone 0) at -X."""
+    points = [(-0.396, -0.074, 0.228), (-0.371, -0.041, 0.174), (-0.331, -0.03, 0.101), (-0.295, -0.059, 0.029),
+              (-0.255, -0.092, -0.036), (-0.19, -0.102, -0.109), (-0.092, -0.066, -0.177), (0.002, -0.063, -0.199),
+              (0.096, -0.077, -0.196), (0.187, -0.095, -0.188), (0.281, -0.084, -0.174), (0.357, -0.081, -0.156),
+              (0.419, -0.088, -0.138)]
+    return build(chain("seg", None, points), shuffle_seed=5)

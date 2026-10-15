@@ -9,7 +9,7 @@ import json
 
 import numpy as np
 import pytest
-from _creature_skeletons import humanoid, plant, quadruped, snake, spider, werewolf
+from _creature_skeletons import flat_snake, humanoid, plant, quadruped, snake, spider, werewolf
 
 from image_to_3dlab import creature_family as cf
 
@@ -150,3 +150,11 @@ def test_a_spider_faces_the_camera_whichever_way_its_feet_lean():
         found = cf.classify(parents, heads)
         assert found["family"] == "multileg" and found["wings"] == [] and len(found["legs"]) == 8
         assert found["frame"]["forward"][2] > 0.9
+
+
+def test_a_flat_snake_is_a_serpent_facing_its_head():
+    parents, heads, n = flat_snake()
+    found = cf.classify(parents, heads)
+    assert found["family"] == "serpent" and found["legs"] == []
+    assert found["body"][0] == n["seg0"] and found["body"][-1] == n["seg12"]
+    assert found["frame"]["forward"][0] < -0.3  # along the body, towards the head at -X

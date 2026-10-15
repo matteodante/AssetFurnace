@@ -56,6 +56,7 @@ DIGITIGRADE_JOINTS = 0.25  # of leg length: without a mesh, only a hock this hig
 SOLE = 0.03              # of the mesh height: vertices this low are a sole on the ground
 HEEL = -0.25             # of the foot's length: a sole reaching further behind the ankle has a heel
 DRAG_SPREAD = 0.3        # of the drop: ground contact spread wider than this is dragging
+DESCENT = 0.25           # of its length along the bones: a leg drops at least this much
 LATERAL = 0.15           # of body size: a branch reaching this far sideways is an arm or wing
 
 
@@ -147,6 +148,8 @@ def _legs(body: _Body) -> list[dict]:
             if not _reaches_down(body, start, fork):
                 continue
             path = body.lowest_path(start)
+            if body.h[fork] - body.low[start] < DESCENT * _length(body, [fork, *path]):
+                continue  # runs along the ground rather than down to it: a body, a tail
             top = body.above(start)
             # a trunk carrying two legs further on (a spine to the forelegs) is not a leg
             if any(body.above(x) > 0.25 * top and sum(_reaches_down(body, c, x) for c in body.kids[x]) >= 2
@@ -335,6 +338,12 @@ def classify(parents: dict[str, str | None], heads: dict, up=(0.0, 1.0, 0.0), fr
 
     guess, main, confident = _guess(body, legs, arms, wings, head_path)
     chosen = family or guess
+    if chosen == "serpent":  # a serpent faces along its body, towards its head
+        main = main or _diameter(body)
+        towards = body.flat(body.heads[main[0]] - body.heads[main[min(2, len(main) - 1)]])
+        if np.linalg.norm(towards) > 1e-9:
+            forward = _unit(towards)
+            left = _unit(np.cross(body.up, forward))
     detail = f"{len(legs)} legs, {len(arms)} arms, {len(wings)} wings, tail of {len(tail)} bones"
     return {
         "schema_version": SCHEMA_VERSION,
