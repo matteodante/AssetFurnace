@@ -27,6 +27,7 @@ const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onModelLoa
   displayedFile = clip.file;
   setDownload(clip.file);
   blenderPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
+  materialsPanel.update(current, revisionFor(current, selectedVersions.get(current?.id)), clip.file);
 } });
 
 const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

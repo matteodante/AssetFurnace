@@ -109,6 +109,8 @@ def test_a_run_makes_textures_the_studio_can_load(server, output):
         status, _ = request(server, "GET", "/" + output.name + "/" + run["files"][key])
         assert status == 200, key
     assert run["files"]["glb"].endswith(".glb")
+    assert run["materials"][0]["files"]["tint_mask"] == run["files"]["tint_mask"]
+    assert run["files"]["provenance"].endswith(".provenance.json")
 
 
 def test_a_run_needs_the_studio_header(server):

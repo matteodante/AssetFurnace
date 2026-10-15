@@ -89,13 +89,29 @@ export function checkRows(checks) {
   }).filter(Boolean);
 }
 
-/** The GLB whose paint the step reads: the finished model, else the raw one, else the rig. */
-export function materialSource(asset, revision = null) {
+/** The GLB whose paint the step reads: the finished model, else the raw one, else the rig.
+ *  A prop set follows the prop on screen; a character's moves all share one paint. */
+export function materialSource(asset, revision = null, displayed = null) {
   if (revision?.file) return revision.file;
   if (!asset) return null;
-  if (asset.kind === 'prop set') return asset.props?.[0]?.file || asset.model || null;
+  if (asset.kind === 'prop set') return displayed || asset.props?.[0]?.file || asset.model || null;
   return asset.finished || asset.model || asset.rigged || null;
 }
+
+/** What the panel offers to download: the game-ready GLB, once one was made. */
+export function downloadLinks(run) {
+  return run?.glb && run.files?.glb ? [{ label: 'Download game-ready GLB', file: run.files.glb }] : [];
+}
+
+/** The tint mask for one material: each material slot has its own UV layout. */
+export function maskFor(run, materialName) {
+  const materials = run?.materials || [];
+  if (materials.length > 1) return materials.find((m) => m.name === materialName)?.files?.tint_mask || null;
+  return run?.files?.tint_mask || null;
+}
+
+/** Tint only a model whose last run passed: a rejected rerun has no mask to trust. */
+export const shouldTint = (run) => !!(run?.glb && run.files?.tint_mask);
 
 // ------------------------------------------------------------------ panel
 
@@ -112,10 +128,12 @@ export function createMaterialsPanel({ root, url }) {
       <button class="ghost small" data-reset>Original colours</button>
     </div>
     <div class="af-maps" data-maps hidden></div>
+    <a class="ghost" data-download hidden download>Download game-ready GLB</a>
     <button class="ghost" data-run disabled>Make game materials</button>
     <p class="hint af-status" data-status role="status" aria-live="polite"></p>`;
   const el = (key) => root.querySelector(`[data-${key}]`);
-  let file = null, run = null, view = null, render = null, uniforms = null, timer = null, epoch = 0;
+  let file = null, run = null, view = null, render = null, shared = null, timer = null, epoch = 0;
+  let masks = new Map();   // mask path -> texture, for the run on screen
   let tints = {};
 
   function message(text, error = false) {
@@ -147,40 +165,71 @@ export function createMaterialsPanel({ root, url }) {
     el('maps').innerHTML = maps.map(([key, label]) => `<a href="${escapeHTML(url(run.files[key]))}" target="_blank" rel="noopener">
       <img src="${escapeHTML(url(run.files[key]))}?v=${run.made}" alt="${label}" loading="lazy"><span>${label}</span></a>`).join('')
       + (run?.maps?.normal === 'kept' ? '<span class="af-kept">Normal: the model already had one, kept as it is</span>' : '');
+    const [link] = downloadLinks(run);
+    el('download').hidden = !link;
+    if (link) { el('download').href = url(link.file); el('download').setAttribute('download', link.file.split('/').pop()); }
     el('run').textContent = run ? 'Make again' : 'Make game materials';
   }
 
+  function clearTint() {
+    // The shader stays compiled; with no mask and zero shifts it changes nothing.
+    for (const entry of view?.materials || []) {
+      const own = entry.original?.userData?.afUniforms;
+      if (own) own.afTintMask.value = null;
+    }
+    for (const texture of masks.values()) texture.dispose();
+    masks = new Map();
+    if (shared) {
+      shared.afScale.value.set(0, 0, 0);
+      [0, 1, 2].forEach((i) => shared[`afDelta${i}`].value.set(0, 0, 0));
+      shared.afZones.value = 0;
+    }
+    render?.();
+  }
+
+  async function maskTexture(THREE, path) {
+    if (!masks.has(path)) {
+      const texture = await new THREE.TextureLoader().loadAsync(`${url(path)}?v=${run.made}`);
+      texture.flipY = false;                       // glTF UVs: v = 0 is the top row
+      texture.colorSpace = THREE.NoColorSpace;     // the mask is data, not colour
+      masks.set(path, texture);
+    }
+    return masks.get(path);
+  }
+
   async function applyTint() {
-    if (!view || !run?.glb || !run.files?.tint_mask) return;
+    if (!view) return;
+    if (!shouldTint(run)) { clearTint(); return; }
     const THREE = await import('three');
     const token = epoch;
-    if (!uniforms) {
-      uniforms = { afTintMask: { value: null }, afScale: { value: new THREE.Vector3() }, afZones: { value: 0 },
+    if (!shared) {
+      shared = { afScale: { value: new THREE.Vector3() }, afZones: { value: 0 },
         afDelta0: { value: new THREE.Vector3() }, afDelta1: { value: new THREE.Vector3() }, afDelta2: { value: new THREE.Vector3() } };
     }
-    const texture = await new THREE.TextureLoader().loadAsync(`${url(run.files.tint_mask)}?v=${run.made}`);
-    if (token !== epoch) { texture.dispose(); return; }
-    texture.flipY = false;                       // glTF UVs: v = 0 is the top row
-    texture.colorSpace = THREE.NoColorSpace;     // the mask is data, not colour
-    uniforms.afTintMask.value?.dispose();
-    uniforms.afTintMask.value = texture;
     for (const entry of view.materials) {
       const material = entry.original;
-      if (!material?.map || material.userData.afTint) continue;
-      material.userData.afTint = true;
-      material.onBeforeCompile = (shader) => patchShader(shader, uniforms);
-      material.customProgramCacheKey = () => 'af-tint';
-      material.needsUpdate = true;
+      const path = material?.map && maskFor(run, material.name);
+      if (!path) continue;
+      const texture = await maskTexture(THREE, path);
+      if (token !== epoch) return;
+      if (!material.userData.afUniforms) {
+        // one mask per material, the zone colours shared by all of them
+        material.userData.afUniforms = { ...shared, afTintMask: { value: null } };
+        material.onBeforeCompile = (shader) => patchShader(shader, material.userData.afUniforms);
+        material.customProgramCacheKey = () => 'af-tint';
+        material.needsUpdate = true;
+      }
+      material.userData.afUniforms.afTintMask.value = texture;
     }
     updateUniforms();
   }
 
   function updateUniforms() {
-    if (!uniforms || !run) return;
+    if (!shared || !run) return;
     const { scale, delta } = tintUniforms(run.zones, tints);
-    uniforms.afScale.value.set(...scale);
-    delta.forEach((d, i) => uniforms[`afDelta${i}`].value.set(...d));
-    uniforms.afZones.value = el('show-zones').checked ? 1 : 0;
+    shared.afScale.value.set(...scale);
+    delta.forEach((d, i) => shared[`afDelta${i}`].value.set(...d));
+    shared.afZones.value = el('show-zones').checked ? 1 : 0;
     render?.();
   }
 
@@ -191,6 +240,7 @@ export function createMaterialsPanel({ root, url }) {
     try {
       const data = await request(`?file=${encodeURIComponent(file)}`);
       if (mine !== epoch) return;
+      if (data.run?.made !== run?.made) clearTint();   // a new run: its masks replace the cached ones
       run = data.run;
       renderRun();
       const { state, error } = data.job;
@@ -229,13 +279,14 @@ export function createMaterialsPanel({ root, url }) {
 
   return {
     /** Follow the asset on show; the same source keeps its picked colours. */
-    update(asset, revision = null) {
-      const next = materialSource(asset, revision);
+    update(asset, revision = null, displayed = null) {
+      const next = materialSource(asset, revision, displayed);
       root.hidden = !next || !/\.glb$/i.test(next);
       if (next === file) return;
       file = next;
       run = null;
       tints = {};
+      clearTint();
       el('show-zones').checked = false;
       message('');
       renderRun();

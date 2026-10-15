@@ -60,8 +60,13 @@ def latest_run(output: Path, relative: str) -> dict | None:
              if isinstance(name, str)}
     if data.get("glb"):
         files["glb"] = f"{prefix}/{data['glb']}"
+        provenance = folder / f"{Path(data['glb']).stem}.provenance.json"
+        if provenance.is_file():
+            files["provenance"] = f"{prefix}/{provenance.name}"
     files["sidecar"] = f"{prefix}/{sidecar.name}"
     data["files"] = files
+    for material in data.get("materials") or []:
+        material["files"] = {key: f"{prefix}/{name}" for key, name in (material.get("textures") or {}).items()}
     data["made"] = sidecar.stat().st_mtime
     return data
 

@@ -115,3 +115,37 @@ def test_the_step_runs_on_the_model_the_paint_comes_from():
       m.materialSource({finished:'f.glb'}, {file:'v.glb'}),
       m.materialSource({picture:'p.png'})]));""")
     assert out == ["f.glb", "m.glb", "r.glb", "p.glb", "v.glb", None]
+
+
+@needs_node
+def test_a_prop_set_follows_the_prop_on_screen_and_a_character_does_not():
+    out = run("""console.log(JSON.stringify([
+      m.materialSource({kind:'prop set', props:[{file:'a.glb'},{file:'b.glb'}]}, null, 'b.glb'),
+      m.materialSource({kind:'character', finished:'f.glb', rigged:'r.glb'}, null, 'animate/walk.glb')]));""")
+    assert out == ["b.glb", "f.glb"]
+
+
+@needs_node
+def test_the_game_ready_glb_can_be_downloaded_only_when_made():
+    out = run("""console.log(JSON.stringify([
+      m.downloadLinks({glb:'k.glb', files:{glb:'materials/k/k.glb', tint_mask:'materials/k/T_k_Tint.png'}}),
+      m.downloadLinks({files:{sidecar:'materials/k/k.materials.json'}}),
+      m.downloadLinks(null)]));""")
+    assert out == [[{"label": "Download game-ready GLB", "file": "materials/k/k.glb"}], [], []]
+
+
+@needs_node
+def test_each_material_gets_its_own_mask():
+    out = run("""const r = {files:{tint_mask:'d/T_k_Tint.png'}, materials:[
+        {name:'head', files:{tint_mask:'d/T_k_head_Tint.png'}}, {name:'body', files:{tint_mask:'d/T_k_body_Tint.png'}}]};
+      console.log(JSON.stringify([m.maskFor(r,'body'), m.maskFor(r,'head'), m.maskFor(r,'other'), m.maskFor({files:{}}, 'x')]));""")
+    assert out == ["d/T_k_body_Tint.png", "d/T_k_head_Tint.png", None, None]
+
+
+@needs_node
+def test_a_rejected_rerun_takes_the_old_tint_off():
+    out = run("""console.log(JSON.stringify([
+      m.shouldTint({glb:'k.glb', files:{tint_mask:'t.png'}}),
+      m.shouldTint({files:{sidecar:'k.materials.json'}}),
+      m.shouldTint(null)]));""")
+    assert out == [True, False, False]
