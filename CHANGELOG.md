@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Material labels in Studio's review panel: for the version under review, say whether
+  light is painted into the colours, whether the materials look right, and click points
+  on the model with the material they show. Saved in `output/material-labels.jsonl`;
+  `scripts/material_label_set.py` queues a label set, reports progress and exports the
+  complete labels every material check is measured against.
 - Asset checks (`image_to_3dlab/checks`): one JSON contract for every check, profiles of
   thresholds per asset type, and the generic checks (flipped faces, holes, floating specks,
   non-manifold edges, UV overlap, triangle/material/texture budgets, texel density, size

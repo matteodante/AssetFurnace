@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import image_api
 import blender_edit_api
 import review_api
+import material_labels_api
 import unreal_export_api
 from image_to_3dlab import processes
 from image_to_3dlab.blender import find_blender, missing_help as blender_missing_help
@@ -2077,6 +2078,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         if blender_edit_api.handle(self, OUTPUT_ROOT, mutation=True) or review_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
+        if material_labels_api.handle(self, OUTPUT_ROOT, mutation=True):
+            return
         if unreal_export_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
         parts = self._path_parts()
@@ -2318,6 +2321,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if blender_edit_api.handle(self, OUTPUT_ROOT) or review_api.handle(self, OUTPUT_ROOT):
+            return
+        if material_labels_api.handle(self, OUTPUT_ROOT):
             return
         if unreal_export_api.handle(self, OUTPUT_ROOT):
             return
