@@ -9,7 +9,7 @@ import json
 
 import numpy as np
 import pytest
-from _creature_skeletons import flat_snake, humanoid, plant, quadruped, snake, spider, werewolf
+from _creature_skeletons import build, chain, flat_snake, humanoid, plant, quadruped, snake, spider, werewolf
 
 from image_to_3dlab import creature_family as cf
 
@@ -210,3 +210,21 @@ def test_toe_walking_legs_with_their_toes_further_forward_are_still_legs():
         heads[n[leg]] = heads[n[leg]] + np.array([0, 0, 0.05])
     found = cf.classify(parents, heads, family="digitigrade")
     assert len(found["legs"]) == 2
+
+
+def test_raised_legs_sharing_a_second_hub_are_each_one_leg():
+    rows = [("body", None, (0, 0.35, 0)), ("abdomen", "body", (0, 0.4, -0.35)), ("head", "body", (0, 0.36, 0.2)),
+            ("hub", "body", (0.05, 0.36, 0.0))]
+    for k in range(4):  # four grounded legs on the left
+        z = 0.15 - 0.1 * k
+        rows += chain(f"legL{k}", "body", [(0.08, 0.36, z), (0.35, 0.6, z * 1.5), (0.6, 0.25, z * 2), (0.7, 0.0, z * 2.2)])
+    for k in range(4):  # four raised legs on the right, three of them from one hub
+        z = 0.15 - 0.1 * k
+        parent = "hub" if k else "body"
+        rows += chain(f"legR{k}", parent, [(-0.08, 0.36, z), (-0.35, 0.6, z * 1.5), (-0.6, 0.3, z * 2),
+                                             (-0.7, 0.15, z * 2.2)])
+    parents, heads, _ = build(rows)
+    found = cf.classify(parents, heads)
+    bones = [b for leg in found["legs"] for b in leg["bones"]]
+    assert len(bones) == len(set(bones))  # no bone in two legs
+    assert len(found["legs"]) <= 8

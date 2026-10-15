@@ -322,6 +322,8 @@ sbagliata.
 **Seguiti della PR 2**
 - Zampe alzate di un ragno scambiate per ali: con cinque o più zampe, una catena laterale lunga attaccata allo stesso
   mozzo andrebbe trattata come zampa.
+- Una coda lunga tenuta di lato e verso il basso, su un quadrupede, può passare per una quinta zampa (terzo giro di
+  review di Codex): serve una regola che riconosca le code fra le catene laterali, non solo fra quelle all'indietro.
 - Un "obiettivo creatura" nelle ricette dei prompt (`image_to_3dlab/prompt_recipes.json`), con camera a terra, corpo
   intero e niente spire, invece della T-pose dei personaggi. Oggi lo studio aggiunge la T-pose a ogni personaggio.
 

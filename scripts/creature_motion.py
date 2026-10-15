@@ -482,11 +482,11 @@ def pose_path(rig: Rig, path: list[str], desired: dict[str, np.ndarray], turn: d
     """
     on_path = set(path)
     root = rig.order[0]
-    if root not in on_path:
-        raise ValueError("the skeleton's root is not on the body chain")
+    junction = _junction(rig, path)
     kids = rig.kids
     total: dict[str, np.ndarray] = {}
-    actual = {root: np.asarray(desired[root], float)}
+    # a root on a short spur off the chain rides along unturned, so the chain lands in place
+    actual = {root: np.asarray(desired[junction], float) - (rig.heads[junction] - rig.heads[root])}
     for b in rig.order:
         parent = rig.parents[b]
         inherited = total[parent] if parent is not None else np.eye(3)
@@ -516,14 +516,30 @@ def _fit(have: list[np.ndarray], want: list[np.ndarray]) -> np.ndarray:
     return axis_angle(axis, angle) @ first
 
 
+def _junction(rig: Rig, path: list[str]) -> str:
+    """The chain joint nearest the skeleton's root: the one whose parent is off the chain."""
+    on_path = set(path)
+    tops = [b for b in path if rig.parents[b] not in on_path]
+    if len(tops) != 1:
+        raise ValueError("the body chain does not hang from one joint")
+    return tops[0]
+
+
 def _rigid_at_root(rig: Rig, path: list[str], order: list[str], bends: list[np.ndarray]) -> list[np.ndarray]:
-    """No bend where the root sits in the middle of the chain: both of its segments hang
-    from the one root bone, so the angle between them cannot change."""
-    root = rig.order[0]
-    if root in order[1:-1]:
+    """No bend where the chain hangs from the middle (at the root, or where a root spur
+    joins it): both of its segments hang from that one bone, so their angle cannot change."""
+    top = _junction(rig, path)
+    if top in order[1:-1]:
         bends = list(bends)
-        bends[order.index(root)] = np.eye(3)
+        bends[order.index(top)] = np.eye(3)
     return bends
+
+
+def _per_length(rig: Rig, path: list[str], segments: int = 12) -> np.ndarray:
+    """Each segment's share of a bend, so a chain coils by its length, not its bone count:
+    1 for a segment as long as a twelfth of the chain."""
+    steps = np.array([float(np.linalg.norm(rig.heads[b] - rig.heads[a])) for a, b in zip(path, path[1:])])
+    return steps * segments / max(float(steps.sum()), 1e-12)
 
 
 def _bent(rig: Rig, path: list[str], anchor: str, bends: list[np.ndarray]) -> dict[str, np.ndarray]:
@@ -552,11 +568,12 @@ def serpent_slither(rig: Rig, family: dict, frames: int | None = None) -> list[t
         raise ValueError("a slither needs a body chain of at least four joints")
     up = np.asarray(family["frame"]["up"], float)
     frames = frames or SLITHER["frames"]
-    s = _arc(rig, path)
+    s, share = _arc(rig, path), _per_length(rig, path)
     out = []
     for index in range(frames + 1):
         u = (index % frames) / frames
-        bends = [axis_angle(up, SLITHER["bend"] * s[i] * math.sin(2 * math.pi * (u - SLITHER["waves"] * s[i])))
+        bends = [axis_angle(up, SLITHER["bend"] * share[i] * s[i]
+                            * math.sin(2 * math.pi * (u - SLITHER["waves"] * s[i])))
                  for i in range(len(path) - 1)]
         bends = _rigid_at_root(rig, path, path, bends)
         turn: dict[str, np.ndarray] = {}
@@ -571,7 +588,7 @@ def serpent_strike(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[
     if len(path) < 4:
         raise ValueError("a strike needs a body chain of at least four joints")
     up, forward, left = _frame(family)
-    s = _arc(rig, path)
+    s, share = _arc(rig, path), _per_length(rig, path)
     out = []
     for index in range(frames + 1):
         t = index / frames
@@ -580,11 +597,13 @@ def serpent_strike(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[
         bends, total = [], np.eye(3)
         for k in range(len(path) - 1, 0, -1):  # the joint each segment starts from, tail to head
             neck = max(0.0, (STRIKE["neck"] - s[k]) / STRIKE["neck"])  # 1 at the head, 0 past the neck
-            lateral = axis_angle(up, STRIKE["coil"] * coil * math.sin(2 * math.pi * (1.0 - s[k])) * (1.0 - neck))
+            lateral = axis_angle(up, STRIKE["coil"] * share[k - 1] * coil * math.sin(2 * math.pi * (1.0 - s[k]))
+                                 * (1.0 - neck))
             # raise the neck about its own coiled heading, so the lift is always upwards
             heading = lateral @ total @ (rig.heads[path[k - 1]] - rig.heads[path[k]])
             side = np.cross(heading, up)
-            lift = axis_angle(side, STRIKE["rear"] * rear * neck) if np.linalg.norm(side) > 1e-9 else np.eye(3)
+            lift = (axis_angle(side, STRIKE["rear"] * share[k - 1] * rear * neck) if np.linalg.norm(side) > 1e-9
+                    else np.eye(3))
             bends.append(lift @ lateral)
             total = bends[-1] @ total
         bends = _rigid_at_root(rig, path, path[::-1], bends)
