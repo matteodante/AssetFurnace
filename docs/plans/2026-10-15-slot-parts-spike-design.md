@@ -1,6 +1,6 @@
 # Prova rapida della funzione 4: parti per slot e adattamento a un corpo base (progetto)
 
-Data: 15 ottobre 2026. Stato: **approvato il 15/10/2026**, con la strada A compresa (vedi "Decisione").
+Data: 15 ottobre 2026. Stato: **prova fatta il 15–16/10/2026**: risultati in `2026-10-15-slot-parts-spike.md`. Pesi del gruppo 2 (OmniPart) cancellati il 16/10.
 
 ## Decisione (15/10/2026)
 
