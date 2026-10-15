@@ -274,3 +274,35 @@ def test_a_fan_of_roots_under_a_lone_stem_is_not_a_foot():
     assert found["family"] == "plant" and found["legs"] == []
     assert found["body"][0] == n["stem3"]
 
+
+def test_several_low_reaching_legs_are_not_all_tails():
+    """Raised legs that never climb above the body and reach out far are legs when there are
+    many of them; only a single such chain is a tail."""
+    rows = [("body", None, (0, 0.35, 0)), ("head", "body", (0, 0.36, 0.2)), ("abdomen", "body", (0, 0.37, -0.3))]
+    for k in range(3):
+        z = 0.1 - 0.1 * k
+        rows += chain(f"legL{k}", "body", [(0.08, 0.34, z), (0.4, 0.25, z * 1.5), (0.7, 0.0, z * 2)])
+        rows += chain(f"legR{k}", "body", [(-0.08, 0.34, z), (-0.4, 0.3, z * 1.5), (-0.8, 0.2, z * 2),
+                                             (-1.0, 0.12, z * 2.2)])
+    parents, heads, _ = build(rows)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "multileg" and len(found["legs"]) == 6
+
+
+def test_a_leaf_high_on_the_stem_does_not_cut_it_short():
+    rows = [("head", None, (0, 1.1, 0.2))]
+    rows += chain("stem", "head", [(0, 0.9, 0.1), (0, 0.6, 0.05), (0, 0.3, 0.02), (0, 0.0, 0)])
+    rows += chain("leaf", "stem1", [(0.1, 0.62, 0), (0.3, 0.55, 0)])
+    parents, heads, n = build(rows)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "plant" and found["body"][0] == n["stem3"] and found["body"][-1] == n["head"]
+
+
+def test_choosing_plant_gives_the_stem_not_the_widest_chain():
+    parents, heads, n = plant()
+    heads = dict(heads)
+    for side, x in (("L", 1), ("R", -1)):  # broad leaves: wider than the plant is tall
+        heads[n[f"leaf{side}0"]] = np.array([0.4 * x, 0.32, 0])
+        heads[n[f"leaf{side}1"]] = np.array([1.2 * x, 0.25, 0])
+    found = cf.classify(parents, heads, family="plant")
+    assert found["body"][0] == n["stem0"] and found["body"][-1] == n["stem4"]

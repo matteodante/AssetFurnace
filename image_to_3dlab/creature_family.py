@@ -214,15 +214,23 @@ def _tail_like(body: _Body, leg: dict) -> bool:
     return drop > 0 and reach > TAIL_REACH * drop and not rises
 
 
+def _lone_tail(body: _Body, legs: list[dict]) -> dict | None:
+    """The one tail-like chain among at least three candidates, or None when there is none
+    or several (then they are all legs)."""
+    tails = [leg for leg in legs if _tail_like(body, leg)]
+    return tails[0] if len(tails) == 1 and len(legs) >= 3 else None
+
+
 def _stem(body: _Body) -> list[str]:
     """A plant's stem, base first: from the highest joint down through the tree to the
-    lowest, stopping where it fans out into roots (the lowest fork on the way)."""
+    lowest, stopping where it fans out into roots (a fork near the ground; a leaf high on
+    the stem is no reason to stop)."""
     top = max(body.parents, key=body.h.__getitem__)
     low = min(body.parents, key=body.h.__getitem__)
     up_top, up_low = _path_up(top, body.parents), _path_up(low, body.parents)
     shared = [a for a, b in zip(up_top, up_low) if a == b]
     path = list(reversed(up_low[len(shared) - 1:])) + up_top[len(shared):]  # low ... meeting point ... top
-    forks = [i for i, b in enumerate(path) if len(body.kids[b]) >= 2]
+    forks = [i for i, b in enumerate(path) if len(body.kids[b]) >= 2 and body.above(b) <= 0.25 * body.height]
     return path[forks[0]:] if forks else path
 
 
@@ -302,13 +310,19 @@ def classify(parents: dict[str, str | None], heads: dict, up=(0.0, 1.0, 0.0), fr
         raise ValueError(f"unknown family {family!r}; choose one of {FAMILIES}")
     body = _Body(parents, heads, up)
     legs = _legs(body)
-    tails = [leg for leg in legs if _tail_like(body, leg)]
-    if len(tails) == 1 and len(legs) >= 3:  # one chain lying out along the ground is a tail;
-        legs.remove(tails[0])               # several are a sprawling creature's legs
+    if len(legs) == 1:  # nothing stands on one leg: a lone chain to the ground is the body (a stem)
+        legs = []
+    lone = _lone_tail(body, legs)
+    if lone is not None:
+        legs.remove(lone)
     forward = _forward(body, legs, front)
     left = _unit(np.cross(body.up, forward))
     if len(legs) >= 3:
-        legs += [leg for leg in _splayed(body, legs, left) if not _tail_like(body, leg)]
+        # the tail rule again, over every candidate: one chain lying out along the ground is a
+        # tail, several are a sprawling creature's legs
+        found = legs + _splayed(body, legs, left) + ([lone] if lone is not None else [])
+        lone = _lone_tail(body, found)
+        legs = [leg for leg in found if leg is not lone]
         forward = _forward(body, legs, front)  # with every leg: five or more change the rule
         left = _unit(np.cross(body.up, forward))
     soles = None
@@ -382,6 +396,8 @@ def classify(parents: dict[str, str | None], heads: dict, up=(0.0, 1.0, 0.0), fr
 
     guess, main, confident = _guess(body, legs, arms, wings, head_path)
     chosen = family or guess
+    if chosen == "plant" and guess != "plant":  # chosen by a person: the stem, not the guess's chain
+        main = _stem(body)
     if chosen == "serpent":  # a serpent faces along its body, towards its head
         main = main or _diameter(body)
         towards = body.flat(body.heads[main[0]] - body.heads[main[min(2, len(main) - 1)]])

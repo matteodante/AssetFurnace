@@ -95,3 +95,29 @@ def test_a_plant_rooted_at_its_flower_keeps_its_roots_down():
             for k in range(5):  # the roots stay where they grew
                 assert np.linalg.norm(p[n[f"root{k}1"]] - rig.heads[n[f"root{k}1"]]) < 0.02
         assert max(np.linalg.norm(positions(rig, f)[n["head"]] - rig.heads[n["head"]]) for f in frames) > 0.05
+
+
+def test_a_dense_stem_snaps_as_far_as_a_sparse_one():
+    reach = []
+    for joints in (5, 85):
+        rows = chain("stem", None, [(0, 1.2 * i / (joints - 1), 0) for i in range(joints)])
+        rows += chain("rootA", "stem0", [(0.1, 0.0, 0.0), (0.25, 0.0, 0.0)])
+        rows += chain("rootB", "stem0", [(-0.1, 0.0, 0.0), (-0.25, 0.0, 0.0)])
+        rig, fam, n = rig_of(build(rows))
+        assert fam["family"] == "plant"
+        top = fam["body"][-1]
+        reach.append(max(np.linalg.norm(positions(rig, f)[top] - rig.heads[top]) for f in cm.plant_attack(rig, fam)))
+    assert reach[1] == pytest.approx(reach[0], rel=0.25)
+
+
+def test_long_wings_do_not_beat_the_feet_into_the_ground():
+    parents, heads, n = quadruped(wings=True)
+    heads = dict(heads)
+    for side, x in (("L", 1), ("R", -1)):
+        for k in range(1, 4):
+            heads[n[f"wing{side}{k}"]] = heads[n[f"wing{side}0"]] + 4 * (heads[n[f"wing{side}{k}"]] - heads[n[f"wing{side}0"]])
+    rig, fam, _ = rig_of((parents, heads, n))
+    floor = min(rig.heads[leg["bones"][-1]][1] for leg in fam["legs"])
+    for f in cm.winged_hover(rig, fam):
+        p = positions(rig, f)
+        assert min(p[leg["bones"][-1]][1] for leg in fam["legs"]) > floor

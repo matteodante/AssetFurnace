@@ -654,11 +654,13 @@ def winged_hover(rig: Rig, family: dict, frames: int | None = None) -> list[tupl
     legs, tail, neck = family.get("legs", []), family.get("tail", []), family.get("neck", [])
     reach = float(np.mean([leg_length(rig, leg, up) for leg in legs])) if legs else 0.0
     span = float(np.mean([_chain_length(rig, w["bones"]) for w in family["wings"]]))
+    # the beat's bob must never sink the hovering body back to the ground
+    bob = min(WINGS["bob"] * span, 0.8 * WINGS["lift"] * reach)
     out = []
     for index in range(frames + 1):
         u = (index % frames) / frames
         beat = wingbeat(u)
-        root_pos = rig.heads[root] + up * (WINGS["lift"] * reach + WINGS["bob"] * span * -beat)
+        root_pos = rig.heads[root] + up * (WINGS["lift"] * reach + bob * -beat)
         turn = _wing_turns(family, lambda i: WINGS["stroke"] * WINGS["taper"] ** i
                            * wingbeat(u - WINGS["lag"] * i))
         for leg in legs:  # tucked back under the body
@@ -698,13 +700,13 @@ def _plant_frames(rig: Rig, family: dict, frames: int, angles) -> list[tuple[dic
     if len(path) < 3:
         raise ValueError("a plant clip needs a stem of at least three joints")
     up, forward, left = _frame(family)
-    s = _arc(rig, path)
+    s, share = _arc(rig, path), _per_length(rig, path, segments=4)  # tuned on a four-segment stem
     out = []
     for index in range(frames + 1):
         bends = []
         for i in range(len(path) - 1):
             ahead, aside = angles(index, s[i])
-            bends.append(axis_angle(left, ahead) @ axis_angle(forward, aside))
+            bends.append(axis_angle(left, ahead * share[i]) @ axis_angle(forward, aside * share[i]))
         turn: dict[str, np.ndarray] = {}
         root = pose_path(rig, path, _bent(rig, path, path[0], _rigid_at_root(rig, path, path, bends)), turn,
                          still=path[0])
