@@ -511,3 +511,79 @@ def test_unreal_report_checks_the_tint_mask_arrives_linear():
     assert {r["check"]: r["ok"] for r in up.evaluate_unreal(_measured(tint_srgb=True), sidecar)}["tint"] is False
     assert {r["check"]: r["ok"] for r in up.evaluate_unreal(_measured(), sidecar)}["tint"] is False
     assert "tint" not in {r["check"] for r in up.evaluate_unreal(_measured(), _prop_sidecar())}
+
+
+# --- the check picture ---------------------------------------------------------------
+
+def test_stage_puts_the_camera_on_the_suns_side_and_turns_everyone_to_it():
+    stage = up.stage_layout([100, 100, 100], 200, sun=(1.0, 0.0, -1.0), side_angle=0)
+    assert stage["camera_yaw"] == pytest.approx(0.0)  # looking the way the light travels
+    cx, cy, cz = stage["camera"]
+    assert cx < 0 and cy == pytest.approx(0) and cz == pytest.approx(100)
+    # Unreal turns local +Y (the way characters face) by the actor yaw: it must point back at the camera.
+    yaw = math.radians(stage["actor_yaw"])
+    assert (-math.sin(yaw), math.cos(yaw)) == pytest.approx((-1.0, 0.0), abs=1e-9)
+    xs = [p[0] for p in stage["positions"]]
+    ys = [p[1] for p in stage["positions"]]
+    assert xs == pytest.approx([0, 0, 0]) and ys == pytest.approx([-100, 0, 100])
+
+
+def test_stage_frames_the_whole_row_and_the_tallest_figure():
+    tall = up.stage_layout([60], 400, sun=(0, -1, -1))
+    wide = up.stage_layout([60] * 20, 100, sun=(0, -1, -1))
+    def distance(s):
+        return math.hypot(s["camera"][0], s["camera"][1])
+    half_h = math.tan(math.radians(tall["fov"]) / 2)
+    assert distance(tall) * half_h / (16 / 9) >= 200  # half the height fits vertically
+    assert distance(wide) * half_h >= 600  # half the row fits horizontally
+
+
+def test_stage_without_a_usable_sun_looks_from_the_front():
+    stage = up.stage_layout([50], 100, sun=(0, 0, -1), side_angle=0)
+    assert stage["camera"][1] > 0 and stage["camera_yaw"] == pytest.approx(-90)
+
+
+@pytest.mark.parametrize("samples, expected", [
+    ([0.1, 0.4, 0.2], 0.4),
+    ([], 0.0),
+])
+def test_stride_is_the_widest_step_of_the_cycle(samples, expected):
+    assert up.stride(samples) == expected
+
+
+def test_unreal_report_checks_the_walk_too():
+    sidecar = up.sidecar(kind="creature", names=up.asset_names("creature", "Wolf"), glb="SK_Wolf.glb",
+                         size_cm=180, measure="height", lods=1, collision=None, humanoid=True,
+                         skeleton_from=None, animations=[], tint=None, problems=[])
+    measured = {"bounds_cm": [1, 1, 180], "min_z": 0, "lods": 1, "names": ["SK_Wolf"], "orm_srgb": [False],
+                "forward": [0, 1, 0], "ik_recognised": True, "retarget": "ok", "walk": "legs barely move"}
+    results = {r["check"]: r for r in up.evaluate_unreal(measured, sidecar)}
+    assert results["walk"]["ok"] is False and "legs" in results["walk"]["detail"]
+    measured["walk"] = "ok"
+    assert {r["check"]: r["ok"] for r in up.evaluate_unreal(measured, sidecar)}["walk"] is True
+    del measured["walk"]
+    assert "walk" not in {r["check"] for r in up.evaluate_unreal(measured, sidecar)}
+
+
+def test_a_closeup_frames_one_figure_from_the_same_side_as_the_wide_shot():
+    x, y, z = up.closeup_camera((100.0, 50.0), camera_yaw=0.0, width=80, height=200, fov=35)
+    assert y == pytest.approx(50.0) and x < 100.0 and z == pytest.approx(100.0)
+    half_v = math.tan(math.radians(35) / 2) / (16 / 9)
+    assert (100.0 - x) * half_v >= 100  # the whole figure fits vertically
+    near = up.closeup_camera((0.0, 0.0), camera_yaw=90.0, width=40, height=40, fov=35)
+    far = up.closeup_camera((0.0, 0.0), camera_yaw=90.0, width=40, height=400, fov=35)
+    assert near[1] < 0 and far[1] < near[1]  # looking +Y from behind, further for taller
+
+
+def test_unreal_report_wants_the_root_bone_on_the_floor():
+    # A root at hip height lifts the whole character off the ground in any animation that
+    # locks root motion to the reference pose (Manny's walks do).
+    sidecar = up.sidecar(kind="creature", names=up.asset_names("creature", "Wolf"), glb="SK_Wolf.glb",
+                         size_cm=180, measure="height", lods=1, collision=None, humanoid=False,
+                         skeleton_from=None, animations=[], tint=None, problems=[])
+    measured = {"bounds_cm": [1, 1, 180], "min_z": 0, "lods": 1, "names": ["SK_Wolf"], "orm_srgb": [False],
+                "forward": [0, 1, 0], "root_cm": [0.0, 0.2, 92.9]}
+    results = {r["check"]: r for r in up.evaluate_unreal(measured, sidecar)}
+    assert results["root"]["ok"] is False and "92.9" in results["root"]["detail"]
+    measured["root_cm"] = [0.0, 0.0, 0.0]
+    assert {r["check"]: r["ok"] for r in up.evaluate_unreal(measured, sidecar)}["root"] is True

@@ -126,18 +126,32 @@ d'import le importa come texture lineari. Il nome del file va concordato con la 
 ## Risultato (15/10/2026)
 
 **Accettazione superata su UE 5.8.3**, da riga di comando, in un progetto vuoto, senza passi a mano
-(`scripts/unreal_import_check.py`, circa 80 secondi per i tre asset):
+(`scripts/unreal_import_check.py`, circa due minuti e mezzo). Prova finale con tre asset fatti apposta dalla catena vera
+(Qwen-Image → Pixal3D → finish → SkinTokens), in `output/compare-20261015/`:
 
-| Asset | Da | Esito in Unreal |
-|---|---|---|
-| Oggetto `SM_Testuggine` | `prop_01` del foglio "testuggine romana", 3 LOD cotti | 60,0 cm sul lato più lungo come richiesto, base a z = 0, 3 LOD, 1 box di collisione, ORM lineari, nomi giusti |
-| Creatura `SK_Warrior` | `SK_BrennholdWarrior_9k` rigato da SkinTokens, idle e walk | 180,0 cm, piedi a z = 0, rivolto verso +Y come Manny, 3 LOD generati da Unreal, `AS_Warrior_Idle` e `AS_Warrior_Walk`, scheletro riconosciuto dall'IK Rig, idle di Manny retargettato con le braccia lungo i fianchi (0,29 dell'altezza contro 0,33 di Manny) |
-| Equipaggiamento `SK_WarriorHelm` | testa e spalle tagliate dal guerriero, stesso scheletro | importato sullo Skeleton del guerriero, nessuno Skeleton nuovo, indossato con Leader Pose |
+| Asset | Esito in Unreal |
+|---|---|
+| Cavaliere `SK_Knight` (40k facce, 34 ossa) | 185,0 cm, piedi e `root` a z = 0, rivolto verso +Y come Manny, 3 LOD, scheletro riconosciuto dall'IK Rig. Idle di Manny: braccia giù a 0,305 dell'altezza (Manny 0,326). Camminata di Manny: passo largo 0,701 (Manny 0,666) |
+| Lupo mannaro `SK_Werewolf` (30k facce, 46 ossa) | 220,0 cm, piedi e `root` a z = 0, verso +Y, 3 LOD, scheletro riconosciuto. Idle: 0,271 (Manny 0,326). Camminata: 0,687 (Manny 0,666) |
+| Forziere `SM_Chest` (8k facce) | 80,0 cm sul lato più lungo, base a z = 0, 1 box di collisione, ORM lineare |
+| Equipaggiamento `SK_WarriorHelm` | testa e spalle tagliate dal guerriero di prova: sullo Skeleton del guerriero, nessuno Skeleton nuovo, indossato con Leader Pose |
 
-L'immagine del controllo (`unreal_check.png` in ogni cartella) è presa in una sessione Simulate: Manny e il guerriero
-fanno lo stesso idle, con l'oggetto in mezzo.
+Le immagini (in ogni cartella d'uscita): `unreal_check.png` con Manny, i personaggi in idle e l'oggetto alla luce del
+giorno, `unreal_check_walk.png` a metà camminata, `unreal_check_close.png` in primo piano per ogni asset.
+
+Un difetto trovato solo dalla camminata: il profilo aggiungeva l'osso `root` all'origine del file sorgente, che per
+SkinTokens è a metà corpo; dopo averlo messo a terra il `root` restava a 93 cm. L'idle non lo mostra, ma le camminate di
+Manny bloccano il root motion sulla posa di riferimento e Unreal alzava il personaggio di tanto. Ora il `root` si aggiunge
+dopo aver messo il modello a terra; un test con Blender vero e un controllo in Unreal lo tengono lì.
 
 Cose imparate strada facendo, che valgono anche per l'import di Auroconts:
+- le immagini si prendono dal viewport dell'editor in Simulate con `-NoTextureStreaming`: una SceneCapture in Simulate
+  rende una volta sola e parte con l'esposizione scura, e senza quel flag le texture restano alle versioni ridotte;
+- cambiare animazione a sessione Simulate avviata lascia la posa di riferimento: per la camminata si chiude la sessione,
+  si imposta l'animazione sugli attori e se ne apre un'altra;
+- le misure del retarget si leggono direttamente dalle animazioni con `AnimPoseExtensions`, senza rendering;
+- in modalità commandlet il registro degli asset non ha ancora visto il contenuto: gli asset di una prova precedente non
+  si sostituiscono, per cui lo script svuota da disco la cartella di ogni asset prima di avviare Unreal;
 - un IK Retargeter creato da Python in UE 5.8 **non ha operazioni** finché non si chiama `add_default_ops()`: copia solo
   il bacino e il personaggio resta in T-pose. Serve anche `auto_align_all_bones()` (SkinTokens è in T-pose, Manny in A-pose);
 - Interchange chiama le animazioni glTF `<mesh><animazione>`: lo script d'import le rinomina `AS_…`;

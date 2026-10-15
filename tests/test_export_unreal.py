@@ -215,3 +215,65 @@ def test_an_ambiguous_tint_mask_is_not_guessed(files):
     for name in ("T_A_Tint.png", "T_B_Tint.png"):
         Image.new("RGB", (2, 2)).save(files["part"].parent / name)
     assert ex.plan(files["part"], kind="prop", size_cm=50)["tint_source"] is None
+
+
+def _skinned_glb() -> bytes:
+    """Two bones and two triangles, skinned, with the origin in the middle of the body
+    the way SkinTokens leaves it: feet at y = -0.5, head at y = +0.5."""
+    import numpy as np
+
+    positions = np.array([[-0.2, -0.5, 0], [0.2, -0.5, 0], [0, 0.5, 0.05],
+                          [-0.2, -0.5, 0.1], [0.2, -0.5, 0.1], [0, 0.5, 0.15]], "<f4")
+    joints = np.zeros((6, 4), "u1")
+    joints[[2, 5], 0] = 1
+    weights = np.zeros((6, 4), "<f4")
+    weights[:, 0] = 1.0
+    indices = np.array([0, 1, 2, 3, 4, 5], "<u2")
+    inverse = np.stack([np.eye(4, dtype="<f4"), np.eye(4, dtype="<f4")])
+    inverse[0, 3, 1] = 0.0  # column-major translation of the hip at y = 0
+    inverse[1, 3, 1] = -0.3  # the chest bone sits at y = 0.3
+    chunks = [positions.tobytes(), joints.tobytes(), weights.tobytes(), indices.tobytes(),
+              inverse.transpose(0, 2, 1).reshape(-1).astype("<f4").tobytes()]
+    views, binary = [], b""
+    for chunk in chunks:
+        binary += b"\0" * (-len(binary) % 4)
+        views.append({"buffer": 0, "byteOffset": len(binary), "byteLength": len(chunk)})
+        binary += chunk
+    document = {
+        "asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0, 3]}],
+        "nodes": [{"name": "Armature", "children": [1]},
+                  {"name": "hip", "children": [2]},
+                  {"name": "chest", "translation": [0, 0.3, 0]},
+                  {"name": "Body", "mesh": 0, "skin": 0}],
+        "skins": [{"joints": [1, 2], "inverseBindMatrices": 4, "skeleton": 1}],
+        "meshes": [{"name": "Body", "primitives": [{"attributes": {"POSITION": 0, "JOINTS_0": 1, "WEIGHTS_0": 2},
+                                                   "indices": 3, "material": 0}]}],
+        "materials": [{"name": "Skin"}],
+        "accessors": [
+            {"bufferView": 0, "componentType": 5126, "count": 6, "type": "VEC3",
+             "min": positions.min(0).tolist(), "max": positions.max(0).tolist()},
+            {"bufferView": 1, "componentType": 5121, "count": 6, "type": "VEC4"},
+            {"bufferView": 2, "componentType": 5126, "count": 6, "type": "VEC4"},
+            {"bufferView": 3, "componentType": 5123, "count": 6, "type": "SCALAR"},
+            {"bufferView": 4, "componentType": 5126, "count": 2, "type": "MAT4"},
+        ],
+        "bufferViews": views,
+        "buffers": [{"byteLength": len(binary)}],
+    }
+    return build_glb(document, binary)
+
+
+@pytest.mark.skipif(find_blender() is None, reason="needs Blender")
+def test_real_blender_puts_a_creatures_root_bone_on_the_floor(tmp_path):
+    # Found the expensive way: a root left at the source's origin (mid-body) lifts the
+    # character off the ground in Unreal whenever an animation locks root motion.
+    source = tmp_path / "critter.glb"
+    source.write_bytes(_skinned_glb())
+    result = ex.export_unreal(source, kind="creature", size_cm=150, out_dir=tmp_path / "out", log=lambda m: None)
+    sidecar = json.loads(Path(result["sidecar"]).read_text(encoding="utf-8"))
+    lo, hi = sidecar["blender"]["box_after_m"]
+    assert lo[2] == pytest.approx(0.0, abs=1e-4)
+    assert hi[2] - lo[2] == pytest.approx(1.5, rel=1e-3)
+    root = sidecar["blender"]["root_head_m"]
+    assert root == pytest.approx([0.0, 0.0, 0.0], abs=1e-4)
+    assert result["ok"], result["problems"]

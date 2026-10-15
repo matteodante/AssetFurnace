@@ -630,6 +630,10 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
         srgb = measured.get("tint_srgb")
         results.append(_check("tint", srgb is False, "tint mask imported as linear data" if srgb is False else
                               "tint mask missing" if srgb is None else "tint mask imported as sRGB colour"))
+    if expected.get("skinned") and "root_cm" in measured:
+        root = measured["root_cm"]
+        results.append(_check("root", all(abs(v) <= BASE_TOLERANCE_CM for v in root),
+                              f"root bone at {[round(v, 1) for v in root]} cm in the reference pose, wanted the origin"))
     if want.get("facing"):
         forward = measured.get("forward") or [0, 0, 0]
         results.append(_check("facing", forward[1] > 0.7, f"faces {forward}, wanted +Y like Manny"))
@@ -638,6 +642,8 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
                               "IK Rig recognised the skeleton" if measured.get("ik_recognised") else
                               "IK Rig did not recognise the skeleton"))
         results.append(_check("retarget", measured.get("retarget") == "ok", f"retarget of MM_Idle: {measured.get('retarget')}"))
+        if "walk" in measured:
+            results.append(_check("walk", measured["walk"] == "ok", f"retarget of a walk: {measured['walk']}"))
     if equipment and expected.get("skeleton_from"):
         reused = str(measured.get("skeleton", "")).endswith(expected["skeleton"]) and measured.get("new_skeletons", 1) == 0
         results.append(_check("skeleton", reused, f"skeleton {measured.get('skeleton')}, new skeletons {measured.get('new_skeletons')}"))
@@ -646,6 +652,56 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
         missing = [a for a in expected["animations"] if a not in got]
         results.append(_check("animations", not missing, f"missing: {missing}" if missing else f"{len(got)} imported"))
     return results
+
+
+def stride(widths: Iterable[float]) -> float:
+    """The widest step in a walk cycle, from the feet's fore-aft spread sampled over it."""
+    return max(widths, default=0.0)
+
+
+def stage_layout(widths: list[float], height: float, sun: Iterable[float], fov: float = 50.0,
+                 aspect: float = 16 / 9, side_angle: float = 25.0) -> dict[str, Any]:
+    """Where to stand a row of assets and the camera so the sun lights their faces.
+
+    The camera looks roughly the way the sunlight travels (turned `side_angle` degrees
+    for some shading), the row runs across its view, every actor is turned so its front
+    (local +Y, Manny's) faces the camera, and the distance fits the whole row and the
+    tallest figure in a `fov`-degree lens. Unreal axes: X forward, Y right, Z up; yaw in
+    degrees.
+    """
+    sx, sy = list(sun)[:2]
+    length = math.hypot(sx, sy)
+    view = (sx / length, sy / length) if length > 1e-3 else (0.0, -1.0)
+    turn = math.radians(side_angle)
+    view = (view[0] * math.cos(turn) - view[1] * math.sin(turn), view[0] * math.sin(turn) + view[1] * math.cos(turn))
+    camera_yaw = math.degrees(math.atan2(view[1], view[0]))
+    right = (-view[1], view[0])
+    total = sum(widths)
+    offsets, edge = [], -total / 2
+    for width in widths:
+        offsets.append(edge + width / 2)
+        edge += width
+    half_h = math.tan(math.radians(fov) / 2)
+    half_v = half_h / aspect
+    distance = 1.12 * max(total / 2 / half_h, height / 2 / half_v) + max(widths, default=0) / 2
+    return {
+        "positions": [(right[0] * o, right[1] * o) for o in offsets],
+        "actor_yaw": camera_yaw + 90.0,
+        "camera": (-view[0] * distance, -view[1] * distance, height / 2),
+        "camera_yaw": camera_yaw,
+        "fov": fov,
+    }
+
+
+def closeup_camera(position: Iterable[float], camera_yaw: float, width: float, height: float,
+                   fov: float = 35.0, aspect: float = 16 / 9) -> tuple[float, float, float]:
+    """A camera that fills the frame with one figure, looking the same way as the wide
+    shot (so the same side is lit), level with its middle so head and feet both fit."""
+    px, py = list(position)[:2]
+    vx, vy = math.cos(math.radians(camera_yaw)), math.sin(math.radians(camera_yaw))
+    half_h = math.tan(math.radians(fov) / 2)
+    distance = 1.3 * max(width / 2 / half_h, height / 2 / (half_h / aspect)) + width / 2
+    return (px - vx * distance, py - vy * distance, height * 0.5)
 
 
 # --- finding Unreal --------------------------------------------------------------------

@@ -188,6 +188,16 @@ def _rename_bones(bpy, arm, plan, actions):
             # Blender already fixes the actions it can see; fix the rest, never twice.
             if renamed != curve.data_path and renamed.split('"')[1:2] and renamed.split('"')[1] in names:
                 curve.data_path = renamed
+
+
+def _add_root(bpy, arm):
+    """A `root` bone on the floor under the model, parent of the old top bones.
+
+    Added only once the model stands on the origin: added before, it would sit wherever
+    the source's origin was (the middle of the body, for SkinTokens), and Unreal moves
+    the whole character to the root's reference position whenever an animation locks
+    its root motion there, which lifts it off the ground by that much.
+    """
     bpy.context.view_layer.objects.active = arm
     bpy.ops.object.mode_set(mode="EDIT")
     edit = arm.data.edit_bones
@@ -329,6 +339,7 @@ def run(job):
         _rename_bones(bpy, arm, transform["plan"], [a for _, a in actions])
         _rest(bpy, [arm])
         _apply(bpy, [arm, *meshes], _transform_matrix(transform))
+        _add_root(bpy, arm)
         _scale_translations([a for _, a in actions], transform["scale"])
         _rest(bpy, [arm], rest=False)
         mesh = _join(bpy, meshes, names["mesh"] + "_Mesh") if len(meshes) > 1 else meshes[0]
@@ -341,6 +352,7 @@ def run(job):
         _rest(bpy, [arm])
         lo, hi = _world_box(bpy, [mesh])
         _rest(bpy, [arm], rest=False)
+        report["root_head_m"] = list(arm.matrix_world @ arm.data.bones[up.ROOT_BONE].head_local)
     else:
         lo, hi = _world_box(bpy, meshes)
         dims = [h - low for low, h in zip(lo, hi)]

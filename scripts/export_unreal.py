@@ -205,7 +205,7 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
         shutil.copyfile(p["materials_record"], record)
         sidecar["materials_record"] = record.name
     sidecar["blender"] = {k: report.get(k) for k in ("blender", "scale", "yaw_deg", "offset_m", "dims_before_m",
-                                                      "box_after_m", "removed", "bones")}
+                                                      "box_after_m", "removed", "bones", "root_head_m")}
     sidecar["materials"] = textures["materials"]
     p["sidecar"].write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
     p["provenance"].write_text(json.dumps(provenance(p["inputs"], p["glb"]), indent=1), encoding="utf-8")
