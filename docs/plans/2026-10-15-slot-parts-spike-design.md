@@ -1,6 +1,20 @@
 # Prova rapida della funzione 4: parti per slot e adattamento a un corpo base (progetto)
 
-Data: 15 ottobre 2026. Stato: **progetto, in attesa di approvazione**. Niente è installato o scaricato.
+Data: 15 ottobre 2026. Stato: **approvato il 15/10/2026**, con la strada A compresa (vedi "Decisione").
+
+## Decisione (15/10/2026)
+
+L'utente, tramite il coordinatore, approva il progetto e i download dei gruppi 1 (HoloPart) e 2 (OmniPart). Sceglie di
+eseguire anche la strada A e **si assume la responsabilità della licenza NVIDIA di PartField**, alle condizioni:
+
+- A gira **solo come riferimento interno di qualità** e nel rapporto è marcata **non utilizzabile per gli asset di
+  Auroconts**, per la licenza;
+- **nessuna uscita di A** va in `output/` condiviso, nella Libreria o nella coda di revisione (resta in
+  `journal/spike-slot-parts/`);
+- **i pesi del gruppo 2 si cancellano a fine prova**, comunque vada;
+- se A non parte su questa GPU entro 2 ore, si segna "non installabile qui" e si va avanti con B e C.
+
+I gruppi 3 e 4 si richiedono solo se servono.
 
 Piano di riferimento: `2026-10-15-auroconts-asset-pipeline.md`, sezione 4 e "Quale modello per le parti".
 È una prova, non la funzione: gli script stanno in `journal/spike-slot-parts/` (fuori dalla repo consegnata). Nella PR
