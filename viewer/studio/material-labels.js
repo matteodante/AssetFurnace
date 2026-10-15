@@ -6,16 +6,33 @@
 import { escapeHTML } from '../components/html.js';
 
 const HEADER = { 'X-AssetFurnace-Request': 'material-labels' };
-const wrap01 = (value) => value - Math.floor(value);
+const REPEAT = 1000, CLAMP = 1001, MIRROR = 1002;   // three.js wrapping constants
 
-/** A raycast hit as a material point: the texel (glTF uv, wrapped into 0..1), the glTF
- *  material index of the paint (never of a clay/normal look swapped in), and the word. */
+/** One texture coordinate wrapped the way the sampler wraps it. */
+export function wrapUv(value, mode) {
+  if (mode === CLAMP) return Math.min(1, Math.max(0, value));
+  if (mode === MIRROR) {
+    const period = value - 2 * Math.floor(value / 2);
+    return period > 1 ? 2 - period : period;
+  }
+  return mode === REPEAT || mode == null ? value - Math.floor(value) : value;
+}
+
+/** A raycast hit as a material point: the texel the paint shows there (its own UV channel,
+ *  through its texture transform and wrap, as three.js samples it), the glTF material index
+ *  of the paint (never of a clay/normal look swapped in), and the word. */
 export function pointFromHit(hit, label, indexOf) {
-  if (!hit?.uv) return null;
-  const shown = hit.object?.userData?.paint ?? hit.object?.material;
+  const shown = hit?.object?.userData?.paint ?? hit?.object?.material;
   const material = Array.isArray(shown) ? shown[hit.face?.materialIndex ?? 0] : shown;
-  const round = (v) => Math.round(wrap01(v) * 1e6) / 1e6;
-  return { uv: [round(hit.uv.x), round(hit.uv.y)], material: indexOf(material) ?? null, label };
+  const map = material?.map;
+  const uv = map?.channel ? hit?.[`uv${map.channel}`] : hit?.uv;
+  if (!uv) return null;
+  let [u, v] = [uv.x, uv.y];
+  const e = map?.matrix?.elements;
+  if (e) [u, v] = [e[0] * u + e[3] * v + e[6], e[1] * u + e[4] * v + e[7]];
+  const round = (x) => Math.round(x * 1e6) / 1e6;
+  return { uv: [round(wrapUv(u, map?.wrapS ?? REPEAT)), round(wrapUv(v, map?.wrapT ?? REPEAT))],
+           material: indexOf(material) ?? null, label };
 }
 
 export function isComplete(labels) {
@@ -51,7 +68,7 @@ async function request(path, options = {}) {
 
 export function createLabelPanel() {
   let root = null, item = null, labels = null, vocabulary = [], view = null, render = null;
-  let marking = false, viewer = null, down = null, epoch = 0, chosen = null;
+  let marking = false, viewer = null, down = null, epoch = 0, chosen = null, saving = false;
   const markers = [];
 
   const el = (key) => root?.querySelector(`[data-ml-${key}]`);
@@ -131,29 +148,34 @@ export function createLabelPanel() {
         progress();
       } else if (target.dataset.mlSave !== undefined) {
         target.disabled = true;
-        const saving = epoch;
+        const savingFor = epoch;
+        saving = true;
+        root.inert = true;                       // no edits while the save is in flight: they would be lost
         try {
           const saved = await request(`/item/${encodeURIComponent(item.key)}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ asset_sha256: item.asset_sha256, baked_light: labels.baked_light,
               materials_look: labels.materials_look, points: labels.points, note: el('note').value }) });
-          if (saving !== epoch) return;        // another item is open now: its panel is not ours to redraw
+          if (savingFor !== epoch) return;     // another item is open now: its panel is not ours to redraw
           labels = saved.labels;
           markers.length = labels.points.length;
           draw();
           await progress();
           el('status').textContent = saved.complete ? 'Saved. This asset is complete.' : 'Saved.';
         } catch (error) {
-          if (saving !== epoch) return;
+          if (savingFor !== epoch) return;
           el('status').textContent = `Not saved: ${error.message}`;
           target.disabled = false;
+        } finally {
+          saving = false;
+          if (root) root.inert = false;
         }
       }
     });
   }
 
   async function pick(event) {
-    if (!marking || !live() || !view || !down || !isClick(down, { x: event.clientX, y: event.clientY })) return;
+    if (saving || !marking || !live() || !view || !down || !isClick(down, { x: event.clientX, y: event.clientY })) return;
     const THREE = await import('three');
     const canvas = view.renderer.domElement;
     const box = canvas.getBoundingClientRect();

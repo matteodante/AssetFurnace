@@ -26,6 +26,7 @@ if str(REPO) not in sys.path:
 
 from image_to_3dlab import material_labels as ml
 from image_to_3dlab.checks import review
+from image_to_3dlab.provenance import sha256_file
 
 HEADER = "material-labels"
 SOURCE = "material-labels"
@@ -76,6 +77,11 @@ def save_labels(output: Path, key: str, body: dict) -> dict:
     item = _labelled_item(output, key)
     if body.get("asset_sha256") != item.get("asset_sha256"):
         raise VersionConflict("these labels are for another version than the one under review; reload it")
+    on_disk = Path(item.get("asset") or "")
+    if not on_disk.is_file() or sha256_file(on_disk) != item["asset_sha256"]:
+        # Studio shows the file on disk: labels clicked on a replacement must not be filed
+        # under the hash of the version that was queued.
+        raise VersionConflict("the file on disk is not the version in the queue; queue it again")
     fields = {k: body[k] for k in ml.FIELDS if k in body}
     labels = ml.record(_labels_log(output), key, item.get("asset") or "", item["asset_sha256"], **fields)
     return {"labels": labels, "complete": ml.is_complete(labels)}

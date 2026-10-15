@@ -87,3 +87,19 @@ def test_a_point_and_its_marker_leave_together():
       const removed = m.dropAt(points, markers, 1);
       console.log(JSON.stringify({removed, points, markers}));""")
     assert out == {"removed": "m1", "points": ["saved", "new2"], "markers": [None, "m2"]}
+
+
+@needs_node
+def test_a_point_follows_the_paints_uv_channel_transform_and_wrap():
+    """three.js samples map.channel's uv through map.matrix, then wraps: the point does the same."""
+    out = run("""
+      const repeat = 1000, clamp = 1001, mirror = 1002;
+      // offset 0.1 in u, as Matrix3.setUvTransform builds it (column-major elements)
+      const map = {channel: 1, matrix: {elements: [1, 0, 0, 0, 1, 0, 0.1, 0, 1]}, wrapS: repeat, wrapT: repeat};
+      const paint = {map};
+      const hit = {object: {material: paint, userData: {}}, uv: {x: 0.5, y: 0.5}, uv1: {x: 0.95, y: 0.25}, face: {}};
+      const a = m.pointFromHit(hit, 'metal', () => 0);
+      const clamped = m.pointFromHit({...hit, object: {material: {map: {...map, wrapS: clamp}}, userData: {}}}, 'metal', () => 0);
+      const mirrored = m.pointFromHit({...hit, object: {material: {map: {...map, wrapS: mirror}}, userData: {}}}, 'metal', () => 0);
+      console.log(JSON.stringify([a.uv, clamped.uv, mirrored.uv]));""")
+    assert out == [[0.05, 0.25], [1.0, 0.25], [0.95, 0.25]]

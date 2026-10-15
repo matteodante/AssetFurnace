@@ -94,3 +94,12 @@ def test_progress_counts_labels_of_the_queued_version_only(tmp_path):
     queued = {"mob_01": OTHER}
     assert ml.progress(ml.load(log), queued) == {"total": 1, "complete": 0, "started": 0, "missing": 1}
     assert ml.progress(ml.load(log), {"mob_01": SHA})["complete"] == 1
+
+
+def test_a_version_queued_again_gets_its_old_labels_back(tmp_path):
+    log = tmp_path / "labels.jsonl"
+    record(log, baked_light=True, materials_look="right")                 # version A
+    record(log, asset_sha256=OTHER, baked_light=False)                    # version B
+    state = record(log, note="back to A")                                  # version A again
+    assert state["asset_sha256"] == SHA
+    assert state["baked_light"] is True and state["materials_look"] == "right" and state["note"] == "back to A"

@@ -89,19 +89,24 @@ def load(log: Path) -> list[dict]:
 
 
 def fold(events: list[dict]) -> dict[str, dict]:
-    """Each asset's labels for its latest version: every judgement as last given."""
-    state: dict[str, dict] = {}
+    """Each asset's labels for the version it was last labelled at: every judgement as last given.
+
+    Judgements are kept per version, so a version that comes back to the queue finds the
+    labels it already had.
+    """
+    versions: dict[tuple[str, str], dict] = {}
+    latest: dict[str, tuple[str, str]] = {}
     for event in events:
-        key = event["key"]
-        current = state.get(key)
-        if current is None or current["asset_sha256"] != event["asset_sha256"]:
-            current = state[key] = {"key": key, "asset": event.get("asset"), "asset_sha256": event["asset_sha256"],
-                                    "baked_light": None, "materials_look": None, "points": [], "note": ""}
+        key, sha = event["key"], event["asset_sha256"]
+        current = versions.setdefault((key, sha), {
+            "key": key, "asset": event.get("asset"), "asset_sha256": sha,
+            "baked_light": None, "materials_look": None, "points": [], "note": ""})
         for field in FIELDS:
             if field in event:
                 current[field] = event[field]
         current["updated_at"] = event.get("at")
-    return state
+        latest[key] = (key, sha)
+    return {key: versions[pair] for key, pair in latest.items()}
 
 
 def record(log: Path, key: str, asset: str, asset_sha256: str, now: str | None = None, **fields) -> dict:

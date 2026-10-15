@@ -108,3 +108,13 @@ def test_items_outside_the_label_set_cannot_be_labelled(server, output):
     assert request(server, "GET", "/api/material-labels/item/barrel")[0] == 404
     status, _ = request(server, "POST", "/api/material-labels/item/barrel", {"asset_sha256": item_sha, "baked_light": True})
     assert status == 404
+
+
+def test_labels_are_refused_when_the_file_on_disk_is_not_the_queued_version(server, output):
+    """Studio would show the replacement; the labels must not be filed under the old hash."""
+    queued = sha(output)
+    path = output / "labels" / "mob.glb"
+    path.write_bytes(path.read_bytes() + b"\0" * 4)                         # replaced in place, not requeued
+    status, body = request(server, "POST", "/api/material-labels/item/mob_01",
+                           {"asset_sha256": queued, "baked_light": True})
+    assert status == 409 and "disk" in body["error"]
