@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   roughness from colour where missing, and a packed ORM texture. The GLB is edited in
   place, so rigs and animations survive; a `.materials.json` sidecar carries the zones
   and the tint formula. `scripts/blender_tint_preview.py` renders the recolour.
+- Game materials in Studio: a panel beside the steps runs the materials step on the chosen
+  asset, shows its checks and textures, overlays the three tint zones on the model and
+  recolours them live with the same formula Unreal uses.
 
 ### Fixed
 - Auto-rig setup finds the virtual environment's Python executable on Windows.

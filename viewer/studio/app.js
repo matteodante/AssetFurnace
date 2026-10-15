@@ -9,6 +9,7 @@ import { openCreate, runChain } from './create.js';
 import { openActivity, openAbout, openGuide, closeSheet } from './pages.js';
 import { STEP_LABELS } from './plan.js';
 import { createBlenderPanel, initialRevision, revisionFor } from './blender-edit.js';
+import { createMaterialsPanel } from './materials.js';
 
 const $ = (id) => document.getElementById(id);
 const LOGO = './studio/mark.svg';
@@ -22,7 +23,7 @@ let making = null, viewingMaking = false;  // the asset Create is making right n
 const selectedVersions = new Map();
 let displayedFile = null;
 
-const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onClipChange: (clip) => {
+const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onModelLoaded: (view, render) => materialsPanel.attach(view, render), onClipChange: (clip) => {
   displayedFile = clip.file;
   setDownload(clip.file);
   blenderPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
@@ -31,6 +32,7 @@ const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onClipChan
 const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const url = (relative) => servedUrl(base, relative);
 const fileName = (relative) => relative?.split('/').pop() ?? '';
+const materialsPanel = createMaterialsPanel({ root: $('materialsPanel'), url });
 const blenderPanel = createBlenderPanel({ root: $('blenderPanel'), url,
   onVersion: (id) => { if (current) { selectedVersions.set(current.id, id); show(current); } },
   onImported: async (assetId, versionId, isActive) => {
@@ -127,6 +129,7 @@ function show(asset) {
   $('vTitle').textContent = asset?.name ?? '';
   $('vMeta').textContent = asset ? statusText(asset) : '';
   if (!asset) {
+    materialsPanel.update(null);
     blenderPanel.update(null);
     viewer.showEmpty('Nothing to show yet. Pick an asset on the left.');
     $('steps').innerHTML = '';
@@ -137,6 +140,7 @@ function show(asset) {
   const selected = initialRevision(asset, selectedVersions.get(asset.id));
   selectedVersions.set(asset.id, selected);
   const revision = revisionFor(asset, selected);
+  materialsPanel.update(asset, revision);
   if (revision) {
     viewer.setFacing(null);
     viewer.setClips([]);

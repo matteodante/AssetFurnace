@@ -1,0 +1,23 @@
+/* Game materials panel (materials.js): checks, three tint pickers, texture previews. */
+.af-materials { padding: 14px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+.af-materials h3 { margin: 0; font: 600 14px/1.3 var(--f-ui); color: var(--bone); }
+.af-materials .hint { margin: 0; font-size: 12.5px; color: var(--ash); }
+.af-materials .error { color: var(--x); }
+.af-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.af-check { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 7px 9px; border-radius: 8px; background: var(--raise); border: 1px solid var(--line); }
+.af-check b { font-weight: 600; font-size: 12.5px; color: var(--bone); }
+.af-check .meta { grid-column: 1 / -1; }
+.af-pill { font: 600 11px/1.6 var(--f-num); padding: 0 7px; border-radius: 99px; background: #2a201b; color: var(--ash); }
+.af-check.pass .af-pill { color: var(--ok); }
+.af-check.warn .af-pill { color: var(--flame); }
+.af-check.fail { border-color: var(--x); }
+.af-check.fail .af-pill { color: var(--x); }
+.af-zones { display: grid; gap: 8px; }
+.af-zone-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.af-zone { display: grid; justify-items: center; gap: 3px; font: 400 11.5px/1.3 var(--f-num); color: var(--ash); cursor: pointer; }
+.af-zone input { width: 100%; height: 30px; padding: 0; border: 1px solid var(--line); border-radius: 7px; background: var(--raise); cursor: pointer; }
+.af-toggle { font-size: 12.5px; color: var(--ash); display: flex; gap: 6px; align-items: center; }
+.af-maps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.af-maps a { display: grid; gap: 3px; text-decoration: none; color: var(--ash); font-size: 11.5px; text-align: center; }
+.af-maps img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: var(--raise); }
+.af-kept { display: grid; place-items: center; text-align: center; aspect-ratio: 1; padding: 6px; border-radius: 6px; border: 1px dashed var(--line); font-size: 11px; color: var(--ash); }
