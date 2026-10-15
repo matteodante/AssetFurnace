@@ -82,10 +82,18 @@ export function propKey(setId, propName) {
 }
 
 /** Whether the server will take an approval (see review.approval_blocker): the checks ran and
- *  the licence check did not fail. Sending back is always possible. */
+ *  the licence check ran and did not fail. Sending back is always possible. */
 export function canApprove(item) {
   if (item?.status == null) return false;
-  return !(item?.summary?.fail ?? []).includes('license.components');
+  return item?.license_status === 'pass' || item?.license_status === 'warn';
+}
+
+/** Why Approve is off, in words, or '' when it is on. */
+export function approveBlocker(item) {
+  if (canApprove(item)) return '';
+  if (item?.status == null) return 'Run the checks before approving.';
+  if (item?.license_status === 'fail') return 'The licence check failed: send it back.';
+  return 'The licence check has not run: run every check before approving.';
 }
 
 /** The request body for POST /api/review/checks. `reference` is a path under output/, or ''. */

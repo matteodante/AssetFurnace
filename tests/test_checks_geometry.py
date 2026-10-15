@@ -89,3 +89,15 @@ def test_winding_number_is_one_inside_a_closed_surface_and_zero_outside():
     welded = geometry.weld(vertices, faces)
     points = np.array([[0.0, 0.9, 0.0], [2.0, 0.9, 0.0]])
     assert geometry.winding_number(points, welded.vertices, welded.faces) == pytest.approx([1.0, 0.0], abs=1e-6)
+
+
+def test_uv_overlap_counts_every_surface_use_of_a_shared_pixel():
+    """Codex review 3: two equal charts overlapping by 15% of their area reuse 15% of the surface."""
+    from image_to_3dlab.checks.mesh_checks import uv_overlap_pixels
+
+    square = np.array([[0.1, 0.1], [0.5, 0.1], [0.5, 0.5], [0.1, 0.5]])
+    shifted = square + (0.4 * 0.85, 0.0)          # 15% of the width overlaps
+    uv = np.vstack([square, shifted])
+    faces = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
+    reused, used = uv_overlap_pixels([(uv, faces)], resolution=512)
+    assert reused / used == pytest.approx(0.15, abs=0.01)

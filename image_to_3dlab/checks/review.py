@@ -74,6 +74,12 @@ def _append(log: Path, event: dict) -> None:
             handle.write(json.dumps(event, sort_keys=True) + "\n")
 
 
+def licence_status(report: dict) -> str | None:
+    """How `license.components` came out in this report, or None when it did not run."""
+    found = next((r for r in report.get("results", []) if r.get("check") == "license.components"), None)
+    return found["status"] if found else None
+
+
 def summary(report: dict) -> dict[str, list[str]]:
     return {status: [r["check"] for r in report.get("results", []) if r["status"] == status]
             for status in ("fail", "warn")}
@@ -91,7 +97,8 @@ def fold(events: list[dict]) -> dict[str, dict]:
             same_version = item.get("asset_sha256") == event.get("asset_sha256")
             if not (same_version and item.get("state") in DECISIONS):
                 item["state"] = "to_review"
-            for field in ("asset", "asset_sha256", "report", "status", "summary", "profile", "source", "kind"):
+            for field in ("asset", "asset_sha256", "report", "status", "summary", "profile", "license_status",
+                          "source", "kind"):
                 item[field] = event.get(field)
         elif event["event"] in DECISIONS:
             if item is None or item.get("asset_sha256") != event.get("asset_sha256"):
@@ -122,7 +129,7 @@ def enqueue(log: Path, report: dict, report_file: str | Path, key: str | None = 
     _append(log, {"event": "queued", "key": key, "at": _now(now), "asset": report["asset"],
                   "asset_sha256": report["asset_sha256"], "report": str(report_file),
                   "status": report["status"], "summary": summary(report), "profile": report.get("profile"),
-                  "source": source, "kind": kind})
+                  "license_status": licence_status(report), "source": source, "kind": kind})
     return fold(load(log))[key]
 
 
@@ -155,8 +162,11 @@ def approval_blocker(item: dict) -> str | None:
     """
     if item.get("status") is None:
         return "its checks have not run yet"
-    if "license.components" in (item.get("summary") or {}).get("fail", []):
+    licence = item.get("license_status")
+    if licence == "fail":
         return "its licence check failed"
+    if licence not in ("pass", "warn"):
+        return "its licence check has not run (run every check, not a part of them)"
     return None
 
 

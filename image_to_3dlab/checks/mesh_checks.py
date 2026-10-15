@@ -86,13 +86,14 @@ def _uv_charts(faces: np.ndarray) -> np.ndarray:
     return geometry.components(faces) if len(faces) else np.zeros(0, dtype=np.int64)
 
 
-def uv_overlap_pixels(groups: list[tuple[np.ndarray, np.ndarray]], resolution: int = 1024) -> tuple[float, int]:
-    """(texture pixels the surface uses in all, distinct pixels) for UVs sharing one texture.
+def uv_overlap_pixels(groups: list[tuple[np.ndarray, np.ndarray]], resolution: int = 1024) -> tuple[float, float]:
+    """(surface painted from a pixel another piece also uses, surface painted in all), in pixels.
 
-    The two are equal when no texture pixel is used twice; the gap is the reuse. Each chart
-    counts each pixel once, so two charts on the same pixels add up to two. A chart folded
+    Each chart counts each of its pixels once; a pixel two charts share counts for both of
+    them, so two equal charts overlapping by 15% reuse 15% of the surface. A chart folded
     onto itself does not add up that way, so it is caught by area instead: its triangles'
-    areas sum to clearly more than the pixels it covers. All charts are drawn in one pass.
+    areas sum to clearly more than the pixels it covers, and both layers of the fold count.
+    All charts are drawn in one pass.
     """
     pairs, folded, offset = [], 0.0, 0
     for uv, faces in groups:
@@ -111,9 +112,11 @@ def uv_overlap_pixels(groups: list[tuple[np.ndarray, np.ndarray]], resolution: i
         folded += float(excess[areas > covered * 1.05].sum())
         offset += int(labels.max()) + 1
     if not pairs:
-        return 0.0, 0
+        return 0.0, 0.0
     every = np.vstack(pairs)
-    return float(len(every)) + folded, len(np.unique(every[:, 1]))
+    _, slot, charts_per_pixel = np.unique(every[:, 1], return_inverse=True, return_counts=True)
+    shared = float((charts_per_pixel[slot.reshape(-1)] > 1).sum())
+    return shared + 2.0 * folded, float(len(every)) + folded
 
 
 @register("uv.overlap")
@@ -137,18 +140,18 @@ def uv_overlap(asset, config):
         outside += int(((uv < -1e-3) | (uv > 1 + 1e-3)).any(axis=1).sum())
         total += len(uv)
         groups.setdefault(id(image), []).append((np.clip(uv, 0.0, 1.0), np.asarray(mesh.faces)))
-    limits = _limits(config, 2.0, 10.0)
+    limits = _limits(config, 4.0, 10.0)
     if missing:
         return result("uv.overlap", "fail", None, limits,
                       f"{missing} textured part(s) have no UV coordinates")
     if not groups:
         return result("uv.overlap", "pass", 0.0, limits, "no texture, so no UV layout to overlap")
-    used = distinct = 0.0
+    reused = used = 0.0
     for members in groups.values():
-        u, d = uv_overlap_pixels(members, resolution)
+        r, u = uv_overlap_pixels(members, resolution)
+        reused += r
         used += u
-        distinct += d
-    share = 100.0 * (used - distinct) / max(used, 1.0)
+    share = min(100.0, 100.0 * reused / max(used, 1.0))
     status = grade_max(share, **limits)
     outside_share = 100.0 * outside / max(total, 1)
     message = f"{share:.2f}% of the surface is painted from texture pixels used elsewhere too"

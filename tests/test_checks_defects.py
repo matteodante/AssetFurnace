@@ -125,3 +125,23 @@ def test_the_inner_wall_of_a_cavity_is_not_a_flipped_piece(tmp_path):
     glb = fx.with_cavity(tmp_path / "hollow.glb")
     found = checks.run_checks(checks.Asset(glb=glb), only=["mesh.flipped_faces"])["results"][0]
     assert found["status"] == "pass", found
+
+
+def test_a_model_with_no_triangles_fails_the_face_budget(tmp_path):
+    """Codex review 3: an empty or points-only GLB must not pass as within budget."""
+    found = checks.run_checks(checks.Asset(glb=fx.points_only(tmp_path / "dots.glb")), only=["budget.faces"])["results"][0]
+    assert found["status"] == "fail" and "no triangles" in found["message"]
+
+
+def test_an_external_texture_with_an_encoded_name_is_measured(tmp_path):
+    """Codex review 3: `large%20texture.png` is the file `large texture.png`."""
+    glb = fx.external_texture(tmp_path / "ext.glb")
+    found = checks.run_checks(checks.Asset(glb=glb), only=["budget.textures"])["results"][0]
+    assert found["value"] == 8192 and found["status"] == "fail"
+
+
+def test_a_declared_texture_that_cannot_be_read_fails(tmp_path):
+    glb = fx.external_texture(tmp_path / "ext.glb")
+    (tmp_path / "large texture.png").unlink()
+    found = checks.run_checks(checks.Asset(glb=glb), only=["budget.textures"])["results"][0]
+    assert found["status"] == "fail" and "could not be read" in found["message"]

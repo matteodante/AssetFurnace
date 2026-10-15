@@ -19,6 +19,9 @@ T = [f"2026-10-15T10:{m:02d}:00+00:00" for m in range(60)]
 def report_for(sha, status="pass", key="mob_0412", fails=(), warns=()):
     results = [{"check": n, "status": "fail", "value": 1, "threshold": None, "message": "bad"} for n in fails]
     results += [{"check": n, "status": "warn", "value": 1, "threshold": None, "message": "meh"} for n in warns]
+    if "license.components" not in (*fails, *warns):  # a full run always has the licence check
+        results.append({"check": "license.components", "status": "pass", "value": None, "threshold": None,
+                        "message": "all clear"})
     return {"asset": f"output/{key}.glb", "asset_sha256": sha, "asset_key": key, "status": status,
             "results": results, "skipped": [], "profile": "prop"}
 
@@ -177,3 +180,17 @@ def test_approval_needs_checks_that_ran_and_a_licence_that_passed(log, tmp_path)
     # Sending either back is always possible.
     assert review.decide(log, "lic", "sent_back", "fix the provenance")["state"] == "sent_back"
     assert review.decide(log, "row", "sent_back", "run the checks")["state"] == "sent_back"
+
+
+def test_approval_needs_a_licence_check_that_ran(log, tmp_path):
+    """Codex review 3: a partial report without the licence check is not enough to approve."""
+    glb = fx.clean(tmp_path / "part.glb")
+    fx.sidecar(glb, fx.PIXAL3D_RECORD)
+    partial = checks.run_checks(checks.Asset(glb=glb), only=["mesh.holes"])
+    review.enqueue_for_review(glb, "part", report=partial, report_file="r.json", log=log, now=T[0])
+    with pytest.raises(review.ReviewConflict, match="licence check has not run"):
+        review.decide(log, "part", "approved", "")
+    full = checks.run_checks(checks.Asset(glb=glb), only=["mesh.holes", "license.components"])
+    review.enqueue_for_review(glb, "part", report=full, report_file="r.json", log=log, now=T[1])
+    assert review.fold(review.load(log))["part"]["license_status"] == "pass"
+    assert review.decide(log, "part", "approved", "", now=T[2])["state"] == "approved"

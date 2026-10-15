@@ -122,7 +122,10 @@ def test_a_prop_set_offers_its_props_not_the_sheet_and_approval_follows_the_rule
       console.log(JSON.stringify({
         choices: m.checkChoices(sets).map((c) => [c.id, c.file]),
         unchecked: m.canApprove({state:'to_review', status:null, summary:{fail:[], warn:[]}}),
-        licence: m.canApprove({state:'to_review', status:'fail', summary:{fail:['license.components'], warn:[]}}),
-        other: m.canApprove({state:'to_review', status:'fail', summary:{fail:['mesh.holes'], warn:[]}}) }));""")
+        licence: m.canApprove({state:'to_review', status:'fail', license_status:'fail', summary:{fail:['license.components'], warn:[]}}),
+        partial: m.canApprove({state:'to_review', status:'pass', license_status:null, summary:{fail:[], warn:[]}}),
+        why: m.approveBlocker({state:'to_review', status:'pass', license_status:null}),
+        other: m.canApprove({state:'to_review', status:'fail', license_status:'pass', summary:{fail:['mesh.holes'], warn:[]}}) }));""")
     assert out["choices"] == [["s1-barrel", "props/s/barrel_LOD0.glb"], ["s1-stool", "props/s/stool_LOD0.glb"]]
     assert out["unchecked"] is False and out["licence"] is False and out["other"] is True
+    assert out["partial"] is False and "has not run" in out["why"]

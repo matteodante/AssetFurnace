@@ -75,11 +75,17 @@ def triangle_count(document: dict) -> int:
     return total
 
 
-def image_sizes(document: dict, binary: bytes, base: Path) -> list[tuple[int, int]]:
-    """Width and height of every image, read from its header (embedded or beside the file)."""
+def image_sizes(document: dict, binary: bytes, base: Path) -> tuple[list[tuple[int, int]], list[str]]:
+    """(width and height of every image, the images that could not be read).
+
+    Read from each header, embedded or beside the file. A glTF URI is percent-encoded
+    (`large%20texture.png` is `large texture.png`), so it is decoded before it is looked up.
+    """
+    from urllib.parse import unquote
+
     from PIL import Image
 
-    sizes = []
+    sizes, unreadable = [], []
     views = document.get("bufferViews", [])
     for image in document.get("images", []):
         if "bufferView" in image:
@@ -91,13 +97,14 @@ def image_sizes(document: dict, binary: bytes, base: Path) -> list[tuple[int, in
 
             data = base64.b64decode(image["uri"].split(",", 1)[1])
         else:
-            path = base / image.get("uri", "")
+            path = base / unquote(image.get("uri", ""))
             data = path.read_bytes() if path.is_file() else b""
-        if not data:
-            continue
-        with Image.open(io.BytesIO(data)) as opened:
-            sizes.append(opened.size)
-    return sizes
+        try:
+            with Image.open(io.BytesIO(data)) as opened:
+                sizes.append(opened.size)
+        except Exception:  # noqa: BLE001 - any unreadable image is reported, whatever the reason
+            unreadable.append(image.get("uri") or image.get("name") or f"bufferView {image.get('bufferView')}")
+    return sizes, unreadable
 
 
 def gltfpack_stats(glb: Path, binary: Path | None = None, timeout: int = 120) -> dict | None:
@@ -143,6 +150,9 @@ def faces(asset, config):
         stats = gltfpack_stats(asset.glb)
         if stats:
             details["gltfpack"] = stats
+    if count == 0:
+        # An empty scene, or points and lines only: nothing for an engine to draw as a surface.
+        return result("budget.faces", "fail", 0, limits, "the model draws no triangles at all", details)
     return result("budget.faces", grade_max(count, **limits), count, limits,
                   f"{count:,} triangles against a budget of {budget:,}", details)
 
@@ -162,12 +172,16 @@ def materials(asset, config):
 
 @register("budget.textures")
 def textures(asset, config):
-    sizes = image_sizes(asset.document, asset.binary, asset.glb.parent)
+    sizes, unreadable = image_sizes(asset.document, asset.binary, asset.glb.parent)
     largest = max((max(s) for s in sizes), default=0)
     limits = {"warn": config.get("warn", 2048), "fail": config.get("fail", 4096)}
+    details = {"sizes": [list(s) for s in sizes], "unreadable": unreadable}
+    if unreadable:
+        return result("budget.textures", "fail", largest, limits,
+                      f"{len(unreadable)} declared image(s) could not be read, so their size is unknown: "
+                      f"{', '.join(unreadable[:3])}", details)
     return result("budget.textures", grade_max(largest, **limits), largest, limits,
-                  f"largest texture side {largest} px across {len(sizes)} image(s)",
-                  {"sizes": [list(s) for s in sizes]})
+                  f"largest texture side {largest} px across {len(sizes)} image(s)", details)
 
 
 def texel_density(width: int, height: int, uv_area: float, surface_area: float) -> float:

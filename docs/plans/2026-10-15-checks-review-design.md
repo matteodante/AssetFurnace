@@ -97,7 +97,7 @@ glTF divide i vertici a ogni cucitura delle UV, e senza saldatura si contano le 
 | `mesh.holes` | Percentuale di facce che toccano uno spigolo aperto (`ribbon_metric.boundary_stats`) | warn > 1%, fail > 3% (da `ribbon_metric`: chiuso 0%, qualche strappo 1-3%). Nei profili con pezzi aperti per scelta (foglie, stoffa) si alza |
 | `mesh.loose_parts` | Componenti connesse sulla mesh saldata; "volante" = sotto lo 0,5% delle facce del pezzo più grande (stessa logica di `remove_loose_parts.py`) | warn ≥ 1 pezzo volante, fail se i pezzi volanti superano l'1% delle facce |
 | `mesh.nonmanifold` | Spigoli con 3 o più facce (`mesh_health.measure`) | warn > 0, fail > 0,5% |
-| `uv.overlap` | Disegno i triangoli delle UV su una griglia di 1024 × 1024 con OpenCV e conto i pixel coperti più di una volta. Anche: UV mancanti con una texture (fail), UV fuori da 0-1 (warn) | warn > 2%, fail > 10%. Solo warn nei profili che usano UV specchiate di proposito |
+| `uv.overlap` | Disegno i triangoli delle UV su una griglia di 1024 × 1024 con OpenCV e conto i pixel coperti più di una volta. Anche: UV mancanti con una texture (fail), UV fuori da 0-1 (warn) | warn > 4%, fail > 10% (*Implementato*: conta ogni uso di un pixel condiviso, quindi i bordi delle isole che si toccano pesano il doppio; da qui warn 4 invece di 2). Solo warn nei profili che usano UV specchiate di proposito |
 
 ### Budget
 

@@ -207,3 +207,24 @@ def with_cavity(path: Path) -> Path:
     all_vertices = np.vstack([vertices, inner])
     all_faces = np.vstack([faces, faces[:, ::-1] + len(vertices)])
     return write_glb(textured(all_vertices, all_faces, np.vstack([uv, uv])), path)
+
+
+def points_only(path: Path) -> Path:
+    """A valid GLB that draws no triangles at all: only points."""
+    scene = trimesh.Scene()
+    scene.add_geometry(trimesh.points.PointCloud(np.random.default_rng(0).random((50, 3))), geom_name="points")
+    path.write_bytes(scene.export(file_type="glb"))
+    return path
+
+
+def external_texture(path: Path, name: str = "large texture.png", size=(8192, 16)) -> Path:
+    """The clean capsule with its texture beside it, under a URI-encoded file name."""
+    from urllib.parse import quote
+
+    from image_to_3dlab.glb_turn import build_glb, parse_glb
+
+    document, binary = parse_glb(clean(path).read_bytes())
+    Image.new("RGB", size, (90, 90, 90)).save(path.parent / name)
+    document["images"] = [{"uri": quote(name), "mimeType": "image/png"}]
+    path.write_bytes(build_glb(document, binary))
+    return path

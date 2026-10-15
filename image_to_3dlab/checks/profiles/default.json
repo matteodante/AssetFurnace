@@ -5,7 +5,7 @@
     "mesh.holes": {"warn": 1.0, "fail": 3.0},
     "mesh.loose_parts": {"speck_share": 0.5, "warn": 0, "fail": 1.0},
     "mesh.nonmanifold": {"warn": 0.0, "fail": 0.5},
-    "uv.overlap": {"warn": 2.0, "fail": 10.0, "resolution": 1024},
+    "uv.overlap": {"warn": 4.0, "fail": 10.0, "resolution": 1024},
     "budget.faces": {"max": 40000, "fail_ratio": 1.25, "gltfpack": true},
     "budget.materials": {"warn": 2, "fail": 4, "draw_calls_warn": 4, "draw_calls_fail": 8},
     "budget.textures": {"warn": 2048, "fail": 4096},
