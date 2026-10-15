@@ -22,6 +22,7 @@ from __future__ import annotations
 import copy
 import io
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -33,6 +34,7 @@ from skimage import color
 
 from image_to_3dlab.edit_glb import EditGLB
 from image_to_3dlab.glb_turn import build_glb
+from image_to_3dlab.provenance import sha256_file
 
 SIDECAR_SCHEMA = "assetfurnace.materials/1"
 CHANNELS = ("R", "G", "B")
@@ -410,13 +412,30 @@ def normal_from_height(height: np.ndarray, strength: float = 1.0) -> np.ndarray:
     return np.clip((stacked * 0.5 + 0.5) * 255.0, 0, 255).astype(np.uint8)
 
 
+def island_blur(image: np.ndarray, labels: np.ndarray, slices, sigma: float) -> np.ndarray:
+    """``masked_blur`` run on each UV island alone, so islands a few texels apart in the
+    atlas, which are far apart on the model, never average into each other."""
+    out = np.zeros(image.shape, dtype=np.float64)
+    pad = int(np.ceil(3 * sigma)) + 1
+    for number, box in enumerate(slices, start=1):
+        if box is None:
+            continue
+        grown = tuple(slice(max(b.start - pad, 0), min(b.stop + pad, n)) for b, n in zip(box, image.shape))
+        mine = labels[grown] == number
+        out[grown][mine] = masked_blur(image[grown], mine, sigma)[mine]
+    return out
+
+
 def height_from_luminance(lum: np.ndarray, coverage: np.ndarray) -> np.ndarray:
     """Height as a weighted sum of luminance frequency bands (the Materialize idea).
 
-    Each band is the difference between two masked blurs, so fine cracks and broad
-    plates both contribute, and the gutter never does.
+    Each band is the difference between two blurs taken inside one UV island at a time,
+    so fine cracks and broad plates both contribute, and neither the gutter nor a
+    neighbouring island does.
     """
-    levels = [np.where(coverage, lum, 0.0)] + [masked_blur(lum, coverage, s) for s in HEIGHT_SIGMAS]
+    labels, _ = ndimage.label(coverage)
+    slices = ndimage.find_objects(labels)
+    levels = [np.where(coverage, lum, 0.0)] + [island_blur(lum, labels, slices, s) for s in HEIGHT_SIGMAS]
     height = np.full(lum.shape, 0.5, dtype=np.float64)
     for weight, fine, coarse in zip(HEIGHT_WEIGHTS, levels[:-1], levels[1:]):
         height += weight * (fine - coarse)
@@ -535,6 +554,17 @@ def _texture_image(glb: EditGLB, info: dict | None, mode: str = "RGB") -> np.nda
     return _decode_image(glb, texture_source(texture), mode)
 
 
+def transform_uv(uv: np.ndarray, transform: dict | None) -> np.ndarray:
+    """Apply KHR_texture_transform the way three.js does: scale, rotate, then offset."""
+    if not transform:
+        return uv
+    sx, sy = transform.get("scale", [1.0, 1.0])
+    ox, oy = transform.get("offset", [0.0, 0.0])
+    c, s = np.cos(transform.get("rotation", 0.0)), np.sin(transform.get("rotation", 0.0))
+    u, v = uv[:, 0] * sx, uv[:, 1] * sy
+    return np.c_[c * u + s * v + ox, -s * u + c * v + oy]
+
+
 def _surfaces(glb: EditGLB) -> dict[int, _Surface]:
     document = glb.document
     globals_, _ = glb.node_globals()
@@ -552,7 +582,8 @@ def _surfaces(glb: EditGLB) -> dict[int, _Surface]:
             base = pbr.get("baseColorTexture")
             if base is None:
                 continue
-            texcoord = base.get("texCoord", 0)
+            transform = (base.get("extensions") or {}).get("KHR_texture_transform")
+            texcoord = (transform or {}).get("texCoord", base.get("texCoord", 0))
             uv_key = f"TEXCOORD_{texcoord}"
             if uv_key not in primitive["attributes"]:
                 continue
@@ -567,7 +598,8 @@ def _surfaces(glb: EditGLB) -> dict[int, _Surface]:
                      if "indices" in primitive else np.arange(len(positions)).reshape(-1, 3))
             surface.positions.append(positions)
             surface.faces.append(faces)
-            surface.uv.append(glb.accessor(primitive["attributes"][uv_key]).astype(np.float64))
+            surface.uv.append(transform_uv(glb.accessor(primitive["attributes"][uv_key]).astype(np.float64),
+                                           transform))
     if not surfaces:
         raise ValueError("the GLB has no textured triangle primitives")
     return surfaces
@@ -740,8 +772,10 @@ def _orm(surface: _Surface, material: dict, glb: EditGLB, mask: np.ndarray, cove
     height, width = coverage.shape
     pbr = material.get("pbrMetallicRoughness", {})
     rough_factor = float(pbr.get("roughnessFactor", 1.0))
-    metal_factor = float(pbr.get("metallicFactor", 1.0))
     mr = _texture_image(glb, pbr.get("metallicRoughnessTexture"))
+    # glTF's own default is 1, but a colour-only asset that never mentions metal is not
+    # metal: with no map and no factor the design says dielectric.
+    metal_factor = float(pbr.get("metallicFactor", 1.0 if mr is not None else 0.0))
     if mr is not None and mr.shape[:2] != (height, width):
         mr = np.asarray(Image.fromarray(mr).resize((width, height), Image.BILINEAR))
     zone = _zone_index(mask)
@@ -773,13 +807,43 @@ def _orm(surface: _Surface, material: dict, glb: EditGLB, mask: np.ndarray, cove
         metal = np.where(zone == CHANNELS.index(c), value, metal)
         maps["metallic"] = "zone"
 
-    occlusion = ao if ao is not None else np.ones((height, width))
-    maps["occlusion"] = "baked" if ao is not None else "none"
+    existing = _texture_image(glb, material.get("occlusionTexture"))
+    if ao is not None:
+        occlusion, maps["occlusion"] = ao, "baked"
+    elif existing is not None:
+        if existing.shape[:2] != (height, width):
+            existing = np.asarray(Image.fromarray(existing).resize((width, height), Image.BILINEAR))
+        occlusion, maps["occlusion"] = existing[..., 0] / 255.0, "kept"
+    else:
+        occlusion, maps["occlusion"] = np.ones((height, width)), "none"
     orm = pack_orm(occlusion, rough, metal)
     return fill_gutter(orm, coverage), maps
 
 
 # --------------------------------------------------------------------------- entry point
+
+OPERATION = "Game materials: tint mask, baked-light checks, normal, roughness, ORM (no models)"
+
+
+def write_provenance(source: Path, output: Path) -> Path:
+    """Carry the source's licence record to the result, adding no models.
+
+    The step only does image maths, so the result is licensed exactly as its source;
+    a source with no record gets one that says its licence is unknown, never a guess.
+    """
+    sidecar = source.with_suffix(".provenance.json")
+    if sidecar.is_file():
+        record = json.loads(sidecar.read_text(encoding="utf-8"))
+    else:
+        record = {"schema_version": 1, "license": None, "classification": "unknown", "models": [],
+                  "note": "the source carried no provenance record"}
+    record["operation"] = OPERATION
+    record["input"] = {"path": str(source), "sha256": sha256_file(source)}
+    record["output"] = {"path": str(output), "sha256": sha256_file(output)}
+    path = output.with_suffix(".provenance.json")
+    path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return path
+
 
 @dataclass
 class MaterialsResult:
@@ -790,6 +854,12 @@ class MaterialsResult:
     sidecar_path: Path
     textures: dict[str, Path]
     maps: dict[str, str]
+
+
+def safe_name(name: str) -> str:
+    """A material name made fit for a file name on every platform."""
+    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "-", name or "").strip("-")[:60]
+    return cleaned or "material"
 
 
 def _tint_section(zones: list[dict]) -> dict:
@@ -837,13 +907,14 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
     if status == "fail":
         # A batch reads <stem>.glb as "done"; an older pass must not outlive this verdict.
         (out_dir / f"{stem}.glb").unlink(missing_ok=True)
+        (out_dir / f"{stem}.provenance.json").unlink(missing_ok=True)
         sidecar_path.write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
         return MaterialsResult(status, analysis.checks, analysis.zones, None, sidecar_path, {}, {})
 
     document = copy.deepcopy(glb.document)
     binary = glb.binary[:glb.buffer_size]
     users = _texture_users(document)
-    per_material, first_textures, first_maps = [], {}, {}
+    per_material, first_textures, first_maps, used = [], {}, {}, set()
     many = len(analysis.surfaces) > 1
     for surface in analysis.surfaces.values():
         material = document["materials"][surface.material]
@@ -855,7 +926,12 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
                                np.concatenate([f + sum(len(u) for u in surface.uv[:i])
                                                for i, f in enumerate(surface.faces)]),
                                (width, height))
-        name = prefix + (f"_{material.get('name') or surface.material}" if many else "")
+        name = prefix
+        if many:
+            name = f"{prefix}_{safe_name(material.get('name') or str(surface.material))}"
+            if name in used:
+                name = f"{name}-{surface.material}"
+        used.add(name)
         written: dict[str, Path] = {}
 
         mask = _mask_image(surface, analysis, coverage, zones_from)
@@ -885,14 +961,20 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
             orm_tex = old["index"]
         else:
             orm_tex, binary = add_texture(document, binary, _png(orm), f"{name}_ORM", sampler)
-        texcoord = {"texCoord": surface.texcoord} if surface.texcoord else {}
+        texcoord = {"texCoord": base_info["texCoord"]} if base_info.get("texCoord") else {}
+        if (base_info.get("extensions") or {}).get("KHR_texture_transform"):
+            texcoord["extensions"] = {"KHR_texture_transform": copy.deepcopy(
+                base_info["extensions"]["KHR_texture_transform"])}
         pbr["metallicRoughnessTexture"] = {"index": orm_tex, **texcoord}
         pbr["metallicFactor"] = 1.0
         pbr["roughnessFactor"] = 1.0
-        if maps["occlusion"] == "baked":
+        if maps["occlusion"] in ("baked", "kept"):
+            strength = (material.get("occlusionTexture") or {}).get("strength")
             material["occlusionTexture"] = {"index": orm_tex, **texcoord}
-        elif material.get("occlusionTexture", {}).get("index") == orm_tex:
-            material.pop("occlusionTexture")
+            if strength is not None:
+                material["occlusionTexture"]["strength"] = strength
+        else:
+            material.pop("occlusionTexture", None)
 
         if "normalTexture" in material:
             maps["normal"] = "kept"
@@ -926,5 +1008,6 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
     sidecar["maps"] = first_maps
     sidecar["materials"] = per_material
     sidecar_path.write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
+    write_provenance(asset, glb_path)
     return MaterialsResult(status, analysis.checks, analysis.zones, glb_path, sidecar_path,
                            first_textures, first_maps)

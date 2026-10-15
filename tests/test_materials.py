@@ -75,7 +75,8 @@ def png(array: np.ndarray) -> bytes:
 
 
 def make_glb(path, albedo: np.ndarray, mr: np.ndarray | None = None, rigged: bool = False,
-             metallic_factor: float = 0.0, roughness_factor: float = 1.0):
+             metallic_factor: float | None = 0.0, roughness_factor: float = 1.0,
+             occlusion_from_mr: bool = False, base_extensions: dict | None = None):
     positions, uvs, faces = sphere()
     blobs, views, accessors = [], [], []
 
@@ -101,8 +102,11 @@ def make_glb(path, albedo: np.ndarray, mr: np.ndarray | None = None, rigged: boo
     idx = add_accessor(faces.reshape(-1), "SCALAR", 5125, 34963)
     images = [{"bufferView": add_view(png(albedo)), "mimeType": "image/png", "name": "albedo"}]
     textures = [{"source": 0, "sampler": 0}]
-    pbr = {"baseColorTexture": {"index": 0}, "metallicFactor": metallic_factor,
-           "roughnessFactor": roughness_factor}
+    pbr = {"baseColorTexture": {"index": 0}, "roughnessFactor": roughness_factor}
+    if metallic_factor is not None:
+        pbr["metallicFactor"] = metallic_factor
+    if base_extensions:
+        pbr["baseColorTexture"]["extensions"] = base_extensions
     if mr is not None:
         images.append({"bufferView": add_view(png(mr)), "mimeType": "image/png", "name": "mr"})
         textures.append({"source": 1, "sampler": 0})
@@ -131,6 +135,10 @@ def make_glb(path, albedo: np.ndarray, mr: np.ndarray | None = None, rigged: boo
         document["animations"] = [{"name": "turn",
                                    "samplers": [{"input": times, "output": values}],
                                    "channels": [{"sampler": 0, "target": {"node": 1, "path": "rotation"}}]}]
+    if occlusion_from_mr:
+        document["materials"][0]["occlusionTexture"] = {"index": 1, "strength": 0.8}
+    if base_extensions:
+        document["extensionsUsed"] = sorted(base_extensions)
     binary = b"".join(blobs)
     document["buffers"] = [{"byteLength": len(binary)}]
     document["bufferViews"] = views
@@ -565,3 +573,113 @@ def test_script_parses_zone_overrides():
     with pytest.raises(ValueError):
         game_materials.parse_zone_values("Q=0.3")
     assert struct.calcsize("<I") == 4
+
+
+# --------------------------------------------------------------------------- review fixes
+
+def test_packed_occlusion_already_in_the_asset_is_kept(tmp_path):
+    """An ORM input already carries AO in red; without a new bake it must survive."""
+    rng = np.random.default_rng(6)
+    orm = np.zeros((SIZE, SIZE, 3), np.uint8)
+    orm[..., 0] = rng.integers(90, 200, (SIZE, SIZE))
+    orm[..., 1] = rng.integers(40, 220, (SIZE, SIZE))
+    asset = make_glb(tmp_path / "orm.glb", banded_albedo(), mr=orm, occlusion_from_mr=True)
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    out = np.asarray(Image.open(result.textures["orm"]))
+    np.testing.assert_array_equal(out[..., 0], orm[..., 0])
+    assert result.maps["occlusion"] == "kept"
+    material = EditGLB(result.glb_path.read_bytes()).document["materials"][0]
+    orm_index = material["pbrMetallicRoughness"]["metallicRoughnessTexture"]["index"]
+    assert material["occlusionTexture"]["index"] == orm_index
+    assert material["occlusionTexture"]["strength"] == 0.8
+
+
+def test_missing_metallic_data_means_dielectric(tmp_path):
+    """No map and no factor: the design says 0, not glTF's default of 1."""
+    asset = make_glb(tmp_path / "bare.glb", banded_albedo(), metallic_factor=None)
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    assert np.asarray(Image.open(result.textures["orm"]))[..., 2].max() == 0
+
+
+def test_material_names_become_safe_file_names():
+    assert m.safe_name("arm/left") == "arm-left"
+    assert m.safe_name('a:b*c?"d<e>|f') == "a-b-c-d-e-f"
+    assert m.safe_name("") == "material"
+    assert m.safe_name("..") == "material"
+
+
+def two_material_glb(path, names):
+    """The banded sphere drawn twice, by two materials sharing its texture."""
+    make_glb(path, banded_albedo())
+    document, binary = parse_glb(path.read_bytes())
+    primitive = document["meshes"][0]["primitives"][0]
+    document["meshes"][0]["primitives"].append({**primitive, "material": 1})
+    pbr = document["materials"][0]["pbrMetallicRoughness"]
+    document["materials"] = [{"name": names[0], "pbrMetallicRoughness": dict(pbr)},
+                             {"name": names[1], "pbrMetallicRoughness": dict(pbr)}]
+    path.write_bytes(build_glb(document, binary))
+    return path
+
+
+def test_material_names_with_slashes_still_save(tmp_path):
+    asset = two_material_glb(tmp_path / "two.glb", ["arm/left", "arm/left"])
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    sidecar = json.loads(result.sidecar_path.read_text())
+    files = [x["textures"]["tint_mask"] for x in sidecar["materials"]]
+    assert len(set(files)) == 2                       # same name twice: still two files
+    assert all("/" not in f and (tmp_path / "out" / f).exists() for f in files)
+
+
+def test_provenance_travels_with_the_result(tmp_path):
+    asset = make_glb(tmp_path / "knight.glb", banded_albedo())
+    (tmp_path / "knight.provenance.json").write_text(json.dumps({
+        "schema_version": 1, "classification": "commercial-conditional",
+        "license": {"name": "MIT"}, "models": [{"id": "pixal3d", "license": "MIT"}]}))
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    record = json.loads((tmp_path / "out" / "knight.provenance.json").read_text())
+    assert record["models"] == [{"id": "pixal3d", "license": "MIT"}]   # no model added
+    assert record["classification"] == "commercial-conditional"
+    assert record["operation"].startswith("Game materials")
+    assert record["input"]["sha256"] == m.sha256_file(asset)
+    assert record["output"]["sha256"] == m.sha256_file(result.glb_path)
+
+
+def test_a_source_without_provenance_says_its_licence_is_unknown(banded, tmp_path):
+    m.make_game_materials(banded, tmp_path / "out", samples=20000)
+    record = json.loads((tmp_path / "out" / "banded.provenance.json").read_text())
+    assert record["classification"] == "unknown"
+    assert record["models"] == []
+
+
+def test_texture_transform_is_read_and_carried_to_every_new_map(tmp_path):
+    """Scaling v by 0.3 shows only the top (red) band: the analysis must see that too."""
+    squeezed = make_glb(tmp_path / "squeezed.glb", banded_albedo(),
+                        base_extensions={"KHR_texture_transform": {"scale": [1.0, 0.3]}})
+    assert statuses(m.run_checks(squeezed, samples=20000))["tint_zones"] == "fail"
+    transform = {"KHR_texture_transform": {"offset": [0.0, 0.0], "scale": [1.0, 0.999]}}
+    nearly = make_glb(tmp_path / "nearly.glb", banded_albedo(), base_extensions=transform)
+    result = m.make_game_materials(nearly, tmp_path / "out", samples=20000)
+    material = EditGLB(result.glb_path.read_bytes()).document["materials"][0]
+    for info in (material["normalTexture"], material["pbrMetallicRoughness"]["metallicRoughnessTexture"],
+                 material["extras"]["assetfurnace"]["tintMask"]):
+        assert info["extensions"] == transform
+
+
+def test_uv_transform_follows_the_three_js_reading_of_the_extension():
+    uv = np.array([[0.5, 0.25]])
+    moved = m.transform_uv(uv, {"offset": [0.1, 0.2], "scale": [2.0, 4.0], "rotation": 0.0})
+    np.testing.assert_allclose(moved, [[1.1, 1.2]])
+    turned = m.transform_uv(np.array([[1.0, 0.0]]), {"rotation": np.pi / 2})
+    np.testing.assert_allclose(turned, [[0.0, -1.0]], atol=1e-12)
+
+
+def test_height_does_not_leak_between_nearby_uv_islands():
+    """A bright island 4 texels from a dark one must not tilt the dark one's border."""
+    lum = np.zeros((64, 64))
+    coverage = np.zeros((64, 64), bool)
+    coverage[8:56, 8:28] = True
+    coverage[8:56, 32:56] = True
+    lum[:, :30] = 0.9
+    lum[:, 30:] = 0.1
+    normal = m.normal_from_albedo(lum, coverage, strength=64.0).astype(int)
+    assert np.abs(normal[coverage][:, :2] - 128).max() <= 1
