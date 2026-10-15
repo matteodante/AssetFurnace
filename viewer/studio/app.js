@@ -9,6 +9,8 @@ import { openCreate, runChain } from './create.js';
 import { openActivity, openAbout, openGuide, closeSheet } from './pages.js';
 import { STEP_LABELS } from './plan.js';
 import { createBlenderPanel, initialRevision, revisionFor } from './blender-edit.js';
+import { openReview, renderReviewPanel, fetchQueue, fetchItem } from './review.js';
+import { waitingCount } from './review-model.js';
 
 const $ = (id) => document.getElementById(id);
 const LOGO = './studio/mark.svg';
@@ -445,6 +447,52 @@ window.addEventListener('drop', (event) => {
 
 $('guideBtn').addEventListener('click', () => openGuide($('stage')));
 $('activityBtn').addEventListener('click', () => openActivity($('stage')));
+
+// ------------------------------------------------------------------ Review
+function setReviewCount(payload) {
+  const count = waitingCount(payload);
+  $('reviewCount').hidden = !count;
+  $('reviewCount').textContent = String(count);
+}
+
+async function refreshReviewCount() {
+  try { setReviewCount(await fetchQueue()); } catch { /* an older server: no queue, no number */ }
+}
+
+/** One queued asset in the viewer, turning, with the review panel in place of Steps. */
+async function showReview(key) {
+  closeSheet($('stage'));
+  let item;
+  try { item = await fetchItem(key); }
+  catch (error) {
+    // The previous item's panel must not stay live under a viewer that says this one failed.
+    $('steps').innerHTML = '';
+    $('sideKind').textContent = '';
+    $('vTitle').textContent = '';
+    $('vMeta').textContent = '';
+    $('download').hidden = true;
+    viewer.showEmpty(`This review item did not load: ${error.message}`);
+    return;
+  }
+  current = null;
+  viewingMaking = false;
+  $('progress').hidden = true;
+  renderLibrary();
+  blenderPanel.update(null);
+  $('hideBtn').hidden = true;
+  $('download').hidden = true;
+  $('vTitle').textContent = item.name || item.key;
+  $('vMeta').textContent = 'In review';
+  $('sideKind').textContent = 'Review';
+  viewer.setFacing(null);
+  viewer.setClips([]);
+  if (item.asset_url) viewer.load(item.asset_url, { label: item.name, turntable: true });
+  else viewer.showEmpty('The model for this review is not on disk any more.');
+  renderReviewPanel($('steps'), item, { viewer, onDecided: refreshReviewCount });
+}
+
+$('reviewBtn').addEventListener('click', () => openReview($('stage'), { assets, onPick: showReview, onCount: setReviewCount }));
+refreshReviewCount();
 $('aboutBtn').addEventListener('click', () => openAbout($('stage')));
 
 boot();
