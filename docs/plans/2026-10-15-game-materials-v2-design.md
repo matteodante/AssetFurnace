@@ -286,10 +286,6 @@ Ogni PR passa la review di Codex con le regole correnti (P1 sempre; P2 solo se �
 
 ## Seguiti
 
-Punti delle review di Codex rimandati con la regola dell'utente (si correggono solo gli errori che un utente vedrebbe),
-uno per riga. I punti della v1 restano nei Seguiti di [`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md);
-quelli legati ai metodi buttati cadono con loro.
-
-- ORM: una mappa metallo-rugosità o di occlusione di dimensione diversa dall'albedo si ridimensiona sempre in modo bilineare, anche quando il campionatore chiede "nearest". [PR #11](https://github.com/matteodante/AssetFurnace/pull/11#discussion_r4288767558)
-- Studio, etichette: finita la marcatura, la casella "Turn 360°" resta spuntata mentre il modello è fermo. [PR #12](https://github.com/matteodante/AssetFurnace/pull/12#discussion_r4288658600)
-- Studio, etichette: i segnaposti tolti non liberano la loro geometria nella scheda grafica (piccola perdita in sessioni lunghe). [PR #12](https://github.com/matteodante/AssetFurnace/pull/12#discussion_r4288799139)
+I punti rimandati della v1 restano nella sezione "Seguiti" di
+[`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md); quelli legati ai metodi buttati cadono
+con loro.

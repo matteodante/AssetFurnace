@@ -127,3 +127,40 @@ able to state what it is about to fetch and how large it is, and stop there.
 Concretely, a download path must: name the backend, name the route, state the size, and
 require an affirmative answer. `--yes` for non-interactive use is fine; defaulting to yes
 is not.
+
+## Quality checks on images are learned, never pixel heuristics
+
+Decided by the user on 2026-10-15: deterministic checks on brightness, edges (Canny),
+saturation, palette distances or colour clustering "do not work well" and are not used for
+style, copying, material zones or baked light. Image-level judgements come from learned
+models (embeddings such as SigLIP 2 / CSD / DINOv2, vision-language judges, segmenters).
+A check ships only if it beats a test against the user's own labels (ROC AUC ≥ 0.90, at
+least 80% of bad assets caught, at most 10% of good ones flagged); otherwise it is left out,
+not kept as "informational". Geometric checks on meshes (faces, holes, UVs, stretch,
+interpenetration, silhouette IoU on cut-out masks) are fine.
+
+Before proposing a model or tool, check that it is the most recent approach that fits, and
+record its release date and the licence of both code and weights (including weights the
+code downloads by itself).
+
+## Engines stay inside this program
+
+AssetFurnace is standalone: engines live in `vendor/` (images: `vendor/sdcpp/sd-cli`),
+their weights are `WeightSet`s in `viewer/backend_catalog.py`, downloaded only after
+consent. Do not add ComfyUI or another external server as a dependency.
+
+## Shared GPU
+
+Agents share one GPU through `%TEMP%\assetfurnace-gpu.lock` (pid and session name inside).
+Create it exclusively before GPU work and delete it afterwards, also on error. Hold it only
+while a job actually computes on the GPU — never across installs, downloads, compiles or
+waits. Release it after every job, even if your next job is queued; after a job longer than
+20 minutes, let waiting sessions go first. If the lock belongs to a dead process, it may be
+removed.
+
+## Code review
+
+Pull requests may get one round of review from the Codex bot (`@codex review`); it is
+optional. Fix only real P1 findings, after checking the cited lines; record the rest in the
+"Seguiti" section of the feature's design doc. Do not wait inside one long turn for a
+review: request it, end the turn, and resume on the notification.
