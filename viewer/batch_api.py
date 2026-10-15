@@ -81,13 +81,13 @@ def batch_detail(output: Path, name: str) -> dict[str, Any] | None:
     spec = batch.read_json(directory / batch.SPEC_COPY) or {}
     rows_in_spec = {row["id"]: row for row in spec.get("rows", []) if isinstance(row, dict)}
     state_rows = (batch.read_json(directory / batch.STATE_FILE) or {}).get("rows", {})
-    log = output / batch.REVIEW_LOG
+    reviews = batch.review_index(output / batch.REVIEW_LOG)   # once, not per row
     for row in status["rows"]:
         entry = state_rows.get(row["id"], {})
         asset = entry.get("asset") if row["status"] == "done" else None
         row["kind"] = rows_in_spec.get(row["id"], {}).get("kind")
         row["file"] = _from_output(directory / asset, output) if asset else None
-        row["review"] = (batch.review_state(log, row["id"], batch.asset_sha(entry, directory))
+        row["review"] = (batch.review_in(reviews, row["id"], batch.asset_sha(entry, directory))
                          if asset else None)
     status["directory"] = _from_output(directory, output)
     return status
@@ -123,13 +123,15 @@ def library_nodes(output: Path) -> dict[str, list[dict[str, Any]]]:
             # `__` cannot run into each other. The name shown is the row's id.
             identity = hashlib.sha256(f"{directory.name}/{row['id']}".encode()).hexdigest()[:12]
             stem = f"{row['id']}__{identity}"
+            # `link` ties a row's nodes together whatever their bytes: two batches with
+            # identical files must stay two assets, which a link by sha256 cannot tell
             if picture is not None:
-                nodes["picture"].append({"stem": stem, "file": picture})
+                nodes["picture"].append({"stem": stem, "file": picture, "link": stem})
             if model is not None:
-                nodes["model"].append({"stem": f"{stem}__batch", "file": model})
+                nodes["model"].append({"stem": f"{stem}__batch", "file": model, "link": stem})
             if finished is not None:
-                nodes["finished"].append({"stem": row["id"], "file": finished,
-                                          "source": model, "image": picture})
+                nodes["finished"].append({"stem": row["id"], "file": finished, "source": None,
+                                          "image": None, "link": stem})
     return nodes
 
 

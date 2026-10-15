@@ -49,7 +49,7 @@ from typing import Any
 
 from . import manifest_run
 from .batch_steps import StepContext
-from .processes import process_alive
+from .processes import group_alive, process_alive
 from .provenance import validate_run_policy
 
 REPO = Path(__file__).resolve().parents[1]
@@ -86,6 +86,7 @@ REVIEW_LOG = "review-log.jsonl"
 
 INTENT_KEYS = ("use_case", "distribution", "commercial_intent")
 DEFAULT_INTENT = {"use_case": "showcase", "distribution": "private", "commercial_intent": False}
+POLICY_KEYS = {"allow_conditional", "allow_research_only"}
 TOP_KEYS = {"schema_version", "name", "_about", "license_policy", "output", "defaults",
             "rows", *INTENT_KEYS}
 ROW_KEYS = {"id", "images", "asset", "kind", "faces", "profile", "steps", "backend",
@@ -198,6 +199,36 @@ def recorded_backend(asset: Path | None) -> str | None:
     return None
 
 
+def recorded_classes(asset: Path | None) -> list[str]:
+    """Every licence class an existing GLB's records name, through the whole chain: the
+    output's, the record's own, and each component that was actually used."""
+    sidecar = recorded_sidecar(asset)
+    found: list[str] = []
+    for level in _records(read_json(sidecar) if sidecar else None):
+        values = [(level.get("output") or {}).get("classification"), level.get("classification")]
+        values += [component.get("commercial_status") for component in level.get("components") or []
+                   if isinstance(component, dict) and component.get("loaded", True)]
+        found += [value for value in values if isinstance(value, str) and value not in found]
+    return found
+
+
+def class_problem(classification: str, intent: dict[str, Any],
+                  policy: dict[str, Any]) -> str | None:
+    """Why a licence class is not allowed under this intent and policy, the rules of
+    `provenance.validate_run_policy` applied to a class rather than a backend."""
+    if classification == "commercial-clear":
+        return None
+    if not policy.get("allow_conditional", True):
+        return f"it is {classification}; the policy disallows conditional models"
+    if classification == "research-only" and not (
+            intent["use_case"] == "showcase" and intent["distribution"] == "private"):
+        return "it is research-only (non-commercial): a private showcase only"
+    if (classification == "territory-restricted" and intent["use_case"] == "game"
+            and intent["distribution"] == "worldwide"):
+        return "it is territory-restricted, not cleared for worldwide game distribution"
+    return None
+
+
 @dataclass
 class BatchSpec:
     name: str
@@ -270,6 +301,11 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
     if not isinstance(policy, dict):
         problems.append("license_policy must be an object")
         policy = {}
+    elif set(policy) - POLICY_KEYS:
+        # a misspelt key would leave its default in force: the gate must not fail open
+        problems.append(f"license_policy: unknown field(s) "
+                        f"{', '.join(sorted(set(policy) - POLICY_KEYS))}")
+        policy = {**policy, "allow_conditional": False}
     elif not isinstance(policy.get("allow_conditional", True), bool):
         # "false" as a string is truthy: the licence gate must not fail open on a typo
         problems.append("license_policy.allow_conditional must be true or false")
@@ -304,7 +340,8 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
 
     rows, seen = [], set()
     for number, raw in enumerate(raw_rows, start=1):
-        row, row_problems = _parse_row(raw, defaults, base, number)
+        row, row_problems = _parse_row(raw, defaults, base, number,
+                                       staged=output_dir / name / "rows")
         problems += row_problems
         if row is None:
             continue
@@ -331,10 +368,27 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
                                     policy.get("allow_conditional", True))
             except ValueError as exc:
                 problems.append(f"row {row.id}: license policy for {what}: {exc}")
+        if "generate" not in row.steps:
+            # a source can carry more than its generator: a repaint, a matte, whatever
+            # finished it before. Every class its records name is held to the policy.
+            for classification in recorded_classes(row.asset):
+                problem = class_problem(classification, resolved_intent, policy)
+                if problem:
+                    problems.append(f"row {row.id}: license policy for its source: {problem}")
     if problems:
         raise BatchError(problems)
     return BatchSpec(name=name, path=path, rows=rows, intent=resolved_intent,
                      license_policy=policy, output_dir=output_dir)
+
+
+def _is_glb(path: Path) -> bool:
+    """Whether a file starts like a binary glTF; a broken one fails before the batch, not
+    in Blender's importer after earlier rows have run."""
+    try:
+        with path.open("rb") as handle:
+            return handle.read(4) == b"glTF"
+    except OSError:
+        return False
 
 
 def _read_csv(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
@@ -375,8 +429,8 @@ def _read_csv(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
     return rows, problems
 
 
-def _parse_row(raw: Any, defaults: dict[str, Any], base: Path,
-               number: int) -> tuple[BatchRow | None, list[str]]:
+def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
+               staged: Path | None = None) -> tuple[BatchRow | None, list[str]]:
     if not isinstance(raw, dict):
         return None, [f"row {number}: must be an object"]
     label = f"row {raw.get('id', number)}"
@@ -411,6 +465,12 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path,
         problems.append(f"{label}: asset must be a file path")
         value = {**value, "asset": None}
     images = tuple((base / image).resolve() for image in raw_images)
+    if staged is not None:
+        # an image moved away after its row ran is still in the row's folder: a resume of
+        # the rest of the batch reads that copy (same bytes, so the row stays done)
+        copies = staged / row_id / "input"
+        images = tuple(image if image.is_file() or not (copies / image.name).is_file()
+                       else copies / image.name for image in images)
     problems += [f"{label}: image does not exist: {image}"
                  for image in images if not image.is_file()]
     names = [image.name.lower() for image in images]
@@ -420,6 +480,8 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path,
     asset = (base / value["asset"]).resolve() if value.get("asset") else None
     if asset is not None and not asset.is_file():
         problems.append(f"{label}: asset does not exist: {asset}")
+    elif asset is not None and not _is_glb(asset):
+        problems.append(f"{label}: asset is not a GLB file: {asset}")
     if "generate" in steps:
         if not images:
             problems.append(f"{label}: generate needs an image")
@@ -650,8 +712,13 @@ def _live_lock(output_dir: Path) -> dict[str, Any] | None:
     """The lock, if its process is alive and is the one that took it: a pid the OS has
     since given to another process does not hold it."""
     lock = _read_lock(output_dir)
-    if not lock or not process_alive(lock["pid"]):
+    if not lock:
         return None
+    if not process_alive(lock["pid"]):
+        # On POSIX a runner started by the MCP server leads its own process group: a
+        # generator or Blender it left behind still works in the row's folder, so the
+        # lock holds until the whole group is gone. Windows tracks the one process.
+        return lock if os.name != "nt" and group_alive(lock["pid"]) else None
     recorded = lock.get("identity")
     current = process_identity(lock["pid"]) if recorded else None
     return None if recorded and current and current != recorded else lock
@@ -894,11 +961,12 @@ def _still_done(entry: dict[str, Any], directory: Path) -> bool:
     whose files went missing runs again from its first broken step, which is hashed."""
     if entry.get("status") != "done" or _newly_available(entry):
         return False
-    for step in entry.get("steps", {}).values():
-        for record in step.get("files", []) if step.get("status") == "done" else []:
-            path = directory / record["path"]
-            if not path.is_file() or ("bytes" in record and path.stat().st_size != record["bytes"]):
-                return False
+    recorded = [record for step in entry.get("steps", {}).values()
+                if step.get("status") == "done" for record in step.get("files", [])]
+    for record in recorded + entry.get("staged", []):
+        path = directory / record["path"]
+        if not path.is_file() or ("bytes" in record and path.stat().st_size != record["bytes"]):
+            return False
     return True
 
 
@@ -923,7 +991,11 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
         # record leads to) are staged here, so its folder and outputs.json carry it too
         (row_dir / "input").mkdir(parents=True, exist_ok=True)
         for image in staged:
-            shutil.copyfile(image, row_dir / "input" / image.name)
+            if image.resolve() != (row_dir / "input" / image.name).resolve():
+                shutil.copyfile(image, row_dir / "input" / image.name)
+        # recorded on the row, not on a step: a checks-only row has them too
+        entry["staged"] = [record for image in staged
+                           for record in _file_records(row_dir / "input" / image.name, directory)]
     asset = row.asset
     sidecar = _sidecar_for(asset) if asset else None
     steps = entry.setdefault("steps", {})
@@ -1057,6 +1129,22 @@ def _lines(path: Path) -> list[dict[str, Any]]:
         if isinstance(value, dict):
             lines.append(value)
     return lines
+
+
+def review_index(log_path: Path) -> dict[tuple[str, str | None], tuple[int, dict[str, Any]]]:
+    """The latest event per (key, version), read once for a whole batch's rows."""
+    index: dict[tuple[str, str | None], tuple[int, dict[str, Any]]] = {}
+    for number, line in enumerate(_lines(log_path)):
+        if isinstance(line.get("key"), str):
+            index[(line["key"], line.get("asset_sha256"))] = (number, line)
+    return index
+
+
+def review_in(index: dict[tuple[str, str | None], tuple[int, dict[str, Any]]], asset_key: str,
+              sha256: str | None) -> dict[str, Any] | None:
+    """The latest event in `index` for this version, or one that names no version."""
+    found = [hit for hit in (index.get((asset_key, sha256)), index.get((asset_key, None))) if hit]
+    return max(found, key=lambda hit: hit[0])[1] if found else None
 
 
 def review_state(log_path: Path, asset_key: str, sha256: str | None) -> dict[str, Any] | None:

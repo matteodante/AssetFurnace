@@ -243,6 +243,10 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
             match = model_by_sha.get(hashes.of(prop_set["file"]))
             if match is not None:
                 join(index_of[id(prop_set)], match)
+    linked: dict[str, int] = {}   # nodes that name their asset outright (batch rows)
+    for i, (_, node) in enumerate(nodes):
+        if node.get("link") is not None:
+            join(i, linked.setdefault(node["link"], i))
     hashes.save()
 
     groups: dict[int, list[int]] = {}

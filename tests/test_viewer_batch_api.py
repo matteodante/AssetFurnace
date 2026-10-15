@@ -322,3 +322,19 @@ def test_batch_and_row_names_with_double_underscores_stay_apart(output):
     assets = assets_api.list_assets(output)
     assert len(assets) == 2
     assert {asset["finished"].split("/")[1] for asset in assets} == {"b__c", "c"}
+
+
+
+def test_identical_files_in_two_batches_are_still_two_assets(output, monkeypatch):
+    """Same picture, same generator, same bytes: linked by row, not by sha256."""
+    for name in ("left", "right"):
+        spec = _spec(output, rows=1, name=name)
+        data = json.loads(spec.read_text())
+        data["rows"][0]["images"] = [str(tiny_png(output.parent / "same.png", 3))]
+        spec.write_text(json.dumps(data))
+        batch.run_batch(batch.load_batch(spec))
+    assets = assets_api.list_assets(output)
+    assert len(assets) == 2
+    for asset in assets:
+        assert asset["stage"] == "finished"
+        assert asset["model"].split("/")[1] == asset["finished"].split("/")[1]
