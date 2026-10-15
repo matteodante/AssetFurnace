@@ -254,3 +254,12 @@ materiali unlit) e dice quali materiali senza texture restano come sono.
 **Fuori dal mio perimetro, da fare dopo il merge**: il passo `materials` in `cli.py` (sessione della funzione 1); la
 registrazione dei controlli nella coda (funzione 7); il Material Function di Unreal che rifà la formula dal
 `.materials.json` (funzione 5).
+
+## Seguiti
+
+Punti P2 della review di Codex rimandati con la regola dell'utente (si correggono solo gli errori che un utente
+vedrebbe), uno per riga:
+
+- Alfa dei colori dei vertici (`COLOR_0` a 4 componenti) nei materiali MASK e BLEND: oggi conta solo l'alfa della texture e del fattore. La pipeline non produce ritagli dipinti sui vertici. [Thread](https://github.com/matteodante/AssetFurnace/pull/3#discussion_r4287300576)
+- Anteprima nello studio: la maschera usa il filtro lineare anche quando l'albedo chiede "nearest". Tocca solo l'anteprima di asset in pixel art. [Thread](https://github.com/matteodante/AssetFurnace/pull/3#discussion_r4287300593)
+- Normal ricavata da texture ripetute (tiling): sfocature e derivate non trattano come vicini i bordi opposti. Gli atlanti generati non si ripetono. [Thread](https://github.com/matteodante/AssetFurnace/pull/3#discussion_r4287300614)

@@ -930,3 +930,34 @@ def test_a_webp_requirement_goes_when_its_last_texture_does(tmp_path):
 def test_the_sidecar_records_the_source_hash(banded, tmp_path):
     result = m.make_game_materials(banded, tmp_path / "out", samples=20000)
     assert json.loads(result.sidecar_path.read_text())["source_sha256"] == m.sha256_file(banded)
+
+
+# --------------------------------------------------------------------------- fifth review
+
+def test_a_texture_also_used_outside_materials_is_never_overwritten(tmp_path):
+    """EXT_structural_metadata can point at the same texture: replacing it would corrupt that data."""
+    rng = np.random.default_rng(10)
+    mr = np.zeros((SIZE, SIZE, 3), np.uint8)
+    mr[..., 1] = rng.integers(40, 220, (SIZE, SIZE))
+    asset = make_glb(tmp_path / "meta.glb", banded_albedo(), mr=mr)
+    document, binary = parse_glb(asset.read_bytes())
+    document["extensions"] = {"EXT_structural_metadata": {"propertyTextures": [
+        {"class": "c", "properties": {"p": {"index": 1, "channels": [1]}}}]}}
+    asset.write_bytes(build_glb(document, binary))
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    out = EditGLB(result.glb_path.read_bytes())
+    image = out.document["images"][out.document["textures"][1]["source"]]
+    view = out.document["bufferViews"][image["bufferView"]]
+    start = view.get("byteOffset", 0)
+    kept = np.asarray(Image.open(io.BytesIO(out.binary[start:start + view["byteLength"]])).convert("RGB"))
+    np.testing.assert_array_equal(kept, mr)
+    assert out.document["materials"][0]["pbrMetallicRoughness"]["metallicRoughnessTexture"]["index"] != 1
+
+
+def test_no_normal_is_derived_under_a_rotated_base_colour(tmp_path):
+    """Its vectors would point along the image's axes, not the rotated ones the model shows."""
+    asset = make_glb(tmp_path / "turned.glb", banded_albedo(),
+                     base_extensions={"KHR_texture_transform": {"rotation": 0.3}})
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    assert result.maps["normal"].startswith("skipped")
+    assert "normalTexture" not in EditGLB(result.glb_path.read_bytes()).document["materials"][0]

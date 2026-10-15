@@ -550,6 +550,31 @@ def _texture_users(document: dict) -> dict[int, list[tuple[int, str]]]:
     return users
 
 
+def uneven(scale) -> bool:
+    """A scale that stretches one UV axis more than the other, beyond 1%."""
+    sx, sy = (abs(float(v)) for v in scale)
+    return abs(sx - sy) > 0.01 * max(sx, sy, 1e-12)
+
+
+def referenced_outside_materials(document: dict, texture_index: int) -> bool:
+    """Whether anything but a material (a metadata extension, say) points at this texture.
+
+    Such a texture is never rewritten in place: its other user would read ORM data.
+    """
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("index") == texture_index and isinstance(node.get("index"), int):
+                return True
+            return any(walk(v) for v in node.values())
+        if isinstance(node, list):
+            return any(walk(v) for v in node)
+        return False
+
+    skip = {"materials", "textures", "images", "samplers", "accessors", "bufferViews", "buffers",
+            "nodes", "meshes", "skins", "animations", "scenes", "cameras", "asset"}
+    return any(walk(value) for key, value in document.items() if key not in skip)
+
+
 # --------------------------------------------------------------------------- analysis
 
 @dataclass
@@ -1146,7 +1171,7 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
         written["orm"] = out_dir / f"{name}_ORM.png"
         Image.fromarray(orm).save(written["orm"])
         old = pbr.get("metallicRoughnessTexture")
-        exclusive = old is not None and all(
+        exclusive = old is not None and not referenced_outside_materials(document, old["index"]) and all(
             m == surface.material and slot in ("metallicRoughnessTexture", "occlusionTexture")
             for m, slot in users.get(old["index"], []))
         old_texture = document["textures"][old["index"]] if old is not None else None
@@ -1177,8 +1202,12 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
         else:
             material.pop("occlusionTexture", None)
 
+        turn = (base_info.get("extensions") or {}).get("KHR_texture_transform") or {}
         if "normalTexture" in material:
             maps["normal"] = "kept"
+        elif abs(turn.get("rotation", 0.0)) > 1e-6 or uneven(turn.get("scale", [1.0, 1.0])):
+            # Vectors derived in the image's axes would point wrong once the transform turns them.
+            maps["normal"] = "skipped: the base colour is rotated or unevenly scaled"
         else:
             lum = linear_to_srgb(surface_luminance(surface))
             normal = fill_gutter(normal_from_albedo(lum, coverage, normal_strength), coverage)
