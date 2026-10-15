@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Batches**: `pipeline.py --run-batch spec.json` (or `.csv`) runs one row per asset
+  through `generate` and `finish`, with a state per row, resume from where it stopped,
+  `--retry-failed`, and a `.provenance.json` for every output. Reserved step names
+  (`materials`, `export_unreal`, `checks`) are skipped with a warning until they exist.
+  An MCP server (`python -m image_to_3dlab.mcp_server`) lets an agent in another
+  repository submit batches, follow them and collect their files.
+  See [Batches](docs/batches.md).
+- `--run-manifest` runs Pixal3D manifests.
 - **Edit in Blender** in Studio: open a separate editing copy, export a GLB from
   Blender and import it as a new Library version. Originals and provenance stay
   available; imported versions preview their own rig, materials and animations.
