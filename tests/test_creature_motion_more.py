@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from _creature_skeletons import reroot, snake, spider
+from _creature_skeletons import build, chain, reroot, snake, spider
 from test_creature_motion import positions, rig_of
 
 import creature_motion as cm
@@ -113,6 +113,32 @@ def test_a_strike_never_drives_the_head_into_the_ground():
     heads = dict(heads)
     heads[names["seg0"]] = heads[names["seg1"]] + np.array([0, 0.001, 0.15])  # head barely raised
     rig, fam, _ = rig_of((parents, heads, names))
+    floor = min(rig.heads[b][1] for b in fam["body"])
+    for f in cm.serpent_strike(rig, fam):
+        p = positions(rig, f)
+        assert min(p[b][1] for b in fam["body"]) >= floor - 1e-6
+
+
+def _turned(rig, frame, bone):
+    return cm.accumulate(rig, frame[0])[bone]
+
+
+@pytest.mark.parametrize("root", ["seg5", "seg6"])
+def test_a_mid_body_root_does_not_roll_over(root):
+    rig, fam, n = rig_of(reroot(snake(), root))
+    up = np.array(fam["frame"]["up"])
+    for clip in (cm.serpent_slither, cm.serpent_strike):
+        frames = clip(rig, fam)
+        turns = [_turned(rig, f, n[root]) for f in frames]
+        # stays right side up and never tips from one frame to the next (a strike may swing
+        # the body round fast about the vertical, which is not rolling over)
+        tilts = [np.degrees(np.arccos(np.clip(float((t @ up) @ up), -1, 1))) for t in turns]
+        assert max(tilts) < 10 and max(abs(a - b) for a, b in zip(tilts, tilts[1:])) < 5
+
+
+def test_a_long_serpent_keeps_its_neck_off_the_ground():
+    rows = chain("seg", None, [(0, 0.06 if i == 0 else 0.05, 1.0 - 2.0 * i / 51) for i in range(52)])
+    rig, fam, _ = rig_of(build(rows))
     floor = min(rig.heads[b][1] for b in fam["body"])
     for f in cm.serpent_strike(rig, fam):
         p = positions(rig, f)

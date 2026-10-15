@@ -502,10 +502,18 @@ def pose_path(rig: Rig, path: list[str], desired: dict[str, np.ndarray], turn: d
 
 
 def _fit(have: list[np.ndarray], want: list[np.ndarray]) -> np.ndarray:
-    """The rotation turning the `have` directions closest onto `want` (Kabsch)."""
-    u, _, vt = np.linalg.svd(sum(np.outer(w, h) for h, w in zip(have, want)))
-    fix = np.diag([1.0, 1.0, float(np.sign(np.linalg.det(u @ vt)) or 1.0)])
-    return u @ fix @ vt
+    """The smallest turn putting `have[0]` on `want[0]`, then a twist about it that brings
+    `have[1]` round to `want[1]`. When the two lie on one line the twist is undefined, so
+    none is added: a mid-body root of a straight serpent must not roll over."""
+    first = rotation_between(have[0], want[0])
+    axis = _unit(np.asarray(want[0], float))
+    a = first @ have[1]
+    a, b = a - (a @ axis) * axis, np.asarray(want[1], float) - (want[1] @ axis) * axis
+    # nearly on one line the twist is ill-conditioned and would jump from frame to frame
+    if np.linalg.norm(a) < 0.2 * np.linalg.norm(have[1]) or np.linalg.norm(b) < 0.2 * np.linalg.norm(want[1]):
+        return first
+    angle = math.degrees(math.atan2(float(np.cross(a, b) @ axis), float(a @ b)))
+    return axis_angle(axis, angle) @ first
 
 
 def _rigid_at_root(rig: Rig, path: list[str], order: list[str], bends: list[np.ndarray]) -> list[np.ndarray]:
@@ -569,11 +577,16 @@ def serpent_strike(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[
         t = index / frames
         coil = _blend(t, 0.0, 0.5, 1.0, -0.15, 0.0)
         rear = _blend(t, 0.0, 0.4, 1.0, 0.0, 0.0)  # never below rest: the head must not dive into the ground
-        bends = []
+        bends, total = [], np.eye(3)
         for k in range(len(path) - 1, 0, -1):  # the joint each segment starts from, tail to head
             neck = max(0.0, (STRIKE["neck"] - s[k]) / STRIKE["neck"])  # 1 at the head, 0 past the neck
-            lateral = STRIKE["coil"] * coil * math.sin(2 * math.pi * (1.0 - s[k])) * (1.0 - neck)
-            bends.append(axis_angle(up, lateral) @ axis_angle(left, -STRIKE["rear"] * rear * neck))
+            lateral = axis_angle(up, STRIKE["coil"] * coil * math.sin(2 * math.pi * (1.0 - s[k])) * (1.0 - neck))
+            # raise the neck about its own coiled heading, so the lift is always upwards
+            heading = lateral @ total @ (rig.heads[path[k - 1]] - rig.heads[path[k]])
+            side = np.cross(heading, up)
+            lift = axis_angle(side, STRIKE["rear"] * rear * neck) if np.linalg.norm(side) > 1e-9 else np.eye(3)
+            bends.append(lift @ lateral)
+            total = bends[-1] @ total
         bends = _rigid_at_root(rig, path, path[::-1], bends)
         turn: dict[str, np.ndarray] = {}
         root = pose_path(rig, path, _bent(rig, path, path[-1], bends), turn)

@@ -155,9 +155,9 @@ def _legs(body: _Body) -> list[dict]:
             if any(body.above(x) > 0.25 * top and sum(_reaches_down(body, c, x) for c in body.kids[x]) >= 2
                    for x in path[:-1]):
                 continue
-            # the same band as "reaches down": a tail hanging just above the ground drags too
-            band = max(GROUND * body.height, NEAR_GROUND * body.above(fork))
-            contact = [body.flat(body.heads[x]) for x in path if body.above(x) <= band]
+            # contact is what lies as low as the branch goes: a tail hanging just above the
+            # ground drags along it, while a toe-walker's hock stands clear of its toes
+            contact = [body.flat(body.heads[x]) for x in path if body.h[x] - body.low[start] <= GROUND * body.height]
             spread = max((float(np.linalg.norm(a - b)) for a in contact for b in contact), default=0.0)
             if len(contact) >= 2 and spread > DRAG_SPREAD * body.above(fork):
                 continue  # lies along the ground: a tail or tentacle

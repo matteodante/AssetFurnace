@@ -201,3 +201,12 @@ def test_a_clip_record_names_the_clip_not_the_rig(tmp_path):
     from image_to_3dlab.provenance import sha256_file
     assert record["output"]["sha256"] == sha256_file(clip) and record["output"]["path"] == str(clip)
     assert record["output"]["classification"] == "commercial"  # the licence class carries over
+
+
+def test_toe_walking_legs_with_their_toes_further_forward_are_still_legs():
+    parents, heads, n = werewolf()
+    heads = dict(heads)
+    for leg in ("legL3", "legR3"):
+        heads[n[leg]] = heads[n[leg]] + np.array([0, 0, 0.05])
+    found = cf.classify(parents, heads, family="digitigrade")
+    assert len(found["legs"]) == 2
