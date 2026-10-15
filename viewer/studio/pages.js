@@ -154,6 +154,7 @@ export const GUIDE = [
   ['6. Look around', 'Drag to orbit, scroll to zoom, right-drag to pan. The buttons top right reset the view and show wireframe, clay (plain grey, to judge the shape), normals (to spot dents and flipped faces), floor grid or skeleton. The face count sits bottom left. Click an axis on the gizmo to look from that side.'],
   ['7. Take it into your game', 'Download GLB saves the model, or the move that is playing. It opens in Godot, Unity, Unreal, Blender and three.js.'],
   ['Open GLB', 'Look at any GLB from your computer, or drop one anywhere on the page. View only: nothing is copied into your Library.'],
+  ['Batches', 'Run many assets from one JSON or CSV list: follow each row, resume a stopped batch, retry the rows that failed. Finished rows join the Library.'],
   ['Review', 'Assets waiting after their automatic checks. Open one to watch it turn, compare it with its reference and the silhouette overlays, then Approve it or Send back with a note. A sent-back asset stays in the queue with its note until a new version is checked.'],
   ['Activity', 'Everything that has run, finished, stopped or failed, with logs when something breaks.'],
   ['Setup', 'Install engines and see disk use. Nothing downloads until you say yes, and each download says how big it is first.'],
