@@ -2,8 +2,8 @@
 """See the review queue, and approve an asset or send it back with a note.
 
     python scripts/review_queue.py --list
-    python scripts/review_queue.py --approve mob_0412
-    python scripts/review_queue.py --send-back mob_0412 --note "horns too short, see reference"
+    python scripts/review_queue.py --approve mob_0412 --sha <version from --list>
+    python scripts/review_queue.py --send-back mob_0412 --sha <version> --note "horns too short"
 
 The same queue the studio's Review sheet shows (`output/review-log.jsonl`), for agents and
 the terminal. A send-back needs a note: it stays in the queue, note in view, until a new
@@ -48,7 +48,8 @@ def decide(key: str, decision: str, note: str = "", log: Path | None = None,
 
 def _format(item: dict) -> str:
     fails = ", ".join(item.get("summary", {}).get("fail", [])) or "-"
-    line = f"{item['state']:9}  {item['key']:30} checks {item.get('status')} (fail: {fails})"
+    line = (f"{item['state']:9}  {item['key']:30} checks {item.get('status')} (fail: {fails})"
+            f"\n           version {item.get('asset_sha256')}")
     if item["notes"]:
         line += f"\n           last note: {item['notes'][-1]['note']}"
     return line
@@ -63,7 +64,7 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--approve", metavar="KEY")
     action.add_argument("--send-back", metavar="KEY")
     parser.add_argument("--note", default="", help="why (required for --send-back)")
-    parser.add_argument("--sha", help="the version you looked at; refused if a newer one is queued")
+    parser.add_argument("--sha", help="the version you looked at, as --list prints it (required to decide)")
     parser.add_argument("--log", type=Path, help="review log (default output/review-log.jsonl)")
     args = parser.parse_args(argv)
     log = args.log or review.LOG
@@ -72,6 +73,10 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(_format(i) for i in items) if items else "Nothing waits for review.")
         return 0
     key, decision = (args.approve, "approved") if args.approve else (args.send_back, "sent_back")
+    if not args.sha:
+        print("error: add --sha with the version you looked at (see --list), so a newer one is not "
+              "decided by mistake", file=sys.stderr)
+        return 2
     try:
         item, problem = decide(key, decision, args.note, log, asset_sha256=args.sha)
     except (KeyError, ValueError) as exc:

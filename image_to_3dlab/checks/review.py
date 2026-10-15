@@ -97,7 +97,10 @@ def fold(events: list[dict]) -> dict[str, dict]:
         if event["event"] == "queued":
             if item is None:
                 item = items[key] = {"key": key, "notes": [], "history": []}
-            same_version = item.get("asset_sha256") == event.get("asset_sha256")
+            # The same file checked again keeps its decision, unless its licence result
+            # changed (new provenance beside the same GLB): then it is reviewed again.
+            same_version = (item.get("asset_sha256") == event.get("asset_sha256")
+                            and item.get("license_status") == event.get("license_status"))
             if not (same_version and item.get("state") in DECISIONS):
                 item["state"] = "to_review"
             for field in ("asset", "asset_sha256", "report", "status", "summary", "profile", "license_status",
@@ -126,19 +129,25 @@ def queue(events: list[dict]) -> list[dict]:
 
 
 def enqueue(log: Path, report: dict, report_file: str | Path, key: str | None = None,
-            now: str | None = None, source: str | None = None, kind: str | None = None) -> dict:
-    """Record that the checks ran on a version; return the asset's new state."""
+            now: str | None = None, source: str | None = None, kind: str | None = None,
+            lock_timeout: float = 10.0) -> dict:
+    """Record that the checks ran on a version; return the asset's new state.
+
+    Takes the same lock as `decide`, so a new version cannot slip in between a decision's
+    read and its write in another process.
+    """
     key = safe_key(key or report.get("asset_key") or key_for(Path(report["asset"])))
-    _append(log, {"event": "queued", "key": key, "at": _now(now), "asset": report["asset"],
-                  "asset_sha256": report["asset_sha256"], "report": str(report_file),
-                  "status": report["status"], "summary": summary(report), "profile": report.get("profile"),
-                  "license_status": licence_status(report), "source": source, "kind": kind})
-    return fold(load(log))[key]
+    with _WRITE, _file_lock(log, timeout=lock_timeout):
+        _append(log, {"event": "queued", "key": key, "at": _now(now), "asset": report["asset"],
+                      "asset_sha256": report["asset_sha256"], "report": str(report_file),
+                      "status": report["status"], "summary": summary(report), "profile": report.get("profile"),
+                      "license_status": licence_status(report), "source": source, "kind": kind})
+        return fold(load(log))[key]
 
 
 def enqueue_for_review(glb: str | Path, key: str, *, source: str | None = None, kind: str | None = None,
                        report: dict | None = None, report_file: str | Path | None = None,
-                       log: Path = LOG, now: str | None = None) -> dict:
+                       log: Path = LOG, now: str | None = None, lock_timeout: float = 10.0) -> dict:
     """Put a GLB in the review queue, with or without a checks report. Stable: feature 1 calls it.
 
     `key` is the asset's id (a batch row's id); `source` says who queued it ("batch:<name>"),
@@ -152,9 +161,9 @@ def enqueue_for_review(glb: str | Path, key: str, *, source: str | None = None, 
     if report is not None:
         if report.get("asset_sha256") != sha:
             raise ValueError(f"the report is for a different file than {glb.name}")
-        return enqueue(log, {**report, "asset": str(glb)}, report_file or "", key, now, source, kind)
+        return enqueue(log, {**report, "asset": str(glb)}, report_file or "", key, now, source, kind, lock_timeout)
     empty = {"asset": str(glb), "asset_sha256": sha, "status": None, "results": [], "profile": None}
-    return enqueue(log, empty, "", key, now, source, kind)
+    return enqueue(log, empty, "", key, now, source, kind, lock_timeout)
 
 
 @contextmanager
@@ -210,8 +219,8 @@ def decide(log: Path, key: str, decision: str, note: str = "", now: str | None =
            asset_sha256: str | None = None, lock_timeout: float = 10.0) -> dict:
     """Approve the version waiting for review, or send it back with a note; return the new state.
 
-    `asset_sha256` is the version the reviewer looked at: if a newer one was queued in the
-    meantime, the decision is refused rather than recorded against a file nobody saw. Only
+    `asset_sha256` is the version the reviewer looked at, and is required: if a newer one was
+    queued in the meantime, the decision is refused rather than recorded against a file nobody saw. Only
     a version waiting for review can be decided; a sent-back one waits for its replacement.
     """
     if decision not in DECISIONS:
@@ -225,7 +234,10 @@ def decide(log: Path, key: str, decision: str, note: str = "", now: str | None =
         current = fold(load(log)).get(safe_key(key))
         if current is None:
             raise KeyError(f"{key} is not in the review log")
-        if asset_sha256 and asset_sha256 != current.get("asset_sha256"):
+        if not asset_sha256:
+            raise ValueError(f"name the version you looked at (asset_sha256; --sha on the command line); "
+                             f"{key} is now at {current.get('asset_sha256')}")
+        if asset_sha256 != current.get("asset_sha256"):
             raise ReviewConflict(f"{key} has a newer version in the queue; reload it before deciding")
         on_disk = Path(current.get("asset") or "")
         if on_disk.is_file():

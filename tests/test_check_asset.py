@@ -47,7 +47,8 @@ def test_decisions_reach_the_review_log_and_the_verdicts(tmp_path, capsys):
     fx.sidecar(glb, fx.PIXAL3D_RECORD)
     log, register = tmp_path / "log.jsonl", tmp_path / "verdicts.jsonl"
     check_asset.main([str(glb), "--key", "barrel_01", "--log", str(log)])
-    item, problem = review_queue.decide("barrel_01", "sent_back", "lid too flat", log, register)
+    sha = review.fold(review.load(log))["barrel_01"]["asset_sha256"]
+    item, problem = review_queue.decide("barrel_01", "sent_back", "lid too flat", log, register, asset_sha256=sha)
     assert problem is None and item["state"] == "sent_back"
     [verdict] = mark_asset.load_register(register)
     assert verdict["verdict"] == "bad" and verdict["note"] == "lid too flat"
@@ -58,7 +59,9 @@ def test_the_cli_refuses_a_send_back_without_a_note(tmp_path, capsys):
     glb = fx.clean(tmp_path / "barrel.glb")
     log = tmp_path / "log.jsonl"
     check_asset.main([str(glb), "--key", "barrel_01", "--log", str(log)])
-    assert review_queue.main(["--send-back", "barrel_01", "--log", str(log)]) == 2
+    sha = review.fold(review.load(log))["barrel_01"]["asset_sha256"]
+    capsys.readouterr()
+    assert review_queue.main(["--send-back", "barrel_01", "--sha", sha, "--log", str(log)]) == 2
     assert "note" in capsys.readouterr().err
     assert review_queue.main(["--list", "--log", str(log)]) == 0
     assert "barrel_01" in capsys.readouterr().out
@@ -67,3 +70,21 @@ def test_the_cli_refuses_a_send_back_without_a_note(tmp_path, capsys):
 def test_a_non_positive_height_is_refused_at_the_command_line(tmp_path, capsys):
     with pytest.raises(SystemExit):
         check_asset.main([str(fx.clean(tmp_path / "a.glb")), "--height", "-1.8"])
+
+
+def test_a_missing_glb_is_a_clear_error(tmp_path, capsys):
+    """Codex review 5: no traceback for a path that is not there."""
+    assert check_asset.main([str(tmp_path / "nope.glb"), "--no-queue"]) == 2
+    assert "does not exist" in capsys.readouterr().err
+
+
+def test_the_cli_needs_the_version_to_decide_and_lists_it(tmp_path, capsys):
+    glb = fx.clean(tmp_path / "barrel.glb")
+    log = tmp_path / "log.jsonl"
+    check_asset.main([str(glb), "--key", "barrel_01", "--log", str(log)])
+    capsys.readouterr()
+    assert review_queue.main(["--list", "--log", str(log)]) == 0
+    sha = review.fold(review.load(log))["barrel_01"]["asset_sha256"]
+    assert sha[:12] in capsys.readouterr().out
+    assert review_queue.main(["--send-back", "barrel_01", "--note", "x", "--log", str(log)]) == 2
+    assert "--sha" in capsys.readouterr().err

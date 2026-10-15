@@ -77,7 +77,8 @@ def test_the_whole_review_round_trip(server):
     assert queue["items"][0]["notes"][-1]["note"] == "lid too flat"
 
     # The sent-back version waits for a new one: approving it now is a conflict.
-    status, problem = call(server, "POST", "/api/review/item/barrel01/decision", {"decision": "approved"})
+    status, problem = call(server, "POST", "/api/review/item/barrel01/decision",
+                           {"decision": "approved", "asset_sha256": first})
     assert status == 409 and "new version" in problem["error"]
 
     # A new version is checked; a decision on the old one is refused, on the new one recorded.
@@ -104,9 +105,11 @@ def test_changes_need_the_studio_page(server):
     assert status == 403
 
 
-def test_a_non_positive_height_is_refused(server):
+@pytest.mark.parametrize("height", [-1.8, 0, "nan"])
+def test_a_non_positive_height_is_refused(server, height):
+    """Codex review 5: a zero must be refused too, not dropped as if it were missing."""
     _, _, glb = server
-    status, payload = call(server, "POST", "/api/review/checks", {"asset": glb, "height": -1.8})
+    status, payload = call(server, "POST", "/api/review/checks", {"asset": glb, "height": height})
     assert status == 400 and "positive" in payload["error"]
 
 
@@ -118,4 +121,5 @@ def test_only_files_under_output_are_checked(server, asset):
 
 def test_an_unknown_asset_is_404(server):
     assert call(server, "GET", "/api/review/item/nobody")[0] == 404
-    assert call(server, "POST", "/api/review/item/nobody/decision", {"decision": "approved"})[0] == 404
+    assert call(server, "POST", "/api/review/item/nobody/decision",
+                {"decision": "approved", "asset_sha256": "0" * 64})[0] == 404

@@ -16,6 +16,12 @@ from image_to_3dlab.checks import review
 T = [f"2026-10-15T10:{m:02d}:00+00:00" for m in range(60)]
 
 
+def seen(log, key):
+    """The version a reviewer is looking at: the one the queue shows now."""
+    item = review.fold(review.load(log)).get(key)
+    return item["asset_sha256"] if item else "0" * 64
+
+
 def report_for(sha, status="pass", key="mob_0412", fails=(), warns=()):
     results = [{"check": n, "status": "fail", "value": 1, "threshold": None, "message": "bad"} for n in fails]
     results += [{"check": n, "status": "warn", "value": 1, "threshold": None, "message": "meh"} for n in warns]
@@ -44,18 +50,18 @@ def test_a_checked_asset_enters_the_queue(log):
 def test_a_send_back_needs_a_note(log):
     review.enqueue(log, report_for("a" * 64), "r.json", now=T[0])
     with pytest.raises(ValueError, match="note"):
-        review.decide(log, "mob_0412", "sent_back", "   ")
+        review.decide(log, "mob_0412", "sent_back", "   ", asset_sha256=seen(log, "mob_0412"))
     with pytest.raises(ValueError, match="decision"):
-        review.decide(log, "mob_0412", "maybe", "x")
+        review.decide(log, "mob_0412", "maybe", "x", asset_sha256=seen(log, "mob_0412"))
     with pytest.raises(KeyError):
-        review.decide(log, "nobody", "approved", "")
+        review.decide(log, "nobody", "approved", "", asset_sha256="0" * 64)
 
 
 def test_a_send_back_returns_to_the_queue_with_its_note(log):
     """The acceptance path: queued -> sent back -> still queued with the note -> new version
     -> to review again, carrying the old note -> approved -> out of the queue."""
     review.enqueue(log, report_for("a" * 64), "r.json", now=T[0])
-    review.decide(log, "mob_0412", "sent_back", "horns too short, see reference", now=T[1])
+    review.decide(log, "mob_0412", "sent_back", "horns too short, see reference", now=T[1], asset_sha256=seen(log, "mob_0412"))
 
     [item] = review.queue(review.load(log))
     assert item["state"] == "sent_back"
@@ -72,7 +78,7 @@ def test_a_send_back_returns_to_the_queue_with_its_note(log):
     assert item["asset_sha256"] == "b" * 64
     assert [n["note"] for n in item["notes"]] == ["horns too short, see reference"]
 
-    review.decide(log, "mob_0412", "approved", "", now=T[4])
+    review.decide(log, "mob_0412", "approved", "", now=T[4], asset_sha256=seen(log, "mob_0412"))
     assert review.queue(review.load(log)) == []
     final = review.fold(review.load(log))["mob_0412"]
     assert final["state"] == "approved"
@@ -81,7 +87,7 @@ def test_a_send_back_returns_to_the_queue_with_its_note(log):
 
 def test_the_log_is_append_only_json_lines(log):
     review.enqueue(log, report_for("a" * 64), "r.json", now=T[0])
-    review.decide(log, "mob_0412", "sent_back", "too shiny", now=T[1])
+    review.decide(log, "mob_0412", "sent_back", "too shiny", now=T[1], asset_sha256=seen(log, "mob_0412"))
     lines = log.read_text(encoding="utf-8").splitlines()
     assert [json.loads(line)["event"] for line in lines] == ["queued", "sent_back"]
     assert json.loads(lines[1])["asset_sha256"] == "a" * 64
@@ -90,7 +96,7 @@ def test_the_log_is_append_only_json_lines(log):
 def test_the_queue_lists_to_review_first_then_sent_back(log):
     review.enqueue(log, report_for("a" * 64, key="one"), "r.json", now=T[0])
     review.enqueue(log, report_for("b" * 64, key="two"), "r.json", now=T[1])
-    review.decide(log, "one", "sent_back", "redo", now=T[2])
+    review.decide(log, "one", "sent_back", "redo", now=T[2], asset_sha256=seen(log, "one"))
     review.enqueue(log, report_for("c" * 64, key="three"), "r.json", now=T[3])
     assert [i["key"] for i in review.queue(review.load(log))] == ["three", "two", "one"]
 
@@ -104,7 +110,7 @@ def test_a_damaged_line_does_not_lose_the_rest(log):
     review.enqueue(log, report_for("a" * 64), "r.json", now=T[0])
     with log.open("a", encoding="utf-8") as handle:
         handle.write("{not json\n")
-    review.decide(log, "mob_0412", "approved", "fine", now=T[1])
+    review.decide(log, "mob_0412", "approved", "fine", now=T[1], asset_sha256=seen(log, "mob_0412"))
     assert review.fold(review.load(log))["mob_0412"]["state"] == "approved"
 
 
@@ -159,13 +165,13 @@ def test_a_decision_is_bound_to_the_version_the_reviewer_saw(log):
 def test_only_a_version_waiting_for_review_can_be_decided(log):
     """Codex review: a sent-back version waits for a new one; an approved one is done."""
     review.enqueue(log, report_for("a" * 64), "r.json", now=T[0])
-    review.decide(log, "mob_0412", "sent_back", "redo", now=T[1])
+    review.decide(log, "mob_0412", "sent_back", "redo", now=T[1], asset_sha256=seen(log, "mob_0412"))
     with pytest.raises(review.ReviewConflict, match="new version"):
-        review.decide(log, "mob_0412", "approved", "")
+        review.decide(log, "mob_0412", "approved", "", asset_sha256=seen(log, "mob_0412"))
     review.enqueue(log, report_for("b" * 64), "r.json", now=T[2])
-    review.decide(log, "mob_0412", "approved", "", now=T[3])
+    review.decide(log, "mob_0412", "approved", "", now=T[3], asset_sha256=seen(log, "mob_0412"))
     with pytest.raises(review.ReviewConflict, match="already"):
-        review.decide(log, "mob_0412", "sent_back", "changed my mind")
+        review.decide(log, "mob_0412", "sent_back", "changed my mind", asset_sha256=seen(log, "mob_0412"))
 
 
 def test_approval_needs_checks_that_ran_and_a_licence_that_passed(log, tmp_path):
@@ -173,13 +179,13 @@ def test_approval_needs_checks_that_ran_and_a_licence_that_passed(log, tmp_path)
     glb = fx.clean(tmp_path / "row.glb")
     review.enqueue_for_review(glb, "row", source="batch:x", log=log, now=T[0])
     with pytest.raises(review.ReviewConflict, match="checks"):
-        review.decide(log, "row", "approved", "")
+        review.decide(log, "row", "approved", "", asset_sha256=seen(log, "row"))
     review.enqueue(log, report_for("c" * 64, "fail", key="lic", fails=["license.components"]), "r.json", now=T[1])
     with pytest.raises(review.ReviewConflict, match="licence"):
-        review.decide(log, "lic", "approved", "")
+        review.decide(log, "lic", "approved", "", asset_sha256=seen(log, "lic"))
     # Sending either back is always possible.
-    assert review.decide(log, "lic", "sent_back", "fix the provenance")["state"] == "sent_back"
-    assert review.decide(log, "row", "sent_back", "run the checks")["state"] == "sent_back"
+    assert review.decide(log, "lic", "sent_back", "fix the provenance", asset_sha256=seen(log, "lic"))["state"] == "sent_back"
+    assert review.decide(log, "row", "sent_back", "run the checks", asset_sha256=seen(log, "row"))["state"] == "sent_back"
 
 
 def test_approval_needs_a_licence_check_that_ran(log, tmp_path):
@@ -189,11 +195,11 @@ def test_approval_needs_a_licence_check_that_ran(log, tmp_path):
     partial = checks.run_checks(checks.Asset(glb=glb), only=["mesh.holes"])
     review.enqueue_for_review(glb, "part", report=partial, report_file="r.json", log=log, now=T[0])
     with pytest.raises(review.ReviewConflict, match="licence check has not run"):
-        review.decide(log, "part", "approved", "")
+        review.decide(log, "part", "approved", "", asset_sha256=seen(log, "part"))
     full = checks.run_checks(checks.Asset(glb=glb), only=["mesh.holes", "license.components"])
     review.enqueue_for_review(glb, "part", report=full, report_file="r.json", log=log, now=T[1])
     assert review.fold(review.load(log))["part"]["license_status"] == "pass"
-    assert review.decide(log, "part", "approved", "", now=T[2])["state"] == "approved"
+    assert review.decide(log, "part", "approved", "", now=T[2], asset_sha256=seen(log, "part"))["state"] == "approved"
 
 
 def _queued(tmp_path, log):
@@ -209,9 +215,9 @@ def test_a_file_replaced_on_disk_after_queueing_cannot_be_decided(tmp_path, log)
     glb = _queued(tmp_path, log)
     fx.cube(glb)  # a batch writes its next result in place, without queueing it
     with pytest.raises(review.ReviewConflict, match="changed on disk"):
-        review.decide(log, "row", "approved", "")
+        review.decide(log, "row", "approved", "", asset_sha256=seen(log, "row"))
     with pytest.raises(review.ReviewConflict, match="changed on disk"):
-        review.decide(log, "row", "sent_back", "redo")
+        review.decide(log, "row", "sent_back", "redo", asset_sha256=seen(log, "row"))
 
 
 def test_decisions_take_a_lock_other_processes_see(tmp_path, log):
@@ -220,11 +226,39 @@ def test_decisions_take_a_lock_other_processes_see(tmp_path, log):
     lock = log.with_name(log.name + ".lock")
     lock.write_text("held by another process")
     with pytest.raises(review.ReviewConflict, match="busy"):
-        review.decide(log, "row", "approved", "", lock_timeout=0.3)
+        review.decide(log, "row", "approved", "", lock_timeout=0.3, asset_sha256=seen(log, "row"))
     assert lock.exists()  # someone else's lock is not removed while fresh
     import os
     import time
     old = time.time() - 600
     os.utime(lock, (old, old))   # a lock left by a crashed process is stale
-    assert review.decide(log, "row", "approved", "", lock_timeout=0.3)["state"] == "approved"
+    assert review.decide(log, "row", "approved", "", lock_timeout=0.3, asset_sha256=seen(log, "row"))["state"] == "approved"
     assert not lock.exists()
+
+
+def test_every_decision_names_the_version_it_was_made_on(log):
+    """Codex review 5: the terminal path must not approve an unseen replacement either."""
+    review.enqueue(log, report_for("a" * 64), "r.json", now=T[0])
+    with pytest.raises(ValueError, match="version"):
+        review.decide(log, "mob_0412", "approved", "")
+
+
+def test_queueing_takes_the_same_lock_as_deciding(tmp_path, log):
+    """Codex review 5: a batch queueing a new version must wait for a decision being written."""
+    glb = fx.clean(tmp_path / "row.glb")
+    lock = log.with_name(log.name + ".lock")
+    lock.write_text("held")
+    with pytest.raises(review.ReviewConflict, match="busy"):
+        review.enqueue_for_review(glb, "row", log=log, lock_timeout=0.3)
+    lock.unlink()
+    assert review.enqueue_for_review(glb, "row", log=log)["state"] == "to_review"
+
+
+def test_a_licence_result_that_changes_reopens_an_approved_version(log):
+    """Codex review 5: new provenance on the same GLB must not keep an old approval."""
+    review.enqueue(log, report_for("a" * 64), "r.json", now=T[0])
+    review.decide(log, "mob_0412", "approved", "", now=T[1], asset_sha256="a" * 64)
+    review.enqueue(log, report_for("a" * 64), "r.json", now=T[2])           # same result: stays approved
+    assert review.fold(review.load(log))["mob_0412"]["state"] == "approved"
+    review.enqueue(log, report_for("a" * 64, "fail", fails=["license.components"]), "r.json", now=T[3])
+    assert review.fold(review.load(log))["mob_0412"]["state"] == "to_review"

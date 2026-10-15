@@ -26,7 +26,9 @@ export function summaryLine(item) {
   if (item?.status == null) return 'Not checked yet';
   const fail = item?.summary?.fail?.length ?? 0, warn = item?.summary?.warn?.length ?? 0;
   const parts = [fail && `${fail} fail`, warn && `${warn} warn`].filter(Boolean);
-  return parts.length ? parts.join(' · ') : 'All checks pass';
+  if (parts.length) return parts.join(' · ');
+  // A warn with nothing failing or warning: every check was skipped, nothing was measured.
+  return item.status === 'pass' ? 'All checks pass' : 'No check could run';
 }
 
 /** The checks report as rows, failures first, then warnings, then passes; skipped last. */
@@ -70,8 +72,9 @@ export function checkChoices(assets) {
       // A prop edited in Blender is what the Library shows, so its versions come first,
       // under the key of the prop they were made from.
       const byFile = new Map(props.map((p) => [p.file, p]));
-      const edited = [...(a.blender_versions ?? [])].reverse().filter((v) => v?.file && byFile.has(v.parent_file))
-        .map((v) => { const p = byFile.get(v.parent_file); return { ...base, id: propKey(a.id, p.name), name: `${a.name} · ${p.name}`, file: v.file, version: v.label || v.id }; });
+      const versions = a.blender_versions ?? [];
+      const edited = [...versions].reverse().map((v) => [v, propOfVersion(v, versions, byFile)]).filter(([v, p]) => v?.file && p)
+        .map(([v, p]) => ({ ...base, id: propKey(a.id, p.name), name: `${a.name} · ${p.name}`, file: v.file, version: v.label || v.id }));
       return [...edited, ...props.map((p) => ({ ...base, id: propKey(a.id, p.name), name: `${a.name} · ${p.name}`, file: p.file, version: null }))];
     }
     const versions = [...(a.blender_versions ?? [])].reverse()
@@ -79,6 +82,17 @@ export function checkChoices(assets) {
     const original = checkableModel(a) ? [{ ...base, file: checkableModel(a), version: versions.length ? 'original' : null }] : [];
     return [...versions, ...original];
   });
+}
+
+/** The prop a Blender version was made from, following edits of edits (`parent_version`). */
+export function propOfVersion(version, versions, byFile) {
+  const byId = new Map(versions.map((v) => [v.id, v]));
+  const seen = new Set();
+  for (let v = version; v && !seen.has(v.id); v = byId.get(v.parent_version)) {
+    seen.add(v.id);
+    if (byFile.has(v.parent_file)) return byFile.get(v.parent_file);
+  }
+  return null;
 }
 
 /** A prop's key in the queue: its set's id and its own name, kept to the server's key rules. */

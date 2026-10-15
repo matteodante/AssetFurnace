@@ -171,6 +171,8 @@ def run_checks(asset, profile: str = "prop", overrides: dict | None = None,
 
     The report's status is the worst result, or "warn" when every check was skipped.
     """
+    if not Path(asset.glb).is_file():
+        raise ValueError(f"{asset.glb} does not exist")
     settings = load_profile(profile, overrides)
     wanted = set(only) if only is not None else None
     results, skipped = [], []

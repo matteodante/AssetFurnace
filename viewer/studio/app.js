@@ -464,7 +464,16 @@ async function showReview(key) {
   closeSheet($('stage'));
   let item;
   try { item = await fetchItem(key); }
-  catch (error) { viewer.showEmpty(`This review item did not load: ${error.message}`); return; }
+  catch (error) {
+    // The previous item's panel must not stay live under a viewer that says this one failed.
+    $('steps').innerHTML = '';
+    $('sideKind').textContent = '';
+    $('vTitle').textContent = '';
+    $('vMeta').textContent = '';
+    $('download').hidden = true;
+    viewer.showEmpty(`This review item did not load: ${error.message}`);
+    return;
+  }
   current = null;
   viewingMaking = false;
   $('progress').hidden = true;

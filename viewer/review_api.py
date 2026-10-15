@@ -102,7 +102,8 @@ def run_checks_request(output: Path, body: dict) -> dict:
     profile = body.get("profile") or "prop"
     if profile not in profile_names():
         raise ValueError(f"profile must be one of {profile_names()}")
-    numbers = {k: float(body[k]) for k in ("height", "width", "depth") if body.get(k)}
+    # Present means given: a zero is refused by Asset, not dropped as if it were missing.
+    numbers = {k: float(body[k]) for k in ("height", "width", "depth") if body.get(k) not in (None, "")}
     asset = Asset(glb=glb, key=body.get("key"), reference=reference, reference_numbers=numbers or None,
                   output_root=output)
     report, _ = review.check_and_enqueue(asset, log=_log(output), profile=profile, key=body.get("key"))

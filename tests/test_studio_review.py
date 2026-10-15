@@ -141,3 +141,28 @@ def test_a_prop_sets_blender_versions_come_first_under_their_props_key():
       console.log(JSON.stringify(m.checkChoices(sets).map((c) => [c.id, c.file])));""")
     assert out == [["s1-stool", "blender-edits/versions/v1/model.glb"],
                    ["s1-barrel", "props/s/barrel_LOD0.glb"], ["s1-stool", "props/s/stool_LOD0.glb"]]
+
+
+@needs_node
+def test_chained_prop_versions_are_followed_back_to_their_prop_and_skipped_runs_do_not_read_as_pass():
+    """Codex review 5: a second edit's parent is the first edit, not the prop."""
+    out = _run("""
+      const sets = [{id:'s1', name:'tavern', kind:'prop set',
+        props:[{name:'stool', file:'props/s/stool_LOD0.glb'}],
+        blender_versions:[
+          {id:'v1', label:'Blender 1', file:'be/v1/model.glb', parent_file:'props/s/stool_LOD0.glb', parent_version:null},
+          {id:'v2', label:'Blender 2', file:'be/v2/model.glb', parent_file:'be/v1/model.glb', parent_version:'v1'}]}];
+      console.log(JSON.stringify({ choices: m.checkChoices(sets).map((c) => [c.id, c.file]),
+        skipped: m.summaryLine({status:'warn', summary:{fail:[], warn:[]}}) }));""")
+    assert out["choices"] == [["s1-stool", "be/v2/model.glb"], ["s1-stool", "be/v1/model.glb"],
+                              ["s1-stool", "props/s/stool_LOD0.glb"]]
+    assert out["skipped"] == "No check could run"
+
+
+def test_a_review_item_that_fails_to_load_clears_the_old_panel():
+    """Codex review 5: the previous item's buttons must not stay live."""
+    app = (STUDIO / "app.js").read_text(encoding="utf-8")
+    start = app.index("async function showReview(")
+    body = app[start:app.index("\n}", start)]
+    catch = body[body.index("catch (error)"):body.index("current = null")]
+    assert "$('steps').innerHTML = ''" in catch
