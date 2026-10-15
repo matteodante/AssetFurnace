@@ -1,188 +1,192 @@
 # Funzione 2: dal riferimento al concept (progetto)
 
-Data: 15 ottobre 2026. Stato: **proposta, in attesa di approvazione**. Niente scaricato, niente installato.
+Data: 15 ottobre 2026. Stato: **scaletta della gara, in attesa dell'approvazione dei download**. Niente scaricato,
+niente installato, nessun codice.
 Piano delle funzioni: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 2. La
 funzione è generica: vale per qualunque riferimento e qualunque progetto.
 
-In breve: si parte da un riferimento (un'immagine o un GLB), se ne ricava una **mappa di controllo** (sagoma, bordi,
-lineart o profondità) e una **palette**, e Qwen-Image 2.1 disegna un oggetto nuovo che rispetta la forma. Il risultato
-riceve due punteggi: **sagoma** (dentro una fascia: simile, non identica) e **palette** (entro una distanza). Lo studio
-mostra riferimento, mappa e risultato affiancati con i punteggi.
+In breve: si vuole un'immagine **nuova** che si riconosca dalla forma di un riferimento (un'immagine o un modello),
+oppure che rispetti esattamente una posa o un corpo dato. Prima di costruire si fa una **gara** fra i due modi di
+modifica con immagine di riferimento che `sd-cli` sa già fare, su quattro casi reali. Vince chi l'utente giudica
+migliore a occhio. Il ControlNet si aggiunge solo se perdono tutti e due sulla precisione.
 
-La sorpresa della verifica: **`sd-cli` non supporta il ControlNet di Qwen-Image**, quindi il "riuso" previsto dal piano
-non è gratis. Propongo una prova breve su due strade che `sd-cli` sa già fare, e il ControlNet vero (con ComfyUI) solo se
-la prova fallisce.
+## 1. Vincoli (decisione dell'utente del 15/10/2026)
 
-## 1. Cosa si riusa (verificato il 15/10/2026)
+- AssetFurnace è un programma a sé e se ne rispetta la struttura: i motori stanno in `vendor/` (qui
+  `vendor/sdcpp/sd-cli`), i pesi nel catalogo (`viewer/backend_catalog.py`, `WeightSet`) e si scaricano solo dopo una
+  conferma. **Niente ComfyUI.**
+- **Niente controlli deterministici** su luminosità, contorni, saturazione o colori: "non funzionano bene". Restano
+  fuori il controllo della palette in ΔE e quello di copia sui bordi Canny della versione precedente. Resta l'IoU della
+  sagoma su maschere ritagliate (lo stesso della funzione 7).
+- Un segnale di "copia" si usa solo se viene da un modello imparato (per esempio la somiglianza DINOv2) **e** regge
+  contro i giudizi dell'utente. Il giudizio finale è dell'utente, a occhio.
+- "O facciamo qualcosa di fatto bene o non lo facciamo per niente."
 
-### `sd-cli` (stable-diffusion.cpp, commit `60423ab` del 13/10/2026, MIT)
+## 2. Le strade in gara (verificate il 15/10/2026)
 
-| Cosa | Supporto | Prova |
-|---|---|---|
-| ControlNet (`--control-net`, `--control-image`, `--control-strength`) | **Solo SD1, SD2, SDXL, SVD** (reti UNet) | `src/model/diffusion/control.hpp` a quel commit costruisce solo `ControlNetBlock` UNet; `qwen_image_2_1.hpp` non ha nessun ramo di controllo. Nessuna issue o PR aperta per il ControlNet di Qwen-Image |
-| img2img (`-i` immagine iniziale, `--strength`) | Sì, per tutti i modelli | Opzioni generiche del campionatore |
-| **Modifica con immagine di riferimento** (`-r`, più `--llm_vision`) | **Sì, per Qwen-Image 2.1** | `docs/qwen_image_2.1.md`: stessi pesi per generare e modificare; serve in più il file della visione di Qwen3-VL (`mmproj`). L'esempio ufficiale di Qwen-Image 2.1 è proprio "da uno schizzo a una foto, con la struttura dello schizzo" |
+Motore per entrambe: `vendor/sdcpp/sd-cli.exe`, stable-diffusion.cpp commit `60423ab` del 13/10/2026 (codice MIT).
+Nessun cambio al motore.
 
-Quindi oggi, senza installare altro, ci sono due modi di guidare la forma: partire da un'immagine iniziale (img2img) o
-dare la mappa come riferimento nella modalità di modifica.
+### A. Qwen-Image 2.1 in modifica
 
-### I due ControlNet del piano
+- Lo stesso modello che AssetFurnace usa già per generare. `docs/qwen_image_2.1.md` di stable-diffusion.cpp: gli
+  stessi pesi generano e modificano; i riferimenti si passano con `-r` (ripetibile, nell'ordine dato) e la visione del
+  codificatore con `--llm_vision`.
+- Cosa manca: solo il file della visione di Qwen3-VL-8B (`mmproj`).
+- Licenza: come oggi (Qwen Research License, vedi rischi).
+- Controllo dichiarato: l'esempio ufficiale è "da uno schizzo a una foto con la struttura dello schizzo". Mappe di
+  profondità o di posa non sono dichiarate: lo dirà la gara.
 
-| Modello | Licenza dei pesi | Dimensione | Base | Gira con | Per noi |
-|---|---|---|---|---|---|
-| **Qwen-Image-2.1-Fun-Controlnet-Union** (alibaba-pai, 23/09/2026) | **Qwen Research License**: il file `LICENSE` ha lo stesso SHA-256 di quello di Qwen-Image 2.1 (`8dc973f0…b28d`) | 7,55 GB bf16; **3,78 GB** in int8 nel repackage di Comfy-Org (`model_patches/qwen_image_2.1_fun_controlnet_union_int8_convrot.safetensors`) | Qwen-Image 2.1 (lo stesso che usiamo) | VideoX-Fun (Apache-2.0, Python) o **ComfyUI** (GPL-3.0; supporto unito il 28/09/2026, [Comfy-Org/ComfyUI#16519](https://github.com/Comfy-Org/ComfyUI/pull/16519)). **Non** `sd-cli` | Compatibile, stessa licenza di ciò che già usiamo; 8 controlli (Canny, Depth, Grayscale, HED, Lineart, MLSD, Pose, Scribble) più inpainting; forza regolabile (`control_context_scale`) |
-| InstantX/Qwen-Image-ControlNet-Union | Apache-2.0 | 3,54 GB | **Qwen-Image 1** (20B, Apache-2.0), non la 2.1 | diffusers, ComfyUI | Architettura diversa: per usarlo serve un secondo modello base (12–13 GB in GGUF Q4) e il suo codificatore. È però l'unica strada **con licenze tutte permissive** (vedi rischi) |
+### B. Qwen-Image-Edit-2511
 
-**Dipendenze dei pesi** (la lezione di OmniPart):
-- Il Fun ControlNet contiene solo il ramo di controllo (`control_img_in` e 16 `control_blocks`) e si carica sopra il
-  trasformatore di Qwen-Image 2.1, che già usiamo con la stessa licenza. Non carica altri file.
-- I preprocessori dei controlli nei nodi di ComfyUI e in VideoX-Fun scaricano modelli propri (HED, lineart, DWPose,
-  Depth Anything) con licenze varie. **Non li usiamo**: le mappe le facciamo noi (sezione 2).
-- Depth Anything V2: solo la **Small** è Apache-2.0 (99 MB); **Base e Large sono CC BY-NC 4.0**. Se un giorno serve la
-  profondità da una foto, solo la Small.
+- Un modello di modifica a sé (20B), con codificatore Qwen2.5-VL-7B e la VAE di Qwen-Image 1.
+  `docs/qwen_image_edit.md`: va attivato `--model-args qwen_image_zero_cond_t=true`, altrimenti "la qualità della
+  modifica cala molto"; impostazioni dell'esempio `--cfg-scale 2.5 --flow-shift 3`, `-r` ripetibile, `--llm_vision`.
+- Controllo dichiarato: la 2509 dichiara il supporto nativo a "mappe di profondità, mappe di contorni, mappe di punti
+  chiave" e agli schizzi; la 2511 è la sua evoluzione (meno deriva, personaggi più coerenti, ragionamento geometrico più
+  forte) e non lo ripete, ma non lo toglie.
+- Licenza: **Apache-2.0** per tutti i file, verificati uno per uno (sezione 5).
 
-### Già in AssetFurnace
+### C. Fun ControlNet Union aggiunto da noi a `sd-cli` (solo se A e B falliscono)
 
-- `viewer/image_api.py`: comando, avanzamento, coda (una immagine alla volta), sidecar di provenienza.
-- `image_to_3dlab/checks/silhouette.py` (funzione 7): `subject_of_image`, `fit_mask`, `iou`, `overlay`; da
-  `registry.py`: `result` e `grade_band`. Il punteggio di sagoma è **lo stesso IoU** della funzione 7, fra due immagini
-  invece che fra un modello e un riferimento.
-- `image_to_3dlab/matte.py`: ritaglio del soggetto (BiRefNet-lite MIT o u2net). Serve perché `sd-cli` scrive un alfa
-  rumoroso (nota in `matte.py`): la maschera del risultato si ricava ritagliandolo.
-- OpenCV (già nelle dipendenze) per bordi e lineart.
+- `sd-cli` oggi ha il ControlNet solo per SD1, SD2, SDXL e SVD (`src/model/diffusion/control.hpp`); nessuna issue o
+  PR a monte per Qwen-Image.
+- Il ramo di controllo (alibaba-pai, `Qwen-Image-2.1-Fun-Controlnet-Union`, 7,55 GB, Qwen Research License identica a
+  quella di Qwen-Image 2.1, SHA-256 del `LICENSE` `8dc973f0…b28d`) sono 16 blocchi uguali a quelli del trasformatore,
+  innestati ogni due blocchi. Si porterebbe in C++ nel nostro `sd-cli` e si confronterebbe con l'implementazione
+  ufficiale (VideoX-Fun, Apache-2.0) a parità di seme, prima di fidarsene.
+- Ha un progetto e un elenco di download suoi, che preparo solo se serve.
 
-## 2. Cosa costruisco
+## 3. I casi della gara
 
-Un pacchetto `image_to_3dlab/concept/`, piccolo e testabile senza GPU:
+Gli stessi ingressi, gli stessi semi (2 per variante) e la stessa dimensione (1024 × 1024) per A e per B. Il prompt di
+stile viene dalla `wording` di `image_to_3dlab/prompt_recipes.json` (letto, non modificato: è della funzione 3).
 
-| File | Fa |
+### Caso 1: un riferimento ridisegnato nel nostro stile
+
+Riconoscibile dalla forma, non copiato. I 5 riferimenti già scelti (in `output/`, locali):
+
+| Riferimento | Tipo |
 |---|---|
-| `control_maps.py` | Dal riferimento: maschera del soggetto (alfa o ritaglio), e le mappe **sagoma** (maschera piena), **canny** (OpenCV), **lineart** (XDoG: differenza di gaussiane, puro calcolo, nessun peso), **profondità** solo da un GLB (z-buffer disegnato dal modello con la stessa proiezione ortografica della funzione 7). Da un GLB si sceglie la vista (fronte, lato, tre quarti) |
-| `palette.py` | Palette del soggetto: k-means in CIELAB sui pixel della maschera (k configurabile, 6 di base), con il peso di ogni colore. Distanza fra due palette: per ogni colore il più vicino dell'altra in CIEDE2000, media pesata, simmetrica. Esporta anche i colori come testo per il prompt |
-| `score.py` | I punteggi, nel formato `result(...)` della funzione 7: `concept.silhouette` (IoU, fascia `min`–`max`), `concept.palette` (ΔE, `max`), `concept.copy` (sovrapposizione dei bordi interni, F-score dei canny entro 2 px, con un `max`: ferma un risultato che ricalca il riferimento anche dentro la sagoma, il caso img2img a forza bassa) |
-| `routes.py` | Come si guida la generazione: argomenti in più per `sd-cli` per la strada **init** (`-i`, `--strength`) e per la strada **edit** (`-r`, `--llm_vision`); funzioni pure, testabili leggendo il comando |
-| `run.py` | Un concept: mappa, palette, comando, generazione, ritaglio, punteggi, sidecar `<immagine>.concept.json` con riferimento (nome e SHA-256), controllo, forza, strada, modelli in più con licenza, punteggi |
+| `compare-20261015/knight/knight.glb` | Modello (umanoide) |
+| `compare-20261015/werewolf/werewolf.glb` | Modello (creatura) |
+| `compare-20261015/chest/chest.glb` | Modello (oggetto) |
+| `images/a-single-friendly-orange-toy-robot-full__20261013-183055/…png` | Immagine |
+| `images/full-body-original-northern-fantasy-huma__20261013-184920/…png` | Immagine |
 
-Più:
-- `scripts/reference_concept.py`: un concept dalla riga di comando, `--score-only` per dare il punteggio a un'immagine
-  già fatta, `--batch cartella/` per la prova d'accettazione (tabella e foglio di confronto). Elencato in
-  `scripts/README.md`.
-- `viewer/concept_api.py`: `POST /api/concept` (riferimento, controllo, forza, prompt), `GET` dello stato con i
-  punteggi. Riusa la coda di `image_api.MANAGER`, così resta una immagine alla volta.
-- `viewer/studio/reference-concept.js` (e il suo CSS): nel foglio "Make a picture", un interruttore "From a reference":
-  carica il riferimento, sceglie controllo e forza, vede la palette ricavata; alla fine riferimento, mappa e risultato
-  affiancati con sovrapposizione delle sagome (stessi colori della funzione 7), IoU, palette a confronto e ΔE.
+Due varianti d'ingresso: (a) il riferimento così com'è (render frontale per i modelli); (b) una mappa di struttura:
+profondità disegnata dal modello per i GLB, lineart per le immagini. 5 × 2 × 2 semi = **20 immagini per strada**.
 
-**Righe di aggancio nei file condivisi** (minime):
-- `viewer/image_api.py`: `ImageJob` accetta `extra_args` e `extra_provenance` facoltativi; `build_command` li aggiunge e
-  `provenance` li unisce. Circa 8 righe, senza cambiare il comportamento di oggi.
-- `viewer/generate_api.py`: 3–4 righe per instradare `/api/concept`.
-- `viewer/studio/create.js` e `studio.html`: 2–3 righe ciascuno per montare il pannello.
+### Caso 2: un personaggio nella T-pose esatta del corpo base
 
-**Cosa vuol dire "forza"** per strada:
-- init: `--strength` (quanto rumore sopra l'immagine iniziale). L'immagine iniziale non è il riferimento, ma la sua
-  **sagoma riempita con la palette** (colori piatti per zona), così forma e colori entrano senza copiare i dettagli.
-- edit: il modello non ha una manopola di forza; la si approssima con la mappa (sagoma sola = libera, lineart = stretta)
-  e con il prompt. Nello studio il cursore diventa la scelta della mappa, e lo si dice.
-- ControlNet (solo se si arriva alla fase B): `control_context_scale`.
+Corpo base della prova della funzione 4 (sessione af-parti-slot, letto senza modificarlo):
+`journal/spike-slot-parts/common/body.png` e `body3d/body_rigged.glb` nel suo worktree. Due varianti: (a) l'immagine del
+corpo come riferimento; (b) una **mappa di posa** (scheletro a punti chiave nel formato OpenPose, disegnato da noi
+proiettando le ossa del corpo rigato: nessun modello). 2 personaggi × 2 varianti × 2 semi = **8 per strada**.
+A occhio si guarda la posa con lo scheletro sovrapposto; si misura l'IoU della sagoma ritagliata contro quella del
+corpo.
 
-**Prompt e funzione 3**: leggo `prompt_recipes.json` (la `wording` del goal) senza modificarlo e aggiungo la palette
-come testo. Per ora non mi serve nessun campo nuovo; se la prova mostra che serve una formula fissa per "concept da
-riferimento", la chiedo al coordinatore.
+### Caso 3: un pezzo d'armatura disegnato sopra il corpo base
 
-## 3. La prova prima della funzione
+Riferimento: `body.png`; il prompt chiede un pezzo (busto, poi elmo e spalle) senza cambiare corpo e posa. Si confronta
+anche con il concept che la funzione 4 ha già fatto con l'inpainting di Qwen-Image 2.1 (`common/concept.png`), come
+termine di paragone. 2 armature × 2 semi = **4 per strada**. Coordinamento con la funzione 4 nelle note condivise:
+se la gara trova un modo migliore, lo può usare anche lei.
 
-**Fase A** (quasi senza download): sui 5 riferimenti, per ognuna delle strade init ed edit, 3 livelli di forza × 2 semi
-a 768 px, 8 passi. Si misurano IoU, ΔE, copia, tempo per immagine; più un foglio di confronto da guardare a occhio
-("disegnato da capo o ricalcato?"). Sulla GPU con il file di blocco condiviso.
+### Caso 4: viste coerenti della stessa creatura
 
-**Regola di decisione**: una strada passa se su almeno 4 riferimenti su 5 c'è una forza in cui sagoma, palette e copia
-sono nei limiti **e** l'utente, guardando il foglio, la giudica un disegno nuovo. Se passa, si costruisce su quella. Se
-nessuna passa, **fase B**: ComfyUI con il Fun ControlNet (download sotto, da approvare a parte).
+Il lupo mannaro: dalla vista frontale del caso 1 si chiedono lato e retro. Due varianti: (a) solo la vista frontale come
+riferimento; (b) la vista frontale più il render di profondità del modello da quel lato (secondo `-r`).
+2 viste × 2 varianti × 2 semi = **8 per strada**.
 
-**I 5 riferimenti**: modelli e immagini già in `output/` (locali, non nella repo), scelti per coprire entrambi i tipi
-di riferimento e forme diverse:
+In tutto **40 immagini per strada**, 80 nella gara.
 
-| Riferimento | Tipo | Perché |
-|---|---|---|
-| `compare-20261015/knight/knight.glb` | GLB (umanoide) | Sagoma articolata; profondità dal modello |
-| `compare-20261015/werewolf/werewolf.glb` | GLB (creatura) | Sagoma irregolare, pelo |
-| `compare-20261015/chest/chest.glb` | GLB (oggetto) | Forma squadrata: la copia si vede subito |
-| `images/a-single-friendly-orange-toy-robot-full__20261013-183055/` | Immagine | Palette forte e semplice |
-| `images/full-body-original-northern-fantasy-huma__20261013-184920/` | Immagine | Figura intera con dettagli interni |
+## 4. Cosa si misura e chi decide
 
-Dai GLB si usa la vista frontale e quella a tre quarti; dalle immagini l'unica vista.
+- **Tempo per immagine** (dal log di `sd-cli`: `generate_image completed in`) e **VRAM di picco** (`nvidia-smi` ogni
+  mezzo secondo durante la corsa), sulla RTX 5070 Ti da 16 GB.
+- **IoU della sagoma** su maschere ritagliate (casi 1 e 2): solo un numero accanto all'immagine, non un filtro.
+- **Foglio di confronto** per ogni caso: ingresso, A e B affiancati, con lo stesso seme sulla stessa riga. Accanto a
+  ogni immagine un giudizio dell'utente su tre valori: *riconoscibile e nuovo* / *copiato* / *irriconoscibile* (caso 1),
+  *posa giusta* / *posa sbagliata* (casi 2 e 3), *stessa creatura* / *altra creatura* (caso 4).
+- **Regola**: per ogni caso l'utente sceglie A, B o "nessuna delle due". Vince la strada scelta in almeno 3 casi su 4.
+  A parità decidono tempo, VRAM e licenza (B è tutta Apache-2.0). Se i casi 2 o 3, quelli di precisione, finiscono
+  entrambi con "nessuna", si passa alla strada C.
+- **Segnale di copia imparato**: i giudizi del caso 1 sono anche il campione per provare DINOv2. Si calcola la
+  somiglianza fra riferimento e risultato e si guarda se separa "copiato" dagli altri (con `fit_band` della funzione 7).
+  Entra nella funzione solo se separa; altrimenti non c'è.
 
-## 4. Download (ognuno solo dopo un sì esplicito)
+Lavoro sulla GPU sempre con il file di blocco condiviso (`%TEMP%\assetfurnace-gpu.lock`, pid e nome della sessione).
+Gli script della gara sono usa e getta e restano in `journal/` (regola 2 di `AGENTS.md`); entrano nella repo solo i
+pezzi generali (mappa di profondità da un GLB, mappa di posa da un rig), con i loro test.
 
-| Fase | File | Dimensione | Licenza | Serve per |
-|---|---|---|---|---|
-| A | `Qwen/Qwen3-VL-8B-Instruct-GGUF` → `mmproj-Qwen3VL-8B-Instruct-F16.gguf` | 1,16 GB | Apache-2.0 | La strada edit (la visione del codificatore). La strada init non scarica niente |
-| B | `Comfy-Org/Qwen-Image-2.1` → `model_patches/qwen_image_2.1_fun_controlnet_union_int8_convrot.safetensors` | 3,78 GB | Qwen Research License | Il ControlNet |
-| B | `Comfy-Org/Qwen-Image-2.1` → `diffusion_models/qwen_image_2.1_int8_convrot.safetensors` | 7,26 GB | Qwen Research License | Lo stesso modello che abbiamo in GGUF, nel formato di ComfyUI |
-| B | `Comfy-Org/Qwen-Image-2.1` → `text_encoders/qwen3vl_8b_w4a8.safetensors` | 6,31 GB | Apache-2.0 (Qwen3-VL) | Il codificatore nel formato di ComfyUI |
-| B | ComfyUI (codice) e PyTorch CUDA nel suo ambiente | circa 5–6 GB | GPL-3.0 (gira in locale, non lo ridistribuiamo) | Il motore |
+## 5. Download (ognuno solo dopo un sì esplicito)
 
-Fase B in tutto: circa 17,4 GB di pesi più l'ambiente. La VAE è già in cache. Se ComfyUI-GGUF (Apache-2.0) caricasse i
-GGUF che abbiamo già, si risparmierebbero 13,6 GB: da verificare all'inizio della fase B, non prima.
+Dimensioni esatte in byte dall'API di Hugging Face del 15/10/2026. Disco libero su `C:`: 138 GB.
 
-## 5. Alternative scartate (per ora)
+| Strada | File | Repo | Byte | Licenza dei pesi | Licenza del codice |
+|---|---|---|---:|---|---|
+| A | `mmproj-Qwen3VL-8B-Instruct-F16.gguf` | `Qwen/Qwen3-VL-8B-Instruct-GGUF` | 1.159.029.824 | Apache-2.0 | `sd-cli` MIT |
+| B | `qwen-image-edit-2511-Q4_K_M.gguf` | `unsloth/Qwen-Image-Edit-2511-GGUF` (quantizzazione di `Qwen/Qwen-Image-Edit-2511`) | 13.244.758.624 | Apache-2.0 (originale e repo) | `sd-cli` MIT |
+| B | `Qwen2.5-VL-7B-Instruct-Q8_0.gguf` | `ggml-org/Qwen2.5-VL-7B-Instruct-GGUF` (l'organizzazione di llama.cpp) | 8.098.523.680 | Apache-2.0 (originale e repo) | `sd-cli` MIT |
+| B | `mmproj-Qwen2.5-VL-7B-Instruct-Q8_0.gguf` | `ggml-org/Qwen2.5-VL-7B-Instruct-GGUF` | 853.119.712 | Apache-2.0 | `sd-cli` MIT |
+| B | `vae/diffusion_pytorch_model.safetensors` | `Qwen/Qwen-Image-Edit-2511` (ufficiale; stesso SHA-256 `0c8bc8b7…` della VAE di `Qwen/Qwen-Image`) | 253.806.966 | Apache-2.0 | `sd-cli` MIT |
 
-- **Portare il Fun ControlNet dentro `sd-cli`** (C++): il ramo sono 16 blocchi uguali a quelli del trasformatore,
-  innestati ogni 2 blocchi; fattibile ma lungo, e il binario è precompilato da `vendor/`. Meglio come contributo a
-  monte se la fase B lo dimostra utile.
-- **VideoX-Fun in Python**: vuole i pesi completi in formato diffusers (trasformatore 13 GB più codificatore 17 GB) e su
-  16 GB gira solo con scaricamento in RAM. ComfyUI fa lo stesso con file più piccoli.
-- **InstantX su Qwen-Image 1**: un secondo modello base da 12–13 GB e un altro codificatore, con uno stile diverso da
-  quello degli altri concept. Resta la scorta se la licenza di Qwen Research diventa un problema (sotto).
-- **Correggere la palette dopo** (trasferimento di colore sul risultato): rimandato. Prima si vede se basta il prompt
-  più l'immagine iniziale; correggere dopo nasconde il problema invece di risolverlo.
+- Strada A: **1,16 GB**. Strada B: **22,45 GB**. In tutto 23,61 GB.
+- Scelte e scarti, per la licenza: `mradermacher/Qwen2.5-VL-7B-Instruct-GGUF`, citato dalla documentazione di
+  `sd-cli`, **non dichiara una licenza**: preferito `ggml-org`, che dichiara Apache-2.0 (stessi byte del Q8_0). La VAE
+  ufficiale in formato diffusers è preferita al repackage di Comfy-Org (Apache-2.0, 253.806.246 byte, contenuto
+  diverso): se `sd-cli` non legge i nomi diffusers, ripiego su quello, con conferma.
+- Quantizzazione Q4_K_M per il 20B: è quella dell'esempio di `sd-cli` e sta nei 16 GB con lo scaricamento automatico.
+  Q8_0 (21,76 GB) solo se la Q4 mostra difetti attribuibili alla quantizzazione, con una domanda a parte.
+- Nessun file carica altri pesi: modello, codificatore, visione e VAE sono tutti in tabella.
+- Più avanti, solo se serve il segnale di copia: `facebook/dinov2-small`, `model.safetensors`, 88.249.960 byte,
+  Apache-2.0 (più la libreria `transformers`, Apache-2.0, che oggi non è nel `.venv`).
 
-## 6. Rischi
+**Nel catalogo** (`viewer/backend_catalog.py`): A diventa un `WeightSet` in più del backend `qwen-image`; B un backend
+nuovo `qwen-image-edit` con i suoi quattro file. Ogni `WeightSet` punta al **file**, non alla cartella della cache:
+`_dir_state` conta i file singoli, mentre la cartella di Qwen3-VL contiene già il codificatore e falserebbe il
+conteggio. Licenza di B in `image_to_3dlab/provenance.py` come profilo nuovo, Apache-2.0. Lo scaricamento passa da
+Setup & Status come per gli altri, con nome, dimensione e conferma.
 
-1. **Licenza di Qwen-Image 2.1 (vale già oggi, non la introduce questa funzione)**. La Qwen Research License concede
-   l'uso "FOR NON-COMMERCIAL PURPOSES ONLY" (§2a) e chiede una licenza a parte per l'uso commerciale (§2b). La repo la
-   tratta come "commerciale con condizioni" perché Qwen ha dichiarato il 21/09/2026 che le immagini prodotte non sono
-   Materials. Quella dichiarazione riguarda **di chi sono le immagini**, non se si possa **usare il modello** per un
-   prodotto commerciale. Il Fun ControlNet ha la stessa identica licenza, quindi non cambia l'esposizione, ma prima di
-   produrre in grande per un prodotto commerciale va deciso dall'utente (eventualmente scrivendo a Qwen, o passando alla
-   strada tutta Apache-2.0: Qwen-Image 1 con InstantX).
-2. **La strada edit potrebbe non seguire bene una mappa di bordi**: Qwen-Image-Edit 2509 lo faceva per addestramento,
-   per la 2.1 c'è solo l'esempio dello schizzo. Lo dice la prova.
-3. **Copia invece di disegno nuovo**: con img2img a forza bassa il risultato ricalca il riferimento. Lo ferma
-   `concept.copy`, e il limite superiore della fascia di sagoma.
-4. **Riferimenti di terzi** (render o immagini di modelli altrui): il riferimento guida solo la forma; nel sidecar resta il suo
-   SHA-256, così si sa sempre da cosa è nato un concept. La soglia di copia serve anche a questo.
-5. **La palette nel prompt è imprecisa**: Qwen capisce i nomi dei colori meglio dei codici esadecimali. La strada init
-   porta i colori nell'immagine iniziale; la prova misura entrambe.
-6. **GPU condivisa** con le altre sessioni: file di blocco in `%TEMP%\assetfurnace-gpu.lock` per ogni lavoro sulla GPU.
-7. **ComfyUI su Blackwell (RTX 5070 Ti) con i file int8 convrot**: non provato. Solo in fase B.
+## 6. Cosa si costruisce dopo la gara (se una strada vince)
 
-## 7. Come provo l'accettazione
+Dipende dal vincitore; lo schema, da confermare dopo la gara:
+- `image_to_3dlab/concept/`: ingressi (riferimento, mappa di profondità da un GLB, mappa di posa da un rig, lineart),
+  comando di `sd-cli` per la strada vincente come funzione pura, sidecar `<immagine>.concept.json` con riferimenti
+  (nome e SHA-256), strada, modelli con licenza, IoU.
+- `viewer/image_api.py`: poche righe d'aggancio (`extra_args` ed `extra_provenance` facoltativi nel lavoro) per riusare
+  coda e avanzamento.
+- `scripts/reference_concept.py` (elencato in `scripts/README.md`).
+- Studio, `viewer/studio/reference-concept.js`: nel foglio "Make a picture", carica uno o più riferimenti, sceglie
+  l'ingresso (riferimento così com'è, profondità, posa, lineart), vede riferimento e risultato affiancati con l'IoU, e
+  dà il giudizio che finisce nel registro di revisione della funzione 7. Una "forza" c'è solo se la strada vincente ne
+  ha una vera: nessuna delle due ha una manopola, e non la inventiamo.
 
-- **Test unitari** (prima del codice, file piccoli): mappe da forme sintetiche (un quadrato, una L); palette di immagini
-  a colori piatti noti; ΔE CIEDE2000 sui valori di riferimento pubblicati (Sharma 2005); IoU e fascia; `concept.copy` alta
-  per un'immagine con sé stessa, bassa per una forma uguale con interno diverso; comandi di `sd-cli` per le due strade;
-  sidecar con riferimento e licenze; API e modulo dello studio come gli altri.
-- **Accettazione del piano**: `scripts/reference_concept.py --batch` sui 5 riferimenti con la strada scelta. Passa se
-  tutti e 5 hanno IoU dentro la fascia (proposta di partenza 0,70–0,93, configurabile) e ΔE della palette sotto la
-  soglia (proposta 15, configurabile), con `concept.copy` sotto il suo massimo. Le soglie di partenza si correggono con
-  `fit_band` (funzione 7) sui giudizi dell'utente. Tabella e foglio di confronto in questo documento.
+## 7. Rischi
+
+1. **Licenza di Qwen-Image 2.1 (vale già oggi, strada A)**. La Qwen Research License concede l'uso "FOR NON-COMMERCIAL
+   PURPOSES ONLY" (§2a) e chiede una licenza a parte per l'uso commerciale (§2b). La dichiarazione di Qwen del 21/09/2026
+   dice di chi sono le immagini, non se si può usare il modello per un prodotto commerciale. La strada B non ha questo
+   problema.
+2. **20B su 16 GB**: la strada B scarica parte dei pesi in RAM (31 GB nel PC). Potrebbe essere lenta; il tempo misurato
+   è parte del giudizio.
+3. **Le mappe come riferimento** potrebbero essere lette come immagini da copiare (una mappa di profondità grigia nel
+   risultato). La gara lo mostra nel foglio.
+4. **Riferimenti di terzi**: il riferimento guida solo la forma; nel sidecar resta il suo SHA-256.
+5. **GPU condivisa** con le altre sessioni: file di blocco a ogni lavoro.
 
 ## 8. Consegna
 
-PR piccole verso `main`, ognuna con test e riga in `CHANGELOG.md`:
-1. Punteggi e mappe (`concept/control_maps.py`, `palette.py`, `score.py`) e `--score-only`. Niente GPU.
-2. Strade di `sd-cli`, aggancio in `image_api.py`, risultati della prova in questo documento.
-3. API e pannello dello studio.
-4. Solo se serve: la strada ComfyUI.
-
-Review di Codex con la regola di stop (P1 sempre; P2 solo se errori veri visibili; massimo 3 giri). Non unisco io.
+Dopo l'approvazione dei download: la gara (fogli e tempi in questo documento, risultati nelle note condivise), poi la
+scelta dell'utente, poi PR piccole verso `main` con test e riga in `CHANGELOG.md`: catalogo e licenza; ingressi e
+comando; API e studio. Review di Codex con la regola di stop (P1 sempre; P2 solo se errori veri visibili; massimo 3
+giri). Non unisco io.
 
 ## 9. Domande per l'approvazione
 
-1. Va bene la prova in fase A prima del ControlNet (e il download di 1,16 GB per la strada edit)?
-2. La licenza di Qwen-Image 2.1 per un uso commerciale: si accetta come oggi, o si tiene pronta la strada Apache-2.0?
+1. Download della strada A (1,16 GB) e della strada B (22,45 GB) come in tabella?
+2. Va bene la gara con 40 immagini per strada, o meno semi per accorciarla?
 
 ## 10. Seguiti
 
