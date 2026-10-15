@@ -143,3 +143,34 @@ def test_a_long_serpent_keeps_its_neck_off_the_ground():
     for f in cm.serpent_strike(rig, fam):
         p = positions(rig, f)
         assert min(p[b][1] for b in fam["body"]) >= floor - 1e-6
+
+
+def _dense_snake(joints):
+    rows = chain("seg", None, [(0, 0.06 if i == 0 else 0.05, 1.0 - 2.0 * i / (joints - 1)) for i in range(joints)])
+    return rig_of(build(rows))
+
+
+def test_a_serpent_coils_the_same_however_many_bones_it_has():
+    reach = []
+    for joints in (13, 85):
+        rig, fam, _ = _dense_snake(joints)
+        head = fam["body"][0]
+        frames = cm.serpent_strike(rig, fam)
+        reach.append(max(abs(positions(rig, f)[head][0] - rig.heads[head][0]) for f in frames))
+    assert reach[1] == pytest.approx(reach[0], rel=0.25)
+
+
+def test_a_serpent_rooted_on_a_short_spur_still_moves():
+    parents, heads, names = snake()
+    parents, heads = dict(parents), dict(heads)
+    old_root = names["seg0"]
+    spur = "bone_spur"
+    heads[spur] = heads[names["seg5"]] + np.array([0, 0.01, 0])
+    parents = reroot((parents, heads, names), "seg5")[0]
+    parents[names["seg5"]] = spur
+    parents[spur] = None
+    rig, fam, _ = rig_of((parents, heads, {**names, "spur": spur}))
+    assert fam["family"] == "serpent" and old_root in fam["body"]
+    for clip in (cm.serpent_slither, cm.serpent_strike):
+        frames = clip(rig, fam)
+        assert len(frames) > 2

@@ -173,7 +173,7 @@ def _splayed(body: _Body, legs: list[dict], left: np.ndarray) -> list[dict]:
     of the ground: the rest of a many-legged creature's legs."""
     taken = {b for leg in legs for b in _subtree(leg["bones"][0], body.kids)}
     starts = {leg["bones"][0] for leg in legs}
-    found = []
+    found, used = [], set()
     for fork in body.order():
         if fork in taken or (len(body.kids[fork]) < 2 and fork != body.root):
             continue
@@ -181,7 +181,11 @@ def _splayed(body: _Body, legs: list[dict], left: np.ndarray) -> list[dict]:
             continue
         for start in body.kids[fork]:
             branch = _subtree(start, body.kids)
-            if start in taken or starts & set(branch):
+            if start in taken or starts & set(branch) or used & set(branch):
+                continue
+            # a hub carrying several legs is not one leg: its own legs come up as the loop
+            # reaches it
+            if any(sum(len(_subtree(c, body.kids)) >= 3 for c in body.kids[x]) >= 2 for x in branch):
                 continue
             tip = max(branch, key=lambda b: float(np.linalg.norm(body.heads[b] - body.heads[fork])))
             path = [b for b in _path_up(tip, body.parents) if b in set(branch)]
@@ -192,6 +196,7 @@ def _splayed(body: _Body, legs: list[dict], left: np.ndarray) -> list[dict]:
                     or body.h[fork] - body.h[tip] < 0.15 * body.above(fork)):
                 continue
             found.append({"fork": fork, "bones": path})
+            used |= set(branch)
     return found
 
 
