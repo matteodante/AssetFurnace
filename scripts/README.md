@@ -147,6 +147,7 @@ These talk to a running Blender over the `execute_code` socket on port 9876 unle
 | `blender_render_asset.py` | Import a GLB into the local Blender MCP scene and render cardinal previews. |
 | `blender_turntable.py` | Render a seamlessly looping 360-degree turntable of a GLB via the Blender MCP scene. |
 | `blender_light_orbit.py` | Render a GLB under an orbiting key light, holding the camera still. |
+| `blender_tint_preview.py` | Render a game-materials GLB before and after a tint change, under two different lights. |
 | `blender_lineup_sweep.py` | Render a camera sweep past a line-up of assets, headless. |
 | `blender_orbit_camera.py` | Point an orbit camera at a target and (optionally) render. |
 | `blender_inspect.py` | Inspect a Blender scene or an unopened .blend file's contents. |
