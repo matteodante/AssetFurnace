@@ -32,6 +32,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import image_api
 import blender_edit_api
+import review_api
 import unreal_export_api
 from image_to_3dlab import processes
 from image_to_3dlab.blender import find_blender, missing_help as blender_missing_help
@@ -2074,7 +2075,7 @@ class Handler(SimpleHTTPRequestHandler):
         return cls._chain_runner
 
     def do_POST(self) -> None:
-        if blender_edit_api.handle(self, OUTPUT_ROOT, mutation=True):
+        if blender_edit_api.handle(self, OUTPUT_ROOT, mutation=True) or review_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
         if unreal_export_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
@@ -2316,7 +2317,7 @@ class Handler(SimpleHTTPRequestHandler):
         return super().send_head()
 
     def do_GET(self) -> None:
-        if blender_edit_api.handle(self, OUTPUT_ROOT):
+        if blender_edit_api.handle(self, OUTPUT_ROOT) or review_api.handle(self, OUTPUT_ROOT):
             return
         if unreal_export_api.handle(self, OUTPUT_ROOT):
             return

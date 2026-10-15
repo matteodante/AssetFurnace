@@ -41,7 +41,7 @@ def files(tmp_path):
     for name in ("Wolf_9k_rigged.glb", "Wolf_9k_idle.glb", "Wolf_9k_hit_react.glb"):
         (rig / name).write_bytes(_triangle_glb())
     (rig / "Wolf_9k_rigged.provenance.json").write_text(json.dumps(
-        {"license": {"name": "MIT"}, "classification": "commercial"}))
+        {"license": {"name": "MIT"}, "classification": "commercial-clear"}))
     props = tmp_path / "props" / "prop_01"
     props.mkdir(parents=True)
     for i in range(3):
@@ -392,3 +392,73 @@ def test_none_is_no_longer_a_collision_choice(files):
     with pytest.raises(ValueError, match="--collision"):
         ex.plan(files["part"], kind="prop", size_cm=50, collision="none")
     assert ex.plan(files["part"], kind="prop", size_cm=50, collision="unreal")["job"]["collision"] == "unreal"
+
+
+# --- review round 3 ----------------------------------------------------------------------
+
+def test_the_export_is_as_restricted_as_its_strictest_input(files, tmp_path):
+    rig = files["rig"]
+    (rig / "Wolf_9k_idle.provenance.json").write_text(json.dumps(
+        {"license": {"name": "Research"}, "classification": "research-only"}))
+    record = ex.provenance([rig / "Wolf_9k_rigged.glb", rig / "Wolf_9k_idle.glb"], rig / "Wolf_9k_rigged.glb")
+    assert record["classification"] == "research-only"
+    assert {"name": "Research"} in record["licenses"] and {"name": "MIT"} in record["licenses"]
+
+
+def test_a_blender_that_hangs_is_stopped_with_a_reason(files, tmp_path):
+    import subprocess
+
+    def hang(command, **kwargs):
+        assert kwargs.get("timeout")
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+
+    with pytest.raises(RuntimeError, match="stopped"):
+        ex.export_unreal(files["part"], kind="prop", size_cm=40, out_dir=tmp_path / "out", blender=Path("blender"),
+                         run=hang, log=lambda m: None)
+
+
+@pytest.mark.skipif(find_blender() is None, reason="needs Blender")
+def test_real_blender_keeps_a_prop_that_happens_to_be_called_icosphere(tmp_path):
+    source = tmp_path / "ball.glb"
+    source.write_bytes(_triangle_glb(node="Icosphere"))
+    result = ex.export_unreal(source, kind="prop", size_cm=30, measure="longest", out_dir=tmp_path / "out",
+                              log=lambda m: None)
+    assert result["ok"], result["problems"]
+    assert json.loads(Path(result["sidecar"]).read_text(encoding="utf-8"))["blender"]["removed"] == []
+
+
+def _sphere_soup(count=240) -> bytes:
+    """Triangles between random points on a sphere: enough for a hull over 60 faces."""
+    import numpy as np
+
+    rng = np.random.default_rng(1)
+    points = rng.normal(size=(count, 3)).astype("<f4")
+    points /= np.linalg.norm(points, axis=1, keepdims=True)
+    document, _ = parse_glb(_triangle_glb())
+    binary = points.tobytes()
+    document["accessors"][0].update(count=count, min=points.min(0).tolist(), max=points.max(0).tolist())
+    document["bufferViews"][0]["byteLength"] = len(binary)
+    document["buffers"][0]["byteLength"] = len(binary)
+    return build_glb(document, binary)
+
+
+@pytest.mark.skipif(find_blender() is None, reason="needs Blender")
+def test_real_blender_writes_one_clean_convex_hull(tmp_path):
+    import numpy as np
+
+    source = tmp_path / "rock.glb"
+    source.write_bytes(_sphere_soup())
+    result = ex.export_unreal(source, kind="prop", size_cm=50, collision="convex", out_dir=tmp_path / "out",
+                              log=lambda m: None)
+    document, binary = parse_glb(Path(result["glb"]).read_bytes())
+    node = next(n for n in document["nodes"] if n.get("name", "").startswith("UCX_"))
+    primitive = document["meshes"][node["mesh"]]["primitives"][0]
+    position = document["accessors"][primitive["attributes"]["POSITION"]]
+    view = document["bufferViews"][position["bufferView"]]
+    start = view.get("byteOffset", 0) + position.get("byteOffset", 0)
+    points = np.frombuffer(binary[start:start + position["count"] * 12], "<f4").reshape(-1, 3)
+    corners = len(np.unique(np.round(points, 5), axis=0))
+    triangles = document["accessors"][primitive["indices"]]["count"] // 3
+    # A closed convex shell made of triangles has exactly 2V - 4 of them; an old surface
+    # left inside it would add more.
+    assert triangles == 2 * corners - 4

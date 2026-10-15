@@ -72,6 +72,30 @@ for _soma, _ue in (("Left", "l"), ("Right", "r")):
             SOMA_TO_UE[f"{_soma}Hand{_finger}{_i}"] = f"{_finger.lower()}_0{_i - 1}_{_ue}"
 
 
+# Licence classes from the least to the most restrictive (image_to_3dlab/provenance.py).
+CLASS_ORDER = ("commercial-clear", "commercial-conditional", "territory-restricted", "research-only")
+
+
+def strictest_class(classes: Iterable[str | None]) -> str | None:
+    """The most restrictive licence class among the inputs; an unknown class counts as
+    stricter than any known one, so a derived asset is never labelled more freely."""
+    known = [c for c in classes if c]
+    if not known:
+        return None
+    return max(known, key=lambda c: CLASS_ORDER.index(c) if c in CLASS_ORDER else len(CLASS_ORDER))
+
+
+_MESH_NAME = re.compile(r"(SM|SK)_[A-Za-z0-9][A-Za-z0-9_]*")
+
+
+def safe_mesh_name(mesh: str) -> str:
+    """A sidecar's mesh name, refused unless it is a plain `SM_`/`SK_` name: it becomes a
+    folder the Unreal check empties."""
+    if not isinstance(mesh, str) or not _MESH_NAME.fullmatch(mesh):
+        raise ValueError(f"{mesh!r} is not an Unreal mesh name this profile writes")
+    return mesh
+
+
 # --- names -----------------------------------------------------------------------------
 
 def base_name(raw: str) -> str:

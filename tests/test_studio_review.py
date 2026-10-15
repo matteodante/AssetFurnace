@@ -1,0 +1,168 @@
+"""The studio's Review pieces: the pure model under Node, and how the page is wired."""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parents[1]
+STUDIO = REPO / "viewer" / "studio"
+NODE = shutil.which("node")
+needs_node = pytest.mark.skipif(NODE is None, reason="Node is required to execute browser ES modules")
+
+
+def _run(body: str):
+    url = (STUDIO / "review-model.js").as_uri()
+    program = f"import * as m from {json.dumps(url)};\n{body}"
+    done = subprocess.run([NODE, "--input-type=module", "--eval", program], check=True,
+                          capture_output=True, text=True, encoding="utf-8")
+    return json.loads(done.stdout)
+
+
+QUEUE = {"items": [
+    {"key": "a", "state": "sent_back", "status": "fail", "summary": {"fail": ["mesh.holes"], "warn": []},
+     "notes": [{"note": "fix the holes"}]},
+    {"key": "b", "state": "to_review", "status": "warn", "summary": {"fail": [], "warn": ["silhouette", "uv.overlap"]}},
+], "approved": [{"key": "c", "state": "approved", "status": "pass", "summary": {"fail": [], "warn": []}}]}
+
+
+@needs_node
+def test_the_queue_reads_to_review_then_sent_back_then_approved():
+    out = _run(f"""const q = {json.dumps(QUEUE)};
+      console.log(JSON.stringify({{
+        sections: m.queueSections(q).map((s) => [s.id, s.items.map((i) => i.key)]),
+        count: m.waitingCount(q), lines: q.items.map(m.summaryLine).concat(m.summaryLine(q.approved[0])),
+        unchecked: [m.summaryLine({{status: null}}), m.statusLabel(null), m.statusLabel('fail')] }}));""")
+    assert out["sections"] == [["to_review", ["b"]], ["sent_back", ["a"]], ["approved", ["c"]]]
+    assert out["count"] == 1
+    assert out["lines"] == ["1 fail", "2 warn", "All checks pass"]
+    assert out["unchecked"] == ["Not checked yet", "Not checked", "Fail"]
+
+
+@needs_node
+def test_checks_list_failures_first_and_skips_last():
+    report = {"results": [{"check": "mesh.holes", "status": "pass", "message": "ok"},
+                          {"check": "budget.faces", "status": "fail", "message": "too many"},
+                          {"check": "silhouette", "status": "warn", "message": "off",
+                           "details": {"views": {"front": 0.8, "top": 0.7},
+                                       "overlay_urls": {"top": "/o/t.png", "front": "/o/f.png"}}}],
+              "skipped": [{"check": "gltf.valid", "reason": "not installed"}]}
+    out = _run(f"""const r = {json.dumps(report)};
+      console.log(JSON.stringify({{ rows: m.checkRows(r).map((x) => x.status + ':' + x.check),
+        shots: m.overlays(r).map((s) => [s.view, s.url, s.score]) }}));""")
+    assert out["rows"] == ["fail:budget.faces", "warn:silhouette", "pass:mesh.holes", "skip:gltf.valid"]
+    assert out["shots"] == [["front", "/o/f.png", 0.8], ["top", "/o/t.png", 0.7]]
+
+
+@needs_node
+def test_a_send_back_needs_a_note_and_the_form_builds_the_request():
+    out = _run("""
+      const assets = [{id:'k1', name:'knight', rigged:'animate/k_rigged.glb', finished:'finish/k.glb', picture:'images/k.png'},
+                      {id:'p1', name:'picture only', picture:'images/p.png'},
+                      {id:'h1', name:'hidden', model:'x.glb', hidden:true}];
+      const choices = m.checkChoices(assets);
+      console.log(JSON.stringify({
+        approve: m.canDecide('approved', ''), empty: m.canDecide('sent_back', '  '), noted: m.canDecide('sent_back', 'redo'),
+        bogus: m.canDecide('maybe', 'x'), choices: choices.map((c) => [c.id, c.file]),
+        body: m.checksRequest(choices[0], {reference: 'images/k.png', profile: 'creature', height: '1.8'}),
+        bare: m.checksRequest(choices[0], {height: 'tall'}) }));""")
+    assert out["approve"] and out["noted"]
+    assert not out["empty"] and not out["bogus"]
+    assert out["choices"] == [["k1", "animate/k_rigged.glb"]]
+    assert out["body"] == {"asset": "animate/k_rigged.glb", "key": "k1", "profile": "creature",
+                           "reference": "images/k.png", "height": 1.8}
+    assert out["bare"] == {"asset": "animate/k_rigged.glb", "key": "k1", "profile": "prop"}
+
+
+@needs_node
+def test_blender_versions_are_offered_newest_first_before_the_original():
+    """Codex review: the Library shows the newest Blender version, so Review must offer it too."""
+    out = _run("""
+      const assets = [{id:'k1', name:'knight', finished:'finish/k.glb', blender_versions:[
+        {id:'v1', label:'Blender 1', file:'blender-edits/versions/v1/model.glb'},
+        {id:'v2', label:'Blender 2', file:'blender-edits/versions/v2/model.glb'}]}];
+      console.log(JSON.stringify(m.checkChoices(assets).map((c) => [c.id, c.version, c.file])));""")
+    assert out == [["k1", "Blender 2", "blender-edits/versions/v2/model.glb"],
+                   ["k1", "Blender 1", "blender-edits/versions/v1/model.glb"],
+                   ["k1", "original", "finish/k.glb"]]
+
+
+def test_a_decision_names_the_version_it_was_made_on():
+    review = (STUDIO / "review.js").read_text(encoding="utf-8")
+    assert "asset_sha256: item.asset_sha256" in review
+
+
+def test_review_is_wired_into_the_page_and_puts_a_sheet_away_first():
+    html = (REPO / "viewer" / "studio.html").read_text(encoding="utf-8")
+    app = (STUDIO / "app.js").read_text(encoding="utf-8")
+    assert 'id="reviewBtn"' in html and 'id="reviewCount"' in html
+    start = app.index("async function showReview(")
+    body = app[start:app.index("\n}", start)]
+    assert "closeSheet(" in body
+    assert "turntable: true" in body
+    viewer = (STUDIO / "viewer.js").read_text(encoding="utf-8")
+    assert "setTurntable" in viewer.split("return {")[-1]
+
+
+def test_review_changes_carry_the_studio_header():
+    review = (STUDIO / "review.js").read_text(encoding="utf-8")
+    assert "'X-AssetFurnace-Request': 'review'" in review
+
+
+@needs_node
+def test_a_prop_set_offers_its_props_not_the_sheet_and_approval_follows_the_rules():
+    """Codex review 2: the Library shows a prop set's props, so those are what get reviewed."""
+    out = _run("""
+      const sets = [{id:'s1', name:'tavern', kind:'prop set', model:'a/sheet.glb',
+                     props:[{name:'barrel', file:'props/s/barrel_LOD0.glb'}, {name:'stool', file:'props/s/stool_LOD0.glb'}]}];
+      console.log(JSON.stringify({
+        choices: m.checkChoices(sets).map((c) => [c.id, c.file]),
+        unchecked: m.canApprove({state:'to_review', status:null, summary:{fail:[], warn:[]}}),
+        licence: m.canApprove({state:'to_review', status:'fail', license_status:'fail', summary:{fail:['license.components'], warn:[]}}),
+        partial: m.canApprove({state:'to_review', status:'pass', license_status:null, summary:{fail:[], warn:[]}}),
+        why: m.approveBlocker({state:'to_review', status:'pass', license_status:null}),
+        other: m.canApprove({state:'to_review', status:'fail', license_status:'pass', summary:{fail:['mesh.holes'], warn:[]}}) }));""")
+    assert out["choices"] == [["s1-barrel", "props/s/barrel_LOD0.glb"], ["s1-stool", "props/s/stool_LOD0.glb"]]
+    assert out["unchecked"] is False and out["licence"] is False and out["other"] is True
+    assert out["partial"] is False and "has not run" in out["why"]
+
+
+@needs_node
+def test_a_prop_sets_blender_versions_come_first_under_their_props_key():
+    """Codex review 4: a prop edited in Blender is what the Library shows, so it is offered first."""
+    out = _run("""
+      const sets = [{id:'s1', name:'tavern', kind:'prop set', model:'a/sheet.glb',
+        props:[{name:'barrel', file:'props/s/barrel_LOD0.glb'}, {name:'stool', file:'props/s/stool_LOD0.glb'}],
+        blender_versions:[{id:'v1', label:'Blender 1', file:'blender-edits/versions/v1/model.glb', parent_file:'props/s/stool_LOD0.glb'}]}];
+      console.log(JSON.stringify(m.checkChoices(sets).map((c) => [c.id, c.file])));""")
+    assert out == [["s1-stool", "blender-edits/versions/v1/model.glb"],
+                   ["s1-barrel", "props/s/barrel_LOD0.glb"], ["s1-stool", "props/s/stool_LOD0.glb"]]
+
+
+@needs_node
+def test_chained_prop_versions_are_followed_back_to_their_prop_and_skipped_runs_do_not_read_as_pass():
+    """Codex review 5: a second edit's parent is the first edit, not the prop."""
+    out = _run("""
+      const sets = [{id:'s1', name:'tavern', kind:'prop set',
+        props:[{name:'stool', file:'props/s/stool_LOD0.glb'}],
+        blender_versions:[
+          {id:'v1', label:'Blender 1', file:'be/v1/model.glb', parent_file:'props/s/stool_LOD0.glb', parent_version:null},
+          {id:'v2', label:'Blender 2', file:'be/v2/model.glb', parent_file:'be/v1/model.glb', parent_version:'v1'}]}];
+      console.log(JSON.stringify({ choices: m.checkChoices(sets).map((c) => [c.id, c.file]),
+        skipped: m.summaryLine({status:'warn', summary:{fail:[], warn:[]}}) }));""")
+    assert out["choices"] == [["s1-stool", "be/v2/model.glb"], ["s1-stool", "be/v1/model.glb"],
+                              ["s1-stool", "props/s/stool_LOD0.glb"]]
+    assert out["skipped"] == "No check could run"
+
+
+def test_a_review_item_that_fails_to_load_clears_the_old_panel():
+    """Codex review 5: the previous item's buttons must not stay live."""
+    app = (STUDIO / "app.js").read_text(encoding="utf-8")
+    start = app.index("async function showReview(")
+    body = app[start:app.index("\n}", start)]
+    catch = body[body.index("catch (error)"):body.index("current = null")]
+    assert "$('steps').innerHTML = ''" in catch

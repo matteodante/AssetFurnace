@@ -293,3 +293,40 @@ img.glow { animation: doorglow 2.4s ease-in-out infinite; }
   .bar { height: auto; min-height: 52px; flex-wrap: wrap; padding: 8px 12px; row-gap: 6px; }
   .bar .spacer { flex-basis: 100%; height: 0; }
 }
+
+/* Review: the queue sheet and the panel that stands in for Steps */
+.rv-count { margin-left: 6px; min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--ember); color: #1b0b02; font: 600 11px/18px var(--f-num); display: inline-block; text-align: center; }
+.rv-check { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.rv-check[open] { padding-bottom: 14px; }
+.rv-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rv-item { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--raise); }
+.rv-item:hover { border-color: var(--line-hi); }
+.rv-item.sent_back { border-style: dashed; }
+.rv-what { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.rv-note { color: var(--flame); font-size: 13px; }
+.rv-chip { border-radius: 999px; padding: 1px 8px; font: 600 11px/18px var(--f-num); text-transform: uppercase; letter-spacing: .04em; background: #2f241e; color: var(--ash); white-space: nowrap; }
+.rv-chip.pass { background: rgb(143 209 138 / .14); color: var(--ok); }
+.rv-chip.warn { background: rgb(255 179 122 / .14); color: var(--flame); }
+.rv-chip.fail { background: rgb(226 87 76 / .18); color: #ff8a80; }
+.rv-panel { list-style: none; display: grid; gap: 10px; padding: 6px; font-size: 13px; }
+.rv-panel h3 { margin: 6px 0 0; font: 600 12px/1.4 var(--f-num); letter-spacing: .08em; text-transform: uppercase; color: var(--ash); }
+.rv-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.rv-last { margin: 0; padding: 8px 10px; border-left: 3px solid var(--flame); background: var(--raise); border-radius: 0 8px 8px 0; }
+.rv-ref { margin: 0; display: grid; gap: 4px; }
+.rv-ref img { width: 100%; max-height: 220px; object-fit: contain; background: #0c0a09; border-radius: 10px; }
+.rv-refpane { position: relative; height: 200px; border-radius: 10px; overflow: hidden; background: var(--coal); }
+.rv-refpane canvas { display: block; width: 100% !important; height: 100% !important; }
+.rv-shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.rv-shots figure { margin: 0; display: grid; gap: 2px; }
+.rv-shots img { width: 100%; aspect-ratio: 1; border-radius: 8px; image-rendering: pixelated; }
+.rv-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin: 0; }
+.rv-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.rv-legend .ref { background: rgb(220 0 220); } .rv-legend .mine { background: rgb(0 200 0); } .rv-legend .both { background: #fff; }
+.rv-checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rv-checks li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; align-items: start; overflow-wrap: anywhere; }
+.rv-checks li.skip { opacity: .6; }
+.rv-panel textarea { width: 100%; resize: vertical; background: #110d0b; border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; color: var(--bone); }
+.rv-panel .row { display: flex; gap: 8px; }
+.rv-panel .row button { flex: 1; justify-content: center; min-height: 38px; }
+.rv-panel button:disabled { opacity: .5; cursor: default; }
+.rv-history { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }

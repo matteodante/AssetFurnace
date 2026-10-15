@@ -194,3 +194,13 @@ Punti della review di Codex rimandati perché non danno un risultato sbagliato, 
 - **"Show folder" su Linux senza desktop**: lo studio lo offre anche quando non c'è `DISPLAY`, e il pulsante non apre
   nulla. I file restano scaricabili; va usato lo stesso controllo di `blender_edit_api.desktop_reason`
   ([PR #7](https://github.com/matteodante/AssetFurnace/pull/7#discussion_r4287526165)).
+- **Zip in memoria**: lo studio costruisce lo zip dell'esportazione in memoria prima di inviarlo. Con file da
+  centinaia di MB occupa memoria per tanto; va scritto su un file temporaneo e inviato a pezzi
+  ([PR #7](https://github.com/matteodante/AssetFurnace/pull/7#discussion_r4287894329)).
+
+Dall'utente, per la funzione 6 (famiglie di creature), dopo la prova in Unreal del 15/10/2026:
+
+- **Lupo mannaro, gambe digitigrade**: con le animazioni umane di Manny le gambe si incrociano in modo innaturale in
+  camminata. Serve un retarget o animazioni pensate per gambe digitigrade, non solo il profilo.
+- **Lupo mannaro, albedo**: esce chiaro e poco contrastato già dalla generazione; in Unreal si vede uguale. È un
+  problema del concept o della pittura, non dell'esportazione.

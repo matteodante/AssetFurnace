@@ -1,0 +1,8 @@
+{
+  "description": "One equipment slot (helmet, gloves, a weapon) worn on a base body. Open where it meets the body.",
+  "checks": {
+    "budget.faces": {"max": 8000},
+    "budget.materials": {"warn": 1, "fail": 2},
+    "mesh.holes": {"warn": 2.0, "fail": 5.0}
+  }
+}

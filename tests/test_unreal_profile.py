@@ -676,3 +676,27 @@ def test_letting_unreal_make_the_collision_expects_its_convex_hull():
         _measured(collision={"box_elems": 0, "convex_elems": 1}), _prop_sidecar(collision="unreal"))}
     assert results["collision"] is True
     assert "none" not in up.COLLISIONS and "unreal" in up.COLLISIONS
+
+
+# --- review round 3 ----------------------------------------------------------------------
+
+@pytest.mark.parametrize("classes, expected", [
+    (["commercial-clear", "commercial-conditional"], "commercial-conditional"),
+    (["commercial-conditional", "research-only", "territory-restricted"], "research-only"),
+    (["commercial-clear", None], "commercial-clear"),
+    ([None, None], None),
+    (["commercial-clear", "made-up-class"], "made-up-class"),  # an unknown class is never loosened
+])
+def test_the_strictest_licence_class_of_all_inputs_wins(classes, expected):
+    assert up.strictest_class(classes) == expected
+
+
+@pytest.mark.parametrize("mesh", ["SM_Box", "SK_Wolf9k"])
+def test_import_folder_names_are_plain_unreal_names(mesh):
+    assert up.safe_mesh_name(mesh) == mesh
+
+
+@pytest.mark.parametrize("mesh", ["../../Windows", "C:/Users", "SM_..", "SM_a/b", "", "Box"])
+def test_import_folder_names_that_could_escape_are_refused(mesh):
+    with pytest.raises(ValueError):
+        up.safe_mesh_name(mesh)

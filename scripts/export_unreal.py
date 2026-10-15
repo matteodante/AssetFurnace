@@ -47,6 +47,7 @@ from image_to_3dlab.glb_turn import parse_glb  # noqa: E402
 
 BLENDER_SCRIPT = REPO / "scripts" / "blender_export_unreal.py"
 OUTPUT_ROOT = REPO / "output" / "unreal"
+BLENDER_TIMEOUT = 3600  # seconds; a reshape takes under a minute, a hung Blender would block forever
 
 
 def default_collision(kind: str) -> str:
@@ -135,6 +136,26 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _class_of(record: dict | None) -> str | None:
+    record = record or {}
+    output = record.get("output") if isinstance(record.get("output"), dict) else {}
+    return record.get("classification") or output.get("classification")
+
+
+def _license_of(record: dict | None) -> Any:
+    record = record or {}
+    output = record.get("output") if isinstance(record.get("output"), dict) else {}
+    return record.get("license") or output.get("license")
+
+
+def _distinct(values) -> list:
+    seen = []
+    for value in values:
+        if value is not None and value not in seen:
+            seen.append(value)
+    return seen
+
+
 def provenance(inputs: list[Path], glb: Path) -> dict[str, Any]:
     """The licence record that travels with the export: every input and its own record."""
     sources = []
@@ -157,8 +178,10 @@ def provenance(inputs: list[Path], glb: Path) -> dict[str, Any]:
         "input": {"name": Path(inputs[0]).name, "sha256": sources[0]["sha256"], "source": "derived"},
         "output": {"name": glb.name, "sha256": _sha256(glb)},
         # Generation records keep the class under output; derived records at the top.
+        # The export is as restricted as the strictest of all its inputs.
         "license": main.get("license") or output.get("license"),
-        "classification": main.get("classification") or output.get("classification"),
+        "classification": up.strictest_class(_class_of(s["record"]) for s in sources),
+        "licenses": _distinct(_license_of(s["record"]) for s in sources),
         "sources": sources,
         "note": "Reshaped and renamed for Unreal; no model was run. Licences are those of the sources."
                 + ("" if sources[0]["record"] else " No record was found for the main source: its licence is unknown."),
@@ -189,7 +212,12 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
     for stale in (Path(p["job"]["out"]), Path(p["job"]["report"])):
         stale.unlink(missing_ok=True)  # a kept .work from a failed run must not pass for this one
     with (p["work"] / "blender.log").open("wb") as handle:
-        run(blender_command(blender, job_path), stdout=handle, stderr=subprocess.STDOUT, check=False, cwd=REPO)
+        try:
+            run(blender_command(blender, job_path), stdout=handle, stderr=subprocess.STDOUT, check=False, cwd=REPO,
+                timeout=BLENDER_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"Blender was still working after {BLENDER_TIMEOUT // 60} minutes and was stopped; "
+                               f"see {p['work'] / 'blender.log'}") from None
     report_path = Path(p["job"]["report"])
     report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.is_file() else {
         "ok": False, "error": f"Blender wrote no report; see {p['work'] / 'blender.log'}"}

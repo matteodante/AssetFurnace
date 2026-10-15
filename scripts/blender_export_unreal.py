@@ -51,9 +51,9 @@ def _import(bpy, path):
     bpy.ops.import_scene.gltf(filepath=str(path))
     new = [o for o in bpy.data.objects if o not in before]
     removed = []
+    rigged = any(o.type == "ARMATURE" for o in new)
     for obj in list(new):
-        # SkinTokens' `glTF_not_exported` helper sphere, 2 m wide, never part of the model.
-        if obj.type == "MESH" and obj.name.startswith("Icosphere") or obj.type not in ("MESH", "ARMATURE", "EMPTY"):
+        if _skintokens_helper(obj, rigged) or obj.type not in ("MESH", "ARMATURE", "EMPTY"):
             removed.append(obj.name)
             new.remove(obj)
             bpy.data.objects.remove(obj, do_unlink=True)
@@ -71,6 +71,17 @@ def _import(bpy, path):
         bpy.data.objects.remove(obj, do_unlink=True)
     bpy.context.view_layer.update()
     return new, removed
+
+
+def _skintokens_helper(obj, rigged):
+    """SkinTokens' `glTF_not_exported` sphere, 2 m wide, never part of the model.
+
+    Told apart by more than its name, since any prop made from Blender's primitive is
+    called Icosphere too: it comes with a skeleton but is not skinned to it.
+    """
+    return (rigged and obj.type == "MESH" and obj.name.startswith("Icosphere")
+            and not obj.vertex_groups and not any(m.type == "ARMATURE" for m in obj.modifiers)
+            and (obj.parent is None or obj.parent.type != "ARMATURE"))
 
 
 def _fcurves(action):
@@ -278,6 +289,18 @@ def _join(bpy, meshes, name):
     return obj
 
 
+def _hull(bmesh, mesh, points):
+    """Replace `mesh` with the convex hull of `points`, and nothing else."""
+    bm = bmesh.new()
+    for point in points:
+        bm.verts.new(point)
+    result = bmesh.ops.convex_hull(bm, input=list(bm.verts))
+    leftovers = [g for g in result["geom_interior"] + result["geom_unused"] if isinstance(g, bmesh.types.BMVert)]
+    bmesh.ops.delete(bm, geom=leftovers, context="VERTS")
+    bm.to_mesh(mesh)
+    bm.free()
+
+
 def _collision(bpy, target, kind, name):
     import bmesh
 
@@ -289,12 +312,7 @@ def _collision(bpy, target, kind, name):
         bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     else:
         mesh = bpy.data.meshes.new(name)
-        bm = bmesh.new()
-        for vertex in target.data.vertices:
-            bm.verts.new(target.matrix_world @ vertex.co)
-        bmesh.ops.convex_hull(bm, input=bm.verts)
-        bm.to_mesh(mesh)
-        bm.free()
+        _hull(bmesh, mesh, [target.matrix_world @ vertex.co for vertex in target.data.vertices])
         obj = bpy.data.objects.new(name, mesh)
         bpy.context.scene.collection.objects.link(obj)
         if len(mesh.polygons) > CONVEX_FACES:
@@ -302,13 +320,9 @@ def _collision(bpy, target, kind, name):
             decimate.ratio = CONVEX_FACES / len(mesh.polygons)
             bpy.context.view_layer.objects.active = obj
             bpy.ops.object.modifier_apply(modifier=decimate.name)
-            bm = bmesh.new()
-            bm.from_mesh(mesh)
-            bmesh.ops.convex_hull(bm, input=bm.verts)
-            for face in [f for f in bm.faces if not f.is_valid]:
-                bm.faces.remove(face)
-            bm.to_mesh(mesh)
-            bm.free()
+            # The decimated surface is only a set of points to hull again: a fresh hull from
+            # those points alone, so no old face survives inside it.
+            _hull(bmesh, mesh, [vertex.co.copy() for vertex in mesh.vertices])
     obj.name = obj.data.name = name
     obj.data.materials.clear()
     return obj

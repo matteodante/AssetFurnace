@@ -116,8 +116,31 @@ def clear_previous(project: Path, exports: list[dict]) -> None:
 
 
 def content_folder(project: Path, mesh: str) -> Path:
-    """Where one asset's imports live on disk: `<project>/Content/AF/<mesh>`."""
-    return project.parent / "Content" / CONTENT_ROOT.removeprefix("/Game/") / mesh
+    """Where one asset's imports live on disk: `<project>/Content/AF/<mesh>`; never anywhere
+    else, whatever a sidecar says."""
+    root = (project.parent / "Content" / CONTENT_ROOT.removeprefix("/Game/")).resolve()
+    folder = (root / safe_mesh_name(mesh)).resolve()
+    if folder.parent != root:
+        raise SystemExit(f"{mesh!r} would import outside {root}")
+    return folder
+
+
+def fit_results(exports: list[dict]) -> dict[str, dict]:
+    """Equipment must have been exported for its body as that body was exported: same
+    size and measure, or it lands scaled and placed for another figure."""
+    bodies = {e["sidecar"]["mesh"]: e["sidecar"] for e in exports}
+    results = {}
+    for export in exports:
+        side = export["sidecar"]
+        if side["kind"] != "equipment" or side.get("skeleton_from") not in bodies:
+            continue
+        body = bodies[side["skeleton_from"]]["expect"]
+        mine = side["expect"]
+        same = (mine.get("size_cm"), mine.get("measure")) == (body.get("size_cm"), body.get("measure"))
+        results[side["mesh"]] = {"check": "fit", "ok": same, "detail": (
+            f"exported for a {mine.get('size_cm')} cm {mine.get('measure')} body; "
+            f"{side['skeleton_from']} was exported at {body.get('size_cm')} cm {body.get('measure')}")}
+    return results
 
 
 def load_exports(folders: list[Path]) -> list[dict]:
@@ -127,10 +150,15 @@ def load_exports(folders: list[Path]) -> list[dict]:
         if len(sidecars) != 1:
             raise SystemExit(f"{folder}: expected one .unreal.json, found {len(sidecars)}")
         sidecar = json.loads(sidecars[0].read_text(encoding="utf-8"))
+        try:
+            safe_mesh_name(sidecar.get("mesh"))
+        except ValueError as exc:
+            raise SystemExit(f"{folder}: bad mesh name in the sidecar: {exc}") from None
         exports.append({"dir": str(Path(folder).resolve()), "glb": str((Path(folder) / sidecar["glb"]).resolve()),
                         "sidecar": sidecar})
-    names = [e["sidecar"]["mesh"] for e in exports]
-    twice = sorted({n for n in names if names.count(n) > 1})
+    # Windows folders ignore case: SK_Wolf and SK_WOLF would import into one folder.
+    names = [e["sidecar"]["mesh"].casefold() for e in exports]
+    twice = sorted({e["sidecar"]["mesh"] for e in exports if names.count(e["sidecar"]["mesh"].casefold()) > 1})
     if twice:
         # They would import into one folder and share one set of measurements.
         raise SystemExit(f"two exports are both called {', '.join(twice)}; export one with another --name")
@@ -172,16 +200,26 @@ def closeup_path(picture: Path | str, mesh: str) -> Path:
     return picture.with_name(f"{picture.stem}-{mesh}{picture.suffix}")
 
 
+def safe_mesh_name(mesh: str) -> str:
+    sys.path.insert(0, str(REPO))
+    from image_to_3dlab.unreal_profile import safe_mesh_name as check_name
+
+    return check_name(mesh)
+
+
 def write_results(exports: list[dict], measured: dict, picture: Path | None, picture_walk: Path | None = None) -> bool:
     sys.path.insert(0, str(REPO))
     from image_to_3dlab.unreal_profile import evaluate_unreal
 
     all_ok = True
+    fit = fit_results(exports)
     for export in exports:
         mesh = export["sidecar"]["mesh"]
         got = measured.get("assets", {}).get(mesh, {"error": "not imported"})
         results = evaluate_unreal(got, export["sidecar"]) if "error" not in got else [
             {"check": "import", "ok": False, "detail": got["error"]}]
+        if mesh in fit:
+            results.append(fit[mesh])
         ok = all(r["ok"] for r in results)
         all_ok &= ok
         folder = Path(export["dir"])
