@@ -1,6 +1,6 @@
 """Tests for the text-to-image bootstrap.
 
-The download is 13.4 GB, so what matters here is everything that happens *before* one
+The download is 14.6 GB, so what matters here is everything that happens *before* one
 byte moves: that the user is told what is coming, that nothing starts without a yes, and
 that a non-interactive run cannot silently spend someone's bandwidth.
 """
@@ -37,7 +37,7 @@ def test_announcement_names_backend_route_size_and_licence():
     text = boot.announcement()
     assert "Qwen-Image 2.1" in text
     assert "stable-diffusion.cpp" in text
-    assert "13.4 GB" in text
+    assert "14.6 GB" in text
     assert "Qwen Research License" in text
     assert "Built with Qwen" in text
 
@@ -51,7 +51,7 @@ def test_announcement_lists_every_file_with_its_size():
 
 def test_total_matches_the_catalogue_figure():
     """The Setup page and this script must not quote different numbers for one download."""
-    assert boot.total_gb() == pytest.approx(13.4, abs=0.05)
+    assert boot.total_gb() == pytest.approx(14.6, abs=0.05)
 
 
 def test_build_only_does_not_promise_weights(monkeypatch):
@@ -330,3 +330,20 @@ def test_probe_gpu_runs_the_binary_and_returns_its_chatter(tmp_path):
 
 def test_probe_gpu_survives_a_binary_that_will_not_start(tmp_path):
     assert boot.probe_gpu(tmp_path / "missing") == ""
+
+
+def test_the_vision_file_is_fetched_with_the_rest():
+    """Starting from reference pictures needs Qwen3-VL's vision half (`--llm_vision`)."""
+    vision = ("Qwen/Qwen3-VL-8B-Instruct-GGUF", "mmproj-Qwen3VL-8B-Instruct-F16.gguf", 1.16)
+    assert vision in boot.WEIGHTS
+
+
+def test_every_file_fetched_is_one_the_catalogue_counts():
+    """The Setup page measures what the bootstrap fetches; a file only one of them knows
+    about either never shows as downloaded or is never downloaded."""
+    import backend_catalog
+
+    named = {(w.source, w.filename) for w in backend_catalog.BY_ID["qwen-image"].weights}
+    folders = {w.source for w in backend_catalog.BY_ID["qwen-image"].weights if w.filename is None}
+    for repo, filename, _ in boot.WEIGHTS:
+        assert (repo, filename) in named or repo in folders, filename
