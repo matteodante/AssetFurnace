@@ -92,9 +92,19 @@ class WeightSet:
     bytes_expected: int
     path: Path
     note: str | None = None
+    # One file inside `path`, when the folder holds more than this unit: Qwen3-VL's cache
+    # folder has both the text encoder and its vision half, and counting the folder for
+    # each would report every byte twice.
+    filename: str | None = None
+
+    def measure(self) -> tuple[bool, int]:
+        """Whether this unit is on disk, and how many of its bytes are."""
+        if self.filename is None:
+            return _dir_state(self.path)
+        return _file_state(self.path, self.filename)
 
     def describe(self) -> dict[str, Any]:
-        present, actual = _dir_state(self.path)
+        present, actual = self.measure()
         return {
             "label": self.label,
             "source": self.source,
@@ -106,6 +116,7 @@ class WeightSet:
             "bytes_present": actual,
             "human_present": human_bytes(actual),
             "path": str(self.path),
+            "filename": self.filename,
             "note": self.note,
         }
 
@@ -563,7 +574,14 @@ CATALOG: tuple[Backend, ...] = (
                       "Qwen/Qwen3-VL-8B-Instruct-GGUF", int(5.03 * GB),
                       HF_HUB_DIR / "models--Qwen--Qwen3-VL-8B-Instruct-GGUF",
                       note="Qwen-Image reads your prompt with a vision-language model, "
-                           "which is why the text encoder is this large."),
+                           "which is why the text encoder is this large.",
+                      filename="Qwen3VL-8B-Instruct-Q4_K_M.gguf"),
+            # Exact bytes, as Hugging Face reports them (Apache-2.0, like the encoder).
+            WeightSet("Qwen3-VL-8B vision (F16)", "Qwen/Qwen3-VL-8B-Instruct-GGUF",
+                      1_159_029_824, HF_HUB_DIR / "models--Qwen--Qwen3-VL-8B-Instruct-GGUF",
+                      note="Lets Qwen-Image look at reference pictures, to draw something "
+                           "new from one. Text to image works without it.",
+                      filename="mmproj-Qwen3VL-8B-Instruct-F16.gguf"),
             WeightSet("Qwen-Image 2.1 VAE", "Comfy-Org/Qwen-Image-2.1", int(0.68 * GB),
                       HF_HUB_DIR / "models--Comfy-Org--Qwen-Image-2.1",
                       note="Turns the generated latent back into pixels."),
@@ -627,7 +645,9 @@ def is_shared(backend: "Backend", weight: "WeightSet") -> bool:
     tool) can still remove it: that is the explicit choice."""
     if backend.kind == "tool":
         return False
-    return any(other.id != backend.id and any(w.path == weight.path for w in other.weights)
+    return any(other.id != backend.id
+               and any((w.path, w.filename) == (weight.path, weight.filename)
+                       for w in other.weights)
                for other in BY_ID.values())
 
 
@@ -759,6 +779,34 @@ def _dir_state(path: Path) -> tuple[bool, int]:
             total += info.st_size
         except OSError:
             continue
+    return total > 0, total
+
+
+def named_files(folder: Path, name: str) -> list[Path]:
+    """Every file called `name` under `folder` (a cache keeps one per snapshot)."""
+    if not folder.is_dir():
+        return []
+    return [item for item in folder.rglob(name) if item.is_file()]
+
+
+def _file_state(folder: Path, name: str) -> tuple[bool, int]:
+    """`_dir_state` for one named file in a folder that holds others too.
+
+    Only finished files count: a download in progress sits under a temporary name, so the
+    readout jumps from nothing to everything for this unit. Each real file once, by inode,
+    for the same reason as `_dir_state`.
+    """
+    total = 0
+    seen: set[tuple[int, int]] = set()
+    for item in named_files(folder, name):
+        try:
+            info = item.stat()
+        except OSError:
+            continue
+        key = (info.st_dev, info.st_ino)
+        if key not in seen:
+            seen.add(key)
+            total += info.st_size
     return total > 0, total
 
 

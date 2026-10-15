@@ -441,3 +441,39 @@ def test_the_removers_own_card_can_still_remove_it(tmp_path, monkeypatch):
     shared, _ = _sharing(tmp_path, monkeypatch)
     dl.remove("remover")
     assert not shared.exists()
+
+
+def test_removing_a_named_file_keeps_the_rest_of_its_folder(tmp_path, monkeypatch):
+    """The vision file sits beside the text encoder in one cache folder. Removing a route
+    that names a file must delete that file, not the folder the encoder lives in."""
+    import dataclasses
+
+    snaps = tmp_path / "models--org--name" / "snapshots" / "rev"
+    snaps.mkdir(parents=True)
+    (snaps / "vision.gguf").write_bytes(b"v" * 7)
+    (snaps / "encoder.gguf").write_bytes(b"keep me")
+    real = dl.BY_ID["qwen-image"]
+    named = dataclasses.replace(real.weights[0], path=tmp_path / "models--org--name",
+                                filename="vision.gguf")
+    monkeypatch.setitem(dl.BY_ID, "route-n", dataclasses.replace(real, id="route-n",
+                                                                 weights=(named,)))
+    monkeypatch.setattr(dl, "_inside_known_roots", lambda path: True)
+
+    result = dl.remove("route-n")
+    assert result["freed_bytes"] == 7
+    assert not (snaps / "vision.gguf").exists()
+    assert (snaps / "encoder.gguf").read_bytes() == b"keep me"
+
+
+def test_download_progress_counts_a_named_file_alone(tmp_path):
+    import dataclasses
+
+    snaps = tmp_path / "models--org--name" / "snapshots" / "rev"
+    snaps.mkdir(parents=True)
+    (snaps / "vision.gguf").write_bytes(b"v" * 7)
+    (snaps / "encoder.gguf").write_bytes(b"e" * 100)
+    real = dl.BY_ID["qwen-image"]
+    named = dataclasses.replace(real.weights[0], path=tmp_path / "models--org--name",
+                                filename="vision.gguf")
+    run = dl.DownloadRun(dataclasses.replace(real, weights=(named,)))
+    assert run.bytes_present() == 7
