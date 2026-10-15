@@ -105,6 +105,11 @@ class SiglipEmbedder(Embedder):
     def __init__(self, device: str | None = None, hub: Path | None = None):
         import torch
         from transformers import AutoImageProcessor, SiglipVisionModel
+        from transformers.utils import logging as hf_logging
+
+        # The file also holds the text tower, which this does not load; the loader would
+        # print every one of its weights as "unexpected".
+        hf_logging.set_verbosity_error()
 
         folder = models.require(models.SIGLIP2, hub)["model.safetensors"].parent
         self.device = _device(device)
