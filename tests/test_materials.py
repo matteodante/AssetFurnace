@@ -486,7 +486,7 @@ def test_sidecar_carries_zones_formula_and_checks(banded, tmp_path):
     assert tint["space"] == "linear"
     assert tint["luminance_weights"] == list(m.LUMINANCE_WEIGHTS)
     assert "t - c" in tint["formula"]
-    assert sidecar["textures"]["tint_mask"] == "T_Probe_TintMask.png"
+    assert sidecar["textures"]["tint_mask"] == "T_Probe_Tint.png"
     assert sidecar["textures"]["orm_channels"] == {"R": "occlusion", "G": "roughness", "B": "metallic"}
     assert {r["check"] for r in sidecar["checks"]} == {
         "tint_zones", "baked_light_direction", "baked_light_occlusion", "baked_light_highlights"}

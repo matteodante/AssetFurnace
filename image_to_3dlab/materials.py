@@ -855,9 +855,9 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
 
         mask = _mask_image(surface, analysis, coverage, zones_from)
         mask_u8 = np.round(fill_gutter(mask, coverage) * 255).astype(np.uint8)
-        written["tint_mask"] = out_dir / f"{name}_TintMask.png"
+        written["tint_mask"] = out_dir / f"{name}_Tint.png"
         Image.fromarray(mask_u8).save(written["tint_mask"])
-        mask_tex, binary = add_texture(document, binary, _png(mask_u8), f"{name}_TintMask", sampler)
+        mask_tex, binary = add_texture(document, binary, _png(mask_u8), f"{name}_Tint", sampler)
 
         orm, maps = _orm(surface, material, glb, mask, coverage, analysis.ao.get(surface.material),
                          roughness_by_zone or {}, metallic_by_zone or {})
