@@ -1,7 +1,8 @@
 # Funzione 8, materiali pronti per il gioco: progetto
 
-Data: 15 ottobre 2026. Stato: **proposta, da approvare**. Niente codice scritto finora.
+Data: 15 ottobre 2026. Stato: **approvato dall'utente e implementato** (ramo `claude/feat-game-materials-62a00b`).
 Parte da [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 8.
+Cosa è cambiato implementando, rispetto alla proposta qui sotto: sezione [Esito](#esito-dellimplementazione) in fondo.
 
 Cosa esce, per un GLB generato: una maschera di tinta a 3 zone, un controllo della luce cotta, normal e rugosità dove
 mancano, una texture ORM. Tutto in `image_to_3dlab/materials.py` (una funzione Python) più uno script
@@ -186,3 +187,54 @@ T_<asset>_ORM.png
    invece di ricevere zone geometriche automatiche?
 2. Soglie iniziali della luce cotta: 1,5 avviso, 2,0 rifiuto. Va bene partire da qui e ritararle sul pilota?
 3. Va bene la formula di tinta "a scostamento" qui sopra? Unreal deve usare la stessa.
+
+## Esito dell'implementazione
+
+Codice: `image_to_3dlab/materials.py` (`make_game_materials`, `run_checks`), `scripts/game_materials.py`,
+`scripts/blender_tint_preview.py`. Test: `tests/test_materials.py`, `tests/test_blender_tint_preview.py`.
+
+**Cambiato rispetto alla proposta, con il motivo:**
+
+| Punto | Proposta | Ora | Perché |
+|---|---|---|---|
+| Soglie `baked_light_direction` | 1,5 / 2,0 | **1,3 / 1,45** | Una luce cotta apposta nell'albedo del guerriero (ambiente 35 %) misura solo 1,55: ombre proiettate e colori mescolati diluiscono quello che una sfera mostra pulito (2,7). Con 1,5 / 2,0 passava con un avviso. Gli albedo puliti stanno fra 1,00 e 1,22. **Da confermare con l'utente**; si torna indietro cambiando una riga (`LIGHT_RATIO`) |
+| Gruppi di colore | k-means fino a 6, fusione sotto ΔE 10 | fino a **12**, fusione sotto 10 **o se sono lo stesso pigmento** (stessa tinta ±12°, stesso rapporto saturazione/luminosità ±20 %) | Con 6 la pelle del guerriero finiva nella stoffa rossa e si tingeva di verde; con 12 la stoffa rossa si spezzava in "rosso in luce" e "rosso in ombra". Un'ombra cambia luminosità e saturazione insieme, non la tinta |
+| Gruppi per i controlli della luce | luminosità a peso 0,25 | gli **stessi** delle zone (peso 0,5) | A 0,25 nero e grigio dell'armatura si fondevano e la loro differenza vera sembrava luce (1,73 su un asset pulito) |
+| `baked_light_highlights` | quota di punti chiari e senza colore | conta solo se i punti sono **rivolti nella stessa direzione** (≥ 70 % entro 45° dalla loro normale media; rampa da 40 % a 70 %) | La stoffa color crema accanto al viola scuro di una ragazza dava il 3,4 % (rifiuto falso). Un riflesso dipinto viene da una luce sola e guarda da una parte; un materiale chiaro guarda ovunque |
+| `tint_zones` | 1–2 zone avviso, 0 rifiuto | 1 zona (albedo uniforme o un solo pigmento) **rifiuto**, 2 avviso, 3 o più passa | Una zona sola è "nessuna zona da separare" |
+
+**Misure sui GLB in `output/`** (valori finali):
+
+| Asset | Zone | Luce (rapporto) | Riflessi |
+|---|---|---|---|
+| Guerriero grezzo Pixal3D | 3 | 1,04 | 0 |
+| Guerriero 9k / 18k finiti | 3 / 3 | 1,22 / 1,21 | 0 / 0,02 % |
+| Guerriero 18k con luce cotta apposta | 2 | **1,55, rifiutato** | 0,11 % |
+| Ragazza grezza → finita 40k | 1 → 2 | 1,02 → **1,52, rifiutata** | 0 |
+| Altra ragazza grezza → finita 100k | 3 → 2 | 1,02 → 1,09 | 0 |
+| Ragazza giovane grezza | 3 | 1,11 | 0 |
+| Testuggine (albedo bianco) | **1, rifiutata** | 1,01 | 0 |
+
+La finitura che proietta la foto del concept sull'asset (passo `photo` di `retopo_repaint.py`) porta con sé la luce del
+concept: la ragazza 40k passa da 1,02 a 1,52. È proprio il caso che il controllo deve rimandare indietro.
+
+**Prova in Blender** (`blender_tint_preview.py`, Cycles su CPU, guerriero 18k: nel parco non c'è un mostro): originale
+con la luce del concept, zone ricolorate da parametri, le stesse due con una luce bassa laterale, e la versione con luce
+cotta apposta. La stoffa passa dal rosso al verde, il cuoio di guanti, stivali e cintura all'oro, l'emblema resta
+dorato e la pelle non si tinge. Con la luce laterale non compaiono ombre dipinte; nella versione con luce cotta sì, e il
+controllo la rifiuta.
+
+**Limiti visti nella prova:**
+- Zone quasi nere (il guerriero ha una zona a L* 4): la tinta le cambia poco, perché la formula conserva la luminosità.
+  Per una zona così servirà un parametro di luminosità della zona, oppure tingerla in Unreal con un colore più scuro.
+- Qualche texel rossastro della pelle (guance, labbra) cade nella zona della stoffa rossa e si tinge. Si corregge con
+  una maschera fatta a mano (`feature_mask.py`) o con un ritocco della maschera.
+- Il controllo della luce è tarato su 10 asset; il pilota lo ritara.
+
+**Riusato**: `edit_glb.EditGLB` (lettura validata del GLB, accessor e trasformazioni dei nodi), `glb_turn.build_glb`,
+la convenzione della normal di `surface_detail.py` (stessi valori, verificato da un test), `blender_bake_ao.py` per
+l'occlusione, l'idea di Materialize per l'altezza a bande (solo l'idea: è GPL-3).
+
+**Fuori dal mio perimetro, da fare dopo il merge**: il passo `materials` in `cli.py` (sessione della funzione 1); la
+registrazione dei controlli nella coda (funzione 7); il Material Function di Unreal che rifà la formula dal
+`.materials.json` (funzione 5).
