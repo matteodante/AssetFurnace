@@ -25,6 +25,9 @@ from typing import Any
 
 from image_to_3dlab.checks.registry import register, result
 
+# The props run keeps one record for all its props and no hash per prop, so a licence found
+# that way is inherited, not bound to the file: it can pass at most as a warn.
+INHERITED = "inherited from the props run, not bound to this file by a hash:"
 PROPS_RUN = re.compile(r"^[A-Za-z0-9_-]{1,200}__props__\d{8}-\d{6}(?:-\d+)?$")
 FINISH_RUN = re.compile(r"^(?P<source>[A-Za-z0-9_-]{1,200})__finish__\d{8}-\d{6}(?:-\d+)?$")
 
@@ -121,7 +124,7 @@ def find_records(glb: Path, explicit: Path | None = None,
             declared = (record.get("input") or {}).get("sha256")
             if declared and (not source.is_file() or sha256_file(source) != declared):
                 return [], f"props run, but its source.glb is not the model {record_path.name} records"
-            return [(record_path, record)], f"traced to {record_path}"
+            return [(record_path, record)], f"{INHERITED} {record_path}"
         match = FINISH_RUN.match(folder.name)
         if not match:
             continue
@@ -168,6 +171,15 @@ def collect(record: Any, found: dict | None = None) -> dict:
     return found
 
 
+def parts(name: str) -> list[str]:
+    """The licences a combined name lists: "MIT + DINOv3 License (encoder)" -> ["MIT", "DINOv3 License"].
+
+    Parenthetical asides go first, since they hold "+" and "," of their own ("code + flow weights").
+    """
+    plain = re.sub(r"\([^)]*\)", " ", name)
+    return [p.strip() for p in re.split(r"\s*(?:\+|;|,|/|\band\b)\s*", plain, flags=re.IGNORECASE) if p.strip()]
+
+
 def classify(name: str) -> tuple[list[str], list[str]]:
     """(classes, conditions) for one licence name; no classes means unknown."""
     classes, conditions = [], []
@@ -181,6 +193,16 @@ def classify(name: str) -> tuple[list[str], list[str]]:
 
 @register("license.components")
 def components(asset, config):
+    found = _judge(asset, config)
+    how = (found.get("details") or {}).get("found") or ""
+    if how.startswith(INHERITED) and found["status"] == "pass":
+        found = result("license.components", "warn", found["value"], found["threshold"],
+                       f"{found['message']}; licence {how.split(':')[0]} (a per-prop provenance sidecar would bind it)",
+                       found.get("details"))
+    return found
+
+
+def _judge(asset, config):
     records, how = find_records(asset.glb, asset.provenance, asset.output_root)
     threshold = {"fail": "no provenance, or a blocked licence", "warn": "an unknown licence"}
     if not records:
@@ -197,8 +219,8 @@ def components(asset, config):
     blocked, unknown, conditional = [], [], []
     for name in found["licenses"]:
         classes, conditions = classify(name)
-        if not classes:
-            unknown.append(name)
+        if not classes or any(not classify(part)[0] for part in parts(name)):
+            unknown.append(name)  # one recognised part must not clear an unknown one
         if "blocked" in classes:
             blocked.append(name)
         if "conditional" in classes:

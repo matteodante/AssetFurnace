@@ -174,6 +174,7 @@ def run_checks(asset, profile: str = "prop", overrides: dict | None = None,
     if not Path(asset.glb).is_file():
         raise ValueError(f"{asset.glb} does not exist")
     settings = load_profile(profile, overrides)
+    started = asset.sha256  # hashed before any check reads the file
     wanted = set(only) if only is not None else None
     results, skipped = [], []
     for name, spec in REGISTRY.items():
@@ -195,6 +196,11 @@ def run_checks(asset, profile: str = "prop", overrides: dict | None = None,
         except Exception as exc:  # noqa: BLE001 - a check that cannot measure has not passed
             found = result(name, "fail", None, None, f"check could not run: {type(exc).__name__}: {exc}")
         results.append(found)
+    from image_to_3dlab.provenance import sha256_file
+
+    if sha256_file(asset.glb) != started:
+        # Earlier results describe the old bytes; binding them to the new hash would lie.
+        raise ValueError(f"{asset.glb} changed while it was being checked; check it again")
     return {
         "schema_version": SCHEMA_VERSION,
         "asset": str(asset.glb),

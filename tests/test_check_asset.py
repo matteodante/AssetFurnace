@@ -88,3 +88,32 @@ def test_the_cli_needs_the_version_to_decide_and_lists_it(tmp_path, capsys):
     assert sha[:12] in capsys.readouterr().out
     assert review_queue.main(["--send-back", "barrel_01", "--note", "x", "--log", str(log)]) == 2
     assert "--sha" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("value", ["inf", "nan"])
+def test_a_non_finite_measurement_is_refused_at_the_command_line(tmp_path, value):
+    """Codex review 6: `--height inf` printed a traceback."""
+    with pytest.raises(SystemExit) as stopped:
+        check_asset.main([str(fx.clean(tmp_path / "a.glb")), "--height", value])
+    assert stopped.value.code == 2
+
+
+def test_a_verdict_is_not_written_for_bytes_that_changed_after_the_decision(tmp_path, monkeypatch):
+    """Codex review 6: the verdict must describe the version the decision was about."""
+    glb = fx.clean(tmp_path / "barrel.glb")
+    fx.sidecar(glb, fx.PIXAL3D_RECORD)
+    log, register = tmp_path / "log.jsonl", tmp_path / "verdicts.jsonl"
+    check_asset.main([str(glb), "--key", "barrel_01", "--log", str(log)])
+    sha = review.fold(review.load(log))["barrel_01"]["asset_sha256"]
+    original = review.decide
+
+    def decide_then_overwrite(*args, **kwargs):
+        item = original(*args, **kwargs)
+        fx.cube(glb)  # a batch writes its next result in place right after the decision
+        return item
+
+    monkeypatch.setattr(review, "decide", decide_then_overwrite)
+    item, problem = review_queue.decide("barrel_01", "sent_back", "lid", log, register, asset_sha256=sha)
+    assert item["state"] == "sent_back"
+    assert problem and "changed" in problem
+    assert not register.exists()

@@ -42,6 +42,10 @@ def decide(key: str, decision: str, note: str = "", log: Path | None = None,
         return item, f"no verdict written: {asset} is not on disk"
     reason = note.strip() or f"approved in the review queue (checks: {item.get('status')})"
     entry = mark_asset.build_entry(asset, VERDICT[decision], reason, tags=["review-queue"])
+    if entry["asset_sha256"] != item.get("asset_sha256"):
+        # Overwritten between the decision and now: a verdict on these bytes would be about a
+        # file nobody judged. The decision stands; the verdict is left out and said so.
+        return item, f"no verdict written: {asset.name} changed on disk after the decision"
     mark_asset.append_entry(register or mark_asset.REGISTER, entry)
     return item, None
 

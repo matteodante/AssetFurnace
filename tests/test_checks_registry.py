@@ -183,3 +183,16 @@ def test_generic_settings_are_accepted_for_any_registered_check(tmp_path):
     report = checks.run_checks(checks.Asset(glb=fx.clean(tmp_path / "a.glb")), only=["mesh.holes"],
                                overrides={"mesh.holes": {"warn_only": True, "fail": 5.0}, "silhouette": {"enabled": False}})
     assert report["results"][0]["check"] == "mesh.holes"
+
+
+def test_a_glb_that_changes_while_it_is_checked_is_refused(tmp_path, monkeypatch):
+    """Codex review 6: a report must not bind early results to a file replaced mid-run."""
+    glb = fx.clean(tmp_path / "a.glb")
+
+    def overwrite(asset, config):
+        fx.cube(asset.glb)
+        return registry.result("test.overwrite", "pass", 1, None, "ok")
+
+    monkeypatch.setitem(registry.REGISTRY, "test.overwrite", registry.CheckSpec("test.overwrite", overwrite, ("glb",)))
+    with pytest.raises(ValueError, match="changed while"):
+        checks.run_checks(checks.Asset(glb=glb), only=["test.overwrite"])

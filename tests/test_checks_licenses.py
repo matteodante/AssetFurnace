@@ -174,12 +174,33 @@ def _prop_run(tmp_path, source_matches=True):
     return fx.clean(prop / "prop_01_LOD0.glb")
 
 
-def test_a_prop_is_traced_to_its_props_run(tmp_path):
-    """Codex review 4: props keep their licence in <run>/props.provenance.json."""
+def test_a_prop_is_traced_to_its_props_run_but_only_warns(tmp_path):
+    """Codex reviews 4 and 6: props keep their licence in <run>/props.provenance.json, which
+    names no hash per prop, so the inherited licence is not bound to the file: a warn."""
     found = check(_prop_run(tmp_path))
-    assert found["status"] == "pass" and "props.provenance.json" in found["details"]["records"][0]
+    assert "props.provenance.json" in found["details"]["records"][0]
+    assert found["status"] == "warn" and "not bound" in found["message"]
+
+
+def test_a_prop_with_its_own_hash_bound_sidecar_passes(tmp_path):
+    prop = _prop_run(tmp_path)
+    fx.sidecar(prop, {**fx.PIXAL3D_RECORD, "output": {"sha256": checks.Asset(glb=prop).sha256}})
+    assert check(prop)["status"] == "pass"
 
 
 def test_a_props_run_whose_source_changed_is_not_trusted(tmp_path):
     found = check(_prop_run(tmp_path, source_matches=False))
     assert found["status"] == "fail" and "source.glb" in found["message"]
+
+
+@pytest.mark.parametrize("name, status", [
+    ("MIT + Proprietary Research License", "warn"),
+    ("MIT (code + flow weights); DINOv3 License (bundled encoder)", "pass"),
+    ("MIT + DINOv3 License + Qwen Research License Agreement", "pass"),
+    ("MIT code / Apache-2.0 U-2-Net", "pass"),
+])
+def test_every_part_of_a_composite_licence_is_classified(tmp_path, name, status):
+    """Codex review 6: one recognised part must not clear an unknown one."""
+    glb = fx.clean(tmp_path / "a.glb")
+    fx.sidecar(glb, {"license": name})
+    assert check(glb)["status"] == status

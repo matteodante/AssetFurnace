@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -21,9 +22,9 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def metres(text: str) -> float:
-    """A positive length in metres: a negative or zero one would make every size check pass."""
+    """A positive, finite length in metres: a negative, zero or infinite one breaks every size check."""
     value = float(text)
-    if not value > 0:
+    if not (math.isfinite(value) and value > 0):
         raise argparse.ArgumentTypeError(f"must be a positive number of metres, got {text}")
     return value
 

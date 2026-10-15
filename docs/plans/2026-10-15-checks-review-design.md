@@ -378,3 +378,20 @@ tangenti generato a runtime), un errore `ACCESSOR_TOO_LONG` sul GLB rotto appost
 *Implementato, in più*: le misure lette dai numeri di una riga di lotto hanno la precedenza su quelle del modello di
 riferimento, e un controllo di misura senza il dato che gli serve (per esempio larghezza e profondità) viene saltato
 invece di avvisare.
+
+## 10. Seguiti
+
+Punti della review di Codex rimandati per la regola del 15/10/2026 (i P2 si correggono solo se sono errori che un
+utente vedrebbe), più il lavoro che spetta ad altre parti della repo.
+
+- Decidere su un asset il cui GLB è stato cancellato o spostato riesce ancora; il giudizio in `verdicts.jsonl` viene
+  comunque saltato e segnalato. Rimandato: con il file sparito l'asset non si può spedire, e oggi i test della coda
+  usano percorsi finti. [Thread](https://github.com/matteodante/AssetFurnace/pull/4#discussion_r4287008029)
+- Le soglie passate come override non sono validate nel valore: `--set mesh.holes.fail=NaN` fa passare tutto.
+  Rimandato: serve un valore scritto apposta; i nomi sbagliati sono già rifiutati.
+  [Thread](https://github.com/matteodante/AssetFurnace/pull/4#discussion_r4287008052)
+- I prop ereditano la licenza dal `props.provenance.json` del run, che non ha un hash per prop: oggi passano al massimo
+  come avviso. La correzione vera è nel passo dei prop (`viewer/props_api.py`, `scripts/finish_props.py`): scrivere
+  accanto a ogni `<prop>_LOD0.glb` un sidecar con il suo `output.sha256`, che il controllo delle licenze legge già.
+  [Thread](https://github.com/matteodante/AssetFurnace/pull/4#discussion_r4287008015)
+- Compenetrazioni nelle pose di prova: dopo la funzione 4.
