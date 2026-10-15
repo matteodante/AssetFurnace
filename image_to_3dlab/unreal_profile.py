@@ -34,6 +34,8 @@ import numpy as np
 from image_to_3dlab.glb_turn import build_glb, parse_glb
 
 KINDS = ("prop", "creature", "equipment")
+# What the batch rows and the checks call the same kinds.
+KIND_ALIASES = {"object": "prop", "equipment_part": "equipment"}
 MEASURES = ("height", "longest")
 COLLISIONS = ("box", "convex", "none")
 ROOT_BONE = "root"
@@ -624,6 +626,10 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
         results.append(_check("collision", count >= 1, f"{count} {expected['collision']} collision shape(s)"))
     srgb = measured.get("orm_srgb", [])
     results.append(_check("orm", bool(srgb) and not any(srgb), f"ORM textures sRGB: {srgb}"))
+    if expected.get("tint"):
+        srgb = measured.get("tint_srgb")
+        results.append(_check("tint", srgb is False, "tint mask imported as linear data" if srgb is False else
+                              "tint mask missing" if srgb is None else "tint mask imported as sRGB colour"))
     if want.get("facing"):
         forward = measured.get("forward") or [0, 0, 0]
         results.append(_check("facing", forward[1] > 0.7, f"faces {forward}, wanted +Y like Manny"))

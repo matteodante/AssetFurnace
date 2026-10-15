@@ -147,14 +147,19 @@ Cose imparate strada facendo, che valgono anche per l'import di Auroconts:
   Partition, quindi gli attori aggiunti vanno resi "sempre caricati";
 - in Python `unreal.Rotator(a, b, c)` è (roll, pitch, yaw): meglio sempre gli argomenti per nome.
 
+Con la funzione 8: il profilo prende da solo `T_<asset>_Tint.png` e `<asset>.materials.json` lasciati accanto al
+modello, li porta nella cartella d'uscita e lo script d'import mette la maschera in Unreal come dato lineare (provato
+sul guerriero passato dalla funzione 8: tutti i controlli verdi, maschera compresa). Il tipo accetta anche i nomi
+`object` ed `equipment_part` usati dai lotti e dai controlli.
+
 Nello studio: pannello **Export for Unreal** su un asset della Libreria (tipo, misura vera, corpo per l'equipaggiamento,
 mosse, verifica facoltativa in Unreal), con i file da scaricare, lo zip, "Show folder" in locale e, se richiesto, i
 controlli e l'immagine di Unreal.
 
 ## Cosa resta
 
-- **Occlusione**: il canale R dell'ORM viene dalla mappa di occlusione del modello quando c'è; i modelli di oggi non ne
-  hanno, quindi è bianco. Cuocerla con `scripts/blender_bake_ao.py` dentro il profilo è il passo successivo (va fatta per
+- **Occlusione**: il canale R dell'ORM viene dalla mappa di occlusione del modello quando c'è (la funzione 8 la mette
+  quando ha un'AO); senza, è bianco. Cuocerla con `scripts/blender_bake_ao.py` dentro il profilo è il passo successivo (va fatta per
   ogni LOD, ognuno ha il suo atlante).
 - **Collisione `UCX_`** (convessa) scritta ma non verificata in Unreal: l'API Python non espone i vertici del convesso.
   La `UBX_` predefinita è verificata.

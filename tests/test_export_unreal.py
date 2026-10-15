@@ -181,3 +181,37 @@ def test_real_blender_sizes_and_grounds_an_object(tmp_path):
     assert lo[2] == pytest.approx(0.0, abs=1e-5)
     document, _ = parse_glb(Path(result["glb"]).read_bytes())
     assert {n["name"] for n in document["nodes"]} == {"SM_Thing", "UBX_SM_Thing_00"}
+
+
+@pytest.mark.parametrize("alias, kind", [("object", "prop"), ("equipment_part", "equipment"), ("creature", "creature")])
+def test_the_kind_names_the_other_steps_use_are_understood(files, alias, kind):
+    body = files["rig"] / "Wolf_9k_rigged.glb" if kind == "equipment" else None
+    assert ex.plan(files["part"], kind=alias, size_cm=50, body=body)["job"]["kind"] == kind
+
+
+def test_the_material_steps_tint_mask_and_record_are_picked_up(files, tmp_path):
+    from PIL import Image
+
+    source = files["root"] / "game" / "Barrel.glb"
+    source.parent.mkdir()
+    source.write_bytes(_triangle_glb())
+    Image.new("RGB", (4, 4), (0, 255, 0)).save(source.parent / "T_Barrel_Tint.png")
+    (source.parent / "Barrel.materials.json").write_text(json.dumps({"tint": {"zones": []}}))
+    p = ex.plan(source, kind="prop", size_cm=50)
+    assert p["tint_source"] == source.parent / "T_Barrel_Tint.png"
+    result = ex.export_unreal(source, kind="prop", size_cm=50, out_dir=tmp_path / "out", blender=Path("blender"),
+                              run=_fake_blender(material="MI_Barrel"), log=lambda m: None)
+    out = tmp_path / "out"
+    assert (out / "T_Barrel_Tint.png").is_file()
+    assert json.loads((out / "SM_Barrel.materials.json").read_text()) == {"tint": {"zones": []}}
+    sidecar = json.loads((out / "SM_Barrel.unreal.json").read_text())
+    assert sidecar["tint"] == "T_Barrel_Tint.png" and sidecar["materials_record"] == "SM_Barrel.materials.json"
+    assert result["ok"]
+
+
+def test_an_ambiguous_tint_mask_is_not_guessed(files):
+    from PIL import Image
+
+    for name in ("T_A_Tint.png", "T_B_Tint.png"):
+        Image.new("RGB", (2, 2)).save(files["part"].parent / name)
+    assert ex.plan(files["part"], kind="prop", size_cm=50)["tint_source"] is None

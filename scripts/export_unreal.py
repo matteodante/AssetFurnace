@@ -12,7 +12,8 @@ Writes one folder (default `output/unreal/<Name>__<time>/`) holding:
   objects, a `root` bone and Mannequin bone names for humanoids, every animation;
 - `<mesh>.unreal.json`: how to import it and what Unreal should measure afterwards;
 - `<mesh>.provenance.json`: the licences of everything it was made from;
-- `T_<Name>_Tint.png` when `--tint` gives a tint mask (the material step makes those).
+- `T_<Name>_Tint.png` and `<mesh>.materials.json` when the material step left a tint mask and
+  its record beside the model (or `--tint` names a mask).
 
 `--size-cm` is the real height (`--measure height`, the default) or longest side: a
 generated model has no real size of its own. Equipment takes its size, facing and
@@ -65,6 +66,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
          forward: tuple[float, float, float] | None = None, body_name: str | None = None) -> dict[str, Any]:
     """Check the request and work out names, files and the Blender job. No side effects."""
     source = Path(source)
+    kind = up.KIND_ALIASES.get(kind, kind)
     if kind not in up.KINDS:
         raise ValueError(f"--kind must be one of {', '.join(up.KINDS)}")
     if measure not in up.MEASURES:
@@ -83,6 +85,11 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
     for path in [source, *(lods or []), *(animations or []), *([body] if body else []), *([tint] if tint else [])]:
         if not Path(path).is_file():
             raise ValueError(f"{path} does not exist")
+    if tint is None:
+        # The material step leaves its tint mask beside the model; take it when it is unambiguous.
+        masks = sorted(source.parent.glob("T_*_Tint.png"))
+        tint = masks[0] if len(masks) == 1 else None
+    record = source.with_name(source.stem + ".materials.json")
     animations = [Path(p) for p in (animations or [])]
     prefix = up.model_prefix([source.stem, *(p.stem for p in animations)])
     base = up.base_name(name) if name else default_base(source, kind, animations)
@@ -105,6 +112,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
             "glb": out_dir / f"{names['mesh']}.glb", "sidecar": out_dir / f"{names['mesh']}.unreal.json",
             "provenance": out_dir / f"{names['mesh']}.provenance.json",
             "tint": (out_dir / f"{names['tint']}.png") if tint else None, "tint_source": tint,
+            "materials_record": record if record.is_file() else None,
             "inputs": [source, *lods, *animations, *([Path(body)] if body else [])],
             "skeleton_from": "SK_" + up.base_name(body_name or up.model_prefix([Path(body).stem])) if body else None}
 
@@ -162,6 +170,7 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
     p = plan(source, kind=kind, size_cm=size_cm, measure=measure, name=name, out_dir=out_dir, lods=lods,
              collision=collision, body=body, animations=animations, tint=tint, forward=forward,
              body_name=body_name)
+    kind = p["job"]["kind"]
     blender = blender or find_blender()
     if blender is None:
         raise RuntimeError(missing_help())
@@ -191,6 +200,10 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
                          humanoid=bool(report.get("humanoid")), skeleton_from=p["skeleton_from"],
                          animations=report.get("animations", []), tint=p["tint"].name if p["tint"] else None,
                          problems=problems)
+    if p["materials_record"]:
+        record = p["out_dir"] / f"{p['names']['mesh']}.materials.json"
+        shutil.copyfile(p["materials_record"], record)
+        sidecar["materials_record"] = record.name
     sidecar["blender"] = {k: report.get(k) for k in ("blender", "scale", "yaw_deg", "offset_m", "dims_before_m",
                                                       "box_after_m", "removed", "bones")}
     sidecar["materials"] = textures["materials"]
@@ -208,7 +221,7 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("source", type=Path, help="the finished GLB (for a creature: the rigged one)")
-    parser.add_argument("--kind", required=True, choices=up.KINDS)
+    parser.add_argument("--kind", required=True, choices=[*up.KINDS, *up.KIND_ALIASES])
     parser.add_argument("--size-cm", type=float, required=True, help="real size in centimetres")
     parser.add_argument("--measure", choices=up.MEASURES, default="height",
                         help="what --size-cm measures: the height (default) or the longest side")
@@ -220,7 +233,8 @@ def main(argv=None) -> int:
     parser.add_argument("--body", type=Path, help="equipment: the rigged body GLB it belongs to")
     parser.add_argument("--body-name", help="equipment: the body's --name, if it was exported with one")
     parser.add_argument("--animations", type=Path, nargs="*", default=[], help="creatures: more animated GLBs")
-    parser.add_argument("--tint", type=Path, help="a tint mask image to ship as T_<Name>_Tint.png")
+    parser.add_argument("--tint", type=Path,
+                        help="a tint mask to ship as T_<Name>_Tint.png (default: the one T_*_Tint.png beside the model)")
     parser.add_argument("--forward", type=float, nargs=3, metavar=("X", "Y", "Z"),
                         help="non-humanoid creatures: which way the model faces in Blender (default 0 -1 0)")
     parser.add_argument("--blender", type=Path, help="Blender executable (default: found like Finish finds it)")

@@ -215,8 +215,25 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
             task.save = True
             task.replace_existing = True
             unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
+        if side.get("tint"):
+            import_tint(export, folder)
         name_animations(export)
         unreal.EditorAssetLibrary.save_directory(folder)
+
+    def import_tint(export, folder):
+        """The material step's tint mask: data, not colour, so linear and uncompressed in hue."""
+        task = unreal.AssetImportTask()
+        task.filename = str(Path(export["dir"]) / export["sidecar"]["tint"])
+        task.destination_path = folder
+        task.automated = True
+        task.save = True
+        task.replace_existing = True
+        unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
+        for texture in [a for a in assets_in(folder) if isinstance(a, unreal.Texture2D)]:
+            if texture.get_name() == Path(export["sidecar"]["tint"]).stem:
+                texture.set_editor_property("srgb", False)
+                texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_MASKS)
+                unreal.EditorAssetLibrary.save_loaded_asset(texture)
 
     def name_animations(export):
         """Interchange calls a glTF animation `<mesh><animation>`; give it back its own name."""
@@ -235,6 +252,9 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
         got = {"class": mesh.get_class().get_name(), "names": sorted({a.get_name() for a in everything})}
         textures = [a for a in everything if isinstance(a, unreal.Texture2D)]
         got["orm_srgb"] = [bool(t.get_editor_property("srgb")) for t in textures if t.get_name().endswith("_ORM")]
+        tint = [bool(t.get_editor_property("srgb")) for t in textures if t.get_name().endswith("_Tint")]
+        if tint:
+            got["tint_srgb"] = any(tint)
         if isinstance(mesh, unreal.StaticMesh):
             box = mesh.get_bounding_box()
             got["bounds_cm"] = [box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z]

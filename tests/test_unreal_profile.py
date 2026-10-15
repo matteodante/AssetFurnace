@@ -502,3 +502,12 @@ def test_find_unreal_picks_the_newest_5_x_install(tmp_path):
 def test_find_unreal_reports_nothing_when_missing(tmp_path):
     assert up.find_unreal_editor({}, roots=[tmp_path]) is None
     assert up.find_unreal_editor({up.UNREAL_ENV: str(tmp_path / "nope.exe")}, roots=[]) is None
+
+
+def test_unreal_report_checks_the_tint_mask_arrives_linear():
+    sidecar = _prop_sidecar(tint="T_Barrel_Tint.png")
+    ok = {r["check"]: r["ok"] for r in up.evaluate_unreal(_measured(tint_srgb=False), sidecar)}
+    assert ok["tint"] is True
+    assert {r["check"]: r["ok"] for r in up.evaluate_unreal(_measured(tint_srgb=True), sidecar)}["tint"] is False
+    assert {r["check"]: r["ok"] for r in up.evaluate_unreal(_measured(), sidecar)}["tint"] is False
+    assert "tint" not in {r["check"] for r in up.evaluate_unreal(_measured(), _prop_sidecar())}
