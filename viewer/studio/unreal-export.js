@@ -46,6 +46,12 @@ export function bodiesFor(assets, asset) {
   return (assets || []).filter((a) => a.rigged && a.id !== asset?.id).map((a) => ({ name: a.name, file: a.rigged }));
 }
 
+// A size belongs to one model: another file (another prop of a set, another asset) starts
+// empty, while a new move of the same rig keeps it.
+export function keepsSize(previous, next) {
+  return Boolean(previous && next) && previous.file === next.file;
+}
+
 // Whether two export sources are the same request: same file and the same moves.
 export function sameSource(a, b) {
   return Boolean(a && b) && a.file === b.file && a.kind === b.kind
@@ -151,8 +157,8 @@ export function createUnrealPanel({ root, url, assets }) {
       return;
     }
     clearTimeout(timer);
-    // A generated model has no size of its own: another asset never inherits this one's.
-    if (context?.asset.id !== asset?.id) el('size').value = '';
+    // A generated model has no size of its own: another model never inherits this one's.
+    if (context?.asset.id !== asset?.id || !keepsSize(context?.source, source)) el('size').value = '';
     context = asset && source ? { asset, source } : null;
     root.hidden = !context;
     if (!context) return;

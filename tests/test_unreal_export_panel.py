@@ -101,3 +101,14 @@ def test_equipment_asks_for_the_wearers_height_and_is_not_checked_alone():
       }));""")
     assert out["equipment"] == "Wearer's height (cm)" and out["object"] == "Real size (cm)"
     assert out["request"]["check"] is False
+
+
+# --- review round 3 ----------------------------------------------------------------------
+
+@needs_node
+def test_another_prop_of_the_same_set_needs_its_own_size():
+    out = _run(f"""
+      const a = m.exportSource({json.dumps(BARREL)}, 'props/s/barrel_LOD0.glb');
+      const b = m.exportSource({json.dumps(BARREL)}, 'props/s/chair_LOD0.glb');
+      console.log(JSON.stringify({{keep: m.keepsSize(a, a), other: m.keepsSize(a, b), none: m.keepsSize(null, a)}}));""")
+    assert out == {"keep": True, "other": False, "none": False}

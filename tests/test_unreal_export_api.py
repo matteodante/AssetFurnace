@@ -212,7 +212,8 @@ def test_an_unreal_check_that_times_out_ends_the_job(output):
 
     api.run_job(output, job["id"], request, export=_fake_export(output), check=check)
     view = api.status(output, job["id"])
-    assert view["state"] == "error" and "too long" in view["message"]
+    # The export finished; only the check did not, so the files stay downloadable.
+    assert view["state"] == "done" and "too long" in view["message"]
     api.start(output, request, runner=lambda: None)  # the next export is not blocked
 
 
@@ -250,3 +251,19 @@ def test_equipment_is_not_checked_in_unreal_without_its_body(output):
     request = api.parse(output, {"file": "animate/w/helm.glb", "kind": "equipment", "size_cm": 180,
                                  "body": "animate/w/w_rigged.glb"})
     assert request["check"] is False
+
+
+# --- review round 3 ----------------------------------------------------------------------
+
+def test_a_failed_unreal_check_still_hands_back_the_exported_files(output):
+    request = api.parse(output, {"file": "props/p/barrel_LOD0.glb", "kind": "prop", "size_cm": 60, "check": True})
+    job = api.start(output, request, runner=lambda: None)
+
+    def check(folders):
+        raise SystemExit("Unreal wrote no measurements")
+
+    api.run_job(output, job["id"], request, export=_fake_export(output), check=check)
+    view = api.status(output, job["id"])
+    assert view["state"] == "done" and "Unreal check did not finish" in view["message"]
+    assert {f["name"] for f in view["files"]} >= {"SM_Barrel.glb"}
+    assert api.zip_bytes(output, job["id"])[0].endswith(".zip")

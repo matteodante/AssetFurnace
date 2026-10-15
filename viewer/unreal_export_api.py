@@ -96,14 +96,19 @@ def run_job(output: Path, job_id: str, request: dict, export=None, check=None) -
         job.update(state="exporting", message="Reshaping the model in Blender…")
         result = export(request["source"], out_dir=out_dir, log=lambda message: None, **arguments)
         job.update(result=result, folder=str(Path(result["out_dir"]).resolve()))
+        message = "Ready for Unreal." if result["ok"] else "Exported, with problems."
         if request["check"]:
             if check is None:
                 from unreal_import_check import check
             job.update(state="checking", message="Importing into Unreal and checking (about two minutes)…")
-            job["checked"] = bool(check([Path(result["out_dir"])]))
-        job.update(state="done", message="Ready for Unreal." if result["ok"] else "Exported, with problems.")
-    except subprocess.TimeoutExpired:
-        job.update(state="error", message="Unreal took too long and was stopped. The exported files are kept.")
+            try:
+                job["checked"] = bool(check([Path(result["out_dir"])]))
+            except subprocess.TimeoutExpired:
+                message += " The Unreal check did not finish: Unreal took too long and was stopped."
+            except (SystemExit, RuntimeError, OSError, ValueError) as exc:
+                # The export itself is fine: its files stay downloadable.
+                message += f" The Unreal check did not finish: {exc}"
+        job.update(state="done", message=message)
     except (ValueError, RuntimeError, OSError, SystemExit) as exc:
         job.update(state="error", message=str(exc) or type(exc).__name__)
     except Exception as exc:  # noqa: BLE001 - a stuck "running" job would block every later export
