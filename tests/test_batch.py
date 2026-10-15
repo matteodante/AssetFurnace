@@ -1032,3 +1032,11 @@ def test_a_record_leads_to_the_picture_a_finish_used(tmp_path):
     image = tiny_png(tmp_path / "concept.png")
     record = {"input": {"path": str(tmp_path / "older.glb"), "image": {"path": str(image)}}}
     assert batch.image_from_record(record) == image
+
+
+
+def test_an_output_directory_must_be_a_path(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1, output={"directory": 1})
+    with pytest.raises(batch.BatchError, match="output.directory"):
+        batch.load_batch(spec_path)

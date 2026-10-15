@@ -57,7 +57,7 @@ def test_run_pixal3d_collects_its_record_and_camera(tmp_path, monkeypatch):
         (output.with_suffix(".svviews")).mkdir()
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(manifest_run.subprocess, "run", fake_run)
+    monkeypatch.setattr(manifest_run, "run_worker", fake_run)
     generated = manifest_run.run_pixal3d([image], working, {"seed": 4}, print)
     assert generated.glb == working / "cat.glb"
     assert generated.parameters == {"seed": 4, "steps": 12, "matted": True}
@@ -71,7 +71,7 @@ def test_run_pixal3d_failure_carries_the_log_tail(tmp_path, monkeypatch):
         stdout.write("loading\nout of memory\n")
         return subprocess.CompletedProcess(command, 3)
 
-    monkeypatch.setattr(manifest_run.subprocess, "run", fake_run)
+    monkeypatch.setattr(manifest_run, "run_worker", fake_run)
     with pytest.raises(RuntimeError, match="out of memory"):
         manifest_run.run_pixal3d([image], tmp_path / "w", {}, print)
 
@@ -210,7 +210,7 @@ def test_run_pixal3d_carries_the_remover_it_used(tmp_path, monkeypatch):
             "components": [{"component": "rembg/birefnet-general-lite", "license": "MIT"}]}))
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(manifest_run.subprocess, "run", fake_run)
+    monkeypatch.setattr(manifest_run, "run_worker", fake_run)
     generated = manifest_run.run_pixal3d([image], tmp_path / "w", {}, print)
     assert generated.components == [{"component": "rembg/birefnet-general-lite",
                                      "license": "MIT"}]
@@ -236,3 +236,14 @@ def test_a_broken_picture_is_caught_before_the_run(tmp_path, monkeypatch):
     for parameters in ({}, {"matte": False}):
         (problem,) = manifest_run.pixal3d_input_check([broken], parameters)
         assert "not a readable picture" in problem
+
+
+
+def test_a_direct_manifests_commercial_intent_must_be_a_boolean(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    manifest = _manifest(tmp_path)
+    data = json.loads(manifest.read_text())
+    data["commercial_intent"] = "false"
+    manifest.write_text(json.dumps(data))
+    with pytest.raises(manifest_run.ManifestRunError, match="commercial_intent"):
+        manifest_run.run_manifest(manifest)

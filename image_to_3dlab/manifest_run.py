@@ -144,6 +144,11 @@ def pixal3d_command(image: Path, output: Path, parameters: dict[str, Any]) -> li
     return command
 
 
+def run_worker(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+    """The generator's subprocess, by a name a test can replace on its own."""
+    return subprocess.run(command, **kwargs)
+
+
 def run_pixal3d(images: list[Path], working: Path, parameters: dict[str, Any],
                 log: Callable[[str], None]) -> Generated:
     """`scripts/pixal3d_generate.py` in a subprocess, as the studio runs it."""
@@ -152,8 +157,8 @@ def run_pixal3d(images: list[Path], working: Path, parameters: dict[str, Any],
     log_path = working / "pixal3d.log"
     log(f"pixal3d: {images[0].name} -> {output.name} (log: {log_path})")
     with log_path.open("w", encoding="utf-8") as handle:
-        process = subprocess.run(pixal3d_command(images[0], output, parameters),
-                                 stdout=handle, stderr=subprocess.STDOUT, text=True,
+        process = run_worker(pixal3d_command(images[0], output, parameters),
+                             stdout=handle, stderr=subprocess.STDOUT, text=True,
                                  check=False)
     if process.returncode != 0 or not output.is_file():
         tail = "\n".join(log_path.read_text(encoding="utf-8", errors="replace")
@@ -218,6 +223,8 @@ def run_manifest(path: Path, log: Callable[[str], None] = print) -> tuple[Path, 
     wrong = generator.check_parameters(parameters)
     if wrong:
         raise ManifestRunError(f"{backend}: {'; '.join(wrong)}")
+    if not isinstance(intent["commercial_intent"], bool):
+        raise ManifestRunError("commercial_intent must be true or false")
     if not isinstance(policy, dict) or not isinstance(policy.get("allow_conditional", True), bool):
         # "false" as a string is truthy: the licence gate must not fail open on a typo
         raise ManifestRunError("license_policy.allow_conditional must be true or false")

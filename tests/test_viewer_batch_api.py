@@ -293,3 +293,32 @@ def test_stop_never_targets_the_server_while_a_batch_is_starting(server, ran, mo
     monkeypatch.setattr(mcp_server, "terminate_group", stopped.append)
     status, body = request(server, "POST", "/api/batches/lot/cancel", {})
     assert body["cancelled"] is False and "starting" in body["reason"] and stopped == []
+
+
+
+def test_the_list_reads_the_lock_once_however_many_batches(output, monkeypatch):
+    for name in ("one", "two", "three"):
+        batch.run_batch(batch.load_batch(_spec(output, rows=1, name=name)))
+    batch.acquire_lock(output / "batches", "two", os.getpid(), "runner")
+    reads = []
+    real = batch.live_lock
+    monkeypatch.setattr(batch, "live_lock", lambda root: reads.append(root) or real(root))
+
+    def per_batch(directory):
+        raise AssertionError("read the lock once per batch")
+
+    monkeypatch.setattr(batch, "lock_holder", per_batch)
+    listed = {item["name"]: item["active"] for item in batch_api.list_batches(output)}
+    assert listed == {"one": None, "two": os.getpid(), "three": None} and len(reads) == 1
+
+
+def test_batch_and_row_names_with_double_underscores_stay_apart(output):
+    for name, row in (("b__c", "a"), ("c", "a__b")):
+        spec = _spec(output, rows=1, name=name)
+        data = json.loads(spec.read_text())
+        data["rows"][0]["id"] = row
+        spec.write_text(json.dumps(data))
+        batch.run_batch(batch.load_batch(spec))
+    assets = assets_api.list_assets(output)
+    assert len(assets) == 2
+    assert {asset["finished"].split("/")[1] for asset in assets} == {"b__c", "c"}

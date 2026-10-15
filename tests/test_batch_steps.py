@@ -139,7 +139,7 @@ def test_finish_writes_a_derived_provenance_sidecar(tmp_path, monkeypatch, gener
         output.with_suffix(".retopo-repaint.json").write_text(json.dumps({"stages": ["x"]}))
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(finish_step.subprocess, "run", fake_run)
+    monkeypatch.setattr(finish_step, "run_worker", fake_run)
     ctx = _context(tmp_path, _row(tmp_path), asset, sidecar)
     result = finish_step.run(ctx)
     assert result.ok and result.asset == ctx.step_dir / "SM_Cat.glb"
@@ -163,7 +163,7 @@ def test_finish_failure_reports_the_log_tail(tmp_path, monkeypatch, generated):
         stdout.write("[bake] failed: no UVs\n")
         return subprocess.CompletedProcess(command, 1)
 
-    monkeypatch.setattr(finish_step.subprocess, "run", fake_run)
+    monkeypatch.setattr(finish_step, "run_worker", fake_run)
     result = finish_step.run(_context(tmp_path, _row(tmp_path), asset, sidecar))
     assert not result.ok and "no UVs" in result.reason
 
@@ -180,7 +180,7 @@ def test_the_real_steps_run_inside_a_batch(tmp_path, monkeypatch):
         Path(command[5]).write_bytes(b"glTFfinished")
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(finish_step.subprocess, "run", fake_run)
+    monkeypatch.setattr(finish_step, "run_worker", fake_run)
     spec_path = write_spec(tmp_path, rows=2)
     report = batch.run_batch(batch.load_batch(spec_path))
     assert report.exit_code == 0
@@ -199,7 +199,7 @@ def test_a_repaint_is_in_the_record_and_sets_the_classification(tmp_path, monkey
         (steps / "2_painted.glb").write_bytes(b"glTF")
         return subprocess.CompletedProcess(command, 0)
 
-    monkeypatch.setattr(finish_step.subprocess, "run", fake_run)
+    monkeypatch.setattr(finish_step, "run_worker", fake_run)
     ctx = _context(tmp_path, _row(tmp_path), asset, sidecar, {"paint": True})
     result = finish_step.run(ctx)
     record = json.loads(result.sidecar.read_text())
@@ -318,3 +318,50 @@ def test_the_finish_record_names_the_picture_it_used(tmp_path, generated):
                                            output, None)
     assert record["input"]["image"]["path"] == str(image)
     assert record["input"]["image"]["sha256"]
+
+
+
+def test_finish_runs_its_worker_through_its_own_wrapper(tmp_path, monkeypatch, generated):
+    """A test replaces finish's worker, never the subprocess module the lock's `ps` uses."""
+    asset, sidecar = generated
+
+    def no_subprocess(*args, **kwargs):
+        raise AssertionError("finish called subprocess.run directly")
+
+    monkeypatch.setattr(subprocess, "run", no_subprocess)
+    monkeypatch.setattr(finish_step, "find_blender", lambda: Path("blender.exe"))
+
+    def fake_run(command, stdout, **kwargs):
+        Path(command[5]).write_bytes(b"glTFdone")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(finish_step, "run_worker", fake_run)
+    assert finish_step.run(_context(tmp_path, _row(tmp_path), asset, sidecar)).ok
+
+
+def test_a_finish_only_rows_broken_picture_is_caught_before_the_batch(tmp_path, monkeypatch):
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"")
+    monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
+    broken = tmp_path / "refs" / "broken.png"
+    broken.parent.mkdir(exist_ok=True)
+    broken.write_bytes(b"not a picture")
+    asset = tmp_path / "crate.glb"
+    asset.write_bytes(b"glTF")
+    row = _row(tmp_path, images=(broken,), steps=("finish",), asset=asset)
+    (problem,) = finish_step.preflight([row])
+    assert "not a readable picture" in problem
+
+
+def test_the_staged_pictures_are_finish_files(tmp_path, monkeypatch, generated):
+    asset, sidecar = generated
+    monkeypatch.setattr(finish_step, "find_blender", lambda: Path("blender.exe"))
+
+    def fake_run(command, stdout, **kwargs):
+        Path(command[5]).write_bytes(b"glTFdone")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(finish_step, "run_worker", fake_run)
+    ctx = _context(tmp_path, _row(tmp_path), asset, sidecar)
+    staged = tiny_png(ctx.row_dir / "input" / "cat.png")
+    assert staged in finish_step.run(ctx).files

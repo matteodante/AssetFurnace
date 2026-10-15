@@ -63,9 +63,14 @@ def preflight(rows) -> list[str]:
         problems += [f"row {row.id}: finish option {problem}"
                      for problem in _bad_values(settings)]
     for row in rows:
-        if not row.images and recorded_image(row.asset) is None:
+        image = row.images[0] if row.images else recorded_image(row.asset)
+        if image is None:
             problems.append(f"row {row.id}: finish needs the source image: give the row "
                             "an image, or an asset whose provenance names one that exists")
+        elif "generate" not in row.steps:   # generate checks its own input
+            broken = _unreadable(image)
+            if broken:
+                problems.append(f"row {row.id}: {image.name} is not a readable picture: {broken}")
     blender = find_blender()
     if blender is None or not Path(blender).is_file():
         problems.append(missing_help())
@@ -111,6 +116,18 @@ def _bad_values(settings: dict[str, Any]) -> list[str]:
     return problems
 
 
+def _unreadable(image: Path) -> str | None:
+    """Why a picture cannot be decoded, or None when it can."""
+    from PIL import Image, UnidentifiedImageError
+
+    try:
+        with Image.open(image) as opened:
+            opened.load()
+    except (OSError, UnidentifiedImageError, ValueError) as exc:
+        return str(exc) or type(exc).__name__
+    return None
+
+
 def source_image(ctx: StepContext) -> Path | None:
     """The concept the asset came from: the row's first image, else its record's input."""
     if ctx.row.images:
@@ -150,6 +167,12 @@ def command(ctx: StepContext, blender: Path) -> list[str]:
     return command
 
 
+def run_worker(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess:
+    """The worker's subprocess, by a name of its own: a test replaces this, not the
+    subprocess module everything else (the batch lock's `ps`) shares."""
+    return subprocess.run(command, **kwargs)
+
+
 def output_path(ctx: StepContext) -> Path:
     return ctx.step_dir / f"{ctx.row.id}.glb"
 
@@ -168,8 +191,8 @@ def run(ctx: StepContext) -> StepResult:
     ctx.log(f"finish: {ctx.asset.name} at {ctx.row.faces or DEFAULT_FACES:,} faces "
             f"(log: {log_path})")
     with log_path.open("w", encoding="utf-8") as handle:
-        process = subprocess.run(command(ctx, Path(blender)), stdout=handle,
-                                 stderr=subprocess.STDOUT, text=True, check=False)
+        process = run_worker(command(ctx, Path(blender)), stdout=handle,
+                             stderr=subprocess.STDOUT, text=True, check=False)
     output = output_path(ctx)
     if process.returncode != 0 or not output.is_file():
         tail = "\n".join(log_path.read_text(encoding="utf-8", errors="replace")
@@ -183,8 +206,11 @@ def run(ctx: StepContext) -> StepResult:
         encoding="utf-8")
     steps = ctx.step_dir / "steps"
     diagnostics = sorted(path for path in steps.rglob("*") if path.is_file()) if steps.is_dir() else []
+    inputs = ctx.row_dir / "input"
+    staged = sorted(path for path in inputs.glob("*") if path.is_file()) if inputs.is_dir() else []
+    # the staged pictures too: one changed or gone after the row finished makes it run again
     files = [output, sidecar, *([worker_record] if worker_record.is_file() else []),
-             log_path, *diagnostics]
+             log_path, *diagnostics, *staged]
     return StepResult(asset=output, sidecar=sidecar, files=files)
 
 

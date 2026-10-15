@@ -279,7 +279,10 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         problems.append('output must be an object, like {"directory": "../output/batches"}')
         output_field = {}
     output = output_field.get("directory")
-    output_dir = (base / str(output)).resolve() if output else DEFAULT_OUTPUT
+    if output is not None and not isinstance(output, str):
+        problems.append(f"output.directory must be a folder path, not {output!r}")
+        output = None
+    output_dir = (base / output).resolve() if output else DEFAULT_OUTPUT
     name = str(top.get("name", path.stem))
     if not ID_PATTERN.fullmatch(name):
         problems.append(f"batch name {name!r}: use letters, digits, '_', '.', '-' "
@@ -740,6 +743,12 @@ def release_lock(output_dir: Path, token: str) -> None:
         # if it stays held open, it names this process, about to end: the next taker
         # finds it stale
         _unlink(output_dir / LOCK_FILE)
+
+
+def live_lock(output_dir: Path) -> dict[str, Any] | None:
+    """The batches folder's lock while its process is alive, read once: a caller listing
+    many batches compares names against it instead of reading it per batch."""
+    return _live_lock(output_dir)
 
 
 def lock_info(directory: Path) -> dict[str, Any] | None:

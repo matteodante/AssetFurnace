@@ -53,13 +53,15 @@ def list_batches(output: Path) -> list[dict[str, Any]]:
     """Every batch that has run under output/batches, the most recently updated first."""
     root = batches_root(output)
     found = []
-    # a runner just started holds the lock before it writes its state: list it as starting
-    running = {path.name for path in batch.running_batches(root)}
+    # one read of the lock for the whole list (it can run a process to check the pid);
+    # a runner just started holds it before it writes its state: list that one as starting
+    lock = batch.live_lock(root)
+    running = {str(lock["batch"])} if lock else set()
     names = {d.name for d in root.iterdir() if d.is_dir()} if root.is_dir() else set()
     for name in sorted(names | running):
         directory = root / name
         state = batch.read_json(directory / batch.STATE_FILE)
-        active = batch.lock_holder(directory)
+        active = lock["pid"] if lock and lock.get("batch") == name else None
         if name.startswith(".") or not (isinstance(state, dict) or active):
             continue
         state = state if isinstance(state, dict) else {}
@@ -117,9 +119,10 @@ def library_nodes(output: Path) -> dict[str, list[dict[str, Any]]]:
             model = _made(directory, steps, "generate")
             finished = _made(directory, steps, "finish")
             # `<picture stem>__...` is how the Library ties a picture to its model, so the
-            # batch is part of both stems: two batches' rows with one id stay apart. The
-            # name shown is the part before the first `__`, the row's id.
-            stem = f"{row['id']}__{directory.name}"
+            # batch is part of both stems, as a hash of batch and row: names containing
+            # `__` cannot run into each other. The name shown is the row's id.
+            identity = hashlib.sha256(f"{directory.name}/{row['id']}".encode()).hexdigest()[:12]
+            stem = f"{row['id']}__{identity}"
             if picture is not None:
                 nodes["picture"].append({"stem": stem, "file": picture})
             if model is not None:
