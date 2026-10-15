@@ -1,6 +1,6 @@
 # Funzione 3: bibbia dello stile (progetto)
 
-Data: 15 ottobre 2026. Stato: **proposta, seconda versione, in attesa di approvazione**. Niente è implementato.
+Data: 15 ottobre 2026. Stato: **approvato dall'utente il 15/10/2026** (commit 559d749). In corso: PR 1, bibbia e prompt.
 Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 3.
 Il LoRA dello stile è **fuori** da questo lavoro (rimandato dall'utente il 15/10/2026).
 
@@ -105,7 +105,7 @@ Ordine fisso, in una funzione pura testata,
 <soggetto>, <wording del tipo dalle ricette>, <wording dello stile>, <wording del tipo nella bibbia>
 ```
 
-La usano la CLI, i lotti (una riga con `kind` e `subject` al posto dell'immagine) e lo studio. Con Qwen-Image a cfg 1.0,
+La usano la CLI (`scripts/style_bible.py prompt`), i lotti (una riga con `kind` e `subject` al posto dell'immagine) e lo studio. Con Qwen-Image a cfg 1.0,
 il valore di base di AssetFurnace, il prompt negativo non ha effetto: lo stile va detto in positivo.
 
 ## 3. Lo stile all'origine: riferimenti dalla bibbia e il migliore di N
@@ -215,7 +215,7 @@ modo in cui la misura migliora con l'uso. È una seconda PR, dopo la prova.
 - **Lotti (funzione 1)**: un passo `style` **prima** di `generate` (adattatore `image_to_3dlab/batch_steps/style.py`,
   `preflight` che verifica bibbia, motori e pesi senza scaricare). `fail` ferma la riga; `warn` la lascia andare e la
   segna. Il migliore di N vive qui quando la riga parte da un soggetto e non da un'immagine.
-- **CLI**: `pipeline.py style judge --bible <cartella> concept.png [--kind creature]` stampa il JSON; uscita 0 per
+- **CLI**: `scripts/style_bible.py judge <bibbia> concept.png [--kind creature]` stampa il JSON; uscita 0 per
   pass/warn, 2 per fail.
 
 ## 5. Download e motori (ognuno solo dopo un sì esplicito)
@@ -284,9 +284,10 @@ escludere; la misura vera si raffina con i giudizi del pilota (sezione 4.4).
 ## 8. Le PR
 
 1. **Bibbia e prompt** (nessun modello): `style/bible.py`, `style/prompts.py`, `style/refs.py`, i tre tipi nuovi nelle
-   ricette, CLI `style new|add|reject|remove|list|prompt`, test.
+   ricette, CLI `scripts/style_bible.py new|register|use|add|reject|remove|note|list|prompt|refs` (uno script,
+   come `check_asset.py`, invece di un sottocomando di `pipeline.py`: `cli.py` resta della funzione 1), test.
 2. **Gara**: `scripts/bootstrap_style.py` con il catalogo, i tre candidati, la prova con i numeri nel documento.
-3. **Il vincitore come controllo**: `style.coherence`, registrazione, CLI `style judge`.
+3. **Il vincitore come controllo**: `style.coherence`, registrazione, `style_bible.py judge`.
 4. **Pagina Stile** nello studio.
 5. Dopo il merge della funzione 1: l'adattatore `batch_steps/style.py` con il migliore di N. Poi il classificatore
    della 4.4.
@@ -299,7 +300,9 @@ escludere; la misura vera si raffina con i giudizi del pilota (sezione 4.4).
   misura, e la cascata lo usa solo nei casi incerti.
 - **Poche etichette**: margine ampio sull'area ROC (sopra). Le etichette crescono con l'uso della pagina Stile.
 - **I riferimenti fanno copiare** (la generazione ricalca un'immagine della bibbia invece di prenderne lo stile): la
-  funzione 2 ha già un controllo di copia (`concept.copy`); lo si usa anche qui.
+  funzione 2 ha tolto il controllo sui bordi (`concept.copy`); l'unico segnale possibile è quello imparato
+  (somiglianza DINOv2) della funzione 2, e lo si usa qui solo se supera la sua prova. Altrimenti la copia la vede
+  l'utente nella pagina Stile, dove il concept è accanto ai riferimenti usati.
 - **Licenza di Qwen-Image 2.1** (non commerciale): riguarda la generazione, non questa funzione, ma i riferimenti di
   stile la usano. L'utente ha scelto la 2.1; Qwen-Image-Edit-2511 resta la strada Apache-2.0 di riserva.
 - **CSD**: pesi in formato pickle e risultati non del tutto riprodotti dagli autori. Caricamento sicuro e prova nostra.
