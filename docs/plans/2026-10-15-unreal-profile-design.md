@@ -1,6 +1,6 @@
 # Funzione 5: profilo d'uscita per Unreal (design)
 
-Data: 15 ottobre 2026. Stato: **proposta, in attesa di approvazione**. Nessun codice consegnato.
+Data: 15 ottobre 2026. Stato: **fatto**: approvato dall'utente e implementato lo stesso giorno; risultato in fondo.
 Piano generale: [2026-10-15-auroconts-asset-pipeline.md](2026-10-15-auroconts-asset-pipeline.md).
 
 In una riga: un GLB finito di AssetFurnace diventa un **GLB per Unreal** (nomi, centimetri, origine, LOD,
@@ -122,3 +122,45 @@ d'import le importa come texture lineari. Il nome del file va concordato con la 
    - scheletro riconosciuto dall'IK Rig e retarget di `MM_Idle` riuscito;
    - equipaggiamento importato sullo Skeleton del guerriero, senza crearne uno nuovo.
 4. `PYTHONPATH=. pytest -q` e `ruff check .` verdi; il risultato e cosa si è riusato vanno nel piano generale.
+
+## Risultato (15/10/2026)
+
+**Accettazione superata su UE 5.8.3**, da riga di comando, in un progetto vuoto, senza passi a mano
+(`scripts/unreal_import_check.py`, circa 80 secondi per i tre asset):
+
+| Asset | Da | Esito in Unreal |
+|---|---|---|
+| Oggetto `SM_Testuggine` | `prop_01` del foglio "testuggine romana", 3 LOD cotti | 60,0 cm sul lato più lungo come richiesto, base a z = 0, 3 LOD, 1 box di collisione, ORM lineari, nomi giusti |
+| Creatura `SK_Warrior` | `SK_BrennholdWarrior_9k` rigato da SkinTokens, idle e walk | 180,0 cm, piedi a z = 0, rivolto verso +Y come Manny, 3 LOD generati da Unreal, `AS_Warrior_Idle` e `AS_Warrior_Walk`, scheletro riconosciuto dall'IK Rig, idle di Manny retargettato con le braccia lungo i fianchi (0,29 dell'altezza contro 0,33 di Manny) |
+| Equipaggiamento `SK_WarriorHelm` | testa e spalle tagliate dal guerriero, stesso scheletro | importato sullo Skeleton del guerriero, nessuno Skeleton nuovo, indossato con Leader Pose |
+
+L'immagine del controllo (`unreal_check.png` in ogni cartella) è presa in una sessione Simulate: Manny e il guerriero
+fanno lo stesso idle, con l'oggetto in mezzo.
+
+Cose imparate strada facendo, che valgono anche per l'import di Auroconts:
+- un IK Retargeter creato da Python in UE 5.8 **non ha operazioni** finché non si chiama `add_default_ops()`: copia solo
+  il bacino e il personaggio resta in T-pose. Serve anche `auto_align_all_bones()` (SkinTokens è in T-pose, Manny in A-pose);
+- Interchange chiama le animazioni glTF `<mesh><animazione>`: lo script d'import le rinomina `AS_…`;
+- l'override della pipeline per riusare uno Skeleton passa da `InterchangeManager.import_asset` con una copia di
+  `DefaultGLTFAssetsPipeline` più `DefaultGLTFPipeline`; su `AssetImportTask.options` viene ignorato;
+- nel mondo dell'editor le animazioni non avanzano: per vederle serve Simulate, e il livello del template usa World
+  Partition, quindi gli attori aggiunti vanno resi "sempre caricati";
+- in Python `unreal.Rotator(a, b, c)` è (roll, pitch, yaw): meglio sempre gli argomenti per nome.
+
+Nello studio: pannello **Export for Unreal** su un asset della Libreria (tipo, misura vera, corpo per l'equipaggiamento,
+mosse, verifica facoltativa in Unreal), con i file da scaricare, lo zip, "Show folder" in locale e, se richiesto, i
+controlli e l'immagine di Unreal.
+
+## Cosa resta
+
+- **Occlusione**: il canale R dell'ORM viene dalla mappa di occlusione del modello quando c'è; i modelli di oggi non ne
+  hanno, quindi è bianco. Cuocerla con `scripts/blender_bake_ao.py` dentro il profilo è il passo successivo (va fatta per
+  ogni LOD, ognuno ha il suo atlante).
+- **Collisione `UCX_`** (convessa) scritta ma non verificata in Unreal: l'API Python non espone i vertici del convesso.
+  La `UBX_` predefinita è verificata.
+- **Creature non umanoidi**: il codice tiene i nomi originali e accetta il fronte come argomento, ma non c'è ancora una
+  creatura non umanoide rigata da provare (funzione 6).
+- **Equipaggiamento rigido** (armi su un socket): oggi si esporta come oggetto `SM_`; l'aggancio al socket è lato Unreal.
+- **Nanite**: Interchange lo accende sugli Static Mesh del progetto vuoto. È una scelta del progetto del gioco, non del file.
+- Su Windows 5 test della repo falliscono già su `main` (file letti senza `encoding="utf-8"`), e `ruff check .` segnala
+  errori preesistenti fuori da questi file (soprattutto `hunyuan_mlx/`). I file di questa funzione sono puliti.
