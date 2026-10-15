@@ -98,3 +98,13 @@ def test_saving_needs_the_studio_page(server, output, headers):
     status, _ = request(server, "POST", "/api/material-labels/item/mob_01",
                         {"asset_sha256": sha(output), "baked_light": True}, headers)
     assert status == 403
+
+
+def test_items_outside_the_label_set_cannot_be_labelled(server, output):
+    """Their labels would never be counted or exported, so they are refused."""
+    other = clean(output / "labels" / "barrel.glb")
+    review.enqueue_for_review(other, "barrel", source="batch:props", kind="prop", log=output / "review-log.jsonl")
+    item_sha = review.fold(review.load(output / "review-log.jsonl"))["barrel"]["asset_sha256"]
+    assert request(server, "GET", "/api/material-labels/item/barrel")[0] == 404
+    status, _ = request(server, "POST", "/api/material-labels/item/barrel", {"asset_sha256": item_sha, "baked_light": True})
+    assert status == 404

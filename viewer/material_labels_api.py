@@ -44,9 +44,18 @@ def _review_items(output: Path) -> dict:
     return review.fold(review.load(output / "review-log.jsonl"))
 
 
-def label_set(output: Path) -> list[str]:
-    """Keys of the review items queued for labelling."""
-    return [key for key, item in _review_items(output).items() if item.get("source") == SOURCE]
+def label_set(output: Path) -> dict[str, str]:
+    """The review items queued for labelling: key -> the version in the queue."""
+    return {key: item.get("asset_sha256") for key, item in _review_items(output).items()
+            if item.get("source") == SOURCE}
+
+
+def _labelled_item(output: Path, key: str) -> dict:
+    """The review item for `key`, if it belongs to the label set; labels elsewhere would be lost."""
+    item = _review_items(output).get(key)
+    if item is None or item.get("source") != SOURCE:
+        raise KeyError(key)
+    return item
 
 
 def overview(output: Path) -> dict:
@@ -55,9 +64,7 @@ def overview(output: Path) -> dict:
 
 
 def item_labels(output: Path, key: str) -> dict:
-    item = _review_items(output).get(key)
-    if item is None:
-        raise KeyError(key)
+    item = _labelled_item(output, key)
     labels = ml.fold(ml.load(_labels_log(output))).get(key)
     if labels is None or labels["asset_sha256"] != item.get("asset_sha256"):
         labels = {"key": key, "asset_sha256": item.get("asset_sha256"), "baked_light": None,
@@ -66,9 +73,7 @@ def item_labels(output: Path, key: str) -> dict:
 
 
 def save_labels(output: Path, key: str, body: dict) -> dict:
-    item = _review_items(output).get(key)
-    if item is None:
-        raise KeyError(key)
+    item = _labelled_item(output, key)
     if body.get("asset_sha256") != item.get("asset_sha256"):
         raise VersionConflict("these labels are for another version than the one under review; reload it")
     fields = {k: body[k] for k in ml.FIELDS if k in body}
@@ -114,7 +119,7 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
     except VersionConflict as exc:
         handler._send_json(409, {"error": str(exc)})
     except KeyError as exc:
-        handler._send_json(404, {"error": f"{exc.args[0]} is not in the review queue"})
+        handler._send_json(404, {"error": f"{exc.args[0]} is not in the material label set"})
     except (ValueError, TypeError) as exc:
         handler._send_json(400, {"error": str(exc)})
     return True

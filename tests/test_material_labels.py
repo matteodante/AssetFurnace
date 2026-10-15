@@ -82,5 +82,15 @@ def test_progress_counts_a_set_of_keys(tmp_path):
     record(log, baked_light=True, materials_look="right",
            points=[{"uv": [0.1, 0.1], "material": 0, "label": "metal"}])
     record(log, key="mob_02", baked_light=False)
-    progress = ml.progress(ml.load(log), ["mob_01", "mob_02", "mob_03"])
+    progress = ml.progress(ml.load(log), {"mob_01": SHA, "mob_02": SHA, "mob_03": SHA})
     assert progress == {"total": 3, "complete": 1, "started": 1, "missing": 1}
+
+
+def test_progress_counts_labels_of_the_queued_version_only(tmp_path):
+    """A key queued again after its GLB changed is not complete until the new version is labelled."""
+    log = tmp_path / "labels.jsonl"
+    record(log, baked_light=True, materials_look="right",
+           points=[{"uv": [0.1, 0.1], "material": 0, "label": "metal"}])
+    queued = {"mob_01": OTHER}
+    assert ml.progress(ml.load(log), queued) == {"total": 1, "complete": 0, "started": 0, "missing": 1}
+    assert ml.progress(ml.load(log), {"mob_01": SHA})["complete"] == 1

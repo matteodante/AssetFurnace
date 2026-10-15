@@ -70,3 +70,20 @@ def test_choice_buttons_keep_their_values_intact_in_html():
     """'"right"' inside a double-quoted attribute broke the Materials look buttons."""
     out = run("""console.log(JSON.stringify(m.choiceButton('materials_look', 'right', 'Right', 'right')));""")
     assert 'data-value="&quot;right&quot;"' in out and 'aria-pressed="true"' in out
+
+
+@needs_node
+def test_only_items_of_the_label_set_get_the_panel():
+    out = run("""console.log(JSON.stringify([m.inLabelSet({source: 'material-labels'}),
+      m.inLabelSet({source: 'batch:props'}), m.inLabelSet(null)]));""")
+    assert out == [True, False, False]
+
+
+@needs_node
+def test_a_point_and_its_marker_leave_together():
+    """Saved points have no marker (null); removing any row removes its own marker only."""
+    out = run("""
+      const points = ['saved', 'new1', 'new2'], markers = [null, 'm1', 'm2'];
+      const removed = m.dropAt(points, markers, 1);
+      console.log(JSON.stringify({removed, points, markers}));""")
+    assert out == {"removed": "m1", "points": ["saved", "new2"], "markers": [None, "m2"]}

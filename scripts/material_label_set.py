@@ -28,6 +28,12 @@ SOURCE = "material-labels"
 KINDS = ("creature", "prop", "equipment_part")
 
 
+def key_for(path: Path, output: Path) -> str:
+    """A key from the path under output/, so model.glb in two runs gets two keys."""
+    relative = path.relative_to(output).with_suffix("")
+    return review.key_for(Path("__".join(relative.parts) + ".glb"))
+
+
 def _items(output: Path) -> dict:
     return {k: i for k, i in review.fold(review.load(output / "review-log.jsonl")).items() if i.get("source") == SOURCE}
 
@@ -48,12 +54,20 @@ def main(argv: list[str] | None = None) -> int:
     output = args.output.resolve()
 
     if args.command == "queue":
+        queued = review.fold(review.load(output / "review-log.jsonl"))
+        planned = {}
         for glb in args.glbs:
             path = glb.resolve()
             if not path.is_relative_to(output) or path.suffix.lower() != ".glb" or not path.is_file():
                 print(f"refused: {glb} must be an existing .glb under {output}")
                 return 1
-            key = review.key_for(path)
+            key = key_for(path, output)
+            other = planned.get(key) or (Path(queued[key]["asset"]).resolve() if key in queued else None)
+            if other is not None and other != path:
+                print(f"refused: {glb} and {other} would share the key {key}")
+                return 1
+            planned[key] = path
+        for key, path in planned.items():
             review.enqueue_for_review(path, key, source=SOURCE, kind=args.kind, log=output / "review-log.jsonl")
             print(f"queued {key} ({args.kind})")
         return 0
@@ -61,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     items = _items(output)
     events = ml.load(output / "material-labels.jsonl")
     if args.command == "progress":
-        done = ml.progress(events, list(items))
+        done = ml.progress(events, {k: i.get("asset_sha256") for k, i in items.items()})
         print(f"{done['complete']} of {done['total']} complete, {done['started']} started, {done['missing']} not started")
         return 0
 

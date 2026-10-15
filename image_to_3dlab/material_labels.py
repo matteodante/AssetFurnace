@@ -134,9 +134,15 @@ def dataset(events: list[dict]) -> list[dict]:
     return [labels for labels in fold(events).values() if is_complete(labels)]
 
 
-def progress(events: list[dict], keys: list[str]) -> dict:
-    """How far labelling a set of assets has got."""
+def progress(events: list[dict], queued: dict[str, str]) -> dict:
+    """How far labelling a set has got: `queued` maps each key to the version in the queue.
+
+    Labels of an older version count for nothing: the version in the queue is the one the
+    export will include.
+    """
     state = fold(events)
-    complete = sum(1 for k in keys if k in state and is_complete(state[k]))
-    started = sum(1 for k in keys if k in state and not is_complete(state[k]))
-    return {"total": len(keys), "complete": complete, "started": started, "missing": len(keys) - complete - started}
+    current = [state[k] for k, sha in queued.items() if k in state and state[k]["asset_sha256"] == sha]
+    complete = sum(1 for labels in current if is_complete(labels))
+    started = len(current) - complete
+    return {"total": len(queued), "complete": complete, "started": started,
+            "missing": len(queued) - complete - started}

@@ -22,6 +22,15 @@ export function isComplete(labels) {
   return labels?.baked_light != null && labels?.materials_look != null && (labels?.points?.length ?? 0) > 0;
 }
 
+/** Only items queued for labelling get the panel: labels on others would never be exported. */
+export const inLabelSet = (item) => item?.source === 'material-labels';
+
+/** Remove point `i` and the marker drawn for it (null for a point loaded from disk). */
+export function dropAt(points, markers, i) {
+  points.splice(i, 1);
+  return markers.splice(i, 1)[0] ?? null;
+}
+
 /** A pointer that moved less than a few pixels between down and up is a click, not an orbit. */
 export const isClick = (down, up) => Math.hypot(up.x - down.x, up.y - down.y) < 5;
 
@@ -50,6 +59,8 @@ export function createLabelPanel() {
 
   function draw() {
     if (!root || !labels) return;
+    const typed = el('note');
+    if (typed) labels.note = typed.value;   // a note typed but not saved survives the redraw
     const choice = (field, value, text) => choiceButton(field, JSON.parse(value), text, labels[field]);
     root.innerHTML = `
       <h3>Material labels</h3>
@@ -82,6 +93,7 @@ export function createLabelPanel() {
 
   async function show(container, reviewItem, options = {}) {
     const mine = ++epoch;
+    if (!inLabelSet(reviewItem)) { item = null; return; }
     item = reviewItem;
     viewer = options.viewer || null;
     marking = false;
@@ -93,6 +105,8 @@ export function createLabelPanel() {
       if (mine !== epoch) return;
       vocabulary = overview.materials;
       labels = current.labels;
+      markers.length = 0;
+      markers.push(...labels.points.map(() => null));   // points from disk have no marker
       draw();
       const { complete, total } = overview.progress;
       el('progress').textContent = `Label set: ${complete} of ${total} complete`;
@@ -111,23 +125,26 @@ export function createLabelPanel() {
       } else if (target.dataset.mlMark !== undefined) {
         setMarking(!marking);
       } else if (target.dataset.mlDrop !== undefined) {
-        labels.points.splice(Number(target.dataset.mlDrop), 1);
-        markers.splice(Number(target.dataset.mlDrop), 1).forEach((m) => m.removeFromParent());
+        dropAt(labels.points, markers, Number(target.dataset.mlDrop))?.removeFromParent();
         render?.();
         draw();
         progress();
       } else if (target.dataset.mlSave !== undefined) {
         target.disabled = true;
+        const saving = epoch;
         try {
           const saved = await request(`/item/${encodeURIComponent(item.key)}`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ asset_sha256: item.asset_sha256, baked_light: labels.baked_light,
               materials_look: labels.materials_look, points: labels.points, note: el('note').value }) });
+          if (saving !== epoch) return;        // another item is open now: its panel is not ours to redraw
           labels = saved.labels;
+          markers.length = labels.points.length;
           draw();
           await progress();
           el('status').textContent = saved.complete ? 'Saved. This asset is complete.' : 'Saved.';
         } catch (error) {
+          if (saving !== epoch) return;
           el('status').textContent = `Not saved: ${error.message}`;
           target.disabled = false;
         }
@@ -165,7 +182,7 @@ export function createLabelPanel() {
     attach(loaded, requestRender) {
       view = loaded;
       render = requestRender;
-      markers.length = 0;
+      markers.fill(null);                     // the old model's markers went with it
       const canvas = loaded.renderer.domElement;
       canvas.addEventListener('pointerdown', (event) => { down = { x: event.clientX, y: event.clientY }; });
       canvas.addEventListener('pointerup', pick);
