@@ -25,7 +25,7 @@ Poi usare Setup nell'interfaccia, oppure gli script originali del progetto:
 .venv\Scripts\python.exe scripts\bootstrap_gltfpack.py --yes
 ```
 
-Questi comandi scaricano i modelli: Pixal3D circa 8,4 GB, Qwen circa 13,4 GB e
+Questi comandi scaricano i modelli: Pixal3D circa 8,4 GB, Qwen circa 14,6 GB e
 SkinTokens circa 1,6 GB, oltre a programmi e dipendenze. Blender 4.2 o successivo
 deve essere installato su Windows.
 

@@ -13,6 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on the model with the material they show. Saved in `output/material-labels.jsonl`;
   `scripts/material_label_set.py` queues a label set, reports progress and exports the
   complete labels every material check is measured against.
+- Creature families: after rigging, the skeleton is read for legs, arms, wings, tail and
+  neck and the creature is recognised as humanoid, digitigrade biped, quadruped, many-legged,
+  winged, serpent or plant (`image_to_3dlab/creature_family.py`, `<rig>.family.json`).
+  Digitigrade bipeds and quadrupeds get two procedural test clips, a walk or trot and an
+  attack (`scripts/creature_motion.py`, `scripts/creature_clips.py`). In Studio the Rig step
+  asks what the creature is (or recognises it) and Animate names its test clips.
+- `rig.deformation` check: plays every clip of a rig and measures stretched edges, folded
+  triangles and feet that cross sides (warn only until calibrated).
+- Qwen-Image's setup also fetches Qwen3-VL-8B's vision file (`mmproj-Qwen3VL-8B-Instruct-F16.gguf`,
+  1.16 GB, Apache-2.0), which lets the model read reference pictures; text to image works
+  without it. The Setup page counts it on its own, beside the text encoder in the same
+  cache folder, and Remove deletes only that file.
+- **Batches**: `pipeline.py --run-batch spec.json` (or `.csv`) runs one row per asset
+  through `generate` and `finish`, with a state per row, resume from where it stopped,
+  `--retry-failed`, and a `.provenance.json` for every output. Reserved step names
+  (`materials`, `export_unreal`, `checks`) are skipped with a warning until they exist.
+  An MCP server (`python -m image_to_3dlab.mcp_server`) lets an agent in another
+  repository submit batches, follow them and collect their files, and a **Batches** page
+  in the studio does the same by hand. Finished rows join the Library and the review
+  queue (`output/review-log.jsonl`). Rows can state their real size (`size_cm`,
+  `measure`) for the Unreal export. See [Batches](docs/batches.md).
+- `--run-manifest` runs Pixal3D manifests.
+- Style bibles (`image_to_3dlab/style`): a self-contained folder per project with approved and
+  rejected pictures, each with a note and its provenance, so a game keeps its look in its own
+  repository. Prompt templates per asset kind put the 3D recipe first and the project's style
+  after it; `refs.pick` chooses 1-3 approved pictures as style references for generation.
+  `scripts/style_bible.py` makes, registers and edits bibles and prints prompts and references.
+- Prompt recipes for three more asset kinds: creature, piece of equipment and map object.
 - Asset checks (`image_to_3dlab/checks`): one JSON contract for every check, profiles of
   thresholds per asset type, and the generic checks (flipped faces, holes, floating specks,
   non-manifold edges, UV overlap, triangle/material/texture budgets, texel density, size

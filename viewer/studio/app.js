@@ -7,6 +7,7 @@ import { readyEngines, readableLog } from './jobs.js';
 import { stepBody, wireStep } from './steps.js';
 import { openCreate, runChain } from './create.js';
 import { openActivity, openAbout, openGuide, closeSheet } from './pages.js';
+import { openBatches } from './batch.js';
 import { STEP_LABELS } from './plan.js';
 import { createBlenderPanel, initialRevision, revisionFor } from './blender-edit.js';
 import { openReview, renderReviewPanel, fetchQueue, fetchItem } from './review.js';
@@ -457,6 +458,12 @@ window.addEventListener('drop', (event) => {
 
 $('guideBtn').addEventListener('click', () => openGuide($('stage')));
 $('activityBtn').addEventListener('click', () => openActivity($('stage')));
+// a finished batch row opens like a Library asset: the batch put it in the Library
+$('batchesBtn').addEventListener('click', () => openBatches($('stage'), { open: async (file) => {
+  await refreshAssets();
+  const asset = assets.find((a) => a.finished === file || a.model === file);
+  if (asset) show(asset);
+} }));
 
 // ------------------------------------------------------------------ Review
 function setReviewCount(payload) {
