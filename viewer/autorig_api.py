@@ -42,6 +42,8 @@ if str(REPO) not in sys.path:
 
 from image_to_3dlab import processes
 
+import creature_family_api  # noqa: E402 - viewer/ sibling, after the path is set
+
 OUTPUT_ROOT = REPO / "output" / "animate"
 SKINTOKENS = REPO / "vendor" / "SkinTokens"
 RETARGET = REPO / "scripts" / "kimodo_retarget.py"
@@ -204,13 +206,15 @@ def animation_record(rig: dict[str, Any] | None, preset: dict[str, Any],
 # ----------------------------------------------------------------------------- jobs
 
 
-def rig_commands(source: Path, result: Path) -> list[tuple[list[str], Path]]:
+def rig_commands(source: Path, result: Path, family: str = "auto") -> list[tuple[list[str], Path]]:
     """SkinTokens, then a skin-weight clean-up: it sometimes weights fingertips to a toe,
-    which stretches them into spikes once the hand moves (scripts/clean_skin_weights.py)."""
+    which stretches them into spikes once the hand moves (scripts/clean_skin_weights.py).
+    Last, the creature's family and its test clips (viewer/creature_family_api.py)."""
     return [
         ([str(venv_python()), "demo.py", "--input", str(source), "--output", str(result),
           "--use_transfer"], SKINTOKENS),
         ([str(venv_python()), str(CLEAN_WEIGHTS), "--in", str(result), "--out", str(result)], REPO),
+        creature_family_api.clip_command(venv_python(), result, family),
     ]
 
 
@@ -311,7 +315,7 @@ class AnimateJobManager:
         return job
 
     def create_rig(self, name: str, data: bytes, source: dict[str, Any] | None,
-                   origin: str) -> AnimateJob:
+                   origin: str, family: str = "auto") -> AnimateJob:
         with self.lock:
             if self.busy():
                 raise RuntimeError("an Animate job is already running")
@@ -327,7 +331,7 @@ class AnimateJobManager:
             source_glb.write_bytes(data)
             result = directory / f"{stem}_rigged.glb"
             job = AnimateJob(uuid.uuid4().hex, "rig", directory, result,
-                             rig_commands(source_glb, result), RIG_SECONDS,
+                             rig_commands(source_glb, result, family), RIG_SECONDS,
                              rig_record(name, data, source, origin))
             return self._claim(job)
 
@@ -423,8 +427,12 @@ def run_job(job: AnimateJob, manager: AnimateJobManager = ANIMATE_JOBS) -> None:
                 json.dumps(job.record, indent=2))
             job.status = "done"
             fit = rig_fit(job.result) if job.kind == "rig" else {}
+            family_message = None
+            if job.kind == "rig":
+                creature_family_api.record_clips(job.result, job.record)
+                family_message = creature_family_api.done_message(fit, job.result)
             job.emit({"phase": "done", "overall_pct": 100,
-                      "message": fit.get("message") or ("Rigged" if job.kind == "rig" else "Animated"),
+                      "message": family_message or fit.get("message") or ("Rigged" if job.kind == "rig" else "Animated"),
                       **({"humanoid": fit["humanoid"]} if "humanoid" in fit else {}),
                       "kind": job.kind,
                       "path": job.result.relative_to(REPO / "output").as_posix()
