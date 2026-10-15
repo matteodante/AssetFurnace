@@ -1,0 +1,19 @@
+{
+  "description": "Thresholds every profile starts from. Provisional until the pilot calibrates them.",
+  "checks": {
+    "mesh.flipped_faces": {"warn": 0.1, "fail": 1.0},
+    "mesh.holes": {"warn": 1.0, "fail": 3.0},
+    "mesh.loose_parts": {"speck_share": 0.5, "warn": 0, "fail": 1.0},
+    "mesh.nonmanifold": {"warn": 0.0, "fail": 0.5},
+    "uv.overlap": {"warn": 2.0, "fail": 10.0, "resolution": 1024},
+    "budget.faces": {"max": 40000, "fail_ratio": 1.25, "gltfpack": true},
+    "budget.materials": {"warn": 2, "fail": 4},
+    "budget.textures": {"warn": 2048, "fail": 4096},
+    "budget.texel_density": {"min": 256, "max": 2048, "warn_only": true},
+    "measure.height": {"warn": 5.0, "fail": 15.0},
+    "measure.footprint": {"warn": 5.0, "fail": 15.0},
+    "silhouette": {"min": 0.65, "max": 0.95, "min_view": 0.5, "resolution": 256, "warn_only": true},
+    "gltf.valid": {"timeout": 120},
+    "license.components": {"conditional": "pass"}
+  }
+}
