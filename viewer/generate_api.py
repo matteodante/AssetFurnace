@@ -32,6 +32,11 @@ from urllib.parse import parse_qs, unquote, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import image_api
 import blender_edit_api
+import batch_api
+import review_api
+import material_labels_api
+import creature_family_api
+import unreal_export_api
 from image_to_3dlab import processes
 from image_to_3dlab.blender import find_blender, missing_help as blender_missing_help
 from image_to_3dlab.gpu_memory import gpu_busy_note
@@ -2073,7 +2078,13 @@ class Handler(SimpleHTTPRequestHandler):
         return cls._chain_runner
 
     def do_POST(self) -> None:
-        if blender_edit_api.handle(self, OUTPUT_ROOT, mutation=True):
+        if blender_edit_api.handle(self, OUTPUT_ROOT, mutation=True) or review_api.handle(self, OUTPUT_ROOT, mutation=True):
+            return
+        if material_labels_api.handle(self, OUTPUT_ROOT, mutation=True):
+            return
+        if unreal_export_api.handle(self, OUTPUT_ROOT, mutation=True):
+            return
+        if batch_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
         parts = self._path_parts()
         if parts == ["api", "chains"]:
@@ -2313,7 +2324,13 @@ class Handler(SimpleHTTPRequestHandler):
         return super().send_head()
 
     def do_GET(self) -> None:
-        if blender_edit_api.handle(self, OUTPUT_ROOT):
+        if blender_edit_api.handle(self, OUTPUT_ROOT) or review_api.handle(self, OUTPUT_ROOT):
+            return
+        if material_labels_api.handle(self, OUTPUT_ROOT):
+            return
+        if unreal_export_api.handle(self, OUTPUT_ROOT):
+            return
+        if batch_api.handle(self, OUTPUT_ROOT):
             return
         if urlparse(self.path).path in ("", "/", "/viewer", "/viewer/"):
             self.send_response(HTTPStatus.FOUND)  # the front door is the studio
@@ -2743,6 +2760,11 @@ class Handler(SimpleHTTPRequestHandler):
             form = parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length))
             asset = form.get("asset")
             chosen = str((form.get("model") or {}).get("value", "")).strip()
+            try:
+                family = creature_family_api.parse_family((form.get("family") or {}).get("value"))
+            except ValueError as exc:
+                self._send_json(422, {"error": str(exc)})
+                return
             if asset and str(asset.get("filename", "")).lower().endswith(".glb"):
                 name, data, record, origin = str(asset["filename"]), asset["data"], None, "uploaded"
             elif chosen:
@@ -2757,7 +2779,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json(422, {"error": "send a .glb in 'asset' or a listed 'model'"})
                 return
             try:
-                job = ANIMATE_JOBS.create_rig(name, data, record, origin)
+                job = ANIMATE_JOBS.create_rig(name, data, record, origin, family)
             except RuntimeError as exc:
                 self._send_json(409, {"error": str(exc)})
                 return

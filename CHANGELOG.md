@@ -8,6 +8,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Material labels in Studio's review panel: for the version under review, say whether
+  light is painted into the colours, whether the materials look right, and click points
+  on the model with the material they show. Saved in `output/material-labels.jsonl`;
+  `scripts/material_label_set.py` queues a label set, reports progress and exports the
+  complete labels every material check is measured against.
+- Game materials, first part (`image_to_3dlab/materials.py`, `scripts/game_materials.py`):
+  a generated GLB's own roughness, metallic and occlusion packed as one ORM texture, the
+  GLB edited in place so rigs and animations survive, and the licence record carried
+  beside the result. Nothing is derived from the colour.
+- Multi-view piece for the material steps (`image_to_3dlab/multiview.py`,
+  `scripts/blender_render_views.py`): Blender renders the albedo unlit from an orbit, and
+  what a 2D model says about each view is carried back to the texels of the atlas.
+- Creature families: after rigging, the skeleton is read for legs, arms, wings, tail and
+  neck and the creature is recognised as humanoid, digitigrade biped, quadruped, many-legged,
+  winged, serpent or plant (`image_to_3dlab/creature_family.py`, `<rig>.family.json`).
+  Digitigrade bipeds and quadrupeds get two procedural test clips, a walk or trot and an
+  attack (`scripts/creature_motion.py`, `scripts/creature_clips.py`). In Studio the Rig step
+  asks what the creature is (or recognises it) and Animate names its test clips.
+- `rig.deformation` check: plays every clip of a rig and measures stretched edges, folded
+  triangles and feet that cross sides (warn only until calibrated).
+- Qwen-Image's setup also fetches Qwen3-VL-8B's vision file (`mmproj-Qwen3VL-8B-Instruct-F16.gguf`,
+  1.16 GB, Apache-2.0), which lets the model read reference pictures; text to image works
+  without it. The Setup page counts it on its own, beside the text encoder in the same
+  cache folder, and Remove deletes only that file.
+- **Batches**: `pipeline.py --run-batch spec.json` (or `.csv`) runs one row per asset
+  through `generate` and `finish`, with a state per row, resume from where it stopped,
+  `--retry-failed`, and a `.provenance.json` for every output. Reserved step names
+  (`materials`, `export_unreal`, `checks`) are skipped with a warning until they exist.
+  An MCP server (`python -m image_to_3dlab.mcp_server`) lets an agent in another
+  repository submit batches, follow them and collect their files, and a **Batches** page
+  in the studio does the same by hand. Finished rows join the Library and the review
+  queue (`output/review-log.jsonl`). Rows can state their real size (`size_cm`,
+  `measure`) for the Unreal export. See [Batches](docs/batches.md).
+- `--run-manifest` runs Pixal3D manifests.
+- Style bibles (`image_to_3dlab/style`): a self-contained folder per project with approved and
+  rejected pictures, each with a note and its provenance, so a game keeps its look in its own
+  repository. Prompt templates per asset kind put the 3D recipe first and the project's style
+  after it; `refs.pick` chooses 1-3 approved pictures as style references for generation.
+  `scripts/style_bible.py` makes, registers and edits bibles and prints prompts and references.
+- Prompt recipes for three more asset kinds: creature, piece of equipment and map object.
+- Asset checks (`image_to_3dlab/checks`): one JSON contract for every check, profiles of
+  thresholds per asset type, and the generic checks (flipped faces, holes, floating specks,
+  non-manifold edges, UV overlap, triangle/material/texture budgets, texel density, size
+  against a reference, silhouette at a common scale from four views, glTF-Validator,
+  component licences from provenance). Results go to `<name>.checks.json`.
+- `scripts/bootstrap_gltf_validator.py` installs Khronos' glTF-Validator (Apache-2.0,
+  2.2 MB) after asking, for the `gltf.valid` check.
+- Review queue (`output/review-log.jsonl`): checked assets wait for a person to approve them
+  or send them back with a note; a sent-back asset stays in the queue with its note until a
+  new version is checked. `scripts/check_asset.py` checks and queues a GLB,
+  `scripts/review_queue.py` lists and decides, and the studio serves `/api/review/...`.
+  Decisions are also recorded as `mark_asset` verdicts.
+  `image_to_3dlab.checks.enqueue_for_review(glb, key, source=..., kind=...)` lets a batch queue
+  an output before or after its checks.
+- **Review** in Studio: the queue of checked assets, a form to check a Library asset against
+  a reference, and a review panel in place of Steps: the model turns 360°, the reference turns
+  beside the checks, four silhouette overlays show where the outlines differ, and Approve or
+  Send back (with a note) records the decision.
 - **Edit in Blender** in Studio: open a separate editing copy, export a GLB from
   Blender and import it as a new Library version. Originals and provenance stay
   available; imported versions preview their own rig, materials and animations.
@@ -17,6 +75,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Guided editor feasibility CLI (`scripts/inspect_edit_asset.py`): bounded GLB inspection,
   lossless container checks and numerical bind/reweight probes with saved evidence.
   The web editor remains in development; passing inspection does not enable editing.
+- **Unreal export profile** (`scripts/export_unreal.py`): a finished object, creature or
+  equipment piece becomes a GLB that Unreal Engine 5.8 imports with Interchange and no
+  touch-ups: real size in centimetres, origin on the ground, `SM_`/`SK_`/`MI_`/`T_` names,
+  baked LODs, box collision, one ORM texture per material, Mannequin bone names and a
+  `root` bone for humanoids, equipment on its body's Skeleton. `scripts/unreal_import_check.py`
+  imports the result headless, checks it and photographs Manny's idle and walk retargeted onto it.
+  In Studio, **Export for Unreal** on any Library asset does the same and hands back the files.
 - Experimental canonical editing snapshots and a Blender no-op bridge, preserving
   untouched GLB data and reporting geometry, UV and weight round-trip checks.
   This is a feasibility tool; interactive editing and rig reconstruction are pending.

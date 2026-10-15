@@ -46,6 +46,7 @@ game-ready LODs), start with [the prop sheet guide](../docs/prop-sheets.md).
 | `bootstrap_pixal3d.py` | Install Pixal3D (raven38/pixal3d.cpp): a `trellis-cli` build plus its Q8_0 weights. |
 | `bootstrap_blender.py` | Install Blender 4.2 LTS for Finish on Linux, from blender.org. |
 | `bootstrap_gltfpack.py` | Install gltfpack for split props, from meshoptimizer's GitHub release. |
+| `bootstrap_gltf_validator.py` | Install Khronos' glTF-Validator for the asset checks, from its GitHub release. |
 | `bootstrap_hunyuan_xiong.py` | Set up Hunyuan3D-MLX (Xiong, full pipeline): both Python environments, then the weights. |
 | `bootstrap_matte.py` | Install BiRefNet-lite, the background remover every backend uses once it is present. |
 | `bootstrap_qwen_image.py` | Install the text-to-image route: a stable-diffusion.cpp binary and Qwen-Image weights. |
@@ -116,6 +117,8 @@ The asset's surface, as opposed to its shape.
 | `feature_mask.py` | Build a UV-space mask for one feature of a mesh, from a point in 3D. |
 | `bake_stiffness.py` | Bake foliage stiffness into a GLB as vertex colours, for engine-side wind. |
 | `classify_thickness.py` | Separate solid body from thin foliage by measuring local thickness. |
+| `material_label_set.py` | Queue assets for the user's material labels, follow the progress, export what is complete. |
+| `game_materials.py` | Pack a generated GLB's own maps as a game-ready ORM, with its sidecar and licence record. |
 
 ## Measure and judge
 
@@ -125,6 +128,9 @@ Numbers and renders to decide whether a change helped. Read `docs/` before trust
 |---|---|
 | `compare_to_source.py` | Put a generated asset next to the image it was generated from. |
 | `mark_asset.py` | Record a human verdict on a generated asset, so winners stay findable. |
+| `check_asset.py` | Run the automatic checks on a GLB, write `<name>.checks.json` and put it in the review queue. |
+| `review_queue.py` | See the review queue, and approve an asset or send it back with a note. |
+| `style_bible.py` | Keep a project's style bible: approved and rejected pictures with notes, prompts and style references. |
 | `ribbon_metric.py` | Measure how torn a generated mesh is, and gate post-processing on it. |
 | `tear_provenance.py` | Ask of every large tear: could the input view see it?. |
 | `glb_forensics.py` | Dump what a GLB actually contains, so a reference asset can be diffed against ours. |
@@ -146,6 +152,7 @@ These talk to a running Blender over the `execute_code` socket on port 9876 unle
 | `blender_render_asset.py` | Import a GLB into the local Blender MCP scene and render cardinal previews. |
 | `blender_turntable.py` | Render a seamlessly looping 360-degree turntable of a GLB via the Blender MCP scene. |
 | `blender_light_orbit.py` | Render a GLB under an orbiting key light, holding the camera still. |
+| `blender_render_views.py` | Render a GLB's albedo unlit from an orbit of views, with the UV and normal of every pixel. |
 | `blender_lineup_sweep.py` | Render a camera sweep past a line-up of assets, headless. |
 | `blender_orbit_camera.py` | Point an orbit camera at a target and (optionally) render. |
 | `blender_inspect.py` | Inspect a Blender scene or an unopened .blend file's contents. |
@@ -195,12 +202,26 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 | `clean_skin_weights.py` | Drop skin weights that come from bones far away in the skeleton, then rebalance. |
 | `kimodo_retarget.py` | Play a Kimodo text-to-motion clip on a SkinTokens-rigged humanoid and export an animated GLB. |
 | `rig_check.py` | Say whether a rigged GLB fits the preset moves (a humanoid), read without Blender. |
+| `creature_motion.py` | Test clips for a creature family, as pure functions: a walk or trot and an attack. |
+| `creature_clips.py` | Recognise a rigged creature's family and write its test clips, one animated GLB each. |
 | `attack_pose.py` | Pose curves for a quadruped slam attack, as pure functions. |
 | `rigify_walk_pose.py` | Pose curves for a quadruped trot on a Rigify-generated rig, as pure functions. |
 | `blender_walk_cycle.py` | Author a looping quadruped gait cycle on the rigged fox in the live Blender scene. |
 | `blender_rigify_walk_cycle.py` | Author a trot cycle on the Rigify-generated 'rig' armature in the live Blender scene. |
 | `blender_idle_cycle.py` | Author a looping idle for the rigged fox. |
 | `blender_attack_cycle.py` | Author a slam-attack clip on a rigged quadruped in the live Blender scene. |
+
+## Export for Unreal
+
+A finished asset in, files Unreal Engine 5.8 imports with no touch-ups out: real size, on
+the ground, Unreal names, LODs, collision, ORM textures, Mannequin bone names. The design
+and its measurements are in [the Unreal profile design](../docs/plans/2026-10-15-unreal-profile-design.md).
+
+| Script | What it does |
+|---|---|
+| `export_unreal.py` | Turn a finished GLB into files Unreal Engine 5.8 imports with no touch-ups. |
+| `blender_export_unreal.py` | Reshape a finished GLB for Unreal in headless Blender: size, ground, facing, bones, LODs. |
+| `unreal_import_check.py` | Import exported assets into Unreal with Interchange and check them, with no editor window. |
 
 ## Project upkeep
 

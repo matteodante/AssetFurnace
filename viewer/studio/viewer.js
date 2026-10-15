@@ -22,7 +22,7 @@ const ICON = {
   pause: '<svg viewBox="0 0 24 24"><path d="M7 5h3v14H7zM14 5h3v14h-3z"/></svg>',
 };
 
-export function createStudioViewer({ stage, logoUrl, onClipChange }) {
+export function createStudioViewer({ stage, logoUrl, onClipChange, onModelLoaded }) {
   const pane = document.createElement('div');
   pane.className = 'sv-pane';
   pane.innerHTML = '<span class="stats" hidden></span>';
@@ -209,8 +209,9 @@ export function createStudioViewer({ stage, logoUrl, onClipChange }) {
 
   let embeddedAnimations = [];
 
-  function load(url, { label = '', autoplay = false, embeddedClips = false } = {}) {
+  function load(url, { label = '', autoplay = false, embeddedClips = false, turntable = false } = {}) {
     const token = ++loadToken;
+    turning = turntable;
     dispose();
     embeddedAnimations = [];
     if (embeddedClips) { clipBar.hidden = true; clipBar.innerHTML = ''; }
@@ -262,8 +263,10 @@ export function createStudioViewer({ stage, logoUrl, onClipChange }) {
           if (loaded.rig.bones.length) setSkeleton(true);
           else tools.querySelector('[data-act="bones"]').setAttribute('aria-pressed', 'false');
         }
+        setTurntable(turning);
         resize();
         drawGizmo();
+        onModelLoaded?.(loaded, requestRender);
       },
       onError: (error) => {
         if (token !== loadToken) return;
@@ -272,6 +275,16 @@ export function createStudioViewer({ stage, logoUrl, onClipChange }) {
     });
     view = created;
     resize();
+  }
+
+  // Review turns the model round on its own; any drag still orbits it as usual.
+  let turning = false;
+  function setTurntable(on) {
+    turning = !!on;
+    if (!view?.controls) return;
+    view.controls.autoRotate = turning;
+    view.controls.autoRotateSpeed = 4;  // one turn in about 15 seconds
+    requestRender();
   }
 
   function showImage(url, caption) {
@@ -371,5 +384,5 @@ export function createStudioViewer({ stage, logoUrl, onClipChange }) {
   });
 
   drawGizmo();
-  return { load, showImage, showEmpty, setClips, setFacing, snap, dispose };
+  return { load, showImage, showEmpty, setClips, setFacing, setTurntable, snap, dispose };
 }
