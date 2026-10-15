@@ -25,7 +25,7 @@ from typing import Any
 from image_to_3dlab.batch_steps import StepContext, StepResult
 from image_to_3dlab.blender import find_blender, missing_help
 from image_to_3dlab.host import APPLE, host_platform
-from image_to_3dlab.provenance import sha256_file
+from image_to_3dlab.provenance import LICENSES, sha256_file
 
 REPO = Path(__file__).resolve().parents[2]
 WORKER = REPO / "scripts" / "retopo_repaint.py"
@@ -37,6 +37,14 @@ VALUE_FLAGS = {"atlas": "--atlas", "texture_size": "--texture-size", "metallic":
 OPTIONS = {"paint", "photo", "skip_bake", "skip_compress", *VALUE_FLAGS}
 REPAINT_OFF_MAC = ("the repaint runs on Apple Silicon only (it uses MLX); remove "
                    '"paint": true from the finish options')
+# What the repaint runs (scripts/hunyuan_mlx_xiong_generate.py), and its licence.
+PAINT_ROOT = REPO / "hunyuan_mlx" / "paint"
+PAINT_PYTHON = PAINT_ROOT / ".venv" / "bin" / "python"
+PAINT_WEIGHTS = PAINT_ROOT / "weights" / "hunyuan3d-paintpbr-v2-1"
+PAINT_PROFILE = LICENSES["hunyuan-comfyui"]
+# Worst last: a finished asset is as restricted as the most restricted model in it.
+CLASS_ORDER = ("commercial-clear", "commercial-conditional", "territory-restricted",
+               "research-only")
 
 
 def preflight(rows) -> list[str]:
@@ -49,9 +57,15 @@ def preflight(rows) -> list[str]:
     blender = find_blender()
     if blender is None or not Path(blender).is_file():
         problems.append(missing_help())
-    if (any(row.options.get("finish", {}).get("paint") for row in rows)
-            and host_platform() != APPLE):
-        problems.append(REPAINT_OFF_MAC)
+    if any(row.options.get("finish", {}).get("paint") for row in rows):
+        if host_platform() != APPLE:
+            problems.append(REPAINT_OFF_MAC)
+        else:
+            if not PAINT_PYTHON.is_file():
+                problems.append(f"the repaint needs its environment: uv sync in {PAINT_ROOT}")
+            if not PAINT_WEIGHTS.is_dir():
+                problems.append(f"the repaint needs its weights in {PAINT_WEIGHTS}; the Setup "
+                                "page installs them after asking")
     return problems
 
 
@@ -124,7 +138,10 @@ def run(ctx: StepContext) -> StepResult:
     sidecar.write_text(json.dumps(
         provenance_record(ctx, output, _read(worker_record) or None), indent=2) + "\n",
         encoding="utf-8")
-    files = [output, sidecar, *([worker_record] if worker_record.is_file() else [])]
+    steps = ctx.step_dir / "steps"
+    diagnostics = sorted(path for path in steps.rglob("*") if path.is_file()) if steps.is_dir() else []
+    files = [output, sidecar, *([worker_record] if worker_record.is_file() else []),
+             log_path, *diagnostics]
     return StepResult(asset=output, sidecar=sidecar, files=files)
 
 
@@ -136,6 +153,17 @@ def provenance_record(ctx: StepContext, output: Path,
     implying it is clear to ship.
     """
     source = _read(ctx.sidecar) or None
+    classification = ((source or {}).get("output") or {}).get("classification")
+    painted = bool(ctx.options.get("paint", False))
+    components = []
+    if painted:
+        components.append({
+            "component": "Hunyuan3D-2.1 Paint (hunyuan_mlx/paint)", "purpose": "repaint",
+            "license": PAINT_PROFILE.license_name, "license_url": PAINT_PROFILE.license_url,
+            "commercial_status": PAINT_PROFILE.classification,
+            "conditions": list(PAINT_PROFILE.conditions),
+        })
+        classification = _worst(classification, PAINT_PROFILE.classification)
     return {
         "schema_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -144,7 +172,8 @@ def provenance_record(ctx: StepContext, output: Path,
                   "source": "generated" if source else "unknown"},
         "output": {"path": str(output), "sha256": sha256_file(output)},
         "license": (source or {}).get("license"),
-        "classification": ((source or {}).get("output") or {}).get("classification"),
+        "classification": classification,
+        "components": components,
         "parameters": {"faces": ctx.row.faces or DEFAULT_FACES,
                        "paint": bool(ctx.options.get("paint", False)),
                        "photo": views_for(ctx.asset) is not None
@@ -154,6 +183,14 @@ def provenance_record(ctx: StepContext, output: Path,
         "worker_record": worker_record,
         "source_record": source,
     }
+
+
+def _worst(first: str | None, second: str) -> str:
+    """The more restricted of two classifications; an unknown one counts as the worst."""
+    def rank(name: str | None) -> int:
+        return CLASS_ORDER.index(name) if name in CLASS_ORDER else len(CLASS_ORDER)
+
+    return first if first is not None and rank(first) >= rank(second) else second
 
 
 def _read(path: Path | None) -> dict[str, Any]:

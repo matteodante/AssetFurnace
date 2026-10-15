@@ -34,8 +34,8 @@ def ran(tmp_path, monkeypatch):
 def launched(monkeypatch):
     calls = []
 
-    def launch(command, log_path):
-        calls.append((command, log_path))
+    def launch(command, log_path, env=None):
+        calls.append((command, log_path, env))
         return os.getpid()   # a live pid, as a started runner would have
 
     monkeypatch.setattr(mcp_server, "launch", launch)
@@ -66,13 +66,28 @@ def test_submit_starts_the_cli_in_the_background_and_answers_at_once(tmp_path, m
     spec_path = write_spec(tmp_path, rows=2)
     result = mcp_server.submit_batch(str(spec_path), retry_failed=True)
     assert result["started"] is True and result["pid"] == os.getpid()
-    command, log_path = launched[0]
+    command, log_path, env = launched[0]
     assert command[1:] == [str(mcp_server.PIPELINE), "--run-batch", str(spec_path.resolve()),
                            "--retry-failed"]
     assert log_path.parent == (tmp_path / "out" / "test-batch").resolve()
+    lock = json.loads((tmp_path / "out" / batch.LOCK_FILE).read_text())
+    assert lock["token"] == env[batch.LOCK_TOKEN_ENV] and lock["pid"] == os.getpid()
     # The lock is taken at once, so a second submit cannot slip in before the runner starts
     again = mcp_server.submit_batch(str(spec_path))
     assert again["started"] is False and "already running" in again["problems"][0]
+
+
+def test_a_launch_that_fails_gives_the_lock_back(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(FakeFinish().run))
+
+    def broken(command, log_path, env=None):
+        raise OSError("no python")
+
+    monkeypatch.setattr(mcp_server, "launch", broken)
+    result = mcp_server.submit_batch(str(write_spec(tmp_path, rows=1)))
+    assert result["started"] is False and "no python" in result["problems"][0]
+    assert not (tmp_path / "out" / batch.LOCK_FILE).exists()
 
 
 def test_submit_refuses_a_spec_that_would_not_start(tmp_path, monkeypatch, launched):
@@ -115,7 +130,7 @@ def test_list_outputs_gives_absolute_paths(ran):
 def test_cancel_stops_the_runner(ran, monkeypatch):
     directory = ran.parent / "out" / "test-batch"
     assert mcp_server.cancel_batch(str(directory))["cancelled"] is False
-    (directory / batch.LOCK_FILE).write_text(str(os.getpid()))
+    batch.acquire_lock(directory.parent, "test-batch", os.getpid(), "runner")
     stopped = []
     monkeypatch.setattr(mcp_server, "terminate_group", stopped.append)
     assert mcp_server.cancel_batch(str(directory)) == {"cancelled": True, "pid": os.getpid()}
@@ -182,3 +197,16 @@ def test_resume_reuses_the_spec_and_the_intent_it_ran_with(tmp_path, monkeypatch
 def test_resume_of_a_batch_that_never_ran(tmp_path):
     result = mcp_server.resume_batch(str(tmp_path))
     assert result["started"] is False and "never ran" in result["problems"][0]
+
+
+
+def test_status_after_a_stop_shows_the_interrupted_row_queued(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch, FakeGenerator(interrupt_on="row02"))
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(FakeFinish().run))
+    spec_path = write_spec(tmp_path, rows=3)
+    with pytest.raises(KeyboardInterrupt):
+        batch.run_batch(batch.load_batch(spec_path))
+    status = mcp_server.batch_status(str(spec_path))
+    assert status["active"] is None and status["counts"] == {"done": 1, "queued": 2}
+    row = next(row for row in status["rows"] if row["id"] == "SM_row02")
+    assert row["status"] == "queued" and "interrupted" in row["note"]

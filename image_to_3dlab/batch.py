@@ -14,8 +14,10 @@ On disk, under `<output>/<name>/`:
                        the files it wrote and their sha256
     outputs.json       the finished rows and their files, for the studio and the review queue
     spec.json          the spec as it was resolved for the last run
-    batch.lock         the pid of the process running it
     rows/<id>/         the row's manifest, inputs and one folder per step
+
+and `<output>/.batch.lock` names the one batch running in that folder, with its pid: one
+GPU, one batch. It is taken atomically, so two submissions at once cannot both start.
 
 Resuming is running the same spec again. Done rows are skipped; an interrupted row
 starts again from its first step whose files are not all still there with the hash
@@ -38,6 +40,7 @@ import re
 import shutil
 import sys
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -46,7 +49,7 @@ from typing import Any
 
 from . import manifest_run
 from .batch_steps import StepContext
-from .processes import parse_pid_record, process_alive
+from .processes import process_alive
 from .provenance import validate_run_policy
 
 REPO = Path(__file__).resolve().parents[1]
@@ -73,7 +76,9 @@ SIZE_LIMIT_CM = 10_000_000
 STATE_FILE = "batch-state.json"
 INDEX_FILE = "outputs.json"
 SPEC_COPY = "spec.json"
-LOCK_FILE = "batch.lock"
+LOCK_FILE = ".batch.lock"   # in the batches folder, not in one batch: one GPU, one batch
+# A submitter that reserved the lock for a runner hands it the reservation's token.
+LOCK_TOKEN_ENV = "I2L_BATCH_LOCK_TOKEN"
 REVIEW_LOG = "review-log.jsonl"
 
 INTENT_KEYS = ("use_case", "distribution", "commercial_intent")
@@ -185,8 +190,15 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
     resolved_intent = {key: top.get(key, DEFAULT_INTENT[key]) for key in INTENT_KEYS}
     resolved_intent.update(intent)
     policy = top.get("license_policy", {})
-    output = top.get("output", {}).get("directory")
-    output_dir = (base / output).resolve() if output else DEFAULT_OUTPUT
+    if not isinstance(policy, dict):
+        problems.append("license_policy must be an object")
+        policy = {}
+    output_field = top.get("output", {})
+    if not isinstance(output_field, dict):
+        problems.append('output must be an object, like {"directory": "../output/batches"}')
+        output_field = {}
+    output = output_field.get("directory")
+    output_dir = (base / str(output)).resolve() if output else DEFAULT_OUTPUT
     name = str(top.get("name", path.stem))
     if not ID_PATTERN.fullmatch(name):
         problems.append(f"batch name {name!r}: use letters, digits, '_', '.', '-' "
@@ -281,6 +293,8 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path,
     if not isinstance(steps, list) or not all(isinstance(step, str) for step in steps):
         problems.append(f"{label}: steps must be a list of names")
         steps = []
+    elif not steps:
+        problems.append(f"{label}: a row needs at least one step")
     for step in steps:
         if step not in STEP_NAMES:
             problems.append(f"{label}: unknown step {step!r}; steps are "
@@ -293,6 +307,10 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path,
     images = tuple((base / image).resolve() for image in value.get("images", []) or [])
     problems += [f"{label}: image does not exist: {image}"
                  for image in images if not image.is_file()]
+    names = [image.name.lower() for image in images]
+    if len(set(names)) < len(names):
+        # they are copied into one input folder, where one would overwrite the other
+        problems.append(f"{label}: two images have the same file name; rename one")
     asset = (base / value["asset"]).resolve() if value.get("asset") else None
     if asset is not None and not asset.is_file():
         problems.append(f"{label}: asset does not exist: {asset}")
@@ -451,28 +469,99 @@ def _files_intact(files: list[dict[str, Any]], directory: Path) -> bool:
     return True
 
 
-def lock_holder(directory: Path) -> int | None:
-    """The pid running the batch in `directory`, or None (no lock, or a dead process)."""
+def _read_lock(output_dir: Path) -> dict[str, Any] | None:
+    lock = read_json(output_dir / LOCK_FILE)
+    return lock if isinstance(lock, dict) and isinstance(lock.get("pid"), int) else None
+
+
+def _live_lock(output_dir: Path) -> dict[str, Any] | None:
+    lock = _read_lock(output_dir)
+    return lock if lock and process_alive(lock["pid"]) else None
+
+
+def acquire_lock(output_dir: Path, name: str, pid: int, token: str) -> None:
+    """Take the batches folder's lock for batch `name`, or raise BatchError.
+
+    Created with O_EXCL, so of two processes asking at once exactly one gets it. A lock
+    whose process is dead is taken over; one with the same token is a reservation made
+    for this runner by whoever started it, and is rewritten with this pid.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / LOCK_FILE
+    record = {"batch": name, "pid": pid, "token": token, "since": now()}
+    for _ in range(3):
+        try:
+            handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            lock = _read_lock(output_dir)
+            if lock is None and time.time() - _mtime(path) < 5:
+                raise BatchError("another batch is starting in this folder; try again") from None
+            if lock and lock.get("token") == token and lock.get("batch") == name:
+                write_json(path, record)
+                return
+            if lock and process_alive(lock["pid"]):
+                if lock.get("batch") == name:
+                    raise BatchError(f"batch {name} is already running (pid {lock['pid']})") from None
+                raise BatchError(f"another batch is using the GPU: {lock.get('batch')}. "
+                                 "One batch runs at a time") from None
+            path.unlink(missing_ok=True)   # left by a process that is gone
+            continue
+        with os.fdopen(handle, "w", encoding="utf-8") as stream:
+            stream.write(json.dumps(record))
+        return
+    raise BatchError("could not take the batch lock; try again")
+
+
+def _mtime(path: Path) -> float:
     try:
-        pid, _ = parse_pid_record((directory / LOCK_FILE).read_text())
-    except (OSError, ValueError):
-        return None
-    return pid if process_alive(pid) else None
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def release_lock(output_dir: Path, token: str) -> None:
+    lock = _read_lock(output_dir)
+    if lock and lock.get("token") == token:
+        (output_dir / LOCK_FILE).unlink(missing_ok=True)
+
+
+def lock_holder(directory: Path) -> int | None:
+    """The pid running the batch in `directory`, or None (not running, or its process died)."""
+    lock = _live_lock(directory.parent)
+    return lock["pid"] if lock and lock.get("batch") == directory.name else None
 
 
 def running_batches(output_dir: Path) -> list[Path]:
-    """Batch folders under `output_dir` whose runner is alive: one GPU, one batch."""
-    if not output_dir.is_dir():
-        return []
-    return [lock.parent for lock in sorted(output_dir.glob(f"*/{LOCK_FILE}"))
-            if lock_holder(lock.parent) is not None]
+    """The batch running in `output_dir`, if any: one GPU, one batch."""
+    lock = _live_lock(output_dir)
+    return [output_dir / str(lock.get("batch"))] if lock else []
 
 
-def summary(state: dict[str, Any]) -> dict[str, int]:
+def rows_as_seen(state: dict[str, Any], running: bool) -> dict[str, dict[str, Any]]:
+    """The rows as a reader should see them: with no runner alive, a row left `running`
+    (a stopped or killed batch) is back in the queue, as resuming will treat it."""
+    rows = {}
+    for row_id, entry in state.get("rows", {}).items():
+        if entry.get("status") == "running" and not running:
+            entry = {**entry, "status": "queued", "note": "interrupted; resume to run it"}
+        rows[row_id] = entry
+    return rows
+
+
+def summary(state: dict[str, Any], running: bool = False) -> dict[str, int]:
     counts: dict[str, int] = {}
-    for entry in state.get("rows", {}).values():
+    for entry in rows_as_seen(state, running).values():
         counts[entry["status"]] = counts.get(entry["status"], 0) + 1
     return counts
+
+
+def asset_sha(entry: dict[str, Any]) -> str | None:
+    """The sha256 recorded for a row's final asset."""
+    for step in entry.get("steps", {}).values():
+        for record in step.get("files", []):
+            if record.get("path") == entry.get("asset"):
+                return record.get("sha256")
+    return None
 
 
 # --------------------------------------------------------------------------- running
@@ -486,29 +575,21 @@ def run_batch(spec: BatchSpec, retry_failed: bool = False,
     if problems:
         raise BatchError(problems)
     directory = spec.directory
-    holder = lock_holder(directory)
-    # A submitter (the MCP server) takes the lock in the runner's name as it starts it.
-    # On Windows a venv's python.exe can be a launcher that runs the real interpreter as
-    # its child, so the pid it was given may be this process's parent.
-    if holder is not None and holder not in (os.getpid(), os.getppid()):
-        raise BatchError(f"batch {spec.name} is already running (pid {holder})")
-    others = [path.name for path in running_batches(spec.output_dir) if path != directory]
-    if others:
-        raise BatchError(f"another batch is using the GPU: {', '.join(others)}. "
-                         "One batch runs at a time")
-
-    state_path = directory / STATE_FILE
-    state = read_json(state_path)
-    if state and state.get("intent_fingerprint") != spec.intent_fingerprint():
-        raise BatchError(
-            f"the intent or licence policy of batch {spec.name} changed since it ran "
-            f"(see {state_path}). Give the batch a new name, or remove its folder")
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / LOCK_FILE).write_text(str(os.getpid()))
+    # A submitter (the MCP server, the studio) reserves the lock as it starts this
+    # runner and passes the reservation's token; run by hand, there is none.
+    token = os.environ.get(LOCK_TOKEN_ENV) or uuid.uuid4().hex
+    acquire_lock(spec.output_dir, spec.name, os.getpid(), token)
     try:
+        state_path = directory / STATE_FILE
+        state = read_json(state_path)
+        if state and state.get("intent_fingerprint") != spec.intent_fingerprint():
+            raise BatchError(
+                f"the intent or licence policy of batch {spec.name} changed since it ran "
+                f"(see {state_path}). Give the batch a new name, or remove its folder")
+        directory.mkdir(parents=True, exist_ok=True)
         return _run_rows(spec, state or {}, retry_failed, log)
     finally:
-        (directory / LOCK_FILE).unlink(missing_ok=True)
+        release_lock(spec.output_dir, token)
 
 
 def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
@@ -523,13 +604,15 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
             entry = {"status": "queued", "fingerprint": fingerprint, "steps": {},
                      **({"note": "the row changed in the spec"} if entry else {})}
         rows[row.id] = entry
-    for row_id, entry in previous.items():   # rows dropped from the spec keep their record
-        rows.setdefault(row_id, entry)
+    # rows dropped from the spec keep their record, apart: they are not part of the batch
+    removed = {**state.get("removed_rows", {}),
+               **{row_id: entry for row_id, entry in previous.items() if row_id not in rows}}
     state = {"schema_version": 1, "name": spec.name,
              "spec": {"path": str(spec.path), "sha256": sha256_file(spec.path)},
              "intent": spec.intent, "license_policy": spec.license_policy,
              "intent_fingerprint": spec.intent_fingerprint(),
-             "started_at": now(), "pid": os.getpid(), "rows": rows}
+             "started_at": now(), "pid": os.getpid(), "rows": rows,
+             **({"removed_rows": removed} if removed else {})}
 
     def save() -> None:
         state["updated_at"] = now()
@@ -681,13 +764,15 @@ def _lines(path: Path) -> list[dict[str, Any]]:
     return lines
 
 
-def review_states(log_path: Path) -> dict[str, dict[str, Any]]:
-    """The latest review event per asset key: queued, approved or sent_back (with its note)."""
-    states: dict[str, dict[str, Any]] = {}
+def review_state(log_path: Path, asset_key: str, sha256: str | None) -> dict[str, Any] | None:
+    """The latest review event for this version of an asset: queued, approved or
+    sent_back (with its note). Another batch's row with the same id, or an older version,
+    has another sha256 and does not count; an event that names no hash goes by the key."""
+    latest = None
     for line in _lines(log_path):
-        if isinstance(line.get("asset_key"), str):
-            states[line["asset_key"]] = line
-    return states
+        if line.get("asset_key") == asset_key and line.get("sha256") in (None, sha256):
+            latest = line
+    return latest
 
 
 def _sidecar_for(asset: Path) -> Path | None:

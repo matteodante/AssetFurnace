@@ -148,7 +148,9 @@ def test_finish_writes_a_derived_provenance_sidecar(tmp_path, monkeypatch, gener
     assert record["parameters"]["faces"] == 3000 and record["parameters"]["paint"] is False
     assert record["output"]["sha256"] and record["input"]["source"] == "generated"
     assert record["worker_record"] == {"stages": ["x"]}
+    assert record["components"] == []
     assert ctx.step_dir / "SM_Cat.retopo-repaint.json" in result.files
+    assert ctx.step_dir / "finish.log" in result.files
 
 
 def test_finish_failure_reports_the_log_tail(tmp_path, monkeypatch, generated):
@@ -181,3 +183,39 @@ def test_the_real_steps_run_inside_a_batch(tmp_path, monkeypatch):
     report = batch.run_batch(batch.load_batch(spec_path))
     assert report.exit_code == 0
     assert all(name.startswith("row0") and "__fake__" in name for name in seen)
+
+
+
+def test_a_repaint_is_in_the_record_and_sets_the_classification(tmp_path, monkeypatch, generated):
+    asset, sidecar = generated
+    monkeypatch.setattr(finish_step, "find_blender", lambda: Path("blender.exe"))
+
+    def fake_run(command, stdout, **kwargs):
+        Path(command[5]).write_bytes(b"glTFpainted")
+        steps = Path(command[command.index("--steps-dir") + 1])
+        steps.mkdir(parents=True)
+        (steps / "2_painted.glb").write_bytes(b"glTF")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(finish_step.subprocess, "run", fake_run)
+    ctx = _context(tmp_path, _row(tmp_path), asset, sidecar, {"paint": True})
+    result = finish_step.run(ctx)
+    record = json.loads(result.sidecar.read_text())
+    assert record["parameters"]["paint"] is True
+    assert record["classification"] == "territory-restricted"
+    (component,) = record["components"]
+    assert "Hunyuan" in component["license"] and component["purpose"] == "repaint"
+    assert ctx.step_dir / "steps" / "2_painted.glb" in result.files
+
+
+def test_the_repaint_install_is_checked_before_the_batch(tmp_path, monkeypatch):
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"")
+    monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
+    monkeypatch.setattr(finish_step, "host_platform", lambda: finish_step.APPLE)
+    monkeypatch.setattr(finish_step, "PAINT_PYTHON", tmp_path / "missing" / "python")
+    monkeypatch.setattr(finish_step, "PAINT_WEIGHTS", tmp_path / "missing" / "weights")
+    problems = finish_step.preflight([_row(tmp_path, options={"finish": {"paint": True}})])
+    assert any("uv sync" in problem for problem in problems)
+    assert any("weights" in problem for problem in problems)
+    assert finish_step.preflight([_row(tmp_path)]) == []

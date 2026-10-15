@@ -52,14 +52,17 @@ def list_batches(output: Path) -> list[dict[str, Any]]:
     """Every batch that has run under output/batches, the most recently updated first."""
     root = batches_root(output)
     found = []
-    for directory in sorted(root.iterdir()) if root.is_dir() else []:
+    # a runner just started holds the lock before it writes its state: list it as starting
+    running = {path.name for path in batch.running_batches(root)}
+    names = {d.name for d in root.iterdir() if d.is_dir()} if root.is_dir() else set()
+    for name in sorted(names | running):
+        directory = root / name
         state = batch.read_json(directory / batch.STATE_FILE)
         active = batch.lock_holder(directory)
-        # a runner just started has its lock but not yet its state: list it as starting
-        if directory.name.startswith(".") or not (isinstance(state, dict) or active):
+        if name.startswith(".") or not (isinstance(state, dict) or active):
             continue
         state = state if isinstance(state, dict) else {}
-        found.append({"name": directory.name, "counts": batch.summary(state),
+        found.append({"name": name, "counts": batch.summary(state, active is not None),
                       "total": len(state.get("rows", {})), "active": active,
                       "updated_at": state.get("updated_at"),
                       "spec": (state.get("spec") or {}).get("path")})
@@ -75,13 +78,14 @@ def batch_detail(output: Path, name: str) -> dict[str, Any] | None:
     spec = batch.read_json(directory / batch.SPEC_COPY) or {}
     rows_in_spec = {row["id"]: row for row in spec.get("rows", []) if isinstance(row, dict)}
     state_rows = (batch.read_json(directory / batch.STATE_FILE) or {}).get("rows", {})
-    reviews = batch.review_states(output / batch.REVIEW_LOG)
+    log = output / batch.REVIEW_LOG
     for row in status["rows"]:
         entry = state_rows.get(row["id"], {})
         asset = entry.get("asset") if row["status"] == "done" else None
         row["kind"] = rows_in_spec.get(row["id"], {}).get("kind")
         row["file"] = _from_output(directory / asset, output) if asset else None
-        row["review"] = reviews.get(row["id"]) if asset else None
+        row["review"] = (batch.review_state(log, row["id"], batch.asset_sha(entry))
+                         if asset else None)
     status["directory"] = _from_output(directory, output)
     return status
 
@@ -157,9 +161,14 @@ def submit(output: Path, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
               "commercial": True if commercial else None}
     if spec.suffix.lower() != ".csv":
         intent = {"use_case": None, "distribution": None, "commercial": None}
-    if payload.get("check_only"):
-        result = mcp_server.validate_batch(str(spec), **intent)
-        return (200 if result["ok"] else 422), result
+    result = mcp_server.validate_batch(str(spec), **intent)
+    if result.get("directory") and Path(result["directory"]).parent != batches_root(output).resolve():
+        # the page lists output/batches only: a batch elsewhere could not be followed
+        result.update(ok=False, problems=[*result["problems"], (
+            f"The studio follows batches in {batches_root(output)}. Remove output.directory "
+            "from the spec, or run it with pipeline.py --run-batch")])
+    if payload.get("check_only") or not result["ok"]:
+        return (200 if result["ok"] else 422), {**result, "started": False}
     result = mcp_server.submit_batch(str(spec), **intent)
     return (202 if result["started"] else 422), result
 
@@ -191,6 +200,15 @@ def _body(handler) -> dict[str, Any]:
     return json.loads(handler.rfile.read(length))
 
 
+def _drain(handler) -> None:
+    try:
+        length = int(handler.headers.get("Content-Length") or 0)
+    except ValueError:
+        return
+    if 0 < length <= MAX_SPEC * 2:
+        handler.rfile.read(length)
+
+
 def handle(handler, output: Path, *, mutation: bool = False) -> bool:
     """Answer a /api/batches request; False for any other path, so the caller goes on."""
     path = urlsplit(handler.path).path
@@ -219,6 +237,7 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
         else:
             handler._send_json(404, {"error": "Unknown batch endpoint"})
     except PermissionError as exc:
+        _drain(handler)   # an unread body makes Windows reset the connection, not answer
         handler.close_connection = True
         handler._send_json(403, {"error": str(exc)})
     except (ValueError, KeyError, TypeError, OSError, batch.BatchError) as exc:

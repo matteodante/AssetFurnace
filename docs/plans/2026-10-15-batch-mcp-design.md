@@ -83,7 +83,6 @@ fermarsi alla riga 7.
 <output.directory>/<name>/
   spec.json               copia della specifica risolta, con il suo sha256
   batch-state.json        lo stato (sotto)
-  batch.lock              presente mentre un processo esegue il lotto
   rows/<id>/
     manifest.json         run manifest v1 della riga (generate)
     generate/conditional/<stem>__pixal3d__commercial-conditional__<run>.glb
@@ -113,8 +112,10 @@ loro sha256.
 - Intento o licenza del lotto cambiati: la ripresa si **rifiuta**, come fa `finish_props.py --resume` quando cambiano
   le impostazioni. Si cambia nome al lotto o si toglie la cartella.
 
-Il lucchetto `batch.lock` contiene il pid: due processi non eseguono lo stesso lotto; un lucchetto di un processo
-morto si ignora.
+Il lucchetto è uno solo per cartella dei lotti (`<output.directory>/.batch.lock`: nome del lotto, pid, token), creato
+in modo atomico: una GPU, un lotto, e di due invii simultanei ne parte uno solo. Chi avvia il runner (server MCP, studio)
+lo prenota e passa il token al runner, che lo rileva. Un lucchetto di un processo morto si ignora. (Cambiato dopo la
+review di Codex sulla PR #2: prima c'era un `batch.lock` per lotto, controllato e scritto in due passi.)
 
 Codice d'uscita: 0 se tutte le righe sono `done`, 1 se qualcuna è `failed`, 2 se la specifica è sbagliata.
 

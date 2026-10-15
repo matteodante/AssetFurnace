@@ -20,8 +20,10 @@ Each tool is a plain function, testable without MCP; `build_server` only exposes
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -64,12 +66,12 @@ def validate_batch(spec: str, use_case: str | None = None, distribution: str | N
     return result
 
 
-def launch(command: list[str], log_path: Path) -> int:
+def launch(command: list[str], log_path: Path, env: dict[str, str] | None = None) -> int:
     """Start the runner detached from this server, in its own process group."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("ab") as handle:
         process = subprocess.Popen(command, cwd=str(REPO), stdin=subprocess.DEVNULL,
-                                   stdout=handle, stderr=subprocess.STDOUT,
+                                   stdout=handle, stderr=subprocess.STDOUT, env=env,
                                    **group_popen_kwargs())
     return process.pid
 
@@ -85,14 +87,13 @@ def submit_batch(spec: str, retry_failed: bool = False, use_case: str | None = N
     if loaded is None or problems:
         return {"started": False, "problems": problems}
     directory = loaded.directory
-    holder = batch.lock_holder(directory)
-    if holder is not None:
-        problem = f"batch {loaded.name} is already running (pid {holder})"
-        return {"started": False, "problems": [problem]}
-    others = [path.name for path in batch.running_batches(loaded.output_dir)]
-    if others:
-        problem = f"another batch is using the GPU: {', '.join(others)}"
-        return {"started": False, "problems": [problem]}
+    # Reserve the lock before starting anything: two submissions at once cannot both
+    # pass. The runner gets the reservation's token and takes the lock over.
+    token = uuid.uuid4().hex
+    try:
+        batch.acquire_lock(loaded.output_dir, loaded.name, os.getpid(), token)
+    except batch.BatchError as exc:
+        return {"started": False, "problems": exc.problems}
     command = [sys.executable, str(PIPELINE), "--run-batch", str(loaded.path)]
     if retry_failed:
         command.append("--retry-failed")
@@ -103,9 +104,13 @@ def submit_batch(spec: str, retry_failed: bool = False, use_case: str | None = N
     if intent.get("commercial_intent"):
         command.append("--commercial")
     log_path = directory / RUN_LOG
-    pid = launch(command, log_path)
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / batch.LOCK_FILE).write_text(str(pid))
+    try:
+        pid = launch(command, log_path, env={**os.environ, batch.LOCK_TOKEN_ENV: token})
+    except OSError as exc:
+        batch.release_lock(loaded.output_dir, token)
+        return {"started": False, "problems": [f"the runner could not start: {exc}"]}
+    # In the runner's name until it takes the lock over itself, so Stop works at once.
+    batch.acquire_lock(loaded.output_dir, loaded.name, pid, token)
     return {"started": True, "pid": pid, "name": loaded.name, "directory": str(directory),
             "log": str(log_path)}
 
@@ -140,13 +145,15 @@ def batch_status(batch_ref: str) -> dict[str, Any]:
     process running it, or null."""
     directory = _directory(batch_ref)
     state = batch.read_json(directory / batch.STATE_FILE) or {}
+    active = batch.lock_holder(directory)
     rows = [{"id": row_id, "status": entry.get("status"), "reason": entry.get("reason"),
+             "note": entry.get("note"),
              "steps": {name: step.get("status")
                        for name, step in entry.get("steps", {}).items()},
              "finished_at": entry.get("finished_at")}
-            for row_id, entry in state.get("rows", {}).items()]
+            for row_id, entry in batch.rows_as_seen(state, active is not None).items()]
     return {"name": state.get("name", directory.name), "directory": str(directory),
-            "active": batch.lock_holder(directory), "counts": batch.summary(state),
+            "active": active, "counts": batch.summary(state, active is not None),
             "updated_at": state.get("updated_at"), "rows": rows}
 
 
@@ -174,8 +181,8 @@ def list_outputs(batch_ref: str, row_id: str | None = None) -> dict[str, Any]:
 
 
 def cancel_batch(batch_ref: str) -> dict[str, Any]:
-    """Stop a running batch. The row in progress goes back in the queue: submitting the
-    same spec again resumes from it."""
+    """Stop a running batch. The row in progress goes back in the queue (batch_status
+    shows it queued once the runner is gone): resume_batch carries on from it."""
     directory = _directory(batch_ref)
     holder = batch.lock_holder(directory)
     if holder is None:

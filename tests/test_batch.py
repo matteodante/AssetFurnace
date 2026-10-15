@@ -122,6 +122,8 @@ def test_intent_flags_apply_to_a_csv_and_are_refused_for_json(tmp_path, monkeypa
     ({"id": "SM_A", "images": ["refs/row01.png"], "colour": "red"}, "colour"),
     ({"id": "SM_A", "steps": ["finish"]}, "asset"),
     ({"id": "SM_A", "images": [], "steps": ["generate"]}, "image"),
+    ({"id": "SM_A", "steps": []}, "at least one step"),
+    ({"id": "SM_A", "images": ["refs/row01.png", "other/row01.png"]}, "same file name"),
 ])
 def test_a_bad_row_stops_the_batch_before_anything_runs(tmp_path, monkeypatch, row, message):
     generator = install_fake_generator(monkeypatch)
@@ -181,7 +183,7 @@ def test_an_interrupted_batch_resumes_at_the_right_row(tmp_path, monkeypatch, fa
     state = _state(spec_path)
     statuses = [entry["status"] for entry in state["rows"].values()]
     assert statuses == ["done"] * 5 + ["running"] + ["queued"] * 4
-    assert not (spec_path.parent / "out" / "test-batch" / batch.LOCK_FILE).exists()
+    assert not (spec_path.parent / "out" / batch.LOCK_FILE).exists()
 
     generator.calls.clear()
     fake_finish.calls.clear()
@@ -330,41 +332,54 @@ def test_a_changed_intent_refuses_to_resume(tmp_path, monkeypatch, fake_finish):
 def test_a_live_lock_refuses_a_second_runner(tmp_path, monkeypatch, fake_finish):
     install_fake_generator(monkeypatch)
     monkeypatch.setattr(batch, "process_alive", lambda pid: pid == 4242)
-    spec_path = write_spec(tmp_path, rows=1)
-    spec = batch.load_batch(spec_path)
-    spec.directory.mkdir(parents=True)
-    (spec.directory / batch.LOCK_FILE).write_text("4242")
+    spec = batch.load_batch(write_spec(tmp_path, rows=1))
+    batch.acquire_lock(spec.output_dir, spec.name, 4242, "theirs")
     with pytest.raises(batch.BatchError, match="already running"):
         batch.run_batch(spec)
 
 
-def test_a_lock_taken_for_this_runner_is_its_own(tmp_path, monkeypatch, fake_finish):
+def test_a_lock_reserved_for_this_runner_is_taken_over(tmp_path, monkeypatch, fake_finish):
     install_fake_generator(monkeypatch)
+    monkeypatch.setattr(batch, "process_alive", lambda pid: pid == 4242)
     spec = batch.load_batch(write_spec(tmp_path, rows=1))
-    spec.directory.mkdir(parents=True)
-    (spec.directory / batch.LOCK_FILE).write_text(str(os.getpid()))
+    batch.acquire_lock(spec.output_dir, spec.name, 4242, "reserved")
+    monkeypatch.setenv(batch.LOCK_TOKEN_ENV, "reserved")
     assert batch.run_batch(spec).exit_code == 0
+    assert not (spec.output_dir / batch.LOCK_FILE).exists()
 
 
 def test_a_stale_lock_is_ignored(tmp_path, monkeypatch, fake_finish):
     install_fake_generator(monkeypatch)
     monkeypatch.setattr(batch, "process_alive", lambda pid: False)
-    spec_path = write_spec(tmp_path, rows=1)
-    spec = batch.load_batch(spec_path)
-    spec.directory.mkdir(parents=True)
-    (spec.directory / batch.LOCK_FILE).write_text("999999")
+    spec = batch.load_batch(write_spec(tmp_path, rows=1))
+    batch.acquire_lock(spec.output_dir, spec.name, 999999, "dead")
     assert batch.run_batch(spec).exit_code == 0
 
 
 def test_another_running_batch_in_the_same_folder_blocks_the_gpu(tmp_path, monkeypatch,
                                                                  fake_finish):
     install_fake_generator(monkeypatch)
-    spec_path = write_spec(tmp_path, rows=1)
-    other = tmp_path / "out" / "other-batch"
-    other.mkdir(parents=True)
-    (other / batch.LOCK_FILE).write_text(str(os.getpid()))
+    spec = batch.load_batch(write_spec(tmp_path, rows=1))
+    batch.acquire_lock(spec.output_dir, "other-batch", os.getpid(), "theirs")
     with pytest.raises(batch.BatchError, match="other-batch"):
-        batch.run_batch(batch.load_batch(spec_path))
+        batch.run_batch(spec)
+
+
+def test_of_two_lockers_at_once_exactly_one_wins(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    def take(index):
+        try:
+            batch.acquire_lock(tmp_path, f"batch{index}", os.getpid(), f"token{index}")
+            return True
+        except batch.BatchError:
+            return False
+
+    with ThreadPoolExecutor(8) as pool:
+        won = list(pool.map(take, range(8)))
+    assert won.count(True) == 1
+    holder = json.loads((tmp_path / batch.LOCK_FILE).read_text())
+    assert holder["batch"] == f"batch{won.index(True)}"
 
 
 def test_the_state_file_is_never_left_half_written(tmp_path, monkeypatch):
@@ -606,3 +621,48 @@ def test_the_review_event_carries_the_checks_result_when_there_is_one(tmp_path, 
     batch.run_batch(batch.load_batch(spec_path))
     event = json.loads((tmp_path / batch.REVIEW_LOG).read_text().splitlines()[0])
     assert event["status"] == "warn" and event["checks"].endswith(".checks.json")
+
+
+
+def test_a_malformed_output_or_policy_is_a_problem_not_a_crash(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1, output="out", license_policy=True)
+    with pytest.raises(batch.BatchError) as raised:
+        batch.load_batch(spec_path)
+    assert any("output must be an object" in p for p in raised.value.problems)
+    assert any("license_policy must be an object" in p for p in raised.value.problems)
+
+
+def test_rows_dropped_from_the_spec_leave_the_count(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch, FakeGenerator(fail_on="row02"))
+    spec_path = write_spec(tmp_path, rows=2)
+    batch.run_batch(batch.load_batch(spec_path))
+    spec = json.loads(spec_path.read_text())
+    spec["rows"] = spec["rows"][:1]
+    spec_path.write_text(json.dumps(spec))
+    report = batch.run_batch(batch.load_batch(spec_path))
+    assert report.exit_code == 0
+    state = _state(spec_path)
+    assert batch.summary(state) == {"done": 1}
+    assert state["removed_rows"]["SM_row02"]["status"] == "failed"
+
+
+def test_a_row_left_running_reads_as_queued_once_its_runner_is_gone():
+    state = {"rows": {"a": {"status": "done"}, "b": {"status": "running"}}}
+    assert batch.summary(state, running=True) == {"done": 1, "running": 1}
+    assert batch.summary(state, running=False) == {"done": 1, "queued": 1}
+    assert "interrupted" in batch.rows_as_seen(state, running=False)["b"]["note"]
+
+
+def test_the_review_state_belongs_to_one_version_of_one_asset(tmp_path):
+    log = tmp_path / batch.REVIEW_LOG
+    lines = [
+        {"event": "queued", "asset_key": "SM_Crate", "sha256": "old"},
+        {"event": "sent_back", "asset_key": "SM_Crate", "sha256": "old", "note": "too big"},
+        {"event": "queued", "asset_key": "SM_Crate", "sha256": "new"},
+        {"event": "approved", "asset_key": "SM_Crate", "sha256": "other-batch"},
+    ]
+    log.write_text("\n".join(json.dumps(line) for line in lines) + "\nnot json\n")
+    assert batch.review_state(log, "SM_Crate", "new")["event"] == "queued"
+    assert batch.review_state(log, "SM_Crate", "old")["note"] == "too big"
+    assert batch.review_state(log, "SM_Barrel", "new") is None
