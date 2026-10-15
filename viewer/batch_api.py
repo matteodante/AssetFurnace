@@ -183,6 +183,14 @@ def submit(output: Path, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         result.update(ok=False, problems=[*result["problems"], (
             f"The studio follows batches in {batches_root(output)}. Remove output.directory "
             "from the spec, or run it with pipeline.py --run-batch")])
+    previous = batch.read_json(Path(result["directory"]) / batch.STATE_FILE) if result.get("directory") else None
+    ran_from = ((previous or {}).get("spec") or {}).get("path")
+    if ran_from and Path(ran_from) != Path(spec).resolve():
+        # two files under one batch name would share its folder and state, and resuming
+        # the first would run the second
+        result.update(ok=False, problems=[*result["problems"], (
+            f"A batch named {result['name']} already ran from another file ({ran_from}). "
+            "Rename this file, or give the spec its own name")])
     if payload.get("check_only") or not result["ok"]:
         return (200 if result["ok"] else 422), {**result, "started": False}
     result = mcp_server.submit_batch(str(spec), **intent)

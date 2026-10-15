@@ -440,3 +440,33 @@ def test_a_batch_copy_with_a_library_models_bytes_does_not_take_its_rigs(output,
     assets = assets_api.list_assets(output)
     prop_set = next(a for a in assets if a["kind"] == "prop set")
     assert prop_set["model"] == f"{run.name}/{run.name}.glb"     # not the batch copy
+
+
+
+def test_a_second_file_with_a_batchs_name_is_refused(server, output, launched):
+    image = tiny_png(output.parent / "refs" / "crate.png")
+    first = f"id,images,backend\nSM_Crate,{image},fake\n"
+    status, _ = request(server, "POST", "/api/batches", {"filename": "crates.csv", "content": first})
+    assert status == 202
+    (output / "batches" / batch.LOCK_FILE).unlink()   # the pretend runner is gone; run it here
+    batch.run_batch(batch.load_batch(next((output / "batches" / batch_api.UPLOADS).glob("*/crates.csv"))))
+    second = first.replace("SM_Crate", "SM_Box")
+    status, body = request(server, "POST", "/api/batches", {"filename": "crates.csv", "content": second})
+    assert status == 422 and any("already ran from another file" in p for p in body["problems"])
+
+
+def test_a_batch_picture_with_a_library_pictures_bytes_keeps_two_assets(output, monkeypatch):
+    tiny_png(output / "images" / "knight" / "knight.png", 5)          # the Library's picture
+    finish_run = output / "finish" / "knight__finish__20261015-120000"
+    tiny_glb(finish_run / "knight_5k.glb", "native finish")
+    tiny_png(finish_run / "input" / "source.png", 5)                   # same bytes
+    batch_picture = tiny_png(output / "batches" / "lot" / "rows" / "K" / "input" / "k.png", 5)
+    batch_model = tiny_glb(output / "batches" / "lot" / "rows" / "K" / "generate" / "k.glb", "batch")
+    monkeypatch.setattr(batch_api, "library_nodes", lambda out: {
+        "picture": [{"stem": "K__x", "file": batch_picture, "link": "K__x"}],
+        "model": [{"stem": "K__x__batch", "file": batch_model, "link": "K__x"}],
+        "finished": []})
+    assets = assets_api.list_assets(output)
+    native = next(a for a in assets if a["finished"])
+    assert native["picture"] == "images/knight/knight.png" and native["model"] is None
+    assert len(assets) == 2

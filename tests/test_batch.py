@@ -126,6 +126,7 @@ def test_intent_flags_apply_to_a_csv_and_are_refused_for_json(tmp_path, monkeypa
     ({"id": "SM_A", "steps": []}, "at least one step"),
     ({"id": "SM_A", "images": ["refs/row01.png"], "parameters": "seed=1"}, "parameters"),
     ({"id": "SM_A", "images": ["refs/row01.png"], "finish": "fast"}, "settings for finish"),
+    ({"id": "SM_A", "images": ["refs/row01.png"], "generate": {"seed": 12}}, "in parameters"),
     ({"id": "SM_A", "images": [42]}, "list of file paths"),
     ({"id": "SM_A", "images": ["refs/row01.png"], "backend": {"x": 1}}, "backend must be a name"),
     ({"id": "SM_A", "asset": 42, "steps": ["finish"]}, "asset must be a file path"),

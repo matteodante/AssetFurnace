@@ -639,6 +639,10 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
         problems.append(f"{label}: measure says what size_cm measures; give size_cm too")
     if size_cm is not None and measure is None:
         measure = "height"
+    if options.get("generate"):
+        # the generator reads `parameters`; settings here would be silently ignored
+        problems.append(f"{label}: put generator settings in parameters, not under generate "
+                        f"({', '.join(sorted(options['generate']))})")
     profile = value.get("profile")
     if problems:
         return None, problems

@@ -229,7 +229,11 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
         for model in models:
             if model["stem"].startswith(picture["stem"] + "__") or model["stem"].startswith(picture["stem"] + "-cutout__"):
                 join(index_of[id(picture)], index_of[id(model)])
-    picture_by_sha = {hashes.of(p["file"]): index_of[id(p)] for p in pictures}
+    picture_by_sha: dict[str, int] = {}
+    for picture in pictures:   # as for models: a batch copy never takes over a hash
+        sha = hashes.of(picture["file"])
+        if picture.get("link") is None or sha not in picture_by_sha:
+            picture_by_sha[sha] = index_of[id(picture)]
     finished_by_sha: dict[str, int] = {}
     for fin in finishes:
         if fin["image"] is not None:

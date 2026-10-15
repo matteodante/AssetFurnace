@@ -82,9 +82,12 @@ def preflight(rows) -> list[str]:
     if blender is None or not Path(blender).is_file():
         problems.append(missing_help())
     else:
-        too_old = version_problem(blender_version(Path(blender)))
-        if too_old:
-            problems.append(too_old)
+        version = blender_version(Path(blender))
+        if version is None:   # it exists but does not run, or says nothing we can read
+            problems.append(f"Blender at {blender} did not answer --version: check that it "
+                            "runs, or set I2L_BLENDER to one that does")
+        elif version_problem(version):
+            problems.append(version_problem(version))
     if any(row.options.get("finish", {}).get("paint") for row in rows):
         if host_platform() != APPLE:
             problems.append(REPAINT_OFF_MAC)

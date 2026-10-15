@@ -15,6 +15,12 @@ from image_to_3dlab.batch_steps import finish as finish_step
 from image_to_3dlab.batch_steps import generate as generate_step
 
 
+@pytest.fixture(autouse=True)
+def blender_answers(monkeypatch):
+    """The stand-in Blender files here are empty: say they run, as a real one would."""
+    monkeypatch.setattr(finish_step, "blender_version", lambda path: (5, 2))
+
+
 def _context(tmp_path: Path, row: batch.BatchRow, asset=None, sidecar=None, options=None):
     row_dir = tmp_path / "rows" / row.id
     return StepContext(
@@ -450,3 +456,13 @@ def test_the_repaints_upscaler_weights_are_checked(tmp_path, monkeypatch):
     assert "realesrgan" in problem
     upscaler[1].write_bytes(b"x")   # the older converted file will do
     assert finish_step.preflight([row]) == []
+
+
+
+def test_a_blender_that_does_not_run_is_caught_before_the_batch(tmp_path, monkeypatch):
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"")
+    monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
+    monkeypatch.setattr(finish_step, "blender_version", lambda path: None)
+    (problem,) = finish_step.preflight([_row(tmp_path)])
+    assert "did not answer" in problem
