@@ -1,6 +1,8 @@
 # Funzione 1: lotti e accesso per agenti (progetto)
 
-Data: 15 ottobre 2026. Stato: **proposta, da approvare**. Niente è implementato.
+Data: 15 ottobre 2026. Stato: **approvato e implementato** (15/10/2026). Uso: [`docs/batches.md`](../batches.md).
+
+Decisioni dell'utente: ridipintura spenta nei lotti (solo come opzione esplicita `"finish": {"paint": true}`); righe fallite riprovate solo con `--retry-failed`; le uscite arrivano alla coda di revisione della funzione 7 tramite `outputs.json`.
 Piano generale: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 1.
 
 In breve: un lotto è un elenco di righe; ogni riga diventa un **run manifest** come quelli di oggi e passa per gli
