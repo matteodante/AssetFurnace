@@ -11,6 +11,7 @@ import { STEP_LABELS } from './plan.js';
 import { createBlenderPanel, initialRevision, revisionFor } from './blender-edit.js';
 import { openReview, renderReviewPanel, fetchQueue, fetchItem } from './review.js';
 import { waitingCount } from './review-model.js';
+import { createUnrealPanel } from './unreal-export.js';
 
 const $ = (id) => document.getElementById(id);
 const LOGO = './studio/mark.svg';
@@ -28,11 +29,13 @@ const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onClipChan
   displayedFile = clip.file;
   setDownload(clip.file);
   blenderPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
+  unrealPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
 } });
 
 const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const url = (relative) => servedUrl(base, relative);
 const fileName = (relative) => relative?.split('/').pop() ?? '';
+const unrealPanel = createUnrealPanel({ root: $('unrealPanel'), url, assets: () => assets });
 const blenderPanel = createBlenderPanel({ root: $('blenderPanel'), url,
   onVersion: (id) => { if (current) { selectedVersions.set(current.id, id); show(current); } },
   onImported: async (assetId, versionId, isActive) => {
@@ -130,6 +133,7 @@ function show(asset) {
   $('vMeta').textContent = asset ? statusText(asset) : '';
   if (!asset) {
     blenderPanel.update(null);
+    unrealPanel.update(null);
     viewer.showEmpty('Nothing to show yet. Pick an asset on the left.');
     $('steps').innerHTML = '';
     return;
@@ -148,6 +152,7 @@ function show(asset) {
     $('steps').innerHTML = '<li class="hint opened-note">This version contains only what was exported from Blender. Select Original pipeline to see its steps, moves and other outputs.</li>';
     setDownload(revision.file);
     blenderPanel.update(asset, revision.file, revision);
+    unrealPanel.update(asset, revision.file, revision);
     return;
   }
   displayedFile = displayModel(asset);
@@ -169,6 +174,7 @@ function show(asset) {
     else viewer.showEmpty('Nothing to show for this asset yet.');
   }
   blenderPanel.update(asset, displayedFile);
+  unrealPanel.update(asset, displayedFile);
 }
 
 $('assetList').addEventListener('click', (event) => {
@@ -269,6 +275,7 @@ function makingRow() {
 function showMaking() {
   if (!making) return;
   blenderPanel.update(null);
+  unrealPanel.update(null);
   closeSheet($('stage'));
   viewingMaking = true;
   renderLibrary();
@@ -409,6 +416,7 @@ let openedUrl = null;
 function openFile(file) {
   if (!file) return;
   blenderPanel.update(null);
+  unrealPanel.update(null);
   closeSheet($('stage'));
   current = null;
   viewingMaking = false;
@@ -479,6 +487,7 @@ async function showReview(key) {
   $('progress').hidden = true;
   renderLibrary();
   blenderPanel.update(null);
+  unrealPanel.update(null);
   $('hideBtn').hidden = true;
   $('download').hidden = true;
   $('vTitle').textContent = item.name || item.key;
