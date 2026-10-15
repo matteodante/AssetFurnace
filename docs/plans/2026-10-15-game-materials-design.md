@@ -128,7 +128,7 @@ com'è e più avanti può chiamare il pacchetto):
 ```
 <asset>.glb                      con normal, ORM e maschera dentro
 <asset>.materials.json           zone (canale, colore medio lineare, area), file, esito dei controlli, formula
-T_<asset>_TintMask.png           R, G, B = zone
+T_<asset>_Tint.png               R, G, B = zone (nome deciso con il profilo Unreal)
 T_<asset>_N.png                  se ricavata
 T_<asset>_ORM.png
 ```
@@ -234,6 +234,16 @@ controllo la rifiuta.
 **Riusato**: `edit_glb.EditGLB` (lettura validata del GLB, accessor e trasformazioni dei nodi), `glb_turn.build_glb`,
 la convenzione della normal di `surface_detail.py` (stessi valori, verificato da un test), `blender_bake_ao.py` per
 l'occlusione, l'idea di Materialize per l'altezza a bande (solo l'idea: è GPL-3).
+
+**Nello studio** (richiesto dall'utente dopo l'approvazione): nel visore di un asset della Libreria, il pannello
+"Game materials" (`viewer/studio/materials.js`, `viewer/materials_api.py`) avvia il passo sull'asset scelto, mostra
+l'esito dei controlli e le anteprime delle texture, sovrappone le 3 zone al modello e le ricolora dal vivo con tre
+selettori. La ricolorazione è uno shader che esegue la stessa formula a scostamento in luce lineare; un test la
+confronta con `apply_tint` di Python. I risultati vanno in `output/materials/<modello>__<hash>/`, uno per modello di
+partenza, e rifare il passo li sostituisce. Righe di aggancio nei file condivisi: `generate_api.py` (3),
+`assets_api.py` (la cartella `materials` non è un modello nuovo), `studio.html` (2), `app.js` (5), `viewer.js` (2).
+
+La maschera si chiama `T_<Nome>_Tint.png`, come deciso con il profilo Unreal.
 
 **Fuori dal mio perimetro, da fare dopo il merge**: il passo `materials` in `cli.py` (sessione della funzione 1); la
 registrazione dei controlli nella coda (funzione 7); il Material Function di Unreal che rifà la formula dal
