@@ -6,10 +6,10 @@ times, and three things are measured against the rest pose:
 * **stretched edges**: an edge more than `stretch` times its rest length, or shorter than
   `squash` times it, is skin tearing or collapsing;
 * **flipped triangles**: a triangle whose normal points against where its own skinning
-  carries the rest normal has folded through itself (a candy-wrapper twist, a knee bent
+  carries its bind-pose normal has folded through itself (a candy-wrapper twist, a knee bent
   through the thigh);
 * **crossed feet**: with a family file beside the rig (`creature_family`), the left and
-  right feet must stay on their own sides. A walk whose feet pass across each other looks
+  right feet must stay on their own sides, sides that turn with the body's root. A walk whose feet pass across each other looks
   broken however clean the skin is.
 
 The thresholds are provisional and warn only until a pilot calibrates them: the preset
@@ -72,12 +72,20 @@ def has_clips(glb: Path) -> bool:
 def feet_swap(left: np.ndarray, right: np.ndarray, axis: np.ndarray) -> bool:
     """True when the left foot ends up on the right of the right foot, or the other way.
 
-    `left` and `right` are (frames, 3) tracks, rest first; only a change of side counts.
+    `left` and `right` are (frames, 3) tracks, rest first; `axis` is the body's left, one
+    for all frames or one per frame. Only a change of side counts.
     """
-    side = (np.asarray(left, float) - np.asarray(right, float)) @ np.asarray(axis, float)
+    axis = np.broadcast_to(np.asarray(axis, float), np.shape(left))
+    side = np.einsum("fi,fi->f", np.asarray(left, float) - np.asarray(right, float), axis)
     if side[0] == 0:
         return False
     return bool(np.any(np.sign(side[1:]) * np.sign(side[0]) < 0))
+
+
+def _rotation(matrix: np.ndarray) -> np.ndarray:
+    """The rotation in a 4x4 transform, scale removed."""
+    u, _, vt = np.linalg.svd(np.asarray(matrix, float)[:3, :3])
+    return u @ vt
 
 
 def _edges(faces: np.ndarray) -> np.ndarray:
@@ -97,11 +105,15 @@ def measure_clip(rig, animation: int, duration: float, config: dict,
     edges = _edges(mesh.faces)
     rest_len = np.linalg.norm(mesh.vertices[edges[:, 0]] - mesh.vertices[edges[:, 1]], axis=1)
     keep = rest_len > 1e-9
-    rest_normal = _normals(mesh.vertices, mesh.faces)
-    keep_faces = np.linalg.norm(rest_normal, axis=1) > 1e-12
+    bind_normal = _normals(mesh.bind, mesh.faces)  # skinning carries bind-pose geometry, not rest
+    keep_faces = np.linalg.norm(bind_normal, axis=1) > 1e-12
     names = {rig.name(j): j for j in rig.joint_nodes}
     rest_world = rig.world(rig.rest_locals())
+    parents, _ = rig.skeleton()
+    root = names[next(b for b, p in parents.items() if p is None)]
+    rest_root = _rotation(rest_world[root])
     tracks = {b: [rest_world[names[b]][:3, 3]] for pair in feet or [] for b in pair if b in names}
+    axes = [np.asarray(left_axis, float)] if left_axis is not None else []
     stretched = flipped = 0.0
     for t in np.linspace(0.0, duration, max(2, int(config.get("frames", 24)))):
         world = rig.pose(animation, float(t))
@@ -111,13 +123,15 @@ def measure_clip(rig, animation: int, duration: float, config: dict,
         bad = (ratio > config.get("stretch", 2.0)) | (ratio < config.get("squash", 0.4))
         stretched = max(stretched, 100.0 * float(bad.mean()) if len(bad) else 0.0)
         # where each triangle's own skinning carries its rest normal (its first corner's matrix)
-        carried = np.einsum("fij,fj->fi", blend[mesh.faces[:, 0], :3, :3], rest_normal)
+        carried = np.einsum("fij,fj->fi", blend[mesh.faces[:, 0], :3, :3], bind_normal)
         turned = np.einsum("fi,fi->f", _normals(posed, mesh.faces), carried)[keep_faces]
         flipped = max(flipped, 100.0 * float((turned < 0).mean()) if len(turned) else 0.0)
         for bone, track in tracks.items():
             track.append(world[names[bone]][:3, 3])
+        if left_axis is not None:  # the body's left turns with its root
+            axes.append(_rotation(world[root]) @ rest_root.T @ np.asarray(left_axis, float))
     crossed = [f"{left}/{right}" for left, right in feet or []
-               if left in tracks and right in tracks and feet_swap(tracks[left], tracks[right], left_axis)]
+               if left in tracks and right in tracks and feet_swap(tracks[left], tracks[right], np.array(axes))]
     return {"stretched_percent": round(stretched, 3), "flipped_percent": round(flipped, 3), "crossed": crossed}
 
 

@@ -35,6 +35,14 @@ def test_fabrik_reaches_and_keeps_lengths():
     assert np.isclose(np.linalg.norm(far[-1] - far[0]), reach)  # straightened, not stretched
 
 
+def test_fabrik_bends_a_straight_chain():
+    points = [np.array(p, float) for p in ((0, 1, 0), (0, 0.5, 0), (0, 0, 0))]
+    out = cm.fabrik(points, np.array([0, 0.1, 0]), bend=np.array([0, 0, 1.0]))
+    assert np.allclose(out[-1], [0, 0.1, 0], atol=1e-4)
+    assert out[1][2] > 0  # the knee went the way it was told
+    assert np.allclose([np.linalg.norm(b - a) for a, b in zip(out, out[1:])], [0.5, 0.5])
+
+
 @pytest.mark.parametrize("skeleton,family", [(werewolf, "digitigrade"), (humanoid, None)])
 def test_biped_walk_plants_its_feet_and_loops(skeleton, family):
     rig, fam, n = rig_of(skeleton(), family)

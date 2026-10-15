@@ -36,3 +36,18 @@ def test_no_skin_is_refused(tmp_path):
     path.write_bytes(build_glb(doc, binary))
     with pytest.raises(LookupError):
         SkinnedGLB(path)
+
+
+def test_cubic_keys_follow_their_tangents(tmp_path):
+    # the same position at both keys, tangents pulling opposite ways: the joint swings out between
+    keys = [(0.0, [[0, 0, 0], [0, 1, 0], [1, 0, 0]]), (1.0, [[-1, 0, 0], [0, 1, 0], [0, 0, 0]])]
+    glb = SkinnedGLB(fx.write(tmp_path / "cubic.glb", {"swing": keys}, channel="translation",
+                              interpolation="CUBICSPLINE"))
+    world = glb.pose(0, 0.5)
+    assert np.allclose(world[2][:3, 3], [0.25, 1, 0], atol=1e-6)  # h10 * 1 - h11 * 1 at t = 0.5
+    assert np.allclose(glb.pose(0, 1.0)[2][:3, 3], [0, 1, 0])
+
+
+def test_more_than_one_skin_is_refused(tmp_path):
+    with pytest.raises(ValueError, match="skin"):
+        SkinnedGLB(fx.write(tmp_path / "two.glb", second_skin=True))

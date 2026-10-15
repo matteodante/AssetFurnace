@@ -52,6 +52,8 @@ class SkinnedGLB:
         skins = self.doc.get("skins") or []
         if not skins:
             raise LookupError(f"{self.path.name} has no skin")
+        if len(skins) > 1:  # one palette per skin; mixing them would move meshes on the wrong bones
+            raise ValueError(f"{self.path.name} has {len(skins)} skins; only one skin is supported")
         self.skin = skins[0]
         self.joint_nodes: list[int] = list(self.skin["joints"])
         self.parent_of = {c: i for i, n in enumerate(self.nodes) for c in n.get("children", [])}
@@ -174,8 +176,10 @@ class SkinnedGLB:
         times = self.glb.accessor(sampler["input"]).astype(np.float64)
         values = self.glb.accessor(sampler["output"]).astype(np.float64)
         mode = sampler.get("interpolation", "LINEAR")
-        if mode == "CUBICSPLINE":  # (in-tangent, value, out-tangent) per key: keep the values
-            values = values.reshape(len(times), 3, -1)[:, 1]
+        tangents = None
+        if mode == "CUBICSPLINE":  # (in-tangent, value, out-tangent) per key
+            tangents = values.reshape(len(times), 3, -1)
+            values = tangents[:, 1]
         if time <= times[0]:
             return values[0]
         if time >= times[-1]:
@@ -183,6 +187,12 @@ class SkinnedGLB:
         i = int(np.searchsorted(times, time, side="right")) - 1
         if mode == "STEP":
             return values[i]
+        if tangents is not None:  # glTF's cubic Hermite spline
+            dt = times[i + 1] - times[i]
+            s = (time - times[i]) / max(dt, 1e-12)
+            out = ((2 * s ** 3 - 3 * s ** 2 + 1) * values[i] + (s ** 3 - 2 * s ** 2 + s) * dt * tangents[i, 2]
+                   + (-2 * s ** 3 + 3 * s ** 2) * values[i + 1] + (s ** 3 - s ** 2) * dt * tangents[i + 1, 0])
+            return out / np.linalg.norm(out) if rotation else out
         a, b = values[i], values[i + 1]
         u = (time - times[i]) / max(times[i + 1] - times[i], 1e-12)
         if rotation and float(a @ b) < 0:

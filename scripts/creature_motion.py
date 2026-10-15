@@ -100,11 +100,24 @@ def frame_rotations(rig: Rig, rest_rot: dict[str, np.ndarray], turn, root):
     return {b: total[b] @ rest_rot[b] for b in rig.order}, np.asarray(root, float)
 
 
-def fabrik(points: list[np.ndarray], target: np.ndarray, iterations: int = 80) -> list[np.ndarray]:
-    """Joint positions reaching `target` with the first joint fixed and lengths kept."""
+def fabrik(points: list[np.ndarray], target: np.ndarray, iterations: int = 80,
+           bend: np.ndarray | None = None) -> list[np.ndarray]:
+    """Joint positions reaching `target` with the first joint fixed and lengths kept.
+
+    A dead straight chain gives FABRIK no side to fold to, so its middle joints are first
+    nudged towards `bend` (a knee's forward), or to any side when none is given.
+    """
     pts = [np.asarray(p, float).copy() for p in points]
     lengths = [float(np.linalg.norm(b - a)) for a, b in zip(pts, pts[1:])]
     base = pts[0].copy()
+    line = _unit(pts[-1] - base)
+    if len(pts) > 2 and max(float(np.linalg.norm(np.cross(p - base, line))) for p in pts[1:-1]) < 1e-4 * sum(lengths):
+        side = np.asarray(bend, float) if bend is not None else np.cross(line, [1.0, 0.0, 0.0])
+        if np.linalg.norm(np.cross(side, line)) < 1e-9:
+            side = np.cross(line, [0.0, 1.0, 0.0])
+        side = _unit(side - (side @ line) * line)
+        for i in range(1, len(pts) - 1):
+            pts[i] = pts[i] + side * 0.05 * sum(lengths)
     if float(np.linalg.norm(target - base)) >= sum(lengths):
         direction = (target - base) / max(float(np.linalg.norm(target - base)), 1e-12)
         for i, length in enumerate(lengths):
@@ -128,7 +141,7 @@ def _unit(v: np.ndarray) -> np.ndarray:
 
 
 def solve_leg(rig: Rig, leg: dict, turn: dict[str, np.ndarray], root: np.ndarray,
-              toe: np.ndarray, foot_turn: np.ndarray | None = None) -> None:
+              toe: np.ndarray, foot_turn: np.ndarray | None = None, bend: np.ndarray | None = None) -> None:
     """Add the turns that put this leg's last joint on `toe`, in place.
 
     The body's turns must already be in `turn`: the hip moves with them. Up to the ankle
@@ -147,7 +160,7 @@ def solve_leg(rig: Rig, leg: dict, turn: dict[str, np.ndarray], root: np.ndarray
     pitch = foot_turn if foot_turn is not None else np.eye(3)
     foot = [pitch @ (rig.heads[b] - rig.heads[bones[k]]) for b in bones[k + 1:]]
     goal = toe - foot[-1] if foot else np.asarray(toe, float)
-    solved = fabrik(rest_points[:k + 1], goal) + [goal + v for v in foot]
+    solved = fabrik(rest_points[:k + 1], goal, bend=bend) + [goal + v for v in foot]
     current = inherited
     for i, b in enumerate(bones[:-1]):
         want = solved[i + 1] - solved[i]
@@ -181,11 +194,13 @@ def reach_drop(rig: Rig, legs: list[dict], turn: dict[str, np.ndarray], root: np
 
 
 def plant(rig: Rig, legs: list[dict], turn: dict[str, np.ndarray], root: np.ndarray, toes: list[np.ndarray],
-          up: np.ndarray, pitches: list[np.ndarray | None] | None = None) -> np.ndarray:
-    """Lower the body as far as the feet need, then solve every leg. Returns the root."""
+          up: np.ndarray, pitches: list[np.ndarray | None] | None = None,
+          bend: np.ndarray | None = None) -> np.ndarray:
+    """Lower the body as far as the feet need, then solve every leg (knees folding towards
+    `bend` if a leg is dead straight). Returns the root."""
     root = root - up * reach_drop(rig, legs, turn, root, toes, up)
     for leg, toe, pitch in zip(legs, toes, pitches or [None] * len(legs)):
-        solve_leg(rig, leg, turn, root, toe, pitch)
+        solve_leg(rig, leg, turn, root, toe, pitch, bend)
     return root
 
 
@@ -254,7 +269,7 @@ def biped_walk(rig: Rig, family: dict, frames: int | None = None) -> list[tuple[
             fore_aft, rise = foot_offset(u, phase, WALK["duty"], stride, lift)
             toes.append(rig.heads[leg["bones"][-1]] + forward * fore_aft + up * rise)
             pitches.append(None if rise == 0.0 else axis_angle(left, 18.0 * math.sin(math.pi * min(1.0, rise / lift))))
-        root_pos = plant(rig, legs, turn, root_pos, toes, up, pitches)
+        root_pos = plant(rig, legs, turn, root_pos, toes, up, pitches, bend=forward)
         out.append((turn, root_pos))
     return out
 
@@ -279,7 +294,7 @@ def biped_attack(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[tu
             turn[bone] = axis_angle(left, lean / 2)
         for bone, lower in arms.items():
             turn[bone] = axis_angle(left, -raise_) @ lower
-        root_pos = plant(rig, legs, turn, root_pos, [rig.heads[leg["bones"][-1]] for leg in legs], up)
+        root_pos = plant(rig, legs, turn, root_pos, [rig.heads[leg["bones"][-1]] for leg in legs], up, bend=forward)
         out.append((turn, root_pos))
     return out
 
@@ -318,7 +333,7 @@ def quadruped_trot(rig: Rig, family: dict, frames: int | None = None) -> list[tu
             fore_aft, rise = foot_offset(u, gait["phases"][slot], gait["duty"], stride,
                                          stride * TROT["lift_per_stride"])
             toes.append(rig.heads[leg["bones"][-1]] + forward * fore_aft + up * rise)
-        root_pos = plant(rig, list(slots.values()), turn, root_pos, toes, up)
+        root_pos = plant(rig, list(slots.values()), turn, root_pos, toes, up, bend=forward)
         out.append((turn, root_pos))
     return out
 
@@ -347,7 +362,7 @@ def quadruped_attack(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> lis
         toes = [rig.heads[leg["bones"][-1]] + ((up * lift + forward * reach) if leg["end"] == "front" else 0)
                 for leg in legs]
         root_pos = plant(rig, [leg for leg in legs if leg["end"] != "front"], turn, root_pos,
-                         [t for t, leg in zip(toes, legs) if leg["end"] != "front"], up)
+                         [t for t, leg in zip(toes, legs) if leg["end"] != "front"], up, bend=forward)
         for leg, toe in zip(legs, toes):
             if leg["end"] == "front":
                 solve_leg(rig, leg, turn, root_pos, toe)

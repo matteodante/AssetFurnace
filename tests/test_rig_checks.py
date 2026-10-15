@@ -45,9 +45,10 @@ def test_sibling_clips_of_a_rig_are_measured(tmp_path):
 
 
 def test_feet_that_swap_sides_fail(tmp_path):
-    # the whole strip turns 135 degrees about its foot, carrying bone_1 to the other side of
-    # bone_0 along a slanted "left" -- pretend the two bones are the two feet
-    glb = fx.write(tmp_path / "duo_rigged.glb", {"swap": [(0.0, fx.turn_z(0)), (1.0, fx.turn_z(135))]}, node=1)
+    # pretend the two bones are the two feet: bone_1 slides across to the far side of bone_0
+    # along a slanted "left", while the root stays put
+    glb = fx.write(tmp_path / "duo_rigged.glb", {"swap": [(0.0, [0, 1, 0]), (1.0, [-2, 0, 0])]},
+                   channel="translation")
     left = [0.7071, 0.7071, 0]
     family = {"family": "digitigrade", "frame": {"up": [0, 1, 0], "forward": [0, 0, 1], "left": left},
               "legs": [{"bones": ["bone_0"], "side": "R"}, {"bones": ["x", "bone_1"], "side": "L"}]}
@@ -57,4 +58,23 @@ def test_feet_that_swap_sides_fail(tmp_path):
     assert not rig_checks.feet_swap(np.array([[1.0, 0, 0], [0.2, 0, 5]]), still, np.array([1.0, 0, 0]))
     found = run(glb)["results"][0]
     assert found["status"] == "fail" and "cross" in found["message"]
-    assert found["details"]["clips"]["swap"]["stretched_percent"] == 0.0  # rigid: only the feet are wrong
+    assert found["details"]["clips"]["swap"]["crossed"] == ["bone_1/bone_0"]
+
+
+def test_a_rest_pose_unlike_the_bind_pose_is_not_a_flip(tmp_path):
+    # the lower bone rests turned half round: the rest mesh is the bind mesh turned, and a
+    # clip that moves nothing must not read as every triangle flipping
+    glb = fx.write(tmp_path / "turned.glb", {"still": [(0.0, fx.turn_z(0)), (1.0, fx.turn_z(0))]},
+                   rest_turn=fx.turn("y", 180))
+    found = run(glb)["results"][0]
+    assert found["details"]["clips"]["still"]["flipped_percent"] == 0.0, found
+
+
+def test_turning_the_whole_body_round_is_not_crossing_the_feet(tmp_path):
+    glb = fx.write(tmp_path / "spin_rigged.glb", {"spin": [(0.0, fx.turn("x", 0)), (1.0, fx.turn("x", 180))]},
+                   node=1)
+    family = {"family": "digitigrade", "frame": {"up": [0, 0, 1], "forward": [1, 0, 0], "left": [0, 1, 0]},
+              "legs": [{"bones": ["bone_0"], "side": "R"}, {"bones": ["bone_1"], "side": "L"}]}
+    (tmp_path / "spin_rigged.family.json").write_text(json.dumps(family), encoding="utf-8")
+    found = run(glb)["results"][0]
+    assert found["details"]["clips"]["spin"]["crossed"] == [], found

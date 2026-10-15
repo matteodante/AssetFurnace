@@ -2,7 +2,8 @@
 
 The lower bone sits at the origin and the upper one at y = 1; vertices below y = 1 follow
 the lower bone, the rest the upper one. A clip is a list of (time, quaternion xyzw) keys
-for one bone.
+for one bone: a rotation (xyzw) by default, or any `channel` and `interpolation`; a
+CUBICSPLINE key's value is an (in-tangent, value, out-tangent) triple.
 """
 
 from __future__ import annotations
@@ -25,6 +26,13 @@ def turn_z(degrees: float) -> list[float]:
     return [0.0, 0.0, math.sin(half), math.cos(half)]
 
 
+def turn(axis: str, degrees: float) -> list[float]:
+    half = math.radians(degrees) / 2
+    q = [0.0, 0.0, 0.0, math.cos(half)]
+    q["xyz".index(axis)] = math.sin(half)
+    return q
+
+
 class _Buffer:
     def __init__(self):
         self.data, self.views, self.accessors = b"", [], []
@@ -40,8 +48,11 @@ class _Buffer:
 
 
 def write(path: Path, clips: dict[str, list[tuple[float, list[float]]]] | None = None,
-          weights: np.ndarray | None = None, node: int = 2) -> Path:
-    """`node` is the bone the clips turn: 2 the upper one (a bend), 1 the lower (the whole strip)."""
+          weights: np.ndarray | None = None, node: int = 2, channel: str = "rotation",
+          interpolation: str = "LINEAR", rest_turn: list[float] | None = None, second_skin: bool = False) -> Path:
+    """`node` is the bone the clips move: 2 the upper one (a bend), 1 the lower (the whole strip).
+    `rest_turn` turns the lower bone at rest without changing the bind matrices, so the
+    rest pose and the bind pose differ, as they do in many exported rigs."""
     buf = _Buffer()
     pos = buf.add(VERTICES, "VEC3", 5126, min=VERTICES.min(0).tolist(), max=VERTICES.max(0).tolist())
     idx = buf.add(FACES.reshape(-1), "SCALAR", 5123)
@@ -57,15 +68,16 @@ def write(path: Path, clips: dict[str, list[tuple[float, list[float]]]] | None =
     animations = []
     for name, keys in (clips or {}).items():
         times = np.array([t for t, _ in keys], np.float32)
-        quats = np.array([q for _, q in keys], np.float32)
+        values = np.array([v for _, v in keys], np.float32).reshape(-1, 4 if channel == "rotation" else 3)
         t_acc = buf.add(times, "SCALAR", 5126, min=[float(times.min())], max=[float(times.max())])
-        q_acc = buf.add(quats, "VEC4", 5126)
-        animations.append({"name": name, "samplers": [{"input": t_acc, "output": q_acc}],
-                           "channels": [{"sampler": 0, "target": {"node": node, "path": "rotation"}}]})
+        q_acc = buf.add(values, "VEC4" if channel == "rotation" else "VEC3", 5126)
+        animations.append({"name": name, "samplers": [{"input": t_acc, "output": q_acc,
+                                                       "interpolation": interpolation}],
+                           "channels": [{"sampler": 0, "target": {"node": node, "path": channel}}]})
     doc = {
         "asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0, 1]}],
         "nodes": [{"name": "strip", "mesh": 0, "skin": 0},
-                  {"name": "bone_0", "children": [2]},
+                  {"name": "bone_0", "children": [2], **({"rotation": rest_turn} if rest_turn else {})},
                   {"name": "bone_1", "translation": [0, 1, 0]}],
         "meshes": [{"primitives": [{"attributes": {"POSITION": pos, "JOINTS_0": jnt, "WEIGHTS_0": wgt},
                                     "indices": idx}]}],
@@ -75,6 +87,10 @@ def write(path: Path, clips: dict[str, list[tuple[float, list[float]]]] | None =
     }
     if animations:
         doc["animations"] = animations
+    if second_skin:
+        doc["skins"].append({"joints": [2]})
+        doc["nodes"].append({"name": "strip_2", "mesh": 0, "skin": 1})
+        doc["scenes"][0]["nodes"].append(3)
     data = buf.data + b"\0" * (-len(buf.data) % 4)
     doc["buffers"][0]["byteLength"] = len(data)
     Path(path).write_bytes(build_glb(json.loads(json.dumps(doc)), data))
