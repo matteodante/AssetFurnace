@@ -20,6 +20,14 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 
 
+def metres(text: str) -> float:
+    """A positive length in metres: a negative or zero one would make every size check pass."""
+    value = float(text)
+    if not value > 0:
+        raise argparse.ArgumentTypeError(f"must be a positive number of metres, got {text}")
+    return value
+
+
 def parse_overrides(pairs: list[str]) -> dict:
     """`check.name.setting=value` pairs into the profile override shape.
 
@@ -46,9 +54,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("glb", type=Path)
     parser.add_argument("--reference", type=Path, help="reference GLB or picture, for size and silhouette")
-    parser.add_argument("--height", type=float, help="wanted height in metres")
-    parser.add_argument("--width", type=float, help="wanted width (X) in metres")
-    parser.add_argument("--depth", type=float, help="wanted depth (Z) in metres")
+    parser.add_argument("--height", type=metres, help="wanted height in metres")
+    parser.add_argument("--width", type=metres, help="wanted width (X) in metres")
+    parser.add_argument("--depth", type=metres, help="wanted depth (Z) in metres")
     parser.add_argument("--profile", default="prop", choices=profile_names())
     parser.add_argument("--key", help="the asset's key in the review queue (default: file name)")
     parser.add_argument("--provenance", type=Path, help="provenance record, if not beside the GLB")

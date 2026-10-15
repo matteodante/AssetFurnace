@@ -69,13 +69,26 @@ def test_the_whole_review_round_trip(server):
     status, problem = call(server, "POST", "/api/review/item/barrel01/decision", {"decision": "sent_back", "note": ""})
     assert status == 400 and "note" in problem["error"]
 
+    first = item["asset_sha256"]
     status, item = call(server, "POST", "/api/review/item/barrel01/decision",
-                        {"decision": "sent_back", "note": "lid too flat"})
+                        {"decision": "sent_back", "note": "lid too flat", "asset_sha256": first})
     assert status == 200 and item["state"] == "sent_back"
     status, queue = call(server, "GET", "/api/review/queue")
     assert queue["items"][0]["notes"][-1]["note"] == "lid too flat"
 
-    status, item = call(server, "POST", "/api/review/item/barrel01/decision", {"decision": "approved"})
+    # The sent-back version waits for a new one: approving it now is a conflict.
+    status, problem = call(server, "POST", "/api/review/item/barrel01/decision", {"decision": "approved"})
+    assert status == 409 and "new version" in problem["error"]
+
+    # A new version is checked; a decision on the old one is refused, on the new one recorded.
+    fx.scaled(output / glb, 1.02)
+    status, item = call(server, "POST", "/api/review/checks", {"asset": glb, "key": "barrel01", "profile": "prop"})
+    assert status == 200 and item["state"] == "to_review" and item["asset_sha256"] != first
+    status, problem = call(server, "POST", "/api/review/item/barrel01/decision",
+                           {"decision": "approved", "asset_sha256": first})
+    assert status == 409 and "newer version" in problem["error"]
+    status, item = call(server, "POST", "/api/review/item/barrel01/decision",
+                        {"decision": "approved", "asset_sha256": item["asset_sha256"]})
     assert status == 200 and item["state"] == "approved"
     status, queue = call(server, "GET", "/api/review/queue")
     assert queue["items"] == [] and queue["approved"][0]["key"] == "barrel01"
@@ -89,6 +102,12 @@ def test_changes_need_the_studio_page(server):
     assert status == 403
     status, _ = call(server, "POST", "/api/review/checks", {"asset": glb}, {"Origin": "http://evil.example"})
     assert status == 403
+
+
+def test_a_non_positive_height_is_refused(server):
+    _, _, glb = server
+    status, payload = call(server, "POST", "/api/review/checks", {"asset": glb, "height": -1.8})
+    assert status == 400 and "positive" in payload["error"]
 
 
 @pytest.mark.parametrize("asset", ["../secret.glb", "C:/Windows/x.glb", "/etc/passwd", "missing.glb"])

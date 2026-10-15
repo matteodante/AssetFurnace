@@ -103,3 +103,25 @@ def test_a_hunyuan_model_is_stopped_by_the_licence_check(tmp_path, reference):
     report = checks.run_checks(checks.Asset(glb=glb, reference=reference, reference_numbers=SIZE),
                                profile="prop", overrides=STRICT)
     assert failing(report) == {"license.components"}
+
+
+def test_one_material_with_many_draw_calls_is_over_budget(tmp_path, reference):
+    """Codex review: draw calls count against the budget, not only materials."""
+    glb = fx.one_material_many_draws(tmp_path / "many.glb")
+    found = checks.run_checks(checks.Asset(glb=glb), only=["budget.materials"])["results"][0]
+    assert found["value"] == 1
+    assert found["status"] == "fail" and "draw call" in found["message"]
+
+
+def test_a_smaller_inside_out_piece_is_not_hidden_by_a_bigger_good_one(tmp_path, reference):
+    """Codex review: winding is judged per closed piece, not on the summed volume."""
+    glb = fx.with_inward_piece(tmp_path / "two.glb")
+    found = checks.run_checks(checks.Asset(glb=glb), only=["mesh.flipped_faces"])["results"][0]
+    assert found["status"] == "fail" and "inward" in found["message"]
+
+
+def test_the_inner_wall_of_a_cavity_is_not_a_flipped_piece(tmp_path):
+    """An inward shell enclosed by the body is a cavity's wall (generated models have them)."""
+    glb = fx.with_cavity(tmp_path / "hollow.glb")
+    found = checks.run_checks(checks.Asset(glb=glb), only=["mesh.flipped_faces"])["results"][0]
+    assert found["status"] == "pass", found

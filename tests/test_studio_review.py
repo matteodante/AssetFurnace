@@ -78,6 +78,24 @@ def test_a_send_back_needs_a_note_and_the_form_builds_the_request():
     assert out["bare"] == {"asset": "animate/k_rigged.glb", "key": "k1", "profile": "prop"}
 
 
+@needs_node
+def test_blender_versions_are_offered_newest_first_before_the_original():
+    """Codex review: the Library shows the newest Blender version, so Review must offer it too."""
+    out = _run("""
+      const assets = [{id:'k1', name:'knight', finished:'finish/k.glb', blender_versions:[
+        {id:'v1', label:'Blender 1', file:'blender-edits/versions/v1/model.glb'},
+        {id:'v2', label:'Blender 2', file:'blender-edits/versions/v2/model.glb'}]}];
+      console.log(JSON.stringify(m.checkChoices(assets).map((c) => [c.id, c.version, c.file])));""")
+    assert out == [["k1", "Blender 2", "blender-edits/versions/v2/model.glb"],
+                   ["k1", "Blender 1", "blender-edits/versions/v1/model.glb"],
+                   ["k1", "original", "finish/k.glb"]]
+
+
+def test_a_decision_names_the_version_it_was_made_on():
+    review = (STUDIO / "review.js").read_text(encoding="utf-8")
+    assert "asset_sha256: item.asset_sha256" in review
+
+
 def test_review_is_wired_into_the_page_and_puts_a_sheet_away_first():
     html = (REPO / "viewer" / "studio.html").read_text(encoding="utf-8")
     app = (STUDIO / "app.js").read_text(encoding="utf-8")

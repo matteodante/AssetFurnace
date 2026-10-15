@@ -142,3 +142,24 @@ def test_a_report_for_another_file_is_refused(tmp_path, log):
     other = checks.run_checks(checks.Asset(glb=fx.cube(tmp_path / "b.glb")), only=["mesh.holes"])
     with pytest.raises(ValueError, match="different file"):
         review.enqueue_for_review(glb, "a", report=other, log=log)
+
+
+def test_a_decision_is_bound_to_the_version_the_reviewer_saw(log):
+    """Codex review: a new version queued meanwhile must not receive the old one's decision."""
+    review.enqueue(log, report_for("a" * 64), "r.json", now=T[0])
+    review.enqueue(log, report_for("b" * 64), "r.json", now=T[1])
+    with pytest.raises(review.ReviewConflict, match="newer version"):
+        review.decide(log, "mob_0412", "approved", "", asset_sha256="a" * 64)
+    assert review.decide(log, "mob_0412", "approved", "", asset_sha256="b" * 64)["state"] == "approved"
+
+
+def test_only_a_version_waiting_for_review_can_be_decided(log):
+    """Codex review: a sent-back version waits for a new one; an approved one is done."""
+    review.enqueue(log, report_for("a" * 64), "r.json", now=T[0])
+    review.decide(log, "mob_0412", "sent_back", "redo", now=T[1])
+    with pytest.raises(review.ReviewConflict, match="new version"):
+        review.decide(log, "mob_0412", "approved", "")
+    review.enqueue(log, report_for("b" * 64), "r.json", now=T[2])
+    review.decide(log, "mob_0412", "approved", "", now=T[3])
+    with pytest.raises(review.ReviewConflict, match="already"):
+        review.decide(log, "mob_0412", "sent_back", "changed my mind")

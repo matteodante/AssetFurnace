@@ -7,7 +7,7 @@
     "mesh.nonmanifold": {"warn": 0.0, "fail": 0.5},
     "uv.overlap": {"warn": 2.0, "fail": 10.0, "resolution": 1024},
     "budget.faces": {"max": 40000, "fail_ratio": 1.25, "gltfpack": true},
-    "budget.materials": {"warn": 2, "fail": 4},
+    "budget.materials": {"warn": 2, "fail": 4, "draw_calls_warn": 4, "draw_calls_fail": 8},
     "budget.textures": {"warn": 2048, "fail": 4096},
     "budget.texel_density": {"min": 256, "max": 2048, "warn_only": true},
     "measure.height": {"warn": 5.0, "fail": 15.0},

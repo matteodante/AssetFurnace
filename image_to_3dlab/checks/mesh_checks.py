@@ -23,7 +23,14 @@ def flipped_faces(asset, config):
     _, open_faces = geometry.boundary_shares(welded.faces)
     # The volume says something only when the surface is mostly closed.
     inside_out = volume < 0 and open_faces < 5.0
-    details = {"flipped_faces": int(flipped.sum()), "volume": round(volume, 6)}
+    # And piece by piece: a big outward piece must not hide a smaller, closed inward one.
+    inward = geometry.inward_pieces(welded.vertices, welded.faces, flipped, config.get("speck_share", 0.5))
+    details = {"flipped_faces": int(flipped.sum()), "volume": round(volume, 6), "inward_pieces": len(inward)}
+    if inward and not inside_out:
+        faces = sum(n for n, _ in inward)
+        return result("mesh.flipped_faces", "fail", round(share, 3), limits,
+                      f"{len(inward)} closed piece(s) ({faces:,} faces) face inward; "
+                      f"{share:.2f}% of faces also disagree with their neighbours", details)
     if inside_out:
         return result("mesh.flipped_faces", "fail", round(share, 3), limits,
                       f"the whole surface faces inward (volume {volume:.4g}); "

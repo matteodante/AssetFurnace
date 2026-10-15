@@ -225,6 +225,56 @@ def rasterize(points: np.ndarray, faces: np.ndarray, width: int, height: int) ->
     return out.reshape(height, width)
 
 
+def inward_pieces(vertices: np.ndarray, faces: np.ndarray, flipped: np.ndarray,
+                  min_share: float = 0.5) -> list[tuple[int, float]]:
+    """(faces, volume) of every closed piece that faces inward once its flipped faces are turned back.
+
+    Summing the volume of the whole asset lets a big outward piece hide a smaller inward
+    one, which then vanishes under back-face culling. Pieces under `min_share` percent of
+    the largest piece's faces are left to `mesh.loose_parts`; open pieces have no inside.
+    """
+    if len(faces) == 0:
+        return []
+    labels = components(faces)
+    sizes = np.bincount(labels)
+    table = edges(faces)
+    open_face = (table.counts == 1)[table.of_face].any(axis=1)
+    has_open = np.bincount(labels, weights=open_face.astype(float)) > 0
+    volume = np.bincount(labels, weights=signed_volume(vertices, faces) * np.where(flipped, -1.0, 1.0))
+    keep = (sizes >= sizes.max() * min_share / 100.0) & ~has_open & (volume < 0)
+    out = []
+    for piece in np.flatnonzero(keep):
+        mine = labels == piece
+        # An inward shell inside the rest of the model is the wall of a cavity, which is
+        # correct (generated models have them): only one standing in the open is a defect.
+        probe = vertices[faces[mine][:3, 0]]
+        others = faces[~mine]
+        if len(others) and np.median(winding_number(probe, vertices, others)) > 0.5:
+            continue
+        out.append((int(sizes[piece]), float(volume[piece])))
+    return out
+
+
+def winding_number(points: np.ndarray, vertices: np.ndarray, faces: np.ndarray,
+                   batch: int = 100_000) -> np.ndarray:
+    """How many times the surface wraps each point: about 1 inside a closed outward surface, 0 outside.
+
+    The solid angle of every triangle seen from the point (Van Oosterom and Strackee), summed
+    and divided by 4 pi. Works on meshes with holes too, where it degrades gracefully.
+    """
+    points = np.asarray(points, dtype=np.float64)
+    total = np.zeros(len(points))
+    for start in range(0, len(faces), batch):
+        tri = vertices[faces[start:start + batch]]                 # (f, 3, 3)
+        a, b, c = (tri[None, :, i] - points[:, None] for i in range(3))
+        la, lb, lc = (np.linalg.norm(x, axis=2) for x in (a, b, c))
+        det = np.einsum("pfi,pfi->pf", a, np.cross(b, c))
+        den = (la * lb * lc + np.einsum("pfi,pfi->pf", a, b) * lc
+               + np.einsum("pfi,pfi->pf", b, c) * la + np.einsum("pfi,pfi->pf", c, a) * lb)
+        total += (2.0 * np.arctan2(det, den)).sum(axis=1)
+    return total / (4.0 * np.pi)
+
+
 def triangle_areas(points: np.ndarray, faces: np.ndarray) -> np.ndarray:
     """Area of every triangle; works for 2D (UV) and 3D points."""
     p0, p1, p2 = (points[faces[:, i]] for i in range(3))

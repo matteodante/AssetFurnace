@@ -23,7 +23,7 @@ def reference_extents(asset) -> dict[str, float]:
 
 
 def error_percent(value: float, wanted: float) -> float:
-    return 100.0 * abs(value - wanted) / wanted if wanted else float("inf")
+    return 100.0 * abs(value - wanted) / abs(wanted) if wanted else float("inf")
 
 
 def _limits(config):

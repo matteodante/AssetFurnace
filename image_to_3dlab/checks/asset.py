@@ -51,6 +51,10 @@ class Asset:
             value = getattr(self, name)
             if value is not None and not isinstance(value, Path):
                 object.__setattr__(self, name, Path(value))
+        for axis, value in (self.reference_numbers or {}).items():
+            # A negative height made every size check pass: refuse it where it comes in.
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0):
+                raise ValueError(f"reference {axis} must be a positive number of metres, got {value!r}")
 
     # -- what is on disk ---------------------------------------------------------------
 

@@ -30,7 +30,7 @@ export const fetchQueue = () => getJson('/api/review/queue');
 export const fetchItem = (key) => getJson(`/api/review/item/${encodeURIComponent(key)}`);
 
 // Two Library assets can share a name (a model and its finished copy): the file tells them apart.
-const choiceLabel = (choice) => `${choice.name} · ${choice.file.split('/').pop()}`;
+const choiceLabel = (choice) => `${choice.name} · ${choice.version ? `${choice.version} · ` : ''}${choice.file.split('/').pop()}`;
 
 function itemRow(item) {
   const note = item.notes?.length ? `<span class="rv-note">“${esc(item.notes[item.notes.length - 1].note)}”</span>` : '';
@@ -127,6 +127,14 @@ function referenceBlock(item) {
   return '<figure class="rv-ref"><div class="rv-refpane" data-refpane><span class="stats" hidden></span></div><figcaption class="meta">Reference model, turning</figcaption></figure>';
 }
 
+// Only a version waiting for review can be decided: a sent-back one waits for its replacement.
+function decisionBlock(item) {
+  if (item.state === 'sent_back') return '<p class="meta">Sent back. A new version comes back here once it has been checked.</p>';
+  if (item.state !== 'to_review') return `<p class="meta">${esc(STATE_LABELS[item.state] || item.state)}.</p>`;
+  return `<label class="field">Note<textarea data-note rows="3" placeholder="What to change (needed to send back)"></textarea></label>
+    <div class="row"><button class="primary" data-decide="approved">Approve</button><button class="ghost" data-decide="sent_back" disabled>Send back</button></div>`;
+}
+
 /** The review panel in the Steps column for one asset; `viewer` is the studio viewer. */
 export function renderReviewPanel(root, item, { viewer, onDecided }) {
   const shots = overlays(item.report);
@@ -142,8 +150,7 @@ export function renderReviewPanel(root, item, { viewer, onDecided }) {
     <h3>Checks</h3>
     <ul class="rv-checks">${checkRows(item.report).map((r) => `<li class="${esc(r.status)}"><span class="rv-chip ${esc(r.status)}">${esc(STATUS_LABELS[r.status] || 'Skip')}</span><span><b>${esc(r.check)}</b> <span class="meta">${esc(r.message)}</span></span></li>`).join('') || '<li class="meta">No checks report found.</li>'}</ul>
     <h3>Decision</h3>
-    <label class="field">Note<textarea data-note rows="3" placeholder="What to change (needed to send back)"></textarea></label>
-    <div class="row"><button class="primary" data-decide="approved">Approve</button><button class="ghost" data-decide="sent_back" disabled>Send back</button></div>
+    ${decisionBlock(item)}
     <p class="meta" data-status aria-live="polite"></p>
     ${item.history?.length ? `<details class="adv"><summary>History (${item.history.length})</summary><ul class="rv-history">${item.history.map((h) => `<li class="meta">${esc(String(h.at || '').slice(0, 16).replace('T', ' '))} · ${esc(h.event.replace('_', ' '))}${h.note ? ` · “${esc(h.note)}”` : ''}</li>`).join('')}</ul></details>` : ''}
   </li>`;
@@ -153,6 +160,7 @@ export function renderReviewPanel(root, item, { viewer, onDecided }) {
   root.querySelector('[data-turn]').addEventListener('change', (e) => viewer.setTurntable(e.target.checked));
   const note = root.querySelector('[data-note]');
   const back = root.querySelector('[data-decide="sent_back"]');
+  if (!note) return;  // only a version waiting for review can be decided
   note.addEventListener('input', () => { back.disabled = !canDecide('sent_back', note.value); });
   root.querySelectorAll('[data-decide]').forEach((button) => button.addEventListener('click', async () => {
     const decision = button.dataset.decide;
@@ -160,7 +168,7 @@ export function renderReviewPanel(root, item, { viewer, onDecided }) {
     const status = root.querySelector('[data-status]');
     root.querySelectorAll('[data-decide]').forEach((b) => { b.disabled = true; });
     try {
-      const updated = await postJson(`/api/review/item/${encodeURIComponent(item.key)}/decision`, { decision, note: note.value });
+      const updated = await postJson(`/api/review/item/${encodeURIComponent(item.key)}/decision`, { decision, note: note.value, asset_sha256: item.asset_sha256 });
       renderReviewPanel(root, updated, { viewer, onDecided });
       root.querySelector('[data-status]').textContent = decision === 'approved' ? 'Approved.' : 'Sent back. It stays in the queue with your note.';
       onDecided?.(updated);

@@ -29,7 +29,11 @@ from image_to_3dlab.checks.asset import REPO
 LOG = REPO / "output" / "review-log.jsonl"
 DECISIONS = ("approved", "sent_back")
 KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$")
-_WRITE = threading.Lock()
+_WRITE = threading.RLock()
+
+
+class ReviewConflict(ValueError):
+    """The decision does not fit the asset's current state: another version, or already decided."""
 
 
 def _now(now: str | None) -> str:
@@ -143,18 +147,31 @@ def enqueue_for_review(glb: str | Path, key: str, *, source: str | None = None, 
     return enqueue(log, empty, "", key, now, source, kind)
 
 
-def decide(log: Path, key: str, decision: str, note: str = "", now: str | None = None) -> dict:
-    """Approve the current version, or send it back with a note; return the new state."""
+def decide(log: Path, key: str, decision: str, note: str = "", now: str | None = None,
+           asset_sha256: str | None = None) -> dict:
+    """Approve the version waiting for review, or send it back with a note; return the new state.
+
+    `asset_sha256` is the version the reviewer looked at: if a newer one was queued in the
+    meantime, the decision is refused rather than recorded against a file nobody saw. Only
+    a version waiting for review can be decided; a sent-back one waits for its replacement.
+    """
     if decision not in DECISIONS:
         raise ValueError(f"decision must be one of {DECISIONS}, got {decision!r}")
     note = (note or "").strip()
     if decision == "sent_back" and not note:
         raise ValueError("sending an asset back needs a note saying what to change")
-    current = fold(load(log)).get(safe_key(key))
-    if current is None:
-        raise KeyError(f"{key} is not in the review log")
-    _append(log, {"event": decision, "key": key, "at": _now(now), "note": note,
-                  "asset": current.get("asset"), "asset_sha256": current.get("asset_sha256")})
+    with _WRITE:  # read, judge and write as one step, so two reviewers cannot both decide
+        current = fold(load(log)).get(safe_key(key))
+        if current is None:
+            raise KeyError(f"{key} is not in the review log")
+        if asset_sha256 and asset_sha256 != current.get("asset_sha256"):
+            raise ReviewConflict(f"{key} has a newer version in the queue; reload it before deciding")
+        if current["state"] == "sent_back":
+            raise ReviewConflict(f"{key} was sent back; it waits for a new version to be checked")
+        if current["state"] != "to_review":
+            raise ReviewConflict(f"{key} is already {current['state'].replace('_', ' ')}")
+        _append(log, {"event": decision, "key": key, "at": _now(now), "note": note,
+                      "asset": current.get("asset"), "asset_sha256": current.get("asset_sha256")})
     return fold(load(log))[key]
 
 

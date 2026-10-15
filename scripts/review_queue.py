@@ -25,7 +25,7 @@ VERDICT = {"approved": "good", "sent_back": "bad"}
 
 
 def decide(key: str, decision: str, note: str = "", log: Path | None = None,
-           register: Path | None = None) -> tuple[dict, str | None]:
+           register: Path | None = None, asset_sha256: str | None = None) -> tuple[dict, str | None]:
     """Record a decision in the review log and as a `mark_asset` verdict.
 
     Returns the asset's new state, and why the verdict was not written (None if it was).
@@ -36,7 +36,7 @@ def decide(key: str, decision: str, note: str = "", log: Path | None = None,
 
     from image_to_3dlab.checks import review
 
-    item = review.decide(log or review.LOG, key, decision, note)
+    item = review.decide(log or review.LOG, key, decision, note, asset_sha256=asset_sha256)
     asset = Path(item.get("asset") or "")
     if not asset.is_file():
         return item, f"no verdict written: {asset} is not on disk"
@@ -63,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--approve", metavar="KEY")
     action.add_argument("--send-back", metavar="KEY")
     parser.add_argument("--note", default="", help="why (required for --send-back)")
+    parser.add_argument("--sha", help="the version you looked at; refused if a newer one is queued")
     parser.add_argument("--log", type=Path, help="review log (default output/review-log.jsonl)")
     args = parser.parse_args(argv)
     log = args.log or review.LOG
@@ -72,7 +73,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     key, decision = (args.approve, "approved") if args.approve else (args.send_back, "sent_back")
     try:
-        item, problem = decide(key, decision, args.note, log)
+        item, problem = decide(key, decision, args.note, log, asset_sha256=args.sha)
     except (KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

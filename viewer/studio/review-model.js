@@ -57,10 +57,17 @@ export function checkableModel(asset) {
   return asset?.rigged || asset?.finished || asset?.model || null;
 }
 
-/** Library assets that have a model to check, as choices for the "Check an asset" form. */
+/** Library assets that have a model to check, as choices for the "Check an asset" form.
+ *  An asset with Blender versions offers them first, newest first, as the Library opens on
+ *  the newest; then its original. All share the asset's id: they are versions of one asset. */
 export function checkChoices(assets) {
-  return (assets ?? []).filter((a) => !a.hidden && checkableModel(a))
-    .map((a) => ({ id: a.id, name: a.name, file: checkableModel(a), picture: a.picture ?? null }));
+  return (assets ?? []).filter((a) => !a.hidden).flatMap((a) => {
+    const base = { id: a.id, name: a.name, picture: a.picture ?? null };
+    const versions = [...(a.blender_versions ?? [])].reverse()
+      .filter((v) => v?.file).map((v) => ({ ...base, file: v.file, version: v.label || v.id }));
+    const original = checkableModel(a) ? [{ ...base, file: checkableModel(a), version: versions.length ? 'original' : null }] : [];
+    return [...versions, ...original];
+  });
 }
 
 /** The request body for POST /api/review/checks. `reference` is a path under output/, or ''. */

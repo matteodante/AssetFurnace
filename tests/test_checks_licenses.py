@@ -105,3 +105,28 @@ def test_classify_reads_combined_names():
     classes, conditions = licenses.classify("MIT (code + flow weights); DINOv3 License (bundled encoder)")
     assert classes == ["conditional", "clear"]
     assert conditions
+
+
+def test_a_sidecar_for_another_file_is_not_trusted(tmp_path):
+    """Codex review: a declared output hash must match the GLB it sits beside."""
+    glb = fx.clean(tmp_path / "a.glb")
+    fx.sidecar(glb, {**fx.PIXAL3D_RECORD, "output": {"classification": "commercial-conditional", "sha256": "0" * 64}})
+    found = check(glb)
+    assert found["status"] == "fail" and "does not match" in found["message"]
+    fx.sidecar(glb, {**fx.PIXAL3D_RECORD, "output": {"sha256": checks.Asset(glb=glb).sha256}})
+    assert check(glb)["status"] == "pass"
+
+
+def test_a_record_without_the_models_own_licence_fails(tmp_path):
+    """Codex review: a rig record with `license: null` must not pass on the rig tool's MIT."""
+    glb = fx.clean(tmp_path / "x_rigged.glb")
+    fx.sidecar(glb, {"license": None, "classification": None, "rig": {"tool": "SkinTokens", "license": {"name": "MIT"}},
+                     "source_record": None})
+    found = check(glb)
+    assert found["status"] == "fail" and "own licence" in found["message"]
+
+
+def test_a_blender_version_takes_its_licence_from_its_source_record(tmp_path):
+    glb = fx.clean(tmp_path / "model.glb")
+    fx.sidecar(glb, {"license": None, "tool": "Blender", "source_record": fx.PIXAL3D_RECORD})
+    assert check(glb)["status"] == "pass"

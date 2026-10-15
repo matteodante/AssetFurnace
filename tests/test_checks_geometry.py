@@ -82,3 +82,10 @@ def test_rasterize_draws_large_triangles_and_slivers():
     big = np.array([[0, 0], [100, 0], [0, 100], [50, 50.2], [50.2, 50]], dtype=float)
     image = geometry.rasterize(big, np.array([[0, 1, 2], [3, 4, 1]]), 100, 100)
     assert 4900 < image.sum() < 5200
+
+
+def test_winding_number_is_one_inside_a_closed_surface_and_zero_outside():
+    vertices, faces, _ = fx.capsule_arrays()
+    welded = geometry.weld(vertices, faces)
+    points = np.array([[0.0, 0.9, 0.0], [2.0, 0.9, 0.0]])
+    assert geometry.winding_number(points, welded.vertices, welded.faces) == pytest.approx([1.0, 0.0], abs=1e-6)

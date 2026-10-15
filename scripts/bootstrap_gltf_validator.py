@@ -132,10 +132,19 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     print(f"Downloading {asset.archive}...", flush=True)
     binary = install(download(RELEASES + asset.archive), asset, target_dir())
-    check = subprocess.run([str(binary), "--help"], capture_output=True, text=True, check=False)
-    first = (check.stdout or check.stderr).splitlines()[:1]
+    try:
+        check = subprocess.run([str(binary), "--help"], capture_output=True, text=True, check=False, timeout=60)
+        first = (check.stdout or check.stderr).splitlines()[:1]
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        first, why = [], f"{type(exc).__name__}: {exc}"
+    else:
+        why = f"it printed {first}"
     if not first or "glTF 2.0 Validator" not in first[0]:
-        print(f"glTF-Validator is in {binary} but did not start: {first}", flush=True)
+        # A binary that cannot start must not look installed, or every check would fail on it
+        # instead of being skipped. On an Apple Silicon Mac the build needs Rosetta 2.
+        binary.unlink(missing_ok=True)
+        print(f"glTF-Validator did not start ({why}), so it was removed again. On an Apple Silicon Mac, "
+              f"install Rosetta 2 (softwareupdate --install-rosetta) and run this again.", flush=True)
         return 1
     print(f"Done: {first[0]} in {binary.parent}. The gltf.valid check will run now.", flush=True)
     return 0

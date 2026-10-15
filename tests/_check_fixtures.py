@@ -177,3 +177,33 @@ HUNYUAN_RECORD = {
     "output": {"classification": "territory-restricted"},
     "components": [],
 }
+
+
+def one_material_many_draws(path: Path, count: int = 10) -> Path:
+    """The capsule repeated `count` times, every copy sharing one material: many draw calls."""
+    base = textured(*capsule_arrays())
+    parts = []
+    for i in range(count):
+        copy = base.copy()
+        copy.apply_translation((i * 0.7, 0, 0))
+        copy.visual.material = base.visual.material
+        parts.append(copy)
+    return write_glb(parts, path)
+
+
+def with_inward_piece(path: Path) -> Path:
+    """The clean capsule plus a smaller, separate capsule wound inside out."""
+    vertices, faces, uv = capsule_arrays()
+    small = vertices * 0.5 + (1.0, 0.0, 0.0)
+    all_vertices = np.vstack([vertices, small])
+    all_faces = np.vstack([faces, faces[:, ::-1] + len(vertices)])
+    return write_glb(textured(all_vertices, all_faces, np.vstack([uv, uv])), path)
+
+
+def with_cavity(path: Path) -> Path:
+    """A solid with a hollow inside: an inner shell facing inward, into the cavity. Correct."""
+    vertices, faces, uv = capsule_arrays()
+    inner = vertices * 0.5 + (0.0, 0.45, 0.0)
+    all_vertices = np.vstack([vertices, inner])
+    all_faces = np.vstack([faces, faces[:, ::-1] + len(vertices)])
+    return write_glb(textured(all_vertices, all_faces, np.vstack([uv, uv])), path)

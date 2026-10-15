@@ -78,3 +78,22 @@ def test_nothing_is_fetched_without_a_yes(monkeypatch, capsys):
     assert boot.main([]) == 1
     assert not fetched
     assert "--yes" in capsys.readouterr().out
+
+
+def test_a_validator_that_cannot_start_is_removed(tmp_path, monkeypatch, capsys):
+    """Codex review: an x86-64 build on a Mac without Rosetta must not stay 'installed'."""
+    binary = tmp_path / "gltf_validator"
+
+    def fake_install(archive, asset, dest):
+        binary.write_bytes(b"x")
+        return binary
+
+    def cannot_start(*args, **kwargs):
+        raise OSError("Bad CPU type in executable")
+
+    monkeypatch.setattr(boot, "download", lambda url: b"")
+    monkeypatch.setattr(boot, "install", fake_install)
+    monkeypatch.setattr(boot.subprocess, "run", cannot_start)
+    assert boot.main(["--yes"]) == 1
+    assert not binary.exists()
+    assert "Rosetta" in capsys.readouterr().out

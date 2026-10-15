@@ -57,6 +57,37 @@ def _has_licence(record: Any) -> bool:
     return False
 
 
+def _licence_name(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    if isinstance(value, dict) and isinstance(value.get("name"), str) and value["name"].strip():
+        return value["name"].strip()
+    return None
+
+
+def own_licence(record: Any) -> str | None:
+    """The licence of the model itself: on the record, or down its chain of `source_record`s.
+
+    A rig or motion tool's licence (`rig.license`, a clip's) says nothing about the model's
+    own rights, so a record whose own licence is empty does not pass on those alone.
+    """
+    while isinstance(record, dict):
+        name = _licence_name(record.get("license", record.get("license_name")))
+        if name:
+            return name
+        record = record.get("source_record")
+    return None
+
+
+def declared_hash_matches(record: dict, glb: Path) -> bool:
+    """False only when the record names an output sha256 and `glb` is another file."""
+    from image_to_3dlab.provenance import sha256_file
+
+    output = record.get("output")
+    declared = output.get("sha256") if isinstance(output, dict) else None
+    return not declared or declared == sha256_file(glb)
+
+
 def _beside(glb: Path) -> list[Path]:
     return [glb.with_name(glb.stem + ".provenance.json"), glb.with_name(glb.stem + ".json")]
 
@@ -70,6 +101,9 @@ def find_records(glb: Path, explicit: Path | None = None,
         record = _read(explicit)
         return ([(explicit, record)] if record else []), "given"
     found = [(p, r) for p in _beside(glb) if (r := _read(p))]
+    stale = [p for p, r in found if not declared_hash_matches(r, glb)]
+    if stale:
+        return [], f"{stale[0].name} records a different file: its output sha256 does not match this GLB"
     if found:
         return found, "beside the model"
     for folder in [glb.parent, *glb.parents][:4]:
@@ -83,7 +117,8 @@ def find_records(glb: Path, explicit: Path | None = None,
             return [], f"finish run, but {generated} is not there to trace it"
         if sha256_file(source) != sha256_file(generated):
             return [], f"finish run, but {generated.name} is not the model it was finished from"
-        return [(p, r) for p in _beside(generated) if (r := _read(p))], f"traced to {generated}"
+        traced = [(p, r) for p in _beside(generated) if (r := _read(p)) and declared_hash_matches(r, generated)]
+        return traced, f"traced to {generated}"
     return [], None
 
 
@@ -137,6 +172,10 @@ def components(asset, config):
         why = f" ({how})" if how else ""
         return result("license.components", "fail", None, threshold,
                       f"no provenance record found for this model{why}")
+    if not any(own_licence(record) for _, record in records):
+        return result("license.components", "fail", None, threshold,
+                      "the provenance gives no own licence for this model, only its tools', so its rights are unknown",
+                      {"records": [str(p) for p, _ in records], "found": how})
     found = {"licenses": [], "classes": [], "conditions": [], "blocked": []}
     for _, record in records:
         collect(record, found)

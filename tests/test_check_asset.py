@@ -62,3 +62,8 @@ def test_the_cli_refuses_a_send_back_without_a_note(tmp_path, capsys):
     assert "note" in capsys.readouterr().err
     assert review_queue.main(["--list", "--log", str(log)]) == 0
     assert "barrel_01" in capsys.readouterr().out
+
+
+def test_a_non_positive_height_is_refused_at_the_command_line(tmp_path, capsys):
+    with pytest.raises(SystemExit):
+        check_asset.main([str(fx.clean(tmp_path / "a.glb")), "--height", "-1.8"])

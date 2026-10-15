@@ -126,3 +126,10 @@ def test_a_reference_is_recorded_with_its_hash(tmp_path):
     report = checks.run_checks(checks.Asset(glb=glb, reference=ref), only=["mesh.holes"])
     assert report["reference"]["kind"] == "glb"
     assert len(report["reference"]["sha256"]) == 64
+
+
+@pytest.mark.parametrize("numbers", [{"height": -1.8}, {"width": 0}, {"depth": "tall"}])
+def test_reference_measurements_must_be_positive_numbers(tmp_path, numbers):
+    """Codex review: a negative height made every size check pass."""
+    with pytest.raises(ValueError, match="positive"):
+        checks.Asset(glb=tmp_path / "a.glb", reference_numbers=numbers)

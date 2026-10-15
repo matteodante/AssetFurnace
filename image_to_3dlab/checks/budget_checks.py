@@ -18,7 +18,13 @@ import numpy as np
 
 from image_to_3dlab.checks import geometry
 from image_to_3dlab.checks.asset import REPO, base_colour
-from image_to_3dlab.checks.registry import grade_band, grade_max, register, result
+from image_to_3dlab.checks.registry import (
+    grade_band,
+    grade_max,
+    register,
+    result,
+    worst,
+)
 
 TRIANGLES, TRIANGLE_STRIP, TRIANGLE_FAN = 4, 5, 6
 
@@ -143,10 +149,14 @@ def faces(asset, config):
 
 @register("budget.materials")
 def materials(asset, config):
+    """Materials and draw calls: one material reused on many primitives is still many draws."""
     count = len(asset.document.get("materials", []))
     draws = len(drawn_primitives(asset.document))
-    limits = {"warn": config.get("warn", 2), "fail": config.get("fail", 4)}
-    return result("budget.materials", grade_max(count, **limits), count, limits,
+    limits = {"warn": config.get("warn", 2), "fail": config.get("fail", 4),
+              "draw_calls_warn": config.get("draw_calls_warn", 4), "draw_calls_fail": config.get("draw_calls_fail", 8)}
+    status = worst([grade_max(count, limits["warn"], limits["fail"]),
+                    grade_max(draws, limits["draw_calls_warn"], limits["draw_calls_fail"])])
+    return result("budget.materials", status, count, limits,
                   f"{count} material(s), {draws} draw call(s)", {"draw_calls": draws})
 
 

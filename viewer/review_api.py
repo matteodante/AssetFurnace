@@ -113,18 +113,34 @@ def decide_request(output: Path, key: str, body: dict) -> dict:
     import review_queue
 
     _, problem = review_queue.decide(key, body.get("decision"), body.get("note") or "",
-                                     log=_log(output), register=output / "verdicts.jsonl")
+                                     log=_log(output), register=output / "verdicts.jsonl",
+                                     asset_sha256=body.get("asset_sha256"))
     return item_payload(output, key) | {"verdict_problem": problem}
 
 
-def _body(handler) -> dict:
+def review_conflict() -> type:
+    from image_to_3dlab.checks.review import ReviewConflict
+
+    return ReviewConflict
+
+
+def _read_body(handler) -> bytes:
+    """The request body, read before anything is judged.
+
+    Answering a refused request (403, 400) without reading what it sent makes Windows reset
+    the connection, and the browser sees a network error instead of the reason.
+    """
     values = handler.headers.get_all("Content-Length", [])
     if len(values) != 1:
-        raise ValueError("A single Content-Length is required")
-    length = int(values[0])
-    if not 0 < length <= MAX_BODY:
-        raise ValueError("Request is empty or too large")
-    payload = json.loads(handler.rfile.read(length))
+        return b""
+    length = int(values[0]) if values[0].isdigit() else 0
+    return handler.rfile.read(length) if 0 < length <= MAX_BODY else b""
+
+
+def _body(raw: bytes) -> dict:
+    if not raw:
+        raise ValueError("Send a JSON object of at most 16 KB, with a single Content-Length")
+    payload = json.loads(raw)
     if not isinstance(payload, dict):
         raise TypeError("Expected a JSON object")
     return payload
@@ -137,6 +153,7 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
         return False
     parts = [unquote(p) for p in url.path.strip("/").split("/")]
     output = Path(output)
+    raw = _read_body(handler) if mutation else b""
     try:
         check_request(handler)
         if mutation and (not handler.headers.get("Origin") or handler.headers.get("X-AssetFurnace-Request") != "review"):
@@ -146,13 +163,15 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
         elif not mutation and len(parts) == 4 and parts[2] == "item":
             handler._send_json(200, item_payload(output, parts[3]))
         elif mutation and parts == ["api", "review", "checks"]:
-            handler._send_json(200, run_checks_request(output, _body(handler)))
+            handler._send_json(200, run_checks_request(output, _body(raw)))
         elif mutation and len(parts) == 5 and parts[2] == "item" and parts[4] == "decision":
-            handler._send_json(200, decide_request(output, parts[3], _body(handler)))
+            handler._send_json(200, decide_request(output, parts[3], _body(raw)))
         else:
             handler._send_json(404, {"error": "No such review request"})
     except PermissionError as exc:
         handler._send_json(403, {"error": str(exc)})
+    except review_conflict() as exc:
+        handler._send_json(409, {"error": str(exc)})
     except KeyError as exc:
         handler._send_json(404, {"error": f"{exc.args[0]} is not in the review queue"})
     except (ValueError, TypeError) as exc:
