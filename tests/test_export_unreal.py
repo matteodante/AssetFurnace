@@ -366,3 +366,29 @@ def test_real_blender_refuses_an_animation_file_without_an_animation(tmp_path):
     with pytest.raises(RuntimeError, match="critter_idle.glb holds no animation"):
         ex.export_unreal(source, kind="creature", size_cm=150, animations=[still], out_dir=tmp_path / "out",
                          log=lambda m: None)
+
+
+# --- review round 2 ----------------------------------------------------------------------
+
+def test_an_export_never_overwrites_its_own_source(tmp_path):
+    source = tmp_path / "SM_Chair.glb"
+    source.write_bytes(_triangle_glb())
+    with pytest.raises(ValueError, match="overwrite"):
+        ex.plan(source, kind="prop", size_cm=50, out_dir=tmp_path)
+
+
+def test_a_lone_tint_mask_of_another_model_is_not_taken(tmp_path):
+    from PIL import Image
+
+    source = tmp_path / "Chair.glb"
+    source.write_bytes(_triangle_glb())
+    Image.new("RGB", (2, 2)).save(tmp_path / "T_Table_Tint.png")
+    assert ex.plan(source, kind="prop", size_cm=50)["tint_source"] is None
+    Image.new("RGB", (2, 2)).save(tmp_path / "T_Chair_Tint.png")
+    assert ex.plan(source, kind="prop", size_cm=50)["tint_source"] == tmp_path / "T_Chair_Tint.png"
+
+
+def test_none_is_no_longer_a_collision_choice(files):
+    with pytest.raises(ValueError, match="--collision"):
+        ex.plan(files["part"], kind="prop", size_cm=50, collision="none")
+    assert ex.plan(files["part"], kind="prop", size_cm=50, collision="unreal")["job"]["collision"] == "unreal"

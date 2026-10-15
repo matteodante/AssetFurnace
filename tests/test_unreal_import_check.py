@@ -185,3 +185,13 @@ def test_a_picture_unreal_never_saved_fails_the_check(tmp_path):
     assert uc.write_results(exports, measured, tmp_path / "never-written.png") is False
     written = json.loads((tmp_path / "SM_Box" / "unreal_check.json").read_text())
     assert [r for r in written["results"] if r["check"] == "picture"][0]["ok"] is False
+
+
+# --- review round 2 ----------------------------------------------------------------------
+
+def test_two_exports_with_the_same_mesh_name_are_refused(tmp_path):
+    first = _export(tmp_path, "prop", "SM_Box")
+    (tmp_path / "again").mkdir()
+    second = _export(tmp_path / "again", "prop", "SM_Box")
+    with pytest.raises(SystemExit, match="SM_Box"):
+        uc.load_exports([first, second])
