@@ -22,6 +22,33 @@
         "Plain light background. No smoke, glow trails or motion blur: the 3D step needs one clean shape."
       ]
     },
+    "creature": {
+      "label": "A creature",
+      "wording": "single creature, whole body in view, standing in a neutral pose, legs apart, limbs clear of the body, mouth closed, plain light grey background, soft even studio lighting",
+      "tips": [
+        "<b>One creature</b>, all of it in view, standing still.",
+        "Keep legs, wings and tail <b>apart from the body</b>, so the 3D step sees each one.",
+        "Describe the body and the skin, fur or scales, not what it is doing."
+      ]
+    },
+    "equipment_part": {
+      "label": "A piece of equipment",
+      "wording": "single piece of armour or equipment shown on its own, not worn, front view, whole piece in view, centred, plain light grey background, soft even studio lighting",
+      "tips": [
+        "<b>One piece</b> (a helmet, a pauldron, a boot), shown on its own.",
+        "Nobody wearing it: a body under it gets modelled too.",
+        "Front view, the whole piece in the picture."
+      ]
+    },
+    "map_object": {
+      "label": "A map object",
+      "wording": "single environment object standing on the ground, whole object in view, three-quarter view, centred, plain light grey background, soft even studio lighting",
+      "tips": [
+        "<b>One object</b> of the world: a well, a fence, a rock, a market stall.",
+        "Three-quarter view, all of it in the picture, nothing around it.",
+        "Say what it is made of: stone, oak, iron."
+      ]
+    },
     "set": {
       "label": "A prop set",
       "wording": "a 3x3 grid of nine separate objects, same art style, clear gaps between them, each object whole and centred in its cell, plain light grey background",
@@ -59,9 +86,11 @@
      "message": "A pose other than a T-pose makes rigging harder. The T-pose wording is added for you."},
     {"words": ["long hair", "flowing hair", "tentacles", "tail", "wings"], "goals": ["character"],
      "message": "Long hair, tails and wings may not rig well yet."},
-    {"words": ["glowing", "smoke", "fire", "motion blur", "sparkles", "magic aura"], "goals": ["character", "prop", "set"],
+    {"words": ["glowing", "smoke", "fire", "motion blur", "sparkles", "magic aura"], "goals": ["character", "creature", "prop", "equipment_part", "map_object", "set"],
      "message": "Effects like glow, smoke or fire don't turn into clean 3D. Describe the object, not the effect."},
-    {"words": ["scene", "background of", "landscape", "room", "in a forest", "in a city"], "goals": ["character", "prop", "set"],
-     "message": "A scene behind the subject confuses the 3D step. Ask for a plain background (added for you)."}
+    {"words": ["scene", "background of", "landscape", "room", "in a forest", "in a city"], "goals": ["character", "creature", "prop", "equipment_part", "map_object", "set"],
+     "message": "A scene behind the subject confuses the 3D step. Ask for a plain background (added for you)."},
+    {"words": ["wearing", "worn by", "on a mannequin", "on a character", "on a body"], "goals": ["equipment_part"],
+     "message": "Show the piece on its own: a body under it gets modelled too."}
   ]
 }
