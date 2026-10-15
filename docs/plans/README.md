@@ -5,6 +5,7 @@ I documenti in questa cartella descrivono funzionalità proposte. Lo stato di un
 | Piano | Stato | Revisione |
 | --- | --- | --- |
 | [Pipeline di produzione per un gioco intero (primo utente: Auroconts)](2026-10-15-auroconts-asset-pipeline.md) | Proposta: lotti e MCP, dal riferimento al concept, bibbia dello stile, parti per slot, profilo Unreal, famiglie di creature, controlli e revisione, materiali | Da fare |
+| [Funzione 8: materiali pronti per il gioco, v2 (progetto)](2026-10-15-game-materials-v2-design.md) | Approvato; in corso: PR 1 (pezzo comune, ORM) e PR 2 (etichette). La [v1](2026-10-15-game-materials-design.md) resta per la storia e i Seguiti | Da fare |
 | [Funzione 6: famiglie di creature (progetto)](2026-10-15-creature-families-design.md) | Approvato; PR 1 (riconoscimento, controllo delle deformazioni, bipede digitigrado e quadrupede, studio) in revisione. Ragni, serpenti, draghi e piante nelle PR 2 e 3 | Da fare |
 | [Funzione 2: dal riferimento al concept (progetto)](2026-10-15-reference-concept-design.md) | Strada scelta: Qwen-Image 2.1 in modifica dentro `sd-cli`, provata su quattro casi giudicati a occhio; in attesa del download del file della visione (1,16 GB) | Da fare |
 | [Funzione 7: controlli e coda di revisione (progetto)](2026-10-15-checks-review-design.md) | Implementato (ramo da unire): contratto JSON, controlli generici, coda nello studio. Compenetrazioni in posa al secondo passo | Da fare |
