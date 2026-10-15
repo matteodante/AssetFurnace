@@ -129,12 +129,15 @@ class BatchRow:
 
         # an asset's record is part of what the row works from (its licence, its models),
         # and without images of its own the row takes its concept from that record too
-        record = recorded_sidecar(self.asset) if self.asset else None
+        # every record the licence gate read (the provenance and the backend's own)
+        records = [c for c in ((self.asset.with_suffix(".provenance.json"),
+                                self.asset.with_suffix(".json")) if self.asset else ())
+                   if c.is_file()]
         image = self.concept if self.asset and not self.images else None
         payload = {
             "images": [digest(image) for image in self.images],
             "asset": digest(self.asset) if self.asset else None,
-            "asset_record": digest(record) if record else None,
+            "asset_records": [[c.name, digest(c)] for c in records],
             "asset_image": digest(image) if image else None,
             "kind": self.kind, "faces": self.faces, "profile": self.profile,
             "steps": list(self.steps), "backend": self.backend,
@@ -404,6 +407,8 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
     last = read_json(output_dir / name / SPEC_COPY)
     ran_with = {row.get("id"): set(row.get("given_images") or [])
                 for row in (last or {}).get("rows", []) if isinstance(row, dict)}
+    used = {row.get("id"): row.get("asset")
+            for row in (last or {}).get("rows", []) if isinstance(row, dict)}
     # and the pictures staged for each row, for an asset row whose recorded picture moved
     saved = (read_json(output_dir / name / STATE_FILE) or {}).get("rows", {})
     saved = saved if isinstance(saved, dict) else {}
@@ -414,7 +419,7 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         row, row_problems = _parse_row(raw, defaults, base, number,
                                        staged=output_dir / name / "rows",
                                        ran_with=ran_with, staged_copies=staged_copies,
-                                       saved=saved)
+                                       saved=saved, used=used)
         problems += row_problems
         if row is None:
             continue
@@ -525,7 +530,7 @@ def _read_csv(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
 def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
                staged: Path | None = None, ran_with: dict[str, set[str]] | None = None,
                staged_copies: dict[str, list[Path]] | None = None,
-               saved: dict[str, Any] | None = None,
+               saved: dict[str, Any] | None = None, used: dict[str, str] | None = None,
                ) -> tuple[BatchRow | None, list[str]]:
     if not isinstance(raw, dict):
         return None, [f"row {number}: must be an object"]
@@ -582,7 +587,8 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
         # they are copied into one input folder, where one would overwrite the other
         problems.append(f"{label}: two images have the same file name; rename one")
     asset = (base / value["asset"]).resolve() if value.get("asset") else None
-    finished = (saved or {}).get(row_id, {}).get("status") == "done"
+    finished = ((saved or {}).get(row_id, {}).get("status") == "done"
+                and asset is not None and str(asset) == (used or {}).get(row_id))
     if asset is not None and not asset.is_file() and finished:
         pass   # its result is in the batch already: a resume of the rest goes on without it
     elif asset is not None and not asset.is_file():
@@ -1029,6 +1035,12 @@ def run_batch(spec: BatchSpec, retry_failed: bool = False,
             # on Windows and macOS `Oak` and `oak` are one folder: never two batches in it
             raise BatchError(f"batch {spec.name} would share its folder with batch "
                              f"{state['name']} (names are compared ignoring case); rename it")
+        ran_from = (state or {}).get("spec") or {}
+        if (ran_from.get("path") and ran_from["path"] != str(spec.path)
+                and ran_from.get("sha256") != sha256_file(spec.path)):
+            # another file under this batch name would take over its state and its resume
+            raise BatchError(f"batch {spec.name} already ran from another spec "
+                             f"({ran_from['path']}); give this one its own name")
         if state and state.get("intent_fingerprint") != spec.intent_fingerprint():
             raise BatchError(
                 f"the intent or licence policy of batch {spec.name} changed since it ran "
@@ -1181,8 +1193,12 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             save()
             continue
         step_dir = row_dir / name
-        if step_dir.exists():
-            shutil.rmtree(step_dir)
+        try:
+            if step_dir.exists():
+                shutil.rmtree(step_dir)
+        except OSError as exc:   # a file held open (Windows): this row fails, not the batch
+            _fail(entry, steps, name, f"could not clear {step_dir.name}: {exc}", save, log)
+            return
         log(f"{name} ...")
         steps[name] = {"status": "running", "started_at": now()}
         save()

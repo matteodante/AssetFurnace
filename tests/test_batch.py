@@ -1516,3 +1516,60 @@ def test_a_specs_folder_is_found_without_checking_its_rows(tmp_path, monkeypatch
     assert batch.spec_directory(spec_path) == (tmp_path / "out" / "test-batch").resolve()
     (tmp_path / "lot.csv").write_text("id,images\nSM_A,missing.png\n")
     assert batch.spec_directory(tmp_path / "lot.csv") == batch.DEFAULT_OUTPUT / "lot"
+
+
+
+def test_both_records_beside_a_source_are_in_its_fingerprint(tmp_path):
+    asset = tiny_glb(tmp_path / "knight.glb", "knight")
+    asset.with_suffix(".provenance.json").write_text(json.dumps(
+        {"license": {"name": "MIT"}, "classification": "commercial-conditional"}))
+    backend_record = asset.with_suffix(".json")
+    backend_record.write_text(json.dumps({"backend": "pixal3d"}))
+    row = batch.BatchRow(id="SK_Knight", images=(tiny_png(tmp_path / "k.png"),), asset=asset,
+                         kind="creature", faces=None, profile=None, steps=("finish",),
+                         backend="pixal3d")
+    before = row.fingerprint()
+    backend_record.write_text(json.dumps({"backend": "hunyuan-comfyui"}))
+    assert row.fingerprint() != before
+
+
+def test_a_done_row_edited_to_a_new_missing_source_is_refused(tmp_path, monkeypatch, fake_finish):
+    tiny_glb(tmp_path / "a.glb", "a")
+    tiny_png(tmp_path / "a.png")
+    spec = {"schema_version": 1, "output": {"directory": "out"},
+            "rows": [{"id": "SM_A", "asset": "a.glb", "images": ["a.png"], "steps": ["finish"]}]}
+    (tmp_path / "lot.json").write_text(json.dumps(spec))
+    batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
+    spec["rows"][0]["asset"] = "typo.glb"
+    (tmp_path / "lot.json").write_text(json.dumps(spec))
+    with pytest.raises(batch.BatchError, match="asset does not exist"):
+        batch.load_batch(tmp_path / "lot.json")
+
+
+def test_another_spec_cannot_take_over_a_batchs_state(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch)
+    first = write_spec(tmp_path / "a", rows=1, output={"directory": "../out"})
+    batch.run_batch(batch.load_batch(first))
+    second = write_spec(tmp_path / "b", rows=2, output={"directory": "../out"})
+    with pytest.raises(batch.BatchError, match="already ran from another spec"):
+        batch.run_batch(batch.load_batch(second))
+
+
+def test_a_step_folder_that_cannot_be_cleared_fails_its_row(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch, FakeGenerator(interrupt_on="row01"))
+    spec_path = write_spec(tmp_path, rows=2)
+    with pytest.raises(KeyboardInterrupt):
+        batch.run_batch(batch.load_batch(spec_path))
+    (spec_path.parent / "out" / "test-batch" / "rows" / "SM_row01" / "generate").mkdir(parents=True, exist_ok=True)
+
+    real = batch.shutil.rmtree
+
+    def held_open(path, *args, **kwargs):
+        if "SM_row01" in str(path) and Path(path).name == "generate":
+            raise PermissionError("a file in it is open")
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(batch.shutil, "rmtree", held_open)
+    report = batch.run_batch(batch.load_batch(spec_path))
+    assert report.failed["SM_row01"].startswith("generate: could not clear")
+    assert report.counts == {"failed": 1, "done": 1}

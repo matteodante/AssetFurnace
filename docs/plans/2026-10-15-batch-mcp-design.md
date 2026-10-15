@@ -259,3 +259,20 @@ Prova a mano facoltativa, solo se il coordinatore la permette: righe con `asset`
 `CHANGELOG.md`, un esempio in `manifests/` (`example-batch.json` e `.csv`, da aggiungere all'eccezione del
 `.gitignore`) e la documentazione d'uso in `docs/batches.md`. Nessuno script nuovo in `scripts/`, quindi niente da
 aggiungere a `scripts/README.md`.
+
+## Seguiti
+
+Punti della review di Codex sulla PR #2 rimandati con la regola dell'utente (P2 che non sono errori visibili:
+risultato sbagliato, dati persi, crash, licenza sbagliata).
+
+- Il piano dei passi di una ripresa considera finito un passo i cui file esistono, senza ricontrollarne l'hash: se un
+  file generato cambia sul posto, il generatore riparte senza il controllo preliminare dei suoi pesi (che comunque
+  rifiuta di scaricarli). [Thread](https://github.com/matteodante/AssetFurnace/pull/2#discussion_r4288609326)
+
+Respinti con motivo nel thread (non da fare): `output.directory` di un manifest relativa al manifest invece che alla
+cartella corrente, come fanno tutti i backend di `--run-manifest`
+([thread](https://github.com/matteodante/AssetFurnace/pull/2#discussion_r4285752400)); chiave di revisione con il
+nome del lotto, contro il contratto della funzione 7
+([thread](https://github.com/matteodante/AssetFurnace/pull/2#discussion_r4287559111)); copia dei GLB sorgente delle
+righe di sola finitura ([thread](https://github.com/matteodante/AssetFurnace/pull/2#discussion_r4287559143), poi
+risolto in modo diverso: una riga già fatta sopravvive allo spostamento della sua sorgente).
