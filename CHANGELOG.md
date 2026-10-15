@@ -87,6 +87,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
 
 ### Fixed
+- A character is faced across its hips, not along its feet: a werewolf whose feet turned out
+  unevenly was exported to Unreal turned 17 degrees off its body. The Unreal check also
+  records the feet's and knees' sideways gap over the retargeted walk (and Manny's), and fails
+  when the feet cross.
 - Auto-rig setup finds the virtual environment's Python executable on Windows.
 - Blender imports reject empty active scenes and invalid skin indices, retain every
   source license sidecar, and detect damaged saved versions on retry. Corrupt edit

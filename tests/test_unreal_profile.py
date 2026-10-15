@@ -551,6 +551,12 @@ def test_stride_is_the_widest_step_of_the_cycle(samples, expected):
     assert up.stride(samples) == expected
 
 
+def test_feet_cross_when_a_foot_changes_side():
+    assert up.feet_cross([-20.0, -5.0, 3.0], rest=-18.0)  # the left foot swung past the right
+    assert not up.feet_cross([-20.0, -2.0, -15.0], rest=-18.0)  # close, but never across
+    assert not up.feet_cross([5.0], rest=0.0)  # no side at rest, nothing to cross
+
+
 def test_unreal_report_checks_the_walk_too():
     sidecar = up.sidecar(kind="creature", names=up.asset_names("creature", "Wolf"), glb="SK_Wolf.glb",
                          size_cm=180, measure="height", lods=1, collision=None, humanoid=True,
@@ -700,3 +706,16 @@ def test_import_folder_names_are_plain_unreal_names(mesh):
 def test_import_folder_names_that_could_escape_are_refused(mesh):
     with pytest.raises(ValueError):
         up.safe_mesh_name(mesh)
+
+
+def test_the_walk_check_says_when_the_feet_cross():
+    expected = {"mesh": "SK_Wolf", "kind": "creature", "lods": 0, "skinned": True, "orm": False}
+    base = {"names": ["SK_Wolf"], "ik_recognised": True, "retarget": "ok", "walk": "ok"}
+    want = {"manny_compatible": True}
+    crossing = up.evaluate_unreal({**base, "walk_feet_sides": [-20.0, 4.0], "walk_feet_rest": -18.0},
+                                  {**expected, "expect": want})
+    apart = up.evaluate_unreal({**base, "walk_feet_sides": [-20.0, -9.0], "walk_feet_rest": -18.0},
+                               {**expected, "expect": want})
+    check = {r["check"]: r for r in crossing}
+    assert check["walk_feet"]["ok"] is False and "cross" in check["walk_feet"]["detail"]
+    assert {r["check"]: r for r in apart}["walk_feet"]["ok"] is True
