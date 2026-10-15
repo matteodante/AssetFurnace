@@ -125,11 +125,17 @@ class SkinnedGLB:
         rest.vertices = self.deform(self.world(self.rest_locals()), rest)
         return rest
 
-    def deform(self, world: list[np.ndarray], mesh: Skinned | None = None) -> np.ndarray:
-        """Linear blend skinning with these node world matrices."""
+    def blend(self, world: list[np.ndarray], mesh: Skinned | None = None) -> np.ndarray:
+        """Each vertex's skinning matrix (N, 4, 4) for these node world matrices."""
         mesh = mesh or self.mesh
         palette = np.stack([world[j] @ ib for j, ib in zip(self.joint_nodes, self.inverse_binds)])
-        blend = np.einsum("nk,nkij->nij", mesh.weights, palette[mesh.joints])
+        return np.einsum("nk,nkij->nij", mesh.weights, palette[mesh.joints])
+
+    def deform(self, world: list[np.ndarray], mesh: Skinned | None = None,
+               blend: np.ndarray | None = None) -> np.ndarray:
+        """Linear blend skinning with these node world matrices."""
+        mesh = mesh or self.mesh
+        blend = self.blend(world, mesh) if blend is None else blend
         return np.einsum("nij,nj->ni", blend[:, :3, :3], mesh.bind) + blend[:, :3, 3]
 
     # -- animations --------------------------------------------------------------------

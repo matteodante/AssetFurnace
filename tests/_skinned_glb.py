@@ -2,7 +2,7 @@
 
 The lower bone sits at the origin and the upper one at y = 1; vertices below y = 1 follow
 the lower bone, the rest the upper one. A clip is a list of (time, quaternion xyzw) keys
-for the upper bone.
+for one bone.
 """
 
 from __future__ import annotations
@@ -40,7 +40,8 @@ class _Buffer:
 
 
 def write(path: Path, clips: dict[str, list[tuple[float, list[float]]]] | None = None,
-          weights: np.ndarray | None = None) -> Path:
+          weights: np.ndarray | None = None, node: int = 2) -> Path:
+    """`node` is the bone the clips turn: 2 the upper one (a bend), 1 the lower (the whole strip)."""
     buf = _Buffer()
     pos = buf.add(VERTICES, "VEC3", 5126, min=VERTICES.min(0).tolist(), max=VERTICES.max(0).tolist())
     idx = buf.add(FACES.reshape(-1), "SCALAR", 5123)
@@ -60,7 +61,7 @@ def write(path: Path, clips: dict[str, list[tuple[float, list[float]]]] | None =
         t_acc = buf.add(times, "SCALAR", 5126, min=[float(times.min())], max=[float(times.max())])
         q_acc = buf.add(quats, "VEC4", 5126)
         animations.append({"name": name, "samplers": [{"input": t_acc, "output": q_acc}],
-                           "channels": [{"sampler": 0, "target": {"node": 2, "path": "rotation"}}]})
+                           "channels": [{"sampler": 0, "target": {"node": node, "path": "rotation"}}]})
     doc = {
         "asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0, 1]}],
         "nodes": [{"name": "strip", "mesh": 0, "skin": 0},
