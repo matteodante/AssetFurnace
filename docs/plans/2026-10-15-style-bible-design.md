@@ -1,19 +1,27 @@
 # Funzione 3: bibbia dello stile (progetto)
 
-Data: 15 ottobre 2026. Stato: **proposta, in attesa di approvazione**. Niente è implementato.
+Data: 15 ottobre 2026. Stato: **proposta, seconda versione, in attesa di approvazione**. Niente è implementato.
 Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 3.
 Il LoRA dello stile è **fuori** da questo lavoro (rimandato dall'utente il 15/10/2026).
 
 **AssetFurnace è una repo a sé**: la bibbia è un formato generico, ogni progetto ha la sua e la tiene nella propria
 repo. Dentro AssetFurnace non entrano immagini, nomi o stile di un progetto; gli esempi qui sotto sono inventati.
 
-In breve: una cartella che contiene le immagini approvate di un progetto con le loro note, i modelli di prompt per tipo di
-asset, e un punteggio che dice quanto un concept nuovo somiglia a quelle immagini. Il punteggio esce nel formato dei
-controlli della funzione 7, così lo studio lo mostra e i lotti lo usano come soglia.
+**Cosa cambia rispetto alla prima versione** (richieste dell'utente del 15/10/2026):
+- tolto `style.palette`: niente controlli deterministici sui pixel (luminosità, saturazione, contorni);
+- nuova sezione 3: **lo stile si ottiene all'origine**, dando alla generazione 1-3 immagini approvate come riferimento,
+  poi tenendo il migliore di alcuni tentativi;
+- la misura è **solo imparata**, e tre candidati fanno una gara sui giudizi dell'utente: entra solo chi la vince
+  (sezione 4).
+
+In breve: una cartella con le immagini approvate e rifiutate di un progetto e le loro note; modelli di prompt per tipo
+di asset; riferimenti di stile presi dalla bibbia per generare; e un giudice imparato che dice quanto un concept nuovo è
+nello stile. Il giudizio esce nel formato dei controlli della funzione 7, così lo studio lo mostra e i lotti lo usano
+come soglia.
 
 Perché serve, con un esempio già sul disco: il lupo mannaro di `output/compare-20261015/` è stato chiesto con
 "stylized fantasy … hand-painted fantasy MMORPG monster" ed è uscito quasi realistico, grigio e spento. **Le parole del
-prompt non bastano a garantire lo stile**: serve una misura che lo dica prima di spendere 15 minuti nel 3D.
+prompt non bastano a garantire lo stile.**
 
 ## 1. Il formato della bibbia
 
@@ -25,10 +33,11 @@ my-game-style/
   images/
     3f9a1c2e-knight.png
     3f9a1c2e-knight.provenance.json     # copiata dall'originale: la licenza viaggia con l'immagine
-    b71d0e44-chest.png
+  rejected/
+    9c04e1b7-wolf.png                   # un concept rimandato, con la sua nota: insegna cosa NON è lo stile
   .cache/                               # rigenerabile, da ignorare in git
-    embeddings-siglip2-base-patch16-224.npz
-    scores.json
+    embeddings-<modello>.npz
+    judgements.json
 ```
 
 `bible.json`:
@@ -40,215 +49,258 @@ my-game-style/
   "description": "Hand-painted fantasy: saturated colours, slightly exaggerated proportions.",
   "style": {
     "wording": "stylised hand-painted fantasy game art, bold saturated colours, slightly exaggerated proportions, clean readable shapes",
-    "avoid": "photorealistic, photo, dark, gloomy, muted colours, desaturated"
+    "criteria": [
+      "Is it painted in the same way as the references, not photographic?",
+      "Are the colours as saturated and bright as in the references?",
+      "Are the proportions exaggerated the way they are in the references?"
+    ]
   },
   "kinds": {
-    "creature": {"wording": "oversized claws and head, vivid fur colours"},
-    "equipment_part": {"wording": "large decorative trims, gold and coloured enamel"}
+    "creature": {"wording": "oversized claws and head, vivid fur colours"}
   },
   "images": [
-    {
-      "file": "images/3f9a1c2e-knight.png",
-      "sha256": "3f9a1c2e…",
-      "kind": "character",
-      "note": "Colours and proportions are exactly right; the shoulder pads are the target size.",
-      "added": "2026-10-16T09:12:00+00:00",
-      "source": "images/stylized-fantasy-knight-hand-painted-gam__20261015-192236/….png"
-    }
+    {"file": "images/3f9a1c2e-knight.png", "sha256": "3f9a1c2e…", "kind": "character",
+     "note": "Colours and proportions are exactly right.", "added": "2026-10-16T09:12:00+00:00",
+     "source": "images/stylized-fantasy-knight-hand-painted-gam__20261015-192236/….png"}
   ],
-  "score": {"model": "siglip2-base-patch16-224", "k": 3, "warn": null, "fail": null}
+  "rejected": [
+    {"file": "rejected/9c04e1b7-wolf.png", "sha256": "9c04e1b7…", "kind": "creature",
+     "note": "Almost photographic and grey: not our style.", "added": "2026-10-16T09:15:00+00:00"}
+  ],
+  "score": {"method": null, "warn": null, "fail": null}
 }
 ```
 
-- **Aggiungere** un'immagine: la si copia in `images/` con le prime 8 cifre del suo hash nel nome (niente doppioni,
-  niente collisioni di nomi), si copia accanto la sua `.provenance.json` se c'è, si scrive la voce con la nota.
-- **Togliere**: si cancella la voce e il file (con conferma nello studio). Il file sparisce, la bibbia resta coerente.
-- La nota è obbligatoria: senza un "perché va bene", fra sei mesi nessuno sa cosa difendere.
-- `kind` è facoltativo: un'immagine senza tipo vale per tutti i tipi.
-- `score.warn` e `score.fail` vuoti significano "calcolate dalla bibbia stessa" (sezione 3); un numero li fissa.
+- **Aggiungere** un'immagine (approvata o rifiutata): la si copia nella cartella con le prime 8 cifre del suo hash nel
+  nome, si copia accanto la sua `.provenance.json` se c'è, si scrive la voce con la **nota obbligatoria**.
+- **Togliere**: si cancella la voce e il file (con conferma nello studio).
+- I **rifiutati** servono a due cose: la prova di accettazione cresce da sola con l'uso, e il giudice impara anche da
+  cosa non va (sezione 4.4).
+- `style.criteria`: le domande che il giudice visione-linguaggio fa su ogni concept (sezione 4.3). Le scrive l'utente,
+  in inglese; ci sono tre domande di partenza generiche.
+- `score.method` dice quale misura ha vinto la gara per questa bibbia; `warn` e `fail` sono le soglie tarate.
 - **Più bibbie**: AssetFurnace tiene un elenco in `output/styles/bibles.json` (`[{"name", "path"}]`). Una bibbia nuova
   nasce in `output/styles/<nome>/`; una cartella esterna (per esempio nella repo del gioco, il posto normale) si
-  **registra** con il suo percorso, senza copiarla. `output/` è fuori da git: AssetFurnace non conserva bibbie di progetti. Una è quella attiva nello studio; la CLI e i lotti la nominano con `--style-bible`.
+  **registra** con il suo percorso, senza copiarla. `output/` è fuori da git: AssetFurnace non conserva bibbie di
+  progetti. Una è quella attiva nello studio; la CLI e i lotti la nominano con `--style-bible`.
 
-Il codice: `image_to_3dlab/style/bible.py` (leggere, validare, aggiungere, togliere; scrittura atomica del JSON),
-senza dipendenze nuove. Controlla che ogni file elencato esista e abbia il suo hash.
+Codice: `image_to_3dlab/style/bible.py` (leggere, validare, aggiungere, togliere; scrittura atomica del JSON), senza
+dipendenze nuove. Controlla che ogni file elencato esista e abbia il suo hash.
 
 ## 2. I modelli di prompt per tipo di asset
 
 Due livelli, ciascuno nel suo posto:
 
-1. **`image_to_3dlab/prompt_recipes.json`** (generico, vale per ogni gioco): cosa serve al **3D**, non allo stile. Oggi
-   ha `character` e `prop`; aggiungo `creature`, `equipment_part` e `map_object` con `wording`, `tips` e le parole a
-   rischio (`trouble`) adatte. Esempio per `equipment_part`: "single piece of armour shown on its own, not worn,
-   front view, whole piece in view, plain light grey background, soft even studio lighting".
+1. **`image_to_3dlab/prompt_recipes.json`** (generico): cosa serve al **3D**, non allo stile. Oggi ha `character` e
+   `prop`; aggiungo `creature`, `equipment_part` e `map_object` con `wording`, `tips` e parole a rischio (`trouble`).
    I 5 tipi: personaggio (`character`), creatura (`creature`), oggetto (`prop`), pezzo di equipaggiamento
-   (`equipment_part`), oggetto di mappa (`map_object`). Corrispondenza con i profili dei controlli della funzione 7:
-   character e creature → `creature`, prop e map_object → `prop`, equipment_part → `equipment_part`.
-2. **La bibbia** (specifica del progetto): lo stile, `style.wording` più `kinds.<tipo>.wording`.
+   (`equipment_part`), oggetto di mappa (`map_object`). Profili dei controlli della funzione 7: character e creature →
+   `creature`, prop e map_object → `prop`, equipment_part → `equipment_part`.
+2. **La bibbia** (specifica del progetto): `style.wording` più `kinds.<tipo>.wording`.
 
-Il prompt finale si compone sempre nello stesso ordine, in una funzione pura testata:
+Ordine fisso, in una funzione pura testata,
+`image_to_3dlab/style/prompts.py: compose(subject, kind, bible=None, recipes=None)`:
 
 ```
-<soggetto scritto dall'utente>, <wording del tipo dalle ricette>, <wording dello stile>, <wording del tipo nella bibbia>
+<soggetto>, <wording del tipo dalle ricette>, <wording dello stile>, <wording del tipo nella bibbia>
 ```
 
-`image_to_3dlab/style/prompts.py: compose(subject, kind, bible=None, recipes=None) -> {"prompt", "negative", "parts"}`.
-La usano la CLI (`pipeline.py style prompt …`), i lotti (una riga con `kind` e `subject` al posto dell'immagine) e lo
-studio (anteprima nella pagina Stile; nella pagina Crea una riga di aggancio che aggiunge lo stile della bibbia attiva).
+La usano la CLI, i lotti (una riga con `kind` e `subject` al posto dell'immagine) e lo studio. Con Qwen-Image a cfg 1.0,
+il valore di base di AssetFurnace, il prompt negativo non ha effetto: lo stile va detto in positivo.
 
-**Attenzione al negativo**: con Qwen-Image 2.1 a `cfg 1.0` (il default misurato di AssetFurnace) il prompt negativo
-**non ha effetto**. Quindi `style.avoid` va nel prompt negativo solo se si alza il cfg (il doppio del tempo), e lo stile
-va detto in positivo. Lo scrivo nella pagina, non lo nascondo.
+## 3. Lo stile all'origine: riferimenti dalla bibbia e il migliore di N
 
-**Coordinamento con la funzione 2**: non tocco `viewer/image_api.py` né la generazione guidata. Se la 2 vuole lo stile
-della bibbia, chiama `compose()`.
+### Cosa dice la verifica (ottobre 2026)
 
-## 3. Il punteggio di coerenza
+- **Dare immagini di riferimento allo stesso modello che genera è pratica corrente.** Qwen-Image 2.1 accetta fino a 10
+  riferimenti, Qwen-Image-Edit-2511 lavora con più immagini insieme, FLUX.2 klein ne accetta fino a 4. È il modo più
+  rapido di cominciare, senza addestrare nulla.
+- **Ma non basta per centinaia di immagini.** Il manuale di stile di ComfyUI (marzo 2026) dice che generare contenuti
+  nuovi con un modello di modifica e un riferimento di stile "tends to be more hit or miss": dipende molto dal
+  riferimento scelto. Per contenuti nuovi in uno stile fisso la strada affidabile resta il LoRA, che l'utente ha
+  rimandato. Nessuna fonte confronta le due strade su un set di asset per un gioco: lo misuriamo noi.
+- Conseguenza: i riferimenti alzano la probabilità di stare nello stile, **il giudice (sezione 4) dice quando non ci
+  si è riusciti**. Insieme fanno il "migliore di N": si generano 2-4 tentativi e si tiene il migliore che passa la
+  soglia. Se nessuno passa, la riga del lotto si ferma con il motivo.
 
-Due controlli nel contratto della funzione 7, perché misurano cose diverse e un messaggio chiaro vale più di un numero
-unico:
+### Cosa costruisco io e cosa fa la funzione 2
 
-### `style.coherence`: quanto il concept somiglia alle immagini approvate
+La **funzione 2** possiede il motore: la gara fra Qwen-Image 2.1 in modifica e Qwen-Image-Edit-2511, i comandi
+`sd-cli`, l'aggancio in `viewer/image_api.py`. Non tocco niente di questo. Io fornisco:
 
-- Ogni immagine diventa un vettore (embedding) con un modello d'immagine. Il punteggio è la **media della somiglianza
-  coseno con le k immagini approvate più vicine** (k = 3; con un `kind`, prima quelle dello stesso tipo).
-  Il vicino, non il centro: la bibbia contiene cavalieri e forzieri, e un forziere nuovo deve somigliare ai forzieri
-  approvati, non a una media fra cavaliere e forziere.
-- **Soglie calcolate dalla bibbia**: per ogni immagine approvata calcolo lo stesso punteggio contro le altre ("lascia
-  fuori uno"). Questo dice quanto si somigliano fra loro le immagini buone. Sotto il 10° percentile → `warn`; sotto il
-  10° percentile meno la distanza fra mediana e 10° percentile → `fail`. Così le soglie si adattano a ogni progetto e
-  crescono con la bibbia. Dopo la prova di accettazione si possono fissare a numeri in `bible.json`.
-- Con meno di 8 immagini nella bibbia il controllo dà al massimo `warn` ("bibbia troppo piccola per giudicare").
-- Gli embedding della bibbia sono in cache (`.cache/`), indicizzati per hash dell'immagine e modello: aggiungere
-  un'immagine ne calcola una sola.
+- `image_to_3dlab/style/refs.py: pick(bible, kind, k)`: sceglie 1-3 immagini approvate da usare come riferimento. Prima
+  quelle dello stesso tipo; a parità, quelle che il giudice ritiene più tipiche della bibbia (le più vicine alle altre).
+  Funzione pura, deterministica, testata.
+- La frase che accompagna i riferimenti nel prompt ("Paint the subject in the same style as the reference images: same
+  brushwork, colours and proportions"), in `compose()`.
+- Il giudice, per scegliere il migliore fra N tentativi.
 
-### `style.palette`: colori e luce
+**Prova** (girata con la funzione di generazione della funzione 2): stessi soggetti e semi, tre bracci: solo prompt,
+prompt + 1 riferimento, prompt + 3 riferimenti. Si misura quanti escono nello stile secondo i giudizi dell'utente, e
+quanto costa in tempo. Ho scritto alla sessione della funzione 2 per inserire questi bracci nella sua gara invece di
+farne una seconda.
 
-L'embedding sa "dipinto o foto", ma è debole su "troppo scuro" o "colori spenti". Questo controllo è aritmetica pura,
-niente modello: sul soggetto (lo sfondo uniforme si toglie col colore dei bordi), mediana di saturazione e di
-luminosità, confrontate con la fascia delle immagini della bibbia. Messaggio leggibile: "saturation 0.18, approved
-images 0.42–0.71". Questo prende il lupo mannaro anche se l'embedding lo trovasse "dipinto".
+**Licenze dei motori** (verificate sulle schede Hugging Face, 15/10/2026):
 
-### Come si registra e dove si usa
+| Motore | Pesi | Riferimenti | Nota |
+|---|---|---|---|
+| Qwen-Image 2.1 (quello in uso) | **Qwen Research License: §2a solo uso non commerciale** (trovato dalla funzione 2) | fino a 10 | Va bene per le prove; per produrre un gioco commerciale va deciso a parte |
+| **Qwen-Image-Edit-2511** | **Apache-2.0** | più immagini | In `sd-cli` serve `--model-args qwen_image_zero_cond_t=true`, altrimenti la qualità cala molto |
+| FLUX.2 klein 4B | **Apache-2.0** | fino a 4 | Circa 13 GB di VRAM, supportato da `sd-cli` (codificatore Qwen3-4B). Il 9B ha licenza non commerciale |
+| FLUX 3 Image Klein (uscito oggi, 15/10/2026) | FLUX Kommunity License: commerciale gratis solo sotto 5 M$ di fatturato, con condizioni su filtri e ridistribuzione | sì | Da guardare, non da adottare ora |
+| Qwen-Image-Style-Transfer (QwenStyle, LoRA su Edit-2509) | codice Apache-2.0, **licenza dei pesi non dichiarata** | stile + contenuto | Escluso finché i pesi non hanno una licenza: ripristinerebbe lo stile di un concept venuto male |
 
-- `image_to_3dlab/style/score.py: score_concept(image, bible, kind=None) -> list[dict]`: i due risultati nel contratto
-  (`check`, `status`, `value`, `threshold`, `message`, `details` con i 3 vicini e il modello). **Non serve un GLB**:
-  è il cancello prima del 3D.
-- Registrazione nella funzione 7: `style.coherence` e `style.palette` con `@register(..., needs=("reference_shape",))`
-  leggono il concept da `Asset.reference` quando è un'immagine. Nel profilo `default.json` sono **spenti**
-  (`"enabled": false, "bible": null`): un lotto li accende passando la bibbia negli `overrides`. Acceso senza bibbia →
-  `fail` con il motivo (chi lo accende lo vuole).
-- **Lotti (funzione 1)**: il punto giusto è **prima** di `generate`, per non spendere il 3D su un concept fuori stile.
-  Propongo alla funzione 1 un passo `style` (file adattatore `image_to_3dlab/batch_steps/style.py`, con `preflight`
-  che verifica bibbia e pesi senza mai scaricare) da mettere prima di `generate` nell'elenco dei passi. `fail` ferma la
-  riga con il messaggio; `warn` la lascia andare e la segna. Da concordare con quella sessione.
-- **CLI**: `pipeline.py style score --bible <cartella> concept.png [--kind creature]` stampa il JSON del contratto;
-  uscita 0 per pass/warn, 2 per fail (come `scripts/game_materials.py`).
-- **Studio**: sezione 5.
+## 4. Misurare lo stile: una gara fra misure imparate
 
-## 4. Il modello di embedding
+Niente controlli sui pixel. Tre candidati, tutti modelli addestrati; **ognuno entra solo se passa la prova sui giudizi
+dell'utente** (sezione 7: area ROC ≥ 0,90 e il resto). Se ne passa più d'uno, si usa il più economico, e il più costoso
+solo nella zona incerta fra `warn` e `fail` (a cascata).
 
-Licenze verificate il 15/10/2026 su Hugging Face e GitHub (codice **e** pesi, la lezione di OmniPart):
+### 4.1 SigLIP 2 (embedding generale)
 
-| Modello | Codice | Pesi | Download | Per noi |
+Ogni immagine diventa un vettore; il punteggio è la somiglianza media con le k = 3 immagini approvate più vicine (prima
+quelle dello stesso tipo). Le soglie di partenza si calcolano dalla bibbia stessa ("lascia fuori uno": quanto si
+somigliano fra loro le immagini buone), poi si tarano sui giudizi. Il modello sa distinguere "foto" e "dipinto", ma il
+soggetto pesa molto: un lupo realistico può somigliare a un lupo approvato.
+
+### 4.2 CSD (embedding addestrato apposta per lo stile)
+
+Contrastive Style Descriptor ("Measuring Style Similarity in Diffusion Models", 2024): un ViT-L partito da CLIP e
+addestrato a separare lo stile dal contenuto. Nella letteratura del 2026 è ancora il riferimento: non ho trovato un
+embedding di stile più recente con pesi aperti che lo batta in modo dimostrato. Un articolo di maggio 2026
+([arXiv 2605.09030](https://arxiv.org/abs/2605.09030)) mostra che il coseno grezzo non va letto come punteggio assoluto
+(area 0,883 nella verifica a coppie su 91 artisti) e che una lettura relativa (CSLS: si confronta la somiglianza con
+quella dei vicini tipici) porta a 0,905. Uso CSLS. Avvertenza dal README del CSD: i pesi caricati non riproducono del
+tutto i numeri dell'articolo. Lo dice la nostra prova.
+
+### 4.3 Giudice visione-linguaggio con griglia di domande (Qwen3-VL-8B)
+
+Al modello si danno 3 immagini approvate (da `refs.pick`) e il concept, e le domande di `style.criteria`, una alla
+volta, con risposta sì/no. Non si legge la parola scritta ma la **probabilità del "sì"** (dai logit): un numero
+continuo, che si può tarare e mettere su una curva ROC. Il punteggio è la media sulle domande, ripetuta con due terne
+di riferimenti diverse e mediata. Il messaggio dice quale domanda è andata male ("colours: 0.12").
+
+Perché così e non "dai un voto da 1 a 10": la ricerca del 2026 dice che i giudici visione-linguaggio **ordinano bene ma
+danno voti assoluti poco affidabili** (accordo esatto con le persone su una scala a 5 punti circa un terzo delle volte,
+[arXiv 2604.25235](https://arxiv.org/abs/2604.25235)), che ripetere il giudizio con semi o riferimenti diversi lo rende
+più stabile, e che le immagini di riferimento possono spostare il giudizio. Domande sì/no, probabilità invece del voto,
+due terne di riferimenti e soglie tarate sui giudizi dell'utente sono le contromisure.
+
+Il modello: Qwen3-VL-8B-Instruct (Apache-2.0). **Il file del modello è già sul disco** (`Qwen3VL-8B-Instruct-Q4_K_M.gguf`,
+5,03 GB, lo usa Qwen-Image come codificatore); manca la parte visiva (`mmproj`, 1,16 GB), la stessa che serve alla
+strada edit della funzione 2: un download per due funzioni. Gira con **llama.cpp** (MIT, supporta Qwen3-VL), in
+`vendor/llama-cpp/` come `sd-cli` sta in `vendor/sdcpp/`. Usa la GPU: lucchetto condiviso. Tempo per concept da
+misurare nella prova (stima: decine di secondi).
+
+Successori considerati: Qwen3.5 ha visione integrata e pesi Apache-2.0, ma non c'è un GGUF ufficiale verificato per
+llama.cpp e non abbiamo nulla già sul disco. Si cambia solo se Qwen3-VL non passa la prova.
+
+### 4.4 Imparare dai giudizi dell'utente
+
+Le decisioni dell'utente (approvato nella bibbia, rifiutato con nota) sono dati. Quando ci sono almeno 10 approvati e
+10 rifiutati, si addestra un piccolo classificatore lineare (regressione logistica, in numpy) sugli embedding del
+vincitore fra 4.1 e 4.2. Entra solo se, con validazione "lascia fuori uno", batte il punteggio dei vicini. Questo è il
+modo in cui la misura migliora con l'uso. È una seconda PR, dopo la prova.
+
+### 4.5 Contratto e registrazione
+
+- `image_to_3dlab/style/score.py: judge_concept(image, bible, kind=None) -> dict`: un risultato `style.coherence` nel
+  contratto della funzione 7 (`check`, `status`, `value`, `threshold`, `message`, `details` con metodo, modello e
+  licenza, vicini o risposte alle domande). **Non serve un GLB**: è il cancello prima del 3D.
+- Registrazione nei controlli della funzione 7: `style.coherence` con `needs=("reference_shape",)` legge il concept da
+  `Asset.reference` quando è un'immagine. Nel profilo `default.json` è **spento** (`"enabled": false, "bible": null`);
+  un lotto lo accende passando la bibbia negli `overrides`. Acceso senza bibbia → `fail` con il motivo.
+- **Lotti (funzione 1)**: un passo `style` **prima** di `generate` (adattatore `image_to_3dlab/batch_steps/style.py`,
+  `preflight` che verifica bibbia, motori e pesi senza scaricare). `fail` ferma la riga; `warn` la lascia andare e la
+  segna. Il migliore di N vive qui quando la riga parte da un soggetto e non da un'immagine.
+- **CLI**: `pipeline.py style judge --bible <cartella> concept.png [--kind creature]` stampa il JSON; uscita 0 per
+  pass/warn, 2 per fail.
+
+## 5. Download e motori (ognuno solo dopo un sì esplicito)
+
+Struttura di AssetFurnace: motori in `vendor/`, pesi nel catalogo (`viewer/backend_catalog.py`) con nome, dimensione e
+licenza, e uno script di installazione (`scripts/bootstrap_style.py`) che chiede conferma; `--yes` per chi lo usa da
+agente. Niente ComfyUI.
+
+| Cosa | File | Dimensione | Licenza | Serve per |
 |---|---|---|---|---|
-| **SigLIP 2 base/16 224** (`google/siglip2-base-patch16-224`) | Apache-2.0 (big_vision: "including models") | **Apache-2.0** (scheda del modello) | **1,54 GB** (file unico con testo e immagine; si usa solo la parte immagine, ~93 M parametri) | **Scelto**. Addestrato su immagini e testo: distingue bene "foto", "dipinto", "cartone". Gira sul processore |
-| DINOv2 base (`facebook/dinov2-base`) | Apache-2.0 | **Apache-2.0** ("code and model weights", README) | 346 MB | Alternativa e confronto. Ottimo sulla forma, più debole sullo stile perché ignora il significato |
-| DINOv3 | — | Licenza DINOv3 (commerciale con condizioni) | — | Escluso: condizioni, e Pixal3D lo porta già |
-| Cell-DINO, XRay-DINO | — | **Non commerciale** | — | Esclusi (sono nella stessa repo di DINOv2: attenzione a non confonderli) |
-| CSD ViT-L (stile, da "Measuring Style Similarity…") | MIT | CC-BY-4.0 sulla scheda, ma derivato da CLIP e addestrato su LAION-Styles; il README dice che i pesi caricati non riproducono i numeri dell'articolo | non verificato | Escluso: catena di licenze dei pesi poco chiara |
-| OpenAI CLIP | MIT | MIT, ma la scheda dice che ogni uso distribuito, commerciale o no, è "out of scope" | non verificato | Escluso per prudenza |
-| OpenCLIP su LAION-2B | MIT | MIT | non verificato | Alternativa possibile, ma LAION-5B fu ritirato a fine 2023 per contenuti illegali (poi ripubblicato ripulito): preferisco evitarlo |
+| SigLIP 2 base/16 224 | `google/siglip2-base-patch16-224` → `model.safetensors` | 1,5 GB | Apache-2.0 (scheda; big_vision: "including models") | 4.1 |
+| CSD ViT-L | `tomg-group-umd/CSD-ViT-L` → `pytorch_model.bin` | 2,44 GB | CC-BY-4.0 (attribuzione), derivato da OpenAI CLIP ViT-L/14 (MIT) | 4.2. È un file pickle: si carica con `torch.load(weights_only=True)` |
+| Qwen3-VL-8B-Instruct Q4_K_M | `Qwen/Qwen3-VL-8B-Instruct-GGUF` | 5,03 GB, **già in cache** | Apache-2.0 | 4.3 |
+| mmproj di Qwen3-VL-8B | `mmproj-Qwen3VL-8B-Instruct-F16.gguf` | 1,16 GB (condiviso con la funzione 2) | Apache-2.0 | 4.3 |
+| llama.cpp | release `b11669` (15/10/2026): Vulkan x64 | 30 MB; con CUDA 13.4: 147 MB + 403 MB di runtime | MIT | 4.3. Si parte con Vulkan; CUDA solo se la prova lo mostra troppo lento |
+| `transformers` (pip) | — | piccolo | Apache-2.0 | Carica SigLIP 2 e CSD (torch c'è già) |
 
-**Dipendenze nuove**: `transformers` (Apache-2.0) per caricare SigLIP 2. Torch c'è già (2.14 con CUDA nel `.venv`).
-Niente `open_clip`, niente `timm`.
+Per la gara: circa **4,1 GB** di pesi nuovi e 30 MB di motore. Dopo la gara si tengono solo quelli del vincitore; il
+catalogo permette di togliere gli altri.
 
-**Download**: per la regola della repo, nessun peso si scarica senza una scelta esplicita. Il comando
-`pipeline.py style setup` dice nome, licenza e dimensione ("SigLIP 2 base, Apache-2.0, 1,54 GB") e chiede sì; `--yes`
-per i lotti. Lo studio ha lo stesso pulsante con la stessa frase. Il punteggio, se i pesi mancano, dice come averli e
-non scarica nulla.
+**Esclusi**, con il motivo: DINOv3 (licenza con condizioni); Cell-DINO e XRay-DINO (non commerciali, nella stessa repo
+di DINOv2); DINOv2 (Apache-2.0, ma guarda la forma più dello stile, e nell'articolo del CSD resta sotto il CSD); OpenAI CLIP
+puro (la scheda esclude ogni uso distribuito); OpenCLIP su LAION (LAION-5B fu ritirato nel 2023 per contenuti
+illegali); Qwen3-VL-Embedding-2B (Apache-2.0, gennaio 2026, ma nessun risultato pubblicato sullo stile); tutto ciò che
+è Hunyuan/Tencent.
 
-**Dove gira**: sul processore (CPU) per default, circa mezzo secondo per immagine; la GPU resta libera per la
-generazione. Opzione `--device cuda` (con il lucchetto della GPU) per i lotti grandi.
+## 6. Nello studio: la pagina "Stile"
 
-**Provenienza**: il punteggio non cambia l'asset, quindi non entra nella sua licenza; il modello e la sua licenza sono
-scritti nei `details` di ogni risultato.
-
-## 5. Nello studio: la pagina "Stile"
-
-Un pulsante "Style" nella barra, come "Review", che apre un foglio sopra il visore (UI in file miei:
+Un pulsante "Style" nella barra, come "Review", che apre un foglio sopra il visore (file miei:
 `viewer/studio/style.js`, `viewer/studio/style-model.js` per la logica pura e testata, `viewer/style_api.py`).
 
-- In alto: scelta della bibbia attiva, nuova bibbia, registra una cartella esterna.
-- **La bibbia**: griglia delle immagini con nota e tipo; togli (con conferma); modifica nota.
+- In alto: bibbia attiva, nuova bibbia, registra una cartella esterna.
+- **La bibbia**: approvate e rifiutate, con nota e tipo; togli (con conferma); modifica nota.
 - **Aggiungi**: da una scheda della Libreria (le immagini di `output/images/`) o da un caricamento; nota obbligatoria.
-- **Concept recenti**: le ultime immagini generate con il loro punteggio (verde/giallo/rosso, i due controlli e i 3
-  vicini mostrati accanto). Calcolo lento la prima volta, poi in cache per hash.
-- **Prompt**: anteprima del prompt composto per tipo (sezione 2).
+- **Concept recenti**: le ultime immagini generate con il giudizio (verde/giallo/rosso e il motivo). Da qui, un clic le
+  approva o le rifiuta nella bibbia: così i giudizi dell'utente si accumulano mentre lavora.
+- **Prompt**: anteprima del prompt composto per tipo, con i riferimenti che userebbe.
 
 Righe di aggancio nei file condivisi, minime: `generate_api.py` (import e 2 righe di instradamento, come
-`review_api`), `studio.html` (1 pulsante), `app.js` (import e 1 ascoltatore), forse `create.js` (lo stile della bibbia
-attiva aggiunto al prompt; da coordinare con la funzione 2 se tocca lo stesso file).
+`review_api`), `studio.html` (1 pulsante), `app.js` (import e 1 ascoltatore).
 
-## 6. Come provo l'accettazione
+## 7. Come provo l'accettazione
 
-"Su un campione etichettato il punteggio separa i concept che l'utente approverebbe da quelli che rimanderebbe."
+"Su un campione etichettato il giudizio separa i concept che l'utente approverebbe da quelli che rimanderebbe." Le
+etichette sono **dell'utente**, non mie.
 
-1. **Bibbia di esempio**, costruita con i concept e i modelli già in `output/` più quelli generati per la prova, e
-   **lasciata fuori da git** (`output/style-acceptance-20261016/bible/`). 16 concept nello stile, generati con i modelli di prompt (3-4 per ciascuno dei 5 tipi, semi
-   diversi). In mancanza di concept già approvati dall'utente faccio io da approvatore e lo dichiaro; il foglio di
-   contatto va all'utente, che può togliere quelli che non approverebbe.
-2. **Campione di prova**, soggetti **diversi** da quelli della bibbia:
-   - 15 nello stile (positivi);
-   - 15 fuori stile (negativi): 5 fotorealistici, 4 troppo scuri, 4 con colori spenti (fra cui il lupo mannaro di
-     `compare-20261015`), 2 di un altro stile (pixel art, cartone piatto).
-   - In più qualche **negativo difficile**: stesso soggetto e stesse parole di stile, ma "at night, gloomy" o "muted
-     earth tones". È il caso del lupo: il prompt dice stilizzato e l'immagine no.
-3. Le etichette nascono dalla costruzione; le confermo guardando ogni immagine, e il foglio di contatto con etichette e
-   punteggi va all'utente.
-4. **Numeri dichiarati**: area sotto la curva ROC (1 = separazione perfetta, 0,5 = a caso) per SigLIP 2, DINOv2,
-   palette e la combinazione; e alla soglia di default quanti negativi vengono fermati e quanti positivi fermati per
-   sbaglio. **Obiettivo proposto**: area ≥ 0,90; alla soglia di default almeno l'80% dei fuori stile in `warn` o
-   `fail`, al massimo il 10% dei buoni.
-5. Il campione resta in `output/style-acceptance-20261016/` (non in git, sono nostri contenuti) con il rapporto; nel
-   documento metto i numeri e le immagini peggiori di ogni gruppo.
+1. **Bibbia di esempio**, fuori da git (`output/style-acceptance-20261016/bible/`): circa 24 concept generati con i
+   modelli di prompt, nei 5 tipi; l'utente ne approva 16 o più dalla pagina Stile (5 minuti). Si aggiungono i concept e
+   i modelli già in `output/`.
+2. **Campione di prova**, con soggetti diversi: circa 40 concept fra quelli generati nei tre bracci della sezione 3,
+   più alcuni costruiti per uscire dallo stile (fotorealistici, troppo scuri, colori spenti come il lupo mannaro, un
+   altro stile) e negativi difficili (stesso soggetto e stesse parole di stile, ma cupi o spenti). L'utente li etichetta
+   approvato/rimandato, senza vedere i punteggi.
+3. **Numeri dichiarati** per ciascun candidato (SigLIP 2, CSD con CSLS, giudice Qwen3-VL) e per la cascata: area ROC;
+   alla soglia scelta, quota dei rimandati fermati e dei buoni fermati per sbaglio; tempo per concept.
+4. **Regola d'ingresso**: area ROC ≥ 0,90 e, alla soglia scelta, almeno l'80% dei rimandati in `warn` o `fail` con al
+   massimo il 10% dei buoni. Chi non passa non entra. Se nessuno passa, lo scrivo e la funzione si ferma alla bibbia e ai
+   riferimenti, senza un controllo che finge di funzionare.
+5. **Stile all'origine**: per i tre bracci, quota approvata dall'utente e tempo per immagine.
+6. Tutto resta in `output/style-acceptance-20261016/` con il rapporto; nel documento metto i numeri e gli errori
+   peggiori di ogni candidato.
 
-Tempo GPU: circa 50 immagini con Qwen-Image a 768 px e 8 passi; con il lucchetto della GPU condivisa.
+Avvertenza: 40 etichette danno un'area ROC con un margine d'errore ampio (circa ±0,05). Basta per scegliere ed
+escludere; la misura vera si raffina con i giudizi del pilota (sezione 4.4).
 
-## 7. Le PR
+## 8. Le PR
 
-1. **Bibbia e prompt** (nessun modello): `style/bible.py`, `style/prompts.py`, i tre tipi nuovi nelle ricette, CLI
-   `style new|add|remove|list|prompt`, test.
-2. **Punteggio**: `style/score.py`, `style.palette`, `style.coherence`, `style setup` con conferma del download,
-   registrazione nei controlli, prova di accettazione con i numeri nel documento.
-3. **Pagina Stile** nello studio.
-4. (Dopo il merge della funzione 1) l'adattatore `batch_steps/style.py`.
-
-## 8. Alternative considerate
-
-- **Solo prompt fissi**: è quello che ha prodotto il lupo grigio. Necessari, non sufficienti.
-- **Un giudice con un modello visione-linguaggio** (Qwen3-VL, già in cache per Qwen-Image): "questo concept è nello
-  stile di questi esempi?". Spiega il perché a parole, ma è lento, più difficile da tarare, e la risposta cambia con
-  la formulazione. Tenuto come seguito se l'embedding non basta.
-- **Testo come ancora** (SigLIP 2 confronta l'immagine con "a photograph" o "a dark image"): gratis con lo stesso
-  modello. Lo provo nella prova di accettazione; entra solo se migliora i numeri.
-- **Embedding di stile dedicato (CSD)**: il più adatto sulla carta, escluso per la licenza dei pesi.
-- **Media della bibbia invece dei vicini**: più semplice, ma con tipi diversi nella stessa bibbia la media non
-  somiglia a niente.
+1. **Bibbia e prompt** (nessun modello): `style/bible.py`, `style/prompts.py`, `style/refs.py`, i tre tipi nuovi nelle
+   ricette, CLI `style new|add|reject|remove|list|prompt`, test.
+2. **Gara**: `scripts/bootstrap_style.py` con il catalogo, i tre candidati, la prova con i numeri nel documento.
+3. **Il vincitore come controllo**: `style.coherence`, registrazione, CLI `style judge`.
+4. **Pagina Stile** nello studio.
+5. Dopo il merge della funzione 1: l'adattatore `batch_steps/style.py` con il migliore di N. Poi il classificatore
+   della 4.4.
 
 ## 9. Rischi
 
-- **Il soggetto pesa più dello stile**: un lupo realistico può somigliare a un lupo approvato più di quanto un
-  forziere approvato somigli a un forziere nuovo. Mitigazioni: vicini dello stesso tipo, controllo della palette, e la
-  prova di accettazione ha negativi con lo stesso soggetto proprio per misurarlo.
-- **Bibbia piccola o poco varia**: soglie rumorose. Limite minimo di 8 immagini, e il punteggio "lascia fuori uno" si
-  mostra nella pagina, così si vede quando una bibbia è troppo uniforme.
-- **Campione costruito con gli stessi prompt della bibbia**: separare diventa troppo facile. Soggetti diversi e negativi
-  difficili lo mitigano; il giudizio vero arriverà con i concept approvati dall'utente nel pilota.
-- **Download da 1,54 GB** per usarne un quarto: accettabile, dichiarato. Se pesa, DINOv2 (346 MB) è il ripiego se la
-  prova dice che basta.
-- **Sfondo**: tutti i concept hanno sfondo grigio chiaro; un fondo diverso cambia l'embedding. Il punteggio usa
-  l'immagine scontornata (`__matted.png`) quando c'è.
+- **Il soggetto pesa più dello stile** negli embedding generali: è il motivo per cui ci sono CSD e il giudice, e per
+  cui la prova ha negativi con lo stesso soggetto.
+- **Il giudice è instabile o lento**: due terne di riferimenti, probabilità invece dei voti, soglie tarate; il tempo si
+  misura, e la cascata lo usa solo nei casi incerti.
+- **Poche etichette**: margine ampio sull'area ROC (sopra). Le etichette crescono con l'uso della pagina Stile.
+- **I riferimenti fanno copiare** (la generazione ricalca un'immagine della bibbia invece di prenderne lo stile): la
+  funzione 2 ha già un controllo di copia (`concept.copy`); lo si usa anche qui.
+- **Licenza di Qwen-Image 2.1** (non commerciale): riguarda la generazione, non questa funzione, ma i riferimenti di
+  stile la usano. Qwen-Image-Edit-2511 e FLUX.2 klein 4B sono le strade Apache-2.0.
+- **CSD**: pesi in formato pickle e risultati non del tutto riprodotti dagli autori. Caricamento sicuro e prova nostra.
 
 ## Seguiti
 
@@ -256,8 +308,30 @@ Tempo GPU: circa 50 immagini con Qwen-Image a 768 px e 8 passi; con il lucchetto
 
 ## Domande per l'approvazione
 
-1. Va bene **SigLIP 2** (Apache-2.0, 1,54 GB) come modello, con DINOv2 (346 MB) scaricato solo per il confronto nella
-   prova? Il download avviene solo dopo il tuo sì.
-2. Va bene che nella prova di accettazione faccia io da approvatore della bibbia di prova, con il foglio di contatto
-   mandato a te per conferma?
-3. Il passo `style` dei lotti prima di `generate`: lo concordo io con la sessione della funzione 1?
+1. Va bene la gara fra SigLIP 2, CSD e il giudice Qwen3-VL, con circa 4,1 GB di pesi e llama.cpp Vulkan (30 MB)?
+   Scarico solo dopo il tuo sì.
+2. Etichette dell'utente: circa 5 minuti per approvare la bibbia di esempio e 10 per etichettare il campione, dalla
+   pagina Stile o da un foglio. Va bene?
+3. La prova dei riferimenti di stile la faccio girare dentro la gara della funzione 2 (ho chiesto alla sessione): va
+   bene così?
+
+## Fonti (verificate il 15/10/2026)
+
+- Schede Hugging Face: [Qwen-Image-Edit-2511](https://huggingface.co/Qwen/Qwen-Image-Edit-2511),
+  [FLUX.2-klein-4B](https://huggingface.co/black-forest-labs/FLUX.2-klein-4B),
+  [siglip2-base-patch16-224](https://huggingface.co/google/siglip2-base-patch16-224),
+  [CSD-ViT-L](https://huggingface.co/tomg-group-umd/CSD-ViT-L),
+  [Qwen3-VL-8B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct-GGUF),
+  [Qwen3-VL-Embedding-2B](https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B),
+  [dinov2-base](https://huggingface.co/facebook/dinov2-base).
+- GitHub: [big_vision](https://github.com/google-research/big_vision) (Apache-2.0, modelli compresi),
+  [CSD](https://github.com/learn2phoenix/CSD) (MIT), [dinov2](https://github.com/facebookresearch/dinov2),
+  [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) (`docs/flux2.md`, `docs/qwen_image_edit.md`),
+  [llama.cpp](https://github.com/ggml-org/llama.cpp) (MIT, `src/models/qwen3vl.cpp`),
+  [Qwen-Image-Style-Transfer](https://github.com/witcherofresearch/Qwen-Image-Style-Transfer).
+- [The Complete Style Transfer Handbook](https://blog.comfy.org/p/the-complete-style-transfer-handbook) (Comfy Org,
+  19/03/2026); [arXiv 2605.09030](https://arxiv.org/abs/2605.09030) (CSD e CSLS);
+  [arXiv 2604.25235](https://arxiv.org/abs/2604.25235) (giudici visione-linguaggio: ordinano ma non danno voti);
+  [FLUX 3 Image Klein](https://bfl.ai/blog/flux-3-image-klein) e
+  [VentureBeat](https://venturebeat.com/technology/black-forest-labs-opens-flux-3-image-klein-weights-with-free-commercial-use-limited-to-smaller-businesses)
+  sulla licenza.
