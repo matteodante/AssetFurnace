@@ -50,7 +50,8 @@ SUFFIX = ".family.json"
 GROUND = 0.08            # a joint this close to the lowest one is on the ground
 NEAR_GROUND = 0.3        # of its attachment's height: a leg ends at least this low
 SPLAYED = 0.3            # of body size: a chain this long reaching out and down is a leg too
-LEG_ATTACH = 0.12        # a leg hangs from a body at least this far up
+LEG_ATTACH = 0.25        # a leg hangs from a body at least this far up (roots fan out lower)
+TAIL_REACH = 1.5         # of its drop: a chain reaching out further than this along the ground is a tail
 CONTACT = 0.06           # of leg length: joints this low are the foot's contact
 DIGITIGRADE_JOINTS = 0.25  # of leg length: without a mesh, only a hock this high says digitigrade
 SOLE = 0.03              # of the mesh height: vertices this low are a sole on the ground
@@ -140,7 +141,7 @@ def _legs(body: _Body) -> list[dict]:
     """Every branch that hangs from the body to one spot on the ground."""
     found = []
     for fork in body.order():
-        if len(body.kids[fork]) < 2 and fork != body.root:
+        if len(body.kids[fork]) < 2:  # a leg hangs beside something: a lone chain is the body itself
             continue
         if body.above(fork) < LEG_ATTACH * body.height:
             continue
@@ -155,9 +156,11 @@ def _legs(body: _Body) -> list[dict]:
             if any(body.above(x) > 0.25 * top and sum(_reaches_down(body, c, x) for c in body.kids[x]) >= 2
                    for x in path[:-1]):
                 continue
-            # contact is what lies as low as the branch goes: a tail hanging just above the
-            # ground drags along it, while a toe-walker's hock stands clear of its toes
-            contact = [body.flat(body.heads[x]) for x in path if body.h[x] - body.low[start] <= GROUND * body.height]
+            # contact is what lies as low as the branch goes, all of it: a tail hanging just
+            # above the ground drags along it, a plant's roots fan out over it, while a
+            # toe-walker's hock stands clear of its toes
+            contact = [body.flat(body.heads[x]) for x in _subtree(start, body.kids)
+                       if body.h[x] - body.low[start] <= GROUND * body.height]
             spread = max((float(np.linalg.norm(a - b)) for a in contact for b in contact), default=0.0)
             if len(contact) >= 2 and spread > DRAG_SPREAD * body.above(fork):
                 continue  # lies along the ground: a tail or tentacle
@@ -198,6 +201,29 @@ def _splayed(body: _Body, legs: list[dict], left: np.ndarray) -> list[dict]:
             found.append({"fork": fork, "bones": path})
             used |= set(branch)
     return found
+
+
+def _tail_like(body: _Body, leg: dict) -> bool:
+    """A chain that reaches out along the ground much further than it drops, and never
+    rises above where it starts: a tail resting on the ground, not a leg standing on it."""
+    fork, bones = leg["fork"], leg["bones"]
+    tip = bones[-1]
+    drop = body.h[fork] - body.h[tip]
+    reach = float(np.linalg.norm(body.flat(body.heads[tip] - body.heads[fork])))
+    rises = max(body.h[b] for b in bones) > body.h[fork] + 0.02 * body.height
+    return drop > 0 and reach > TAIL_REACH * drop and not rises
+
+
+def _stem(body: _Body) -> list[str]:
+    """A plant's stem, base first: from the highest joint down through the tree to the
+    lowest, stopping where it fans out into roots (the lowest fork on the way)."""
+    top = max(body.parents, key=body.h.__getitem__)
+    low = min(body.parents, key=body.h.__getitem__)
+    up_top, up_low = _path_up(top, body.parents), _path_up(low, body.parents)
+    shared = [a for a, b in zip(up_top, up_low) if a == b]
+    path = list(reversed(up_low[len(shared) - 1:])) + up_top[len(shared):]  # low ... meeting point ... top
+    forks = [i for i, b in enumerate(path) if len(body.kids[b]) >= 2]
+    return path[forks[0]:] if forks else path
 
 
 def _digitigrade(body: _Body, bones: list[str], forward: np.ndarray,
@@ -276,10 +302,13 @@ def classify(parents: dict[str, str | None], heads: dict, up=(0.0, 1.0, 0.0), fr
         raise ValueError(f"unknown family {family!r}; choose one of {FAMILIES}")
     body = _Body(parents, heads, up)
     legs = _legs(body)
+    tails = [leg for leg in legs if _tail_like(body, leg)]
+    if len(tails) == 1 and len(legs) >= 3:  # one chain lying out along the ground is a tail;
+        legs.remove(tails[0])               # several are a sprawling creature's legs
     forward = _forward(body, legs, front)
     left = _unit(np.cross(body.up, forward))
     if len(legs) >= 3:
-        legs += _splayed(body, legs, left)
+        legs += [leg for leg in _splayed(body, legs, left) if not _tail_like(body, leg)]
         forward = _forward(body, legs, front)  # with every leg: five or more change the rule
         left = _unit(np.cross(body.up, forward))
     soles = None
@@ -304,7 +333,9 @@ def classify(parents: dict[str, str | None], heads: dict, up=(0.0, 1.0, 0.0), fr
         leg["end"] = "front" if along > 0.05 * body.size else "back" if along < -0.05 * body.size else "mid"
         leg["digitigrade"], leg["ankle"] = _digitigrade(body, leg["bones"], forward, soles)
 
-    head = _trunk_tip(body, trunk, lambda b: float((body.heads[b] - centre) @ (forward + body.up)))
+    # the head is forward and up, and on the middle line: a wing swept forward is not a head
+    head = _trunk_tip(body, trunk, lambda b: float((body.heads[b] - centre) @ (forward + body.up))
+                      - 2 * abs(float((body.heads[b] - centre) @ left)))
     head_path = _path_up(head, body.parents)
     on_head = set(head_path)
     lateral = []
@@ -380,8 +411,8 @@ def _guess(body: _Body, legs, arms, wings, head_path) -> tuple[str, list[str], b
         if len(wings) >= 2:
             return "winged", [], False
         if body.height >= 0.75 * body.width:
-            top = max(body.parents, key=body.h.__getitem__)
-            return "plant", _path_up(top, body.parents), body.above(body.root) < 0.1 * body.height
+            stem = _stem(body)
+            return "plant", stem, body.above(stem[0]) < 0.25 * body.height  # the stem stands on or near the ground
         return "serpent", _diameter(body), True
     if n <= 2:
         if len(wings) >= 2 and not arms:

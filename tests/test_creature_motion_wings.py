@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from _creature_skeletons import plant, quadruped
+from _creature_skeletons import build, chain, plant, quadruped
 from test_creature_motion import positions, rig_of
 
 import creature_motion as cm
@@ -79,3 +79,19 @@ def test_a_plant_snaps_forward_after_drawing_back():
 def test_the_new_families_have_clips():
     assert cm.clips_for("winged") == ("hover", "attack")
     assert cm.clips_for("plant") == ("sway", "attack")
+
+
+def test_a_plant_rooted_at_its_flower_keeps_its_roots_down():
+    rows = [("head", None, (0, 1.1, 0.2))]
+    rows += chain("stem", "head", [(0, 0.9, 0.1), (0, 0.6, 0.05), (0, 0.3, 0.02), (0, 0.06, 0)])
+    for k, (x, z) in enumerate(((0.25, 0), (-0.25, 0), (0, 0.25), (0, -0.25), (0.18, 0.18))):
+        rows += chain(f"root{k}", "stem3", [(x * 0.5, 0.02, z * 0.5), (x, 0.0, z)])
+    rig, fam, n = rig_of(build(rows))
+    for clip in ("sway", "attack"):
+        frames = cm.make(clip, rig, fam)
+        for f in frames:
+            p = positions(rig, f)
+            assert np.allclose(p[n["stem3"]], rig.heads[n["stem3"]], atol=1e-4)
+            for k in range(5):  # the roots stay where they grew
+                assert np.linalg.norm(p[n[f"root{k}1"]] - rig.heads[n[f"root{k}1"]]) < 0.02
+        assert max(np.linalg.norm(positions(rig, f)[n["head"]] - rig.heads[n["head"]]) for f in frames) > 0.05

@@ -327,3 +327,38 @@ sbagliata.
 - Un "obiettivo creatura" nelle ricette dei prompt (`image_to_3dlab/prompt_recipes.json`), con camera a terra, corpo
   intero e niente spire, invece della T-pose dei personaggi. Oggi lo studio aggiunge la T-pose a ogni personaggio.
 
+## 13. Com'è andata la PR 3: draghetto e pianta (16/10/2026)
+
+Creature dalla catena (Qwen-Image → Pixal3D → finitura `--skip-paint`), camera all'altezza del suolo, rigate dallo
+studio con *Recognise it for me*. SkinTokens ha dato a entrambe scheletri buoni; il riconoscimento invece ha sbagliato
+la prima volta, in modi che ora sono regole e test:
+
+- **Draghetto**, preso per "multileg" con 5 zampe e un'ala: la **coda appoggiata a terra e girata di lato** passava per
+  una quinta zampa (il caso che l'ultima review della PR 2 aveva rimandato), e l'**ala sinistra, alta e spinta in
+  avanti**, era scelta come collo. Ora una catena che si allunga sul terreno molto più di quanto scenda, senza mai
+  salire sopra l'attacco, è una coda (se è l'unica: tante sono le zampe di una creatura sdraiata), e la testa deve
+  stare vicino alla mezzeria.
+- **Fiore carnivoro**, preso per umanoide: SkinTokens l'ha **radicato nel fiore**, con lo stelo che scende a un
+  ventaglio di radici. Ora una zampa si attacca ad almeno un quarto dell'altezza e a un'articolazione con almeno due
+  rami, il controllo del trascinamento guarda tutto il ramo (un ventaglio di radici sparse a terra non è un piede) e lo
+  stelo va dal ventaglio alla punta, qualunque sia la radice dello scheletro. La base resta ferma anche
+  nell'orientamento, così le radici non ruotano.
+
+Tutti i rig veri in `output/` (4 umanoidi, 2 lupi, ragno, serpente, draghetto, pianta) sono riconosciuti giusti.
+
+| Creatura | Famiglia | Clip | Lati stirati | Triangoli rovesciati |
+|---|---|---|---|---|
+| Draghetto | winged, 4 zampe, 2 ali, fiducia alta | hover | 0,56% | 0,82% |
+| | | attack | 0,43% | 0,15% |
+| Fiore carnivoro | plant | sway | 0,00% | 0,00% |
+| | | attack | 0,04% | 0,05% |
+
+Il volo del draghetto resta in avviso: il battito piega molto le spalle delle ali. A vista le membrane si piegano
+senza strappi; è il primo punto da guardare se si vuole un battito più ampio.
+
+**Seguiti della PR 3**
+- La coda del draghetto, girata di lato, non è riconosciuta come coda (resta nel tronco e segue il bacino): le code
+  vanno cercate anche fra le catene che piegano di lato.
+- `creature_clips.py` rilanciato su un rig già animato lascia le clip della famiglia precedente; nello studio non
+  succede (ogni rig ha la sua cartella), da riga di comando sì.
+

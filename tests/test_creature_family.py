@@ -228,3 +228,49 @@ def test_raised_legs_sharing_a_second_hub_are_each_one_leg():
     bones = [b for leg in found["legs"] for b in leg["bones"]]
     assert len(bones) == len(set(bones))  # no bone in two legs
     assert len(found["legs"]) <= 8
+
+
+def test_a_tail_lying_out_to_one_side_is_not_a_leg():
+    """The generated dragon's tail rests on the ground curling off to one side."""
+    parents, heads, n = quadruped(wings=True)
+    heads = dict(heads)
+    for k, pos in enumerate(((0.05, 0.45, -0.65), (0.35, 0.12, -0.9), (0.8, 0.0, -1.1))):
+        heads[n[f"tail{k}"]] = np.array(pos)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "winged" and len(found["legs"]) == 4
+
+
+def test_a_wing_reaching_forward_and_up_is_not_the_head():
+    parents, heads, n = quadruped(wings=True)
+    heads = dict(heads)
+    for k, pos in enumerate(((0.1, 0.75, 0.3), (0.4, 0.95, 0.6), (0.6, 1.05, 0.85), (0.75, 1.0, 1.0))):
+        heads[n[f"wingL{k}"]] = np.array(pos)  # the left wing swept forward, above the head
+    found = cf.classify(parents, heads)
+    assert found["family"] == "winged" and found["neck"][-1] == n["spine3"]
+    assert sorted(w["side"] for w in found["wings"]) == ["L", "R"]
+
+
+def test_a_plant_rooted_at_its_flower_is_still_a_plant():
+    """SkinTokens rooted a generated plant at its flower: the stem runs down to a fan of roots."""
+    rows = [("head", None, (0, 1.1, 0.2))]
+    rows += chain("stem", "head", [(0, 0.9, 0.1), (0, 0.6, 0.05), (0, 0.3, 0.02), (0, 0.06, 0)])
+    for k, (x, z) in enumerate(((0.25, 0), (-0.25, 0), (0, 0.25), (0, -0.25), (0.18, 0.18))):
+        rows += chain(f"root{k}", "stem3", [(x * 0.5, 0.02, z * 0.5), (x, 0.0, z)])
+    parents, heads, n = build(rows)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "plant" and found["legs"] == []
+    assert found["body"][0] == n["stem3"] and found["body"][-1] == n["head"]  # base first, up to the flower
+
+
+def test_a_fan_of_roots_under_a_lone_stem_is_not_a_foot():
+    """The real generated plant: rooted at its flower, with small bones beside the stem at
+    the top, so the flower is a fork and the stem looks like a leg down to its roots."""
+    rows = [("head", None, (0, 1.1, 0.2)), ("petal", "head", (0.05, 1.15, 0.2)), ("lip", "head", (-0.05, 1.12, 0.25))]
+    rows += chain("stem", "head", [(0, 0.9, 0.1), (0, 0.6, 0.05), (0, 0.3, 0.02), (0, 0.06, 0)])
+    for k, (x, z) in enumerate(((0.25, 0), (-0.25, 0), (0, 0.25), (0, -0.25), (0.18, 0.18))):
+        rows += chain(f"root{k}", "stem3", [(x * 0.5, 0.02, z * 0.5), (x, 0.0, z)])
+    parents, heads, n = build(rows)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "plant" and found["legs"] == []
+    assert found["body"][0] == n["stem3"]
+

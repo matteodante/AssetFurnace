@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the front pair) and serpents (a slither from head to tail, a strike out of a coil).
   A generated spider whose leg bones stop short of the ground, and two chains inside one
   mesh leg, are handled.
+- Test clips for winged creatures (hovering on the spot with a fast downstroke, and their
+  ground attack with the wings thrown open) and plants (a sway from the base up, a snap of the
+  head). Recognition handles a tail resting on the ground beside the body, a wing swept
+  forward past the head, and a plant the auto-rig rooted at its flower.
 - `rig.deformation` check: plays every clip of a rig and measures stretched edges, folded
   triangles and feet that cross sides (warn only until calibrated).
 - Qwen-Image's setup also fetches Qwen3-VL-8B's vision file (`mmproj-Qwen3VL-8B-Instruct-F16.gguf`,

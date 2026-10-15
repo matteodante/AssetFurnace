@@ -479,7 +479,8 @@ def multileg_attack(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list
     return out
 
 
-def pose_path(rig: Rig, path: list[str], desired: dict[str, np.ndarray], turn: dict[str, np.ndarray]) -> np.ndarray:
+def pose_path(rig: Rig, path: list[str], desired: dict[str, np.ndarray], turn: dict[str, np.ndarray],
+              still: str | None = None) -> np.ndarray:
     """Turn the bones along `path` so its joints land on `desired`; returns the root's head.
 
     The path may run with or against the tree (a snake can be rooted at its head, its tail
@@ -503,6 +504,8 @@ def pose_path(rig: Rig, path: list[str], desired: dict[str, np.ndarray], turn: d
             have = [inherited @ (rig.heads[c] - rig.heads[b]) for c in children]
             want = [desired[c] - actual[b] for c in children]
             turn[b] = rotation_between(have[0], want[0]) if len(children) == 1 else _fit(have, want)
+        elif b == still:  # the anchor at the chain's end keeps its rest turn: roots stay planted
+            turn[b] = inherited.T
         total[b] = turn.get(b, np.eye(3)) @ inherited
     return actual[root]
 
@@ -703,7 +706,8 @@ def _plant_frames(rig: Rig, family: dict, frames: int, angles) -> list[tuple[dic
             ahead, aside = angles(index, s[i])
             bends.append(axis_angle(left, ahead) @ axis_angle(forward, aside))
         turn: dict[str, np.ndarray] = {}
-        root = pose_path(rig, path, _bent(rig, path, path[0], _rigid_at_root(rig, path, path, bends)), turn)
+        root = pose_path(rig, path, _bent(rig, path, path[0], _rigid_at_root(rig, path, path, bends)), turn,
+                         still=path[0])
         out.append((turn, root))
     return out
 
