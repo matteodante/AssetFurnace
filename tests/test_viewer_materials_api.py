@@ -158,3 +158,12 @@ def test_the_library_does_not_list_material_runs_as_new_models(output):
     run.mkdir(parents=True)
     (run / "knight_18k.glb").write_bytes((output / FILE).read_bytes())
     assert "materials" in assets_api.NOT_GENERATED
+
+
+def test_a_replaced_source_hides_the_old_run(output):
+    from image_to_3dlab.materials import make_game_materials
+
+    make_game_materials(output / FILE, api.run_dir(output, FILE), samples=20000)
+    assert api.latest_run(output, FILE) is not None
+    make_glb(output / FILE, banded_albedo(colours=((30, 60, 190), (40, 160, 60), (200, 40, 30))))
+    assert api.latest_run(output, FILE) is None

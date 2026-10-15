@@ -341,7 +341,8 @@ def highlight_record(points: np.ndarray, normals: np.ndarray, y: np.ndarray, lab
                         f"{value * 100:.2f}% of the surface looks like a painted highlight", details)
 
 
-def tint_zones_record(zones: list[dict], source: str, distance: float | None) -> dict:
+def tint_zones_record(zones: list[dict], source: str, distance: float | None,
+                      untextured: list[str] | None = None) -> dict:
     count = len(zones)
     threshold = {"zones": 3, "min_share": MIN_ZONE_SHARE, "min_distance": MERGE_DISTANCE}
     if count >= 3:
@@ -354,6 +355,11 @@ def tint_zones_record(zones: list[dict], source: str, distance: float | None) ->
     details = {"source": source, "shares": [z["area_share"] for z in zones]}
     if distance is not None:
         details["min_distance"] = round(distance, 2)
+    if untextured:
+        # nothing to mask, pack or derive on these: they stay as they are, and that is said
+        details["untextured"] = untextured
+        message += f"; {len(untextured)} material(s) have no texture and stay as they are: {', '.join(untextured)}"
+        status = "warn" if status == "pass" else status
     return check_record("tint_zones", status, count, threshold, message, details)
 
 
@@ -558,6 +564,8 @@ class _Surface:
     uv: list = field(default_factory=list)
     faces: list = field(default_factory=list)
     positions: list = field(default_factory=list)
+    normals: list = field(default_factory=list)   # per primitive: world vertex normals or None
+    colors: list = field(default_factory=list)    # per primitive: linear COLOR_0 rgb or None
 
 
 def _decode_image(glb: EditGLB, image_index: int, mode: str = "RGB") -> np.ndarray:
@@ -650,20 +658,49 @@ def _visible(material: dict) -> float:
     return float(material.get("alphaCutoff", 0.5)) if material.get("alphaMode") == "MASK" else 0.5
 
 
-def _surfaces(glb: EditGLB) -> dict[int, _Surface]:
-    document = glb.document
-    globals_, _ = glb.node_globals()
-    surfaces: dict[int, _Surface] = {}
+IMAGE_FORMAT_EXTENSIONS = ("EXT_texture_webp", "EXT_texture_avif", "KHR_texture_basisu")
+
+
+def _drawn_primitives(document: dict):
+    """(node index, primitive) for every triangle primitive the displayed scene draws."""
     for node_index in scene_nodes(document):
         node = document["nodes"][node_index]
         if "mesh" not in node:
             continue
-        matrix = globals_[node_index]
         for primitive in document["meshes"][node["mesh"]]["primitives"]:
-            if primitive.get("mode", 4) not in (4, 5, 6) or "material" not in primitive:
-                continue   # points and lines have no surface to paint
+            if primitive.get("mode", 4) in (4, 5, 6):   # points and lines have no surface to paint
+                yield node_index, primitive
+
+
+def untextured_materials(document: dict) -> list[str]:
+    """Names of drawn materials with no base colour texture to mask, pack or derive from."""
+    names = []
+    for _, primitive in _drawn_primitives(document):
+        if "material" not in primitive:
+            label = "(default material)"
+        else:
+            material = document["materials"][primitive["material"]]
+            if material.get("pbrMetallicRoughness", {}).get("baseColorTexture"):
+                continue
+            label = material.get("name") or f"material {primitive['material']}"
+        if label not in names:
+            names.append(label)
+    return names
+
+
+def _surfaces(glb: EditGLB) -> dict[int, _Surface]:
+    document = glb.document
+    globals_, _ = glb.node_globals()
+    surfaces: dict[int, _Surface] = {}
+    for node_index, primitive in _drawn_primitives(document):
+        matrix = globals_[node_index]
+        if "material" in primitive:
             material_index = primitive["material"]
             material = document["materials"][material_index]
+            if "KHR_materials_unlit" in (material.get("extensions") or {}):
+                raise ValueError(f"material {material.get('name') or material_index!r} is unlit "
+                                 "(KHR_materials_unlit): normal and ORM maps would be ignored; "
+                                 "make it a lit PBR material first")
             pbr = material.get("pbrMetallicRoughness", {})
             base = pbr.get("baseColorTexture")
             if base is None:
@@ -684,7 +721,16 @@ def _surfaces(glb: EditGLB) -> dict[int, _Surface]:
             order = (glb.accessor(primitive["indices"]) if "indices" in primitive
                      else np.arange(len(positions)))
             faces = primitive_triangles(order, primitive.get("mode", 4))
+            attributes = primitive["attributes"]
+            normals = None
+            if "NORMAL" in attributes:
+                # normals turn with the inverse transpose, so non-uniform scale keeps them true
+                normals = glb.accessor(attributes["NORMAL"]).astype(np.float64) @ np.linalg.inv(matrix[:3, :3])
+                normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
+            colors = glb.accessor(attributes["COLOR_0"])[:, :3].astype(np.float64) if "COLOR_0" in attributes else None
             surface.positions.append(positions)
+            surface.normals.append(normals)
+            surface.colors.append(colors)
             surface.faces.append(faces)
             surface.uv.append(transform_uv(glb.accessor(primitive["attributes"][uv_key]).astype(np.float64),
                                            transform))
@@ -715,13 +761,17 @@ class _Samples:
 def _sample(surfaces: dict[int, _Surface], count: int, seed: int) -> _Samples:
     """Area-weighted points on every textured surface, with their albedo."""
     rng = np.random.default_rng(seed)
-    triangles, uvs, owners = [], [], []
+    triangles, uvs, owners, vertex_normals, colours = [], [], [], [], []
     for index, surface in surfaces.items():
-        for positions, faces, uv in zip(surface.positions, surface.faces, surface.uv):
+        for positions, faces, uv, normals, colors in zip(surface.positions, surface.faces, surface.uv,
+                                                         surface.normals, surface.colors):
             triangles.append(positions[faces])
             uvs.append(uv[faces])
             owners.append(np.full(len(faces), index))
+            vertex_normals.append(normals[faces] if normals is not None else np.full((len(faces), 3, 3), np.nan))
+            colours.append(colors[faces] if colors is not None else np.ones((len(faces), 3, 3)))
     tri, tri_uv, owner = np.concatenate(triangles), np.concatenate(uvs), np.concatenate(owners)
+    tri_normals, tri_colours = np.concatenate(vertex_normals), np.concatenate(colours)
     cross = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
     area = np.linalg.norm(cross, axis=1)
     if area.sum() <= 0:
@@ -731,7 +781,13 @@ def _sample(surfaces: dict[int, _Surface], count: int, seed: int) -> _Samples:
     bary = np.c_[1 - r1, r1 * (1 - r2), r1 * r2]
     points = (tri[chosen] * bary[..., None]).sum(1)
     uv = (tri_uv[chosen] * bary[..., None]).sum(1)
-    normals = cross[chosen] / np.maximum(area[chosen], 1e-12)[:, None]
+    # The renderer shades with the interpolated vertex normals; the face normal stands in
+    # only where the file has none.
+    normals = (tri_normals[chosen] * bary[..., None]).sum(1)
+    flat = ~np.isfinite(normals).all(axis=1)
+    normals[flat] = cross[chosen][flat] / np.maximum(area[chosen][flat], 1e-12)[:, None]
+    normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-12)
+    vertex_colour = (tri_colours[chosen] * bary[..., None]).sum(1)
     material = owner[chosen]
     srgb = np.zeros((count, 3))
     linear = np.zeros((count, 3))
@@ -740,7 +796,8 @@ def _sample(surfaces: dict[int, _Surface], count: int, seed: int) -> _Samples:
         here = material == index
         texels = _lookup(surface.image, uv[here], surface.wrap) / 255.0
         srgb[here] = texels
-        linear[here] = srgb_to_linear(texels) * surface.factor
+        linear[here] = srgb_to_linear(texels) * surface.factor * vertex_colour[here]   # COLOR_0 is linear
+        srgb[here] = linear_to_srgb(linear[here])
         if surface.alpha is not None:
             # cut-out padding is often black RGB: it is not paint and must not make a zone
             keep[here] = _lookup(surface.alpha, uv[here], surface.wrap) >= surface.cutoff
@@ -797,12 +854,13 @@ def surface_luminance(surface: _Surface) -> np.ndarray:
     return luminance(srgb_to_linear(surface.image / 255.0) * surface.factor)
 
 
-def _uv_layout(info: dict) -> tuple:
-    return info.get("texCoord", 0), (info.get("extensions") or {}).get("KHR_texture_transform")
+def _uv_layout(document: dict, info: dict) -> tuple:
+    return (info.get("texCoord", 0), (info.get("extensions") or {}).get("KHR_texture_transform"),
+            _sampler_wrap(document, info))
 
 
-def _same_uv_layout(base: dict, other: dict | None) -> bool:
-    return not other or _uv_layout(other) == _uv_layout(base)
+def _same_uv_layout(document: dict, base: dict, other: dict | None) -> bool:
+    return not other or _uv_layout(document, other) == _uv_layout(document, base)
 
 
 def _load_ao(path: Path | None, surfaces) -> dict[int, np.ndarray]:
@@ -827,7 +885,7 @@ def _analyse(glb: EditGLB, ao_path, zones_from: str, samples: int, seed: int) ->
             here = s.material == index
             ao_samples[here] = _lookup(ao, s.uv[here], surfaces[index].wrap)
     checks = [
-        tint_zones_record(zones, zones_from, distance),
+        tint_zones_record(zones, zones_from, distance, untextured_materials(glb.document)),
         light_direction_record(s.y, s.normals, light_groups),
         occlusion_record(s.y, ao_samples, light_groups),
         highlight_record(s.points, s.normals, s.y, s.lab, seed),
@@ -882,9 +940,13 @@ def _orm(surface: _Surface, material: dict, glb: EditGLB, mask: np.ndarray, cove
     pbr = material.get("pbrMetallicRoughness", {})
     for slot, info in (("metallic-roughness", pbr.get("metallicRoughnessTexture")),
                        ("occlusion", material.get("occlusionTexture"))):
-        if not _same_uv_layout(pbr["baseColorTexture"], info):
-            raise ValueError(f"the {slot} texture uses another UV set or transform than the base colour; "
-                             "repack it onto the base colour's UVs before making game materials")
+        if not _same_uv_layout(glb.document, pbr["baseColorTexture"], info):
+            raise ValueError(f"the {slot} texture uses another UV set, transform or wrap than the base "
+                             "colour; repack it onto the base colour's UVs before making game materials")
+    base_layout = _uv_layout(glb.document, pbr["baseColorTexture"])
+    if ao is not None and (base_layout[0] != 0 or base_layout[1]):
+        raise ValueError("the AO bake is on the raw first UV set, but the base colour uses another UV set "
+                         "or a texture transform; bake AO onto the base colour's UVs instead")
     rough_factor = float(pbr.get("roughnessFactor", 1.0))
     mr = _texture_image(glb, pbr.get("metallicRoughnessTexture"))
     # glTF's own default is 1, but a colour-only asset that never mentions metal is not
@@ -938,6 +1000,20 @@ def _orm(surface: _Surface, material: dict, glb: EditGLB, mask: np.ndarray, cove
 
 
 # --------------------------------------------------------------------------- entry point
+
+def drop_unused_extensions(document: dict) -> None:
+    """Forget an image-format extension once no texture uses it, so importers that lack it
+    are not told it is required."""
+    textures = document.get("textures", [])
+    for name in IMAGE_FORMAT_EXTENSIONS:
+        if any(name in (t.get("extensions") or {}) for t in textures):
+            continue
+        for key in ("extensionsUsed", "extensionsRequired"):
+            if name in document.get(key, []):
+                document[key] = [e for e in document[key] if e != name]
+                if not document[key]:
+                    del document[key]
+
 
 OPERATION = "Game materials: tint mask, baked-light checks, normal, roughness, ORM (no models)"
 
@@ -1026,7 +1102,7 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
     stem = asset.stem
     prefix = texture_prefix or f"T_{stem}"
     sidecar_path = out_dir / f"{stem}.materials.json"
-    sidecar = {"schema": SIDECAR_SCHEMA, "asset": asset.name, "status": status,
+    sidecar = {"schema": SIDECAR_SCHEMA, "asset": asset.name, "source_sha256": source_sha256, "status": status,
                "zones": analysis.zones, "tint": _tint_section(analysis.zones),
                "checks": analysis.checks}
     if status == "fail":
@@ -1124,6 +1200,7 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
         if not first_textures:
             first_textures, first_maps = written, maps
 
+    drop_unused_extensions(document)
     glb_path = out_dir / f"{stem}.glb"
     glb_path.write_bytes(build_glb(document, binary))
     sidecar["glb"] = glb_path.name

@@ -21,6 +21,8 @@ from urllib.parse import parse_qs, urlsplit
 
 from blender_edit_api import body, check_request, private_file
 
+from image_to_3dlab.provenance import sha256_file
+
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "game_materials.py"
 FOLDER = "materials"
@@ -48,13 +50,33 @@ def run_dir(output: Path, relative: str) -> Path:
     return output / FOLDER / f"{stem}__{digest}"
 
 
+HASHES: dict[str, tuple] = {}
+
+
+def source_hash(path: Path) -> str:
+    """sha256 of a source GLB, cached by size and modification time."""
+    stat = path.stat()
+    key = (stat.st_size, stat.st_mtime_ns)
+    cached = HASHES.get(str(path))
+    if cached is None or cached[0] != key:
+        cached = (key, sha256_file(path))
+        HASHES[str(path)] = cached
+    return cached[1]
+
+
 def latest_run(output: Path, relative: str) -> dict | None:
-    """The sidecar of this GLB's last run, with every file as a path under output/."""
+    """The sidecar of this GLB's last run, with every file as a path under output/.
+
+    A run made from other bytes than the file there now is no run: its mask and GLB
+    belong to a model that has since been replaced.
+    """
     folder = run_dir(output, relative)
     sidecar = folder / f"{Path(relative).stem}.materials.json"
     if not sidecar.is_file():
         return None
     data = json.loads(sidecar.read_text(encoding="utf-8"))
+    if data.get("source_sha256") != source_hash(source_path(output, relative)):
+        return None
     prefix = folder.relative_to(output).as_posix()
     files = {key: f"{prefix}/{name}" for key, name in (data.get("textures") or {}).items()
              if isinstance(name, str)}

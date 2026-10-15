@@ -834,3 +834,99 @@ def test_provenance_describes_the_bytes_that_were_read(tmp_path, monkeypatch):
     record = json.loads((tmp_path / "out" / "knight.provenance.json").read_text())
     assert record["input"]["sha256"] == original
     assert record["classification"] == "commercial-clear"
+
+
+# --------------------------------------------------------------------------- fourth review
+
+def add_attribute(path, name, array):
+    """Append a vertex attribute (float VEC3) to the fixture's only primitive."""
+    document, binary = parse_glb(path.read_bytes())
+    data = np.asarray(array, np.float32).tobytes()
+    binary = binary + b"\0" * (-len(binary) % 4)
+    document["bufferViews"].append({"buffer": 0, "byteOffset": len(binary), "byteLength": len(data)})
+    binary += data
+    document["buffers"][0]["byteLength"] = len(binary)
+    document["accessors"].append({"bufferView": len(document["bufferViews"]) - 1, "componentType": 5126,
+                                  "count": len(array), "type": "VEC3"})
+    document["meshes"][0]["primitives"][0]["attributes"][name] = len(document["accessors"]) - 1
+    path.write_bytes(build_glb(document, binary))
+    return path
+
+
+def test_untextured_materials_are_named_and_turn_a_pass_into_a_warning(tmp_path):
+    asset = two_material_glb(tmp_path / "plain.glb", ["cloth", "plain"])
+    document, binary = parse_glb(asset.read_bytes())
+    document["materials"][1]["pbrMetallicRoughness"] = {"baseColorFactor": [0.8, 0.1, 0.1, 1.0]}
+    asset.write_bytes(build_glb(document, binary))
+    record = {r["check"]: r for r in m.run_checks(asset, samples=20000)}["tint_zones"]
+    assert record["status"] == "warn"
+    assert record["details"]["untextured"] == ["plain"]
+
+
+def test_retained_maps_with_another_wrap_are_refused(tmp_path):
+    mr = np.zeros((SIZE, SIZE, 3), np.uint8)
+    mr[..., 1] = np.random.default_rng(8).integers(40, 220, (SIZE, SIZE))
+    asset = make_glb(tmp_path / "wrap.glb", banded_albedo(), mr=mr)
+    document, binary = parse_glb(asset.read_bytes())
+    document["samplers"].append({"wrapS": 33071, "wrapT": 33071})
+    document["textures"][1]["sampler"] = 1
+    asset.write_bytes(build_glb(document, binary))
+    with pytest.raises(ValueError, match="UV"):
+        m.make_game_materials(asset, tmp_path / "out", samples=20000)
+
+
+def test_an_ao_bake_cannot_follow_a_transformed_base_colour(tmp_path):
+    """blender_bake_ao.py bakes on the raw UVs; the ORM would carry the base's transform."""
+    Image.fromarray(np.full((SIZE, SIZE), 200, np.uint8)).save(tmp_path / "ao.png")
+    asset = make_glb(tmp_path / "moved.glb", banded_albedo(),
+                     base_extensions={"KHR_texture_transform": {"offset": [0.1, 0.0]}})
+    with pytest.raises(ValueError, match="AO"):
+        m.make_game_materials(asset, tmp_path / "out", ao=tmp_path / "ao.png", samples=20000)
+
+
+def test_vertex_colours_are_part_of_the_colour_judged(tmp_path):
+    """A white texture painted in three bands by COLOR_0 has three zones."""
+    positions, _, _ = sphere()
+    colours = np.array([RED, GREEN, BLUE], np.float32)[np.minimum(((1 - positions[:, 1]) / 2 * 3).astype(int), 2)]
+    asset = make_glb(tmp_path / "painted.glb", np.full((SIZE, SIZE, 3), 255, np.uint8))
+    add_attribute(asset, "COLOR_0", m.srgb_to_linear(colours / 255.0))
+    assert statuses(m.run_checks(asset, samples=20000))["tint_zones"] == "pass"
+
+
+def test_the_light_check_reads_the_normals_the_renderer_uses(tmp_path):
+    positions, _, _ = sphere()
+    asset = make_glb(tmp_path / "flat_normals.glb", banded_albedo())
+    add_attribute(asset, "NORMAL", np.tile([0.0, 1.0, 0.0], (len(positions), 1)))
+    samples = m._sample(m._surfaces(EditGLB(asset.read_bytes())), 2000, 0)
+    np.testing.assert_allclose(samples.normals, np.tile([0.0, 1.0, 0.0], (len(samples.normals), 1)), atol=1e-6)
+
+
+def test_unlit_materials_are_refused(tmp_path):
+    asset = make_glb(tmp_path / "unlit.glb", banded_albedo())
+    document, binary = parse_glb(asset.read_bytes())
+    document["materials"][0]["extensions"] = {"KHR_materials_unlit": {}}
+    document["extensionsUsed"] = ["KHR_materials_unlit"]
+    asset.write_bytes(build_glb(document, binary))
+    with pytest.raises(ValueError, match="unlit"):
+        m.make_game_materials(asset, tmp_path / "out", samples=20000)
+
+
+def test_a_webp_requirement_goes_when_its_last_texture_does(tmp_path):
+    rng = np.random.default_rng(9)
+    mr = np.zeros((SIZE, SIZE, 3), np.uint8)
+    mr[..., 1] = rng.integers(40, 220, (SIZE, SIZE))
+    asset = make_glb(tmp_path / "webp.glb", banded_albedo(), mr=mr)
+    document, binary = parse_glb(asset.read_bytes())
+    document["textures"][1] = {"sampler": 0, "extensions": {"EXT_texture_webp": {"source": 1}}}
+    document["extensionsUsed"] = ["EXT_texture_webp"]
+    document["extensionsRequired"] = ["EXT_texture_webp"]
+    asset.write_bytes(build_glb(document, binary))
+    result = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    out = EditGLB(result.glb_path.read_bytes()).document
+    assert "EXT_texture_webp" not in out.get("extensionsRequired", [])
+    assert "EXT_texture_webp" not in out.get("extensionsUsed", [])
+
+
+def test_the_sidecar_records_the_source_hash(banded, tmp_path):
+    result = m.make_game_materials(banded, tmp_path / "out", samples=20000)
+    assert json.loads(result.sidecar_path.read_text())["source_sha256"] == m.sha256_file(banded)
