@@ -231,7 +231,8 @@ def _stem(body: _Body) -> list[str]:
     shared = [a for a, b in zip(up_top, up_low) if a == b]
     path = list(reversed(up_low[len(shared) - 1:])) + up_top[len(shared):]  # low ... meeting point ... top
     forks = [i for i, b in enumerate(path) if len(body.kids[b]) >= 2 and body.above(b) <= 0.25 * body.height]
-    return path[forks[0]:] if forks else path
+    # the highest of the low forks: where the stem meets its roots, not a split inside one root
+    return path[forks[-1]:] if forks else path
 
 
 def _digitigrade(body: _Body, bones: list[str], forward: np.ndarray,
@@ -312,20 +313,16 @@ def classify(parents: dict[str, str | None], heads: dict, up=(0.0, 1.0, 0.0), fr
     legs = _legs(body)
     if len(legs) == 1:  # nothing stands on one leg: a lone chain to the ground is the body (a stem)
         legs = []
-    lone = _lone_tail(body, legs)
-    if lone is not None:
-        legs.remove(lone)
     forward = _forward(body, legs, front)
     left = _unit(np.cross(body.up, forward))
-    if len(legs) >= 3:
-        # the tail rule again, over every candidate: one chain lying out along the ground is a
-        # tail, several are a sprawling creature's legs
-        known = legs + ([lone] if lone is not None else [])
-        found = known + _splayed(body, known, left)  # the tail set aside is not found again
-        lone = _lone_tail(body, found)
-        legs = [leg for leg in found if leg is not lone]
-        forward = _forward(body, legs, front)  # with every leg: five or more change the rule
-        left = _unit(np.cross(body.up, forward))
+    if len(legs) >= 3:  # the rest of a many-legged creature's legs, tail-like candidates still in
+        legs = legs + _splayed(body, legs, left)
+    # one chain lying out along the ground is a tail; several are a sprawling creature's legs
+    lone = _lone_tail(body, legs)
+    if lone is not None:
+        legs = [leg for leg in legs if leg is not lone]
+    forward = _forward(body, legs, front)  # with every leg: five or more change the rule
+    left = _unit(np.cross(body.up, forward))
     soles = None
     if points is not None and len(points):
         points = np.asarray(points, float)

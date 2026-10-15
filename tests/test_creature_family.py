@@ -319,3 +319,30 @@ def test_a_long_sideways_tail_is_counted_once():
     found = cf.classify(parents, heads)
     bones = [b for leg in found["legs"] for b in leg["bones"]]
     assert found["family"] == "winged" and len(found["legs"]) == 4 and len(bones) == len(set(bones))
+
+
+def test_a_spider_with_three_feet_down_and_one_reaching_far_keeps_its_raised_legs():
+    rows = [("body", None, (0, 0.35, 0)), ("head", "body", (0, 0.36, 0.2)), ("abdomen", "body", (0, 0.4, -0.35))]
+    for k in range(3):
+        z = 0.15 - 0.15 * k
+        if k == 1:  # one grounded leg stays low and reaches far out: it looks like a tail
+            points = [(0.08, 0.34, z), (0.5, 0.3, z * 1.5), (0.8, 0.15, z * 2), (0.96, 0.0, z * 2.2)]
+        else:
+            points = [(0.08, 0.36, z), (0.3, 0.5, z * 1.5), (0.5, 0.2, z * 2), (0.6, 0.0, z * 2.2)]
+        rows += chain(f"legL{k}", "body", points)
+        rows += chain(f"legR{k}", "body", [(-0.08, 0.36, z), (-0.35, 0.6, z * 1.5), (-0.6, 0.3, z * 2),
+                                             (-0.7, 0.15, z * 2.2)])
+    parents, heads, _ = build(rows)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "multileg" and len(found["legs"]) >= 5
+
+
+def test_a_branching_root_does_not_become_the_stem_base():
+    rows = [("head", None, (0, 1.1, 0.2))]
+    rows += chain("stem", "head", [(0, 0.9, 0.1), (0, 0.6, 0.05), (0, 0.3, 0.02), (0, 0.08, 0)])
+    for k, (x, z) in enumerate(((0.3, 0), (-0.3, 0), (0, 0.3))):
+        rows += chain(f"root{k}", "stem3", [(x * 0.4, 0.03, z * 0.4), (x, 0.0, z)])
+    rows += [("fork_a", "root00", (0.2, 0.0, 0.1)), ("fork_b", "root00", (0.2, 0.0, -0.15))]  # a root that splits
+    parents, heads, n = build(rows)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "plant" and found["body"][0] == n["stem3"]
