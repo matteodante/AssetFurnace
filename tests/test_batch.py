@@ -598,14 +598,16 @@ def test_finished_rows_are_queued_for_review(tmp_path, monkeypatch, fake_finish)
     batch.run_batch(batch.load_batch(spec_path))
     log = tmp_path / batch.REVIEW_LOG
     events = [json.loads(line) for line in log.read_text().splitlines()]
-    assert [event["asset_key"] for event in events] == ["SM_row01", "SM_row03"]
+    assert [event["key"] for event in events] == ["SM_row01", "SM_row03"]
     event = events[0]
     directory = spec_path.parent / "out" / "test-batch"
     asset = directory / "rows" / "SM_row01" / "finish" / "SM_row01.glb"
-    assert event["event"] == "queued" and event["sha256"] == _sha(asset)
-    assert event["asset"] == "out/test-batch/rows/SM_row01/finish/SM_row01.glb"
+    # feature 7's format (image_to_3dlab.checks.review.enqueue_for_review)
+    assert event["event"] == "queued" and event["asset_sha256"] == _sha(asset)
+    assert event["asset"] == str(asset.resolve()) and event["at"]
     assert event["source"] == "batch:test-batch" and event["kind"] == "prop"
-    assert event["checks"] is None and event["status"] is None
+    assert event["report"] == "" and event["status"] is None
+    assert event["summary"] == {"fail": [], "warn": []}
     # a resumed batch does not queue the same version again
     batch.run_batch(batch.load_batch(spec_path))
     assert len(log.read_text().splitlines()) == 2
@@ -617,14 +619,58 @@ def test_the_review_event_carries_the_checks_result_when_there_is_one(tmp_path, 
     def checks(ctx):
         from image_to_3dlab.batch_steps import StepResult
         report = ctx.asset.with_suffix(".checks.json")
-        report.write_text(json.dumps({"status": "warn"}))
+        report.write_text(json.dumps({
+            "status": "warn", "profile": "prop", "asset_sha256": _sha(ctx.asset),
+            "results": [{"check": "budget.faces", "status": "warn"},
+                        {"check": "license.components", "status": "pass"}]}))
         return StepResult(files=[report])
 
     monkeypatch.setitem(batch.STEPS, "checks", fake_step(checks))
     spec_path = write_spec(tmp_path, rows=1, steps=["generate", "checks"])
     batch.run_batch(batch.load_batch(spec_path))
     event = json.loads((tmp_path / batch.REVIEW_LOG).read_text().splitlines()[0])
-    assert event["status"] == "warn" and event["checks"].endswith(".checks.json")
+    assert event["status"] == "warn" and event["report"].endswith(".checks.json")
+    assert event["summary"] == {"fail": [], "warn": ["budget.faces"]}
+    assert event["profile"] == "prop" and event["license_status"] == "pass"
+
+
+def test_a_report_for_another_file_is_not_attached(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+
+    def checks(ctx):
+        from image_to_3dlab.batch_steps import StepResult
+        report = ctx.asset.with_suffix(".checks.json")
+        report.write_text(json.dumps({"status": "fail", "asset_sha256": "an older version"}))
+        return StepResult(files=[report])
+
+    monkeypatch.setitem(batch.STEPS, "checks", fake_step(checks))
+    spec_path = write_spec(tmp_path, rows=1, steps=["generate", "checks"])
+    batch.run_batch(batch.load_batch(spec_path))
+    event = json.loads((tmp_path / batch.REVIEW_LOG).read_text().splitlines()[0])
+    assert event["status"] is None and event["report"] == ""
+
+
+def test_feature_7s_queue_function_is_used_when_it_is_installed(tmp_path, monkeypatch,
+                                                                fake_finish):
+    """After feature 7 merges, its enqueue_for_review writes the line, not this module."""
+    import sys
+    import types
+
+    calls = []
+    checks = types.ModuleType("image_to_3dlab.checks")
+    checks.enqueue_for_review = lambda glb, key, **kw: calls.append((Path(glb).name, key, kw))
+    monkeypatch.setitem(sys.modules, "image_to_3dlab.checks", checks)
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    spec = json.loads(spec_path.read_text())
+    spec["rows"][0]["kind"] = "equipment"
+    spec_path.write_text(json.dumps(spec))
+    batch.run_batch(batch.load_batch(spec_path))
+    ((name, key, kw),) = calls
+    assert (name, key) == ("SM_row01.glb", "SM_row01")
+    assert kw["source"] == "batch:test-batch" and kw["kind"] == "equipment_part"
+    assert kw["log"] == tmp_path / batch.REVIEW_LOG and kw["report"] is None
+    assert not (tmp_path / batch.REVIEW_LOG).exists()
 
 
 
@@ -661,10 +707,10 @@ def test_a_row_left_running_reads_as_queued_once_its_runner_is_gone():
 def test_the_review_state_belongs_to_one_version_of_one_asset(tmp_path):
     log = tmp_path / batch.REVIEW_LOG
     lines = [
-        {"event": "queued", "asset_key": "SM_Crate", "sha256": "old"},
-        {"event": "sent_back", "asset_key": "SM_Crate", "sha256": "old", "note": "too big"},
-        {"event": "queued", "asset_key": "SM_Crate", "sha256": "new"},
-        {"event": "approved", "asset_key": "SM_Crate", "sha256": "other-batch"},
+        {"event": "queued", "key": "SM_Crate", "asset_sha256": "old"},
+        {"event": "sent_back", "key": "SM_Crate", "asset_sha256": "old", "note": "too big"},
+        {"event": "queued", "key": "SM_Crate", "asset_sha256": "new"},
+        {"event": "approved", "key": "SM_Crate", "asset_sha256": "other-batch"},
     ]
     log.write_text("\n".join(json.dumps(line) for line in lines) + "\nnot json\n")
     assert batch.review_state(log, "SM_Crate", "new")["event"] == "queued"

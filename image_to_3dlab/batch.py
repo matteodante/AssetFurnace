@@ -855,30 +855,53 @@ def _fail(entry, steps, name, reason, save, log) -> None:
     log(f"failed: {entry['reason']}")
 
 
-def queue_for_review(spec: BatchSpec, row: BatchRow, asset: Path) -> None:
-    """Put a finished row in the review queue: one `queued` line, never rewritten.
+# Feature 7's checks profiles name the equipment kind differently.
+REVIEW_KINDS = {"prop": "prop", "creature": "creature", "equipment": "equipment_part"}
 
-    The key is the row's id plus the asset's sha256, so a new version of the same asset
-    is told apart and the same version is not queued twice. When a `checks` step left a
-    `<asset>.checks.json` beside it, its overall status comes along.
+
+def queue_for_review(spec: BatchSpec, row: BatchRow, asset: Path) -> None:
+    """Put a finished row in the review queue of the checks (feature 7).
+
+    The queue's own `image_to_3dlab.checks.enqueue_for_review` writes the line once that
+    package is installed; until then this writes the same line itself. The key is the
+    row's id, the version the asset's sha256: the same version is never queued twice. A
+    `<asset>.checks.json` left by the checks step comes along when it is for this file.
     """
     log_path = spec.output_dir.parent / REVIEW_LOG
     sha = sha256_file(asset)
-    for line in _lines(log_path):
-        if (line.get("event") == "queued" and line.get("asset_key") == row.id
-                and line.get("sha256") == sha):
-            return
-    report = asset.with_suffix(".checks.json")
-    checks = read_json(report) if report.is_file() else None
+    if any(line.get("event") == "queued" and line.get("key") == row.id
+           and line.get("asset_sha256") == sha for line in _lines(log_path)):
+        return
+    report_file = asset.with_suffix(".checks.json")
+    report = read_json(report_file) if report_file.is_file() else None
+    if not isinstance(report, dict) or report.get("asset_sha256") != sha:
+        report, report_file = None, None
+    kind = REVIEW_KINDS.get(row.kind, row.kind)
+    source = f"batch:{spec.name}"
+    try:
+        from image_to_3dlab.checks import enqueue_for_review
+    except ModuleNotFoundError as exc:
+        if exc.name != "image_to_3dlab.checks":
+            raise
+    else:
+        enqueue_for_review(asset, row.id, source=source, kind=kind, report=report,
+                           report_file=report_file, log=log_path)
+        return
+    results = (report or {}).get("results", [])
+    licence = next((r.get("status") for r in results if r.get("check") == "license.components"),
+                   None)
     event = {
-        "event": "queued", "time": now(), "asset_key": row.id, "sha256": sha,
-        "asset": _relative(asset, log_path.parent), "kind": row.kind,
-        "profile": row.profile, "source": f"batch:{spec.name}",
-        "status": checks.get("status") if isinstance(checks, dict) else None,
-        "checks": _relative(report, log_path.parent) if checks is not None else None,
+        "event": "queued", "key": row.id, "at": now(), "asset": str(asset.resolve()),
+        "asset_sha256": sha, "report": str(report_file) if report_file else "",
+        "status": (report or {}).get("status"),
+        "summary": {status: [r.get("check") for r in results if r.get("status") == status]
+                    for status in ("fail", "warn")},
+        "profile": (report or {}).get("profile"), "license_status": licence,
+        "source": source, "kind": kind,
     }
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(event) + "\n")
+        handle.write(json.dumps(event, sort_keys=True) + "\n")
 
 
 def _lines(path: Path) -> list[dict[str, Any]]:
@@ -904,7 +927,7 @@ def review_state(log_path: Path, asset_key: str, sha256: str | None) -> dict[str
     has another sha256 and does not count; an event that names no hash goes by the key."""
     latest = None
     for line in _lines(log_path):
-        if line.get("asset_key") == asset_key and line.get("sha256") in (None, sha256):
+        if line.get("key") == asset_key and line.get("asset_sha256") in (None, sha256):
             latest = line
     return latest
 

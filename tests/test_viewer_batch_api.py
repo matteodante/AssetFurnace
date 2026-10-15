@@ -130,8 +130,8 @@ def test_a_batch_shows_each_row_with_its_reason_and_review_state(server, ran):
 
 def test_a_sent_back_row_shows_the_note(server, ran, output):
     queued = json.loads((output / batch.REVIEW_LOG).read_text().splitlines()[0])
-    sent_back = {"event": "sent_back", "asset_key": "SK_row01", "sha256": queued["sha256"],
-                 "note": "the tail clips"}
+    sent_back = {"event": "sent_back", "key": "SK_row01",
+                 "asset_sha256": queued["asset_sha256"], "note": "the tail clips"}
     with (output / batch.REVIEW_LOG).open("a") as log:
         log.write(json.dumps(sent_back) + "\n")
     _, body = request(server, "GET", "/api/batches/lot")
@@ -262,8 +262,8 @@ def test_a_spec_writing_outside_the_batches_folder_is_refused(server, output, la
 
 def test_another_batchs_review_of_the_same_row_id_does_not_show(server, ran, output):
     with (output / batch.REVIEW_LOG).open("a") as log:
-        log.write(json.dumps({"event": "approved", "asset_key": "SK_row01",
-                              "sha256": "a-different-version"}) + "\n")
+        log.write(json.dumps({"event": "approved", "key": "SK_row01",
+                              "asset_sha256": "a-different-version"}) + "\n")
     _, body = request(server, "GET", "/api/batches/lot")
     row = next(row for row in body["rows"] if row["id"] == "SK_row01")
     assert row["review"]["event"] == "queued"

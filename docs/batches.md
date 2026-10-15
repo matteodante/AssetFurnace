@@ -122,11 +122,14 @@ batch's results.
 picture, its 3D model and its finished model, linked the way the studio links its own
 runs, so you can rig or hide a batch asset like any other.
 
-**The review queue.** Each finished row adds a `queued` line to `output/review-log.jsonl`
-(the folder that holds the batches folder), keyed by the row's id and its GLB's sha256,
-with the `checks` result when that step ran. The same version is never queued twice; a
-new version is. Approving or sending back happens in the review queue, and the Batches
-page shows where each row stands.
+**The review queue.** Each finished row is queued for review in `output/review-log.jsonl`
+(the folder that holds the batches folder) through the checks' own
+`image_to_3dlab.checks.enqueue_for_review`, or, until that package is installed, a line
+in the same format. The key is the row's id and the version its GLB's sha256, with the
+`checks` report when that step ran on this very file; the same version is never queued
+twice, a new one is. `equipment` rows are queued with the checks' `equipment_part` kind.
+Approving or sending back happens in the review queue, and the Batches page shows where
+each row's current version stands.
 
 ## Stopping and resuming
 
