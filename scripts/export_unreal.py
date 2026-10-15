@@ -53,6 +53,12 @@ def default_collision(kind: str) -> str:
     return "box" if kind == "prop" else "none"
 
 
+def default_base(source: Path, kind: str, animations: list[Path] | None = None) -> str:
+    """A creature is named after its model, not after `_rigged` or the move it holds."""
+    prefix = up.model_prefix([Path(source).stem, *(Path(p).stem for p in animations or [])])
+    return up.base_name(prefix if kind == "creature" and prefix else Path(source).stem)
+
+
 def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", name: str | None = None,
          out_dir: Path | None = None, lods: list[Path] | None = None, collision: str | None = None,
          body: Path | None = None, animations: list[Path] | None = None, tint: Path | None = None,
@@ -79,8 +85,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
             raise ValueError(f"{path} does not exist")
     animations = [Path(p) for p in (animations or [])]
     prefix = up.model_prefix([source.stem, *(p.stem for p in animations)])
-    # A creature is named after its model, not after `_rigged` or the move it holds.
-    base = up.base_name(name or (prefix if kind == "creature" and prefix else source.stem))
+    base = up.base_name(name) if name else default_base(source, kind, animations)
     names = up.asset_names(kind, base)
     if kind == "prop" and lods is None:
         lods = up.sibling_lods(source)
