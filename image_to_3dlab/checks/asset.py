@@ -133,6 +133,8 @@ class Asset:
 
     def missing(self, needs: tuple[str, ...]) -> str | None:
         """Why a check with these `needs` cannot run, or None when it can."""
+        from image_to_3dlab.checks import rig_checks
+
         # Lazy: deciding whether the validator can run must not load the mesh it validates.
         reasons = {
             "glb": lambda: None if self.glb.is_file() else f"{self.glb} does not exist",
@@ -143,6 +145,7 @@ class Asset:
                 (self.reference_numbers or {}).get(k) for k in ("width", "depth")))
             else "no reference model, width or depth given",
             "rig": lambda: None if self.document.get("skins") else "the model has no rig",
+            "animation": lambda: None if rig_checks.has_clips(self.glb) else "the rig has no animation to play",
             "texture": lambda: None if self.has_texture else "the model has no texture",
             "gltf_validator": lambda: None if self.validator_path else
             "glTF-Validator is not installed (python scripts/bootstrap_gltf_validator.py)",

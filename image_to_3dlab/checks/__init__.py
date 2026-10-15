@@ -16,6 +16,7 @@ from image_to_3dlab.checks import (  # noqa: F401 - importing registers the chec
     licenses,
     measure_checks,
     mesh_checks,
+    rig_checks,
     silhouette,
     validator,
 )
