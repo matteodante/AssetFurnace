@@ -1,6 +1,7 @@
 # Funzione 8, materiali pronti per il gioco: progetto v2
 
-Data: 15 ottobre 2026. Stato: **proposta, in attesa di approvazione**. Niente di nuovo è implementato.
+Data: 15 ottobre 2026 (aggiornato lo stesso giorno: SAM 3.1, lavori del 2026, video, Qwen3.5, togliere la luce, date).
+Stato: **proposta, in attesa di approvazione**. Niente di nuovo è implementato.
 Sostituisce il metodo di [`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md) (v1), di cui
 tiene l'infrastruttura. La PR [#3](https://github.com/matteodante/AssetFurnace/pull/3) è in bozza e in pausa.
 
@@ -38,81 +39,146 @@ voto, riempimento) sono funzioni Python testate senza Blender.
 
 ## 2. Zone di tinta per materiale
 
-**Scelta: SAM 3 guidato da una lista di materiali.**
-- **Il vocabolario**: Qwen3-VL (Apache-2.0) elenca fino a 6 materiali guardando il concept, oppure una lista fissa
-  (stoffa, cuoio, metallo, pelle, pelliccia, legno, pietra, osso...).
-- **La segmentazione**: [SAM 3](https://github.com/facebookresearch/sam3) (Meta, ultimo aggiornamento 14/10/2026)
-  segmenta "tutte le regioni di questo concetto" da una frase di testo. Si interroga con ogni materiale, su ogni vista
-  e anche sul concept, che si riproietta con la camera nota di Pixal3D (la repo lo fa già nella finitura).
-- **Il voto sulle UV**: ogni texel prende il materiale più votato. Il metallo che Pixal3D scrive già vale come indizio
-  in più per "metallo". Il voto si liscia dentro le isole UV, così cuciture e ombre non spezzano una zona.
+Date verificate il 15/10/2026 su GitHub e Hugging Face. "Età" vuol dire tempo dall'uscita dei pesi a oggi.
+
+**Scelta: SAM 3 vista per vista, guidato da una lista di materiali, con voto sulle UV.**
+- **Il vocabolario**: [Qwen3.5-4B](https://huggingface.co/Qwen/Qwen3.5-4B) (27/02/2026, 8 mesi, Apache-2.0) elenca fino
+  a 6 materiali guardando il concept, oppure si usa una lista fissa (stoffa, cuoio, metallo, pelle, pelliccia, legno,
+  pietra, osso...). Qwen3.5 legge le immagini da solo: un "Qwen3.5-VL" separato non esiste. Il ragionamento va spento
+  per risposte brevi.
+- **La segmentazione**:
+  - [SAM 3](https://huggingface.co/facebook/sam3) (Meta, novembre 2025, 11 mesi) segmenta "tutte le regioni di questo
+    concetto" da una frase di testo.
+  - Gira in `transformers` (`Sam3Model`, `Sam3Processor`): PyTorch puro, pesi in safetensors, quindi Windows senza la
+    repo di Meta.
+  - Si interroga con ogni materiale su ogni vista, e anche sul concept riproiettato con la camera nota di Pixal3D (la
+    repo lo fa già nella finitura).
+- **Il voto sulle UV**: ogni texel prende il materiale più votato, pesato per l'angolo di vista. Il metallo che Pixal3D
+  scrive già vale come indizio in più per "metallo". Il voto si liscia dentro le isole UV, così cuciture e ombre non
+  spezzano una zona.
 - **Le zone**: le 3 classi di materiale più grandi diventano R, G e B. Resta la regola v1: 3 zone passa, 2 avvisa,
   1 rimanda indietro (solo nei profili `creature` ed `equipment_part`).
 - **Il nome della zona** finisce nel file accanto al GLB (`zones[i].material: "leather"`): in Unreal si sa cosa si sta
   ricolorando.
 
-**Ripiego, tutto Apache-2.0**: [SAM 2.1](https://github.com/facebookresearch/sam2) in modalità automatica (regioni
-senza nome) più Qwen3-VL che dà un nome a ogni regione da una lista chiusa. Stesso voto. Più lento, ma ogni pezzo ha
-una licenza Apache.
+**SAM 3.1** ([facebook/sam3.1](https://huggingface.co/facebook/sam3.1), 27/03/2026, 7 mesi), verificato:
+- ha la stessa SAM License di SAM 3: il file `LICENSE` è identico byte per byte;
+- l'accesso è approvato a mano, con un modulo che chiede nome, data di nascita, paese, affiliazione e ruolo;
+- **migliora solo il video** (Object Multiplex, tracciamento di molti oggetti più veloce): per le singole immagini il
+  codice di Meta carica ancora i pesi di SAM 3;
+- **non è in `transformers`**;
+- su Windows con le RTX serie 50 ha errori aperti: "No available kernel"
+  ([#532](https://github.com/facebookresearch/sam3/issues/532)), Flash Attention forzata
+  ([#523](https://github.com/facebookresearch/sam3/issues/523)) e NCCL assente
+  ([#150](https://github.com/facebookresearch/sam3/issues/150)).
+
+Per le viste singole quindi **SAM 3, non 3.1**: stesso risultato, un'approvazione in meno, e gira su Windows.
+
+**Segmentazione come video, da provare nel pilota.** MatWeaver tratta le viste in orbita come un video, così una
+regione tiene lo stesso numero da una vista all'altra:
+- `transformers` lo permette con `Sam3VideoModel`: frasi di testo multiple, fotogrammi tenuti in RAM;
+- svantaggi: un errore si trascina da una vista all'altra, le viste in orbita "saltano" molto, e i parametri di
+  pulizia sono pensati per video lunghi (andrebbero ritarati per 18 fotogrammi);
+- l'etichetta del materiale viene comunque dalla frase di testo, e il voto sulle UV unisce già le viste.
+
+Quindi: prima vista per vista; il video come seconda passata, che entra solo se migliora le zone nella prova della
+sezione 6.
+
+**Ripiego, tutto Apache-2.0**: [SAM 2.1](https://github.com/facebookresearch/sam2) (24/09/2024, 2 anni) in modalità
+automatica (regioni senza nome) più Qwen3.5-4B che dà un nome a ogni regione da una lista chiusa. Stesso voto.
+
+**Lavori del 2026 che fanno questo compito**: nessuno è usabile oggi. Confermano però l'impostazione: viste multiple,
+segmentazione, un VLM che sceglie il materiale, voto sulle UV.
+
+| Lavoro | Uscita | Codice e pesi | Licenza | Per noi |
+|---|---|---|---|---|
+| MaterialSeg3D++ (rivista Electronics; dataset MIO++, 30 materiali con rugosità e metallo) | 28/08/2026 | Codice solo della versione 2024 ([repo](https://github.com/PROPHETE-pro/MaterialSeg3D), ultimo aggiornamento 30/06/2025); pesi e dataset su Google Drive | Nessuna dichiarata | Non usabile. La tabella materiale → rugosità/metallo è un'idea da tenere per i valori di partenza (sezione 4) |
+| Material Magic Wand ([2603.17370](https://arxiv.org/abs/2603.17370), CVPR 2026) | 18/03/2026 | La repo ha solo il README; un `checkpoint.pt` da 90 MB senza scheda | Nessuna | Non eseguibile. Lavora su mesh senza texture |
+| Home3D 1.0 / MatWeaver ([2606.27923](https://arxiv.org/abs/2606.27923)) | 29/06/2026 | Né codice né pesi | — | Solo articolo. Segue SAM 2 con prompt a punti, non a testo; Qwen3-VL sceglie il materiale da una libreria |
+| PartMat ([2608.01825](https://arxiv.org/abs/2608.01825)) | 03/08/2026 | Nessuno | — | Solo articolo |
+| Gen2Physics ([2608.23869](https://arxiv.org/abs/2608.23869)) | 24/08/2026 | Nessuno | — | Solo articolo |
 
 **Scartati**:
 
-| Strumento | Motivo |
-|---|---|
-| DMS46 (Apple, 46 classi di materiale, la tassonomia giusta) | Licenza "personal", dati CC-BY-NC |
-| SAMa (Adobe), Materialistic (Adobe) | Non commerciale; senza file di licenza |
-| MaterialSeg3D | Senza licenza, Linux, CUDA 11.3 |
-| PartField (NVIDIA) | Non commerciale; dà parti, non materiali |
-| SAMPart3D, Find3D, PartSLIP++ | Danno parti, non materiali; Linux, ricerca |
-| Hunyuan3D-Part / P3-SAM | Tencent, escluso |
-| Mappa ID dei materiali generata da Qwen-Image-Edit | Non verificata; il concept di Qwen-Image 2.1 è comunque a licenza di ricerca |
-| Make-it-Real | Richiede GPT-4V in cloud |
+| Strumento | Uscita | Motivo |
+|---|---|---|
+| DMS46 (Apple, 46 classi di materiale) | 2022, repo attiva 09/2026 | Dataset CC-BY-NC |
+| SAMa (Adobe) | 11/2024, repo 03/2026 | Licenza di ricerca Adobe, non commerciale |
+| Materialistic (Adobe) | 2023 | Nessun file di licenza, ferma |
+| MaterialSeg3D | 04/2024 | Nessuna licenza, Linux, CUDA 11.3 |
+| PartField (NVIDIA) | 04/2025 | Non commerciale; dà parti, non materiali |
+| SAMPart3D, Find3D, PartSLIP++ | 2024-2025 | Danno parti, non materiali; Linux, ricerca |
+| Hunyuan3D-Part / P3-SAM | — | Tencent, escluso |
+| Mappa ID dei materiali da Qwen-Image-Edit | — | Non verificata; il concept di Qwen-Image 2.1 è a licenza di ricerca |
+| Make-it-Real | 07/2024 | Richiede GPT-4V in cloud |
 
 ## 3. Niente luce cotta all'origine
 
 ### A. Togliere la luce
 
-Due punti dove intervenire, da confrontare nel pilota:
-- **Sul concept, prima del 3D**: [Marigold-IID-Lighting v1.1](https://huggingface.co/prs-eth/marigold-iid-lighting-v1-1)
-  scompone l'immagine in albedo, ombreggiatura diffusa e residuo. Pixal3D riceve l'albedo, e la finitura proietta
-  l'albedo invece della foto illuminata. Rischio: Pixal3D è addestrato su immagini illuminate, quindi va misurato se la
-  forma peggiora.
-- **Sulla texture, dopo il 3D**: la stessa scomposizione sulle viste del pezzo comune (sezione 1), riportata sulle UV.
-  Così si toglie anche la luce che Pixal3D aggiunge di suo.
+**Scelta: [Marigold-IID v1.1](https://github.com/prs-eth/Marigold)** (prs-eth). I pesi Lighting sono del
+16/12/2024, gli Appearance del 21/10/2024, entrambi aggiornati il 20/05/2025: circa 17 mesi. Licenza OpenRAIL++-M, uso
+commerciale permesso con limiti d'uso.
+- **Lighting** dà albedo, ombreggiatura diffusa e residuo; **Appearance** dà albedo, rugosità e metallo.
+- È addestrato su interni sintetici e foto, quindi l'età e il tipo di dati sono un rischio (sezione 8). Ma la verifica
+  del 15/10/2026 non ha trovato niente di più recente che lo batta con una licenza usabile.
+- Si confrontano due punti dove usarlo:
+  - **sul concept, prima del 3D**: Pixal3D riceve l'albedo e la finitura proietta l'albedo. Va misurato se la forma di
+    Pixal3D peggiora, perché è addestrato su immagini illuminate;
+  - **sulle viste della texture, dopo il 3D**, riportate sulle UV con il pezzo comune: toglie anche la luce che
+    Pixal3D aggiunge di suo. L'idea di Geo-ID (accordo fra le viste, sotto) si può ricostruire attorno a Marigold.
+
+**Candidato nuovo per le viste multiple: [UniVidX](https://github.com/houyuanchen111/UniVidX)** (02/05/2026, 5 mesi,
+Apache-2.0 per codice, pesi e base Wan2.1).
+- Un video RGB diventa albedo, irraggiamento e normale: un giro di render in orbita è esattamente un video.
+- È un LoRA da 0,8 GB su una base da 14 miliardi di parametri: su 16 GB serve fp8 o lo scaricamento in RAM (da
+  verificare).
+- Codice di ricerca. Entra nel pilota come alternativa sulla texture, solo se gira sulla nostra scheda.
 
 **Gratis, da fare comunque**: ricette di prompt con "flat even lighting, no cast shadows". Aiutano ma non bastano.
 
-**Ripiego**: Qwen-Image-Edit-2511 (Apache-2.0) con il LoRA
-[QIE-2511-Studio-DeLight](https://huggingface.co/prithivMLmods/QIE-2511-Studio-DeLight) (Apache-2.0, 0,24 GB) sul
-concept. Rilumina in modo uniforme ma non dà un albedo vero, e i dati di addestramento del LoRA non sono dichiarati.
+**Ripiego sul concept**: [Qwen-Image-Edit-2511](https://huggingface.co/Qwen/Qwen-Image-Edit-2511) (17/12/2025,
+10 mesi, Apache-2.0) con il LoRA [QIE-2511-Studio-DeLight](https://huggingface.co/prithivMLmods/QIE-2511-Studio-DeLight)
+(28/01/2026, 9 mesi, Apache-2.0, 0,24 GB). Rilumina in modo uniforme ma non dà un albedo vero, può cambiare i
+dettagli, i dati di addestramento non sono dichiarati e la base da 20 miliardi va quantizzata.
 
 **Scartati**:
 
-| Strumento | Motivo |
-|---|---|
-| RGB↔X (Adobe) | Licenza di ricerca Adobe, non commerciale |
-| Intrinsic di Careaga e Aksoy | "Academic use only", brevetto in corso |
-| Intrinsic Image Diffusion, LumiNet | CC-BY-NC-SA |
-| IntrinsicAnything | Dal 15/09/2026 serve registrare l'uso aziendale con un modulo: da decidere all'utente, non lo scelgo io |
-| Cosmos DiffusionRenderer (NVIDIA) | Licenza commerciale, ma 56 GB, solo Linux, ideale 48 GB di VRAM |
-| Texturing di TRELLIS.2 | MIT, ma Linux e almeno 24 GB |
-| StableDelight | Toglie solo i riflessi, non le ombre; base probabilmente SD2 |
-| Hunyuan3D-delight, MaterialMVP | Tencent, esclusi |
-| Flux2-Klein-Delight | Base FLUX con licenza non commerciale |
+| Strumento | Uscita | Motivo |
+|---|---|---|
+| LumiTex ([2511.19437](https://arxiv.org/abs/2511.19437), ICLR 2026) | 11/2025 | Non pulisce una texture: ne genera una nuova. Dipende da FLUX.1-dev (non commerciale) e dal renderer di Hunyuan3D-2.1 (Tencent) |
+| Cosmos DiffusionRenderer (NVIDIA) | 06/2025 | Licenza commerciale, ma 56 GB, solo Linux, ideale 48 GB di VRAM. Resta un ripiego pesante in WSL2 |
+| AlayaRenderer | 03-04/2026 | Derivato di DiffusionRenderer, addestrato su riprese di due giochi AAA (rischio sui diritti), pensato per scene |
+| Geo-ID ([2603.13859](https://arxiv.org/abs/2603.13859)) | 06/2026 | Il codice include RGB↔X (non commerciale). L'idea dell'accordo fra viste si riusa con Marigold |
+| FlowIID | 01/2026 | Solo una demo, 52 M di parametri, addestrato su interni |
+| albedoLBM, CroCoDiLight | 09/2026, 02/2026 | CC BY-NC |
+| IntrinsiX, OmniX, Lotus-2 | 2025 | Basati su FLUX.1-dev (non commerciale), oppure solo panorami o normali |
+| RGB↔X (Adobe) | 05/2024 | Licenza di ricerca Adobe, non commerciale |
+| Intrinsic di Careaga e Aksoy | 2023-2024 | "Academic use only", brevetto in corso |
+| Intrinsic Image Diffusion, LumiNet | 2023-2024 | CC-BY-NC-SA |
+| IntrinsicAnything | 04/2024, licenza cambiata il 15/09/2026 | Dal 15/09/2026 serve registrare l'uso aziendale con un modulo: lo decide l'utente, non io |
+| Texturing di TRELLIS.2 | 12/2025 | MIT, ma Linux e almeno 24 GB |
+| StableDelight | 08/2024 | Toglie solo i riflessi, non le ombre |
+| Hunyuan3D-delight, MaterialMVP | — | Tencent, esclusi |
+| Flux2-Klein-Delight | — | Base FLUX con licenza non commerciale |
 
 ### B. Un controllo imparato della luce cotta
 
-Al posto delle regressioni sulla luminanza:
+Al posto delle regressioni sulla luminanza. Pronto all'uso con licenza commerciale non c'è niente: ReasonX (Adobe,
+CVPR 2026) è un giudice che confronta coppie di punti e sarebbe il modello giusto, ma ha licenza non commerciale.
+Si ricostruisce la stessa idea:
 1. **Primo candidato: un piccolo classificatore addestrato su coppie sintetiche.**
    - Si parte da asset PBR puliti con licenza CC0 (Poly Haven, ambientCG).
    - In Blender si cuociono nell'albedo quantità casuali di ombreggiatura, occlusione, ombre portate e riflessi.
    - Il classificatore guarda le viste dell'albedo senza luce più normale e occlusione, così distingue la luce che segue
      la geometria dal colore dipinto davvero.
-   - Base congelata: SigLIP 2 base (Apache-2.0), la stessa scelta dalla funzione 3 (un download condiviso), con una
-     testa piccola addestrata qui.
+   - Base congelata: [SigLIP 2 base](https://huggingface.co/google/siglip2-base-patch16-224) (17/02/2025, Apache-2.0),
+     la stessa della funzione 3 (un download condiviso), con una testa piccola addestrata qui.
    - Le statistiche di ombreggiatura di Marigold-IID entrano come caratteristiche in più.
-2. **Secondo candidato, senza addestramento**: quanta ombreggiatura trova Marigold-IID-Lighting nell'albedo, e quanto
-   segue la geometria. Nessun articolo lo dimostra come rilevatore: va provato.
+2. **Secondo candidato**: un giudice alla ReasonX costruito su Qwen3.5-4B, che confronta coppie di punti dell'albedo
+   ("questi due punti hanno lo stesso colore di base?").
+3. **Terzo, senza addestramento**: quanta ombreggiatura trova Marigold-IID-Lighting nell'albedo, e quanto segue la
+   geometria. Nessun articolo lo dimostra come rilevatore: va provato.
 
 Entra quello che supera la prova della sezione 6. Se nessuno la supera, **non c'è controllo della luce cotta**: si conta
 solo sulla luce tolta all'origine (A).
@@ -120,19 +186,19 @@ solo sulla luce tolta all'origine (A).
 ## 4. PBR
 
 - **Normal**: si cuoce dalla mesh densa di Pixal3D sulla mesh ritopologizzata (`blender_bake_normals.py` nella
-  finitura; esiste già ed è la geometria vera). Senza mesh densa (asset grezzo) si mette **nessuna normal**: niente
-  rilievo inventato. Nessun modello imparato vince sulla geometria: quelli di immagine (Marigold-Normals, Lotus,
-  StableNormal) lavorano in spazio camera e scambiano il colore dipinto per rilievo.
+  finitura; esiste già ed è la geometria vera). Senza mesh densa (asset grezzo) **non si mette nessuna normal**: niente
+  rilievo inventato.
+  - Nessun modello imparato vince sulla geometria: Marigold-Normals v1.1 (10/2024), Lotus (01/2025) e StableNormal
+    (06/2024) lavorano in spazio camera e scambiano il colore dipinto per rilievo.
 - **Rugosità e metallo**: si tiene la mappa che Pixal3D scrive già (la finitura la cuoce). Dove manca:
-  - [Marigold-IID-Appearance v1.1](https://huggingface.co/prs-eth/marigold-iid-appearance-v1-1) (albedo, rugosità e
-    metallo) passa per il pezzo comune e si riporta sulle UV;
-  - se non supera la prova, si usano valori di partenza per materiale, presi dalle zone della sezione 2 (metallo:
-    metallo 1, rugosità 0,35; stoffa: 0, 0,9...), validati con la stessa prova.
+  - Marigold-IID-Appearance v1.1 passa per il pezzo comune e si riporta sulle UV;
+  - se non supera la prova, si usano valori di partenza per materiale, presi dalle zone della sezione 2, sull'esempio
+    della tabella materiale → rugosità/metallo di MaterialSeg3D++ (metallo: metallo 1, rugosità 0,35; stoffa: 0,
+    0,9...), validati con la stessa prova.
 - **Scartati**:
   - RGB↔X e DSINE: non commerciali;
-  - DeepBump: GPL-3.0, e ricava il rilievo dall'albedo, la stessa trappola della v1;
-  - Material Anything: MIT, ma solo Linux, e i pesi probabilmente ereditano la licenza di Stable Diffusion; resta come
-    ripiego pesante;
+  - DeepBump (03/2025): GPL-3.0, e ricava il rilievo dall'albedo, la stessa trappola della v1;
+  - Material Anything (06/2025): MIT, ma solo Linux; resta come ripiego pesante;
   - Material Palette, DreamMat: lenti, un modello o un'ottimizzazione per asset;
   - Paint3D, UniTEX, TEXGen: niente rugosità né metallo, e licenze deboli.
 
@@ -176,17 +242,17 @@ Ogni modello passa dal comando di installazione con nome, licenza e dimensione, 
 
 | File | Dimensione | Licenza | Serve per |
 |---|---|---|---|
-| `facebook/sam3` → `sam3.pt` (HF, accesso da richiedere) | 3,45 GB | SAM License (personalizzata: uso commerciale gratuito, vietato l'uso militare, **Meta può cambiarla**) | Zone per materiale |
-| `Qwen/Qwen3-VL-4B-Instruct` | circa 8,9 GB | Apache-2.0 | Nomi dei materiali. Se la funzione 2 installa già Qwen3-VL-8B GGUF, si prova a riusarlo |
-| `prs-eth/marigold-iid-lighting-v1-1` (fp16: unet 1,73 + text encoder 0,68 + vae 0,17) | circa 2,6 GB | OpenRAIL++-M (uso commerciale permesso, con limiti d'uso da riportare nella provenienza) | Luce tolta; caratteristiche del controllo |
-| `prs-eth/marigold-iid-appearance-v1-1` (fp16) | circa 2,6 GB | OpenRAIL++-M | Rugosità e metallo dove mancano |
-| `google/siglip2-base-patch16-224` (condiviso con la funzione 3) | 1,54 GB | Apache-2.0 | Base del classificatore |
-| `facebook/sam2.1-hiera-large` (solo per il ripiego) | 0,9 GB | Apache-2.0 | Ripiego delle zone |
+| `facebook/sam3` → `model.safetensors` (11/2025; HF, accesso da richiedere; per `transformers`) | 3,44 GB | SAM License (personalizzata: uso commerciale gratuito, vietato l'uso militare, **Meta può cambiarla**) | Zone per materiale |
+| `Qwen/Qwen3.5-4B` (02/2026, bf16) | 9,3 GB | Apache-2.0 | Nomi dei materiali; ripieghi Qwen3-VL-8B-Instruct (10/2025) o Gemma-4-E4B-it (03/2026, Apache-2.0) |
+| `prs-eth/marigold-iid-lighting-v1-1` (12/2024, aggiornato 05/2025; fp16: unet 1,73 + text encoder 0,68 + vae 0,17) | circa 2,6 GB | OpenRAIL++-M (uso commerciale permesso, con limiti d'uso da riportare nella provenienza) | Luce tolta; caratteristiche del controllo |
+| `prs-eth/marigold-iid-appearance-v1-1` (10/2024, aggiornato 05/2025; fp16) | circa 2,6 GB | OpenRAIL++-M | Rugosità e metallo dove mancano |
+| `google/siglip2-base-patch16-224` (02/2025; condiviso con la funzione 3) | 1,54 GB | Apache-2.0 | Base del classificatore |
+| `facebook/sam2.1-hiera-large` (09/2024; solo per il ripiego) | 0,9 GB | Apache-2.0 | Ripiego delle zone |
 | Asset CC0 di Poly Haven per addestramento e prova del PBR | da misurare, qualche GB | CC0 | Coppie sintetiche, verità di riferimento |
 
-In tutto, con la prima scelta, circa **19 GB**. Librerie nuove: `transformers` e `diffusers` (Apache-2.0).
-**Dove gira**: SAM 3 nativo ha problemi aperti su Windows e sulle RTX serie 50. Si usa la versione in `transformers`
-(PyTorch puro) e, se serve, WSL2. Marigold in `diffusers` dovrebbe girare su Windows (da verificare all'inizio, prima
+In tutto, con la prima scelta, circa **19 GB**. Da provare solo nel pilota e solo se gira su 16 GB: UniVidX (LoRA 0,8 GB su Wan2.1-T2V-14B, Apache-2.0, base da misurare). Librerie nuove: `transformers` e `diffusers` (Apache-2.0).
+**Dove gira**: la repo di Meta per SAM 3/3.1 ha errori aperti su Windows e sulle RTX serie 50 (#532, #523, #150). Si
+usa la versione in `transformers` (PyTorch puro) e, se serve, WSL2. Marigold in `diffusers` dovrebbe girare su Windows (da verificare all'inizio, prima
 di qualsiasi lavoro lungo). Tutto passa dal lucchetto della GPU condivisa.
 
 ## 8. Rischi
@@ -198,7 +264,7 @@ di qualsiasi lavoro lungo). Tutto passa dal lucchetto della GPU condivisa.
   - Qwen-Image 2.1 resta a licenza di ricerca, e il problema esiste già a monte;
   - Pixal3D è rilasciato da TencentARC con licenza MIT: non rientra nell'esclusione di Hunyuan, che riguarda la
     licenza Tencent, ma lo segnalo.
-- **Stile**: Marigold è addestrato su foto e interni, SAM 3 su foto. Su arte stilizzata il comportamento non è provato:
+- **Età e dati**: Marigold-IID ha circa 17 mesi ed è addestrato su interni sintetici e foto; SAM 3 su foto. Su arte stilizzata il comportamento non è provato:
   è proprio ciò che misura la sezione 6.
 - **Classificatore**: potrebbe imparare gli artefatti sintetici invece della luce cotta vera; l'insieme umano è l'unica
   prova che conta.
