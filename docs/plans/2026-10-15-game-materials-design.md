@@ -1,0 +1,188 @@
+# Funzione 8, materiali pronti per il gioco: progetto
+
+Data: 15 ottobre 2026. Stato: **proposta, da approvare**. Niente codice scritto finora.
+Parte da [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 8.
+
+Cosa esce, per un GLB generato: una maschera di tinta a 3 zone, un controllo della luce cotta, normal e rugosità dove
+mancano, una texture ORM. Tutto in `image_to_3dlab/materials.py` (una funzione Python) più uno script
+`scripts/game_materials.py`. Il passo `materials` di `cli.py` lo aggancia dopo il merge la sessione della funzione 1.
+
+## Cosa ho misurato prima di proporre
+
+Prove esplorative su 5 GLB già in `output/` (nessuna generazione), con uno script usa e getta fuori dalla repo:
+
+| Asset | Albedo | Zone di colore (3 gruppi) | Luce cotta (rapporto lato chiaro / lato scuro) |
+|---|---|---|---|
+| Guerriero 18k (finito) | scuro (L* medio 16) | ben separate: distanza minima ΔE 27, aree 26/26/48 % | 1,25 |
+| Guerriero grezzo Pixal3D | scuro | separate: ΔE 11 | 1,10 |
+| Ragazza 40k (finita) | chiaro | separate: ΔE 10 | 1,28 |
+| Ragazza giovane grezza | chiaro | — | 1,15 |
+| Testuggine | **quasi bianco**, senza colore | **nessuna zona**: ΔE 3,6 | — |
+
+Prova inversa: ho aggiunto ai campioni del guerriero e delle ragazze una luce finta (una lambertiana con luce ambiente
+dal 100 % al 20 %). Il controllo ritrova il rapporto vero: ambiente 0,4 (rapporto vero 2,5) → misurato 2,45–3,5;
+ambiente 0,2 (vero 5) → 5,1–8,5; e ritrova anche la direzione della luce. Gli asset veri, che non hanno luce cotta,
+stanno fra 1,10 e 1,28: è il "rumore di fondo" dato dai colori veri (stivali scuri in basso, capelli chiari in alto).
+
+Altro trovato: Pixal3D scrive già una texture metallo-rugosità **che varia** (rugosità con deviazione 36–52 su 255,
+metallo alto sull'armatura del guerriero). Va tenuta, non rifatta: "dove mancano" vuol dire davvero dove mancano.
+
+## 1. Maschera di tinta a 3 canali
+
+**Da dove vengono le zone.** Dalle regioni di colore della superficie, non da tagli geometrici:
+
+1. Si campiona la superficie (circa 60.000 punti, pesati per area) e per ogni punto si legge l'albedo.
+2. Raggruppamento k-means nello spazio colore CIELAB, con la luminosità pesata la metà della tinta, così un'ombra non
+   crea una zona nuova. Si prova k da 2 a 6 e si fondono i gruppi più vicini di ΔE 10.
+3. Le 3 zone più grandi diventano R, G e B, in ordine di area. Le altre (occhi, piccoli dettagli) restano a 0, cioè non
+   si tingono.
+4. La maschera si disegna **nello spazio delle UV, texel per texel**: ogni texel va alla zona col colore più vicino,
+   poi un filtro di maggioranza (5 px) toglie i puntini e i bordi si ammorbidiscono di 1–2 px. I bordi seguono così il
+   disegno vero (dove finisce la cinghia, inizia la tunica), cosa che un taglio geometrico non sa fare.
+5. La maschera si allarga di 8 px nei margini fra le isole UV, per non avere cuciture con le mipmap.
+
+Le regioni geometriche di `blender_split_regions.py` (testa, corpo, coda lungo un asse) non vanno bene come zone di
+tinta: tagliano a metà il disegno. Restano un'opzione: con `--zones materials` ogni slot di materiale (quelli creati da
+`blender_split_regions.py`) diventa una zona, per chi vuole tingere testa e coda separate.
+
+**Asset senza zone chiare** (come la testuggine): non si inventano. Il controllo `tint_zones` dice quante zone ha
+trovato:
+- 3 zone con ΔE ≥ 10 fra loro e ognuna ≥ 5 % dell'area: `pass`;
+- 1 o 2 zone: `warn`, la maschera esce con i canali mancanti a 0;
+- nessuna zona (albedo uniforme): `fail`, nessuna maschera, l'asset torna indietro.
+
+**Formula di tinta** (da usare uguale in Blender e in Unreal). In luce lineare, per la zona *i* con maschera *m*,
+colore medio originale *c* e tinta scelta *t*:
+
+```
+g   = luminanza(albedo) / luminanza(c)       dettaglio della zona, 1 in media
+out = albedo + m · g · (t − c)               poi limitato a 0..1
+```
+
+Con `t = c` l'asset resta **identico** all'originale: i parametri di partenza sono i colori medi delle zone, scritti
+nel file accanto. Cambiando `t` si sposta il colore medio e il dettaglio di luminosità resta. Scartata la
+moltiplicazione canale per canale (`albedo · t / c`): su una zona rossa tinta di blu moltiplica per 10 il rumore del
+canale blu.
+
+## 2. Controllo della luce cotta
+
+Il controllo rimanda indietro e non corregge. Lavora per zona (le stesse della maschera), perché ogni materiale ha la
+sua luminosità. Restituisce tre record nel formato comune dei controlli, così la funzione 7 li registra uno per uno:
+
+```json
+{"check": "baked_light_direction", "status": "pass", "value": 1.25, "threshold": {"warn": 1.5, "fail": 2.0},
+ "message": "lit side 1.25x brighter than shadow side (worst zone R)"}
+```
+
+| Controllo | Cosa misura | Come | Soglie (warn / fail) |
+|---|---|---|---|
+| `baked_light_direction` | Ombre e luci di una luce direzionale dipinte nell'albedo | Per ogni zona, regressione del logaritmo della luminanza lineare sulla normale della superficie: `log Y = a + g · n`. Il rapporto `exp(2·|g|)` è quanto il lato illuminato è più chiaro del lato in ombra. Si riporta la zona peggiore, pesata per area | 1,5 / 2,0 |
+| `baked_light_occlusion` | Occlusione ambientale (pieghe scure) dipinta nell'albedo | Solo se c'è l'AO cotta da `blender_bake_ao.py`: regressione `log Y = a + s · log AO` per zona. `s = 0` albedo pulito, `s = 1` AO interamente dipinta | 0,3 / 0,6 |
+| `baked_light_highlights` | Riflessi speculari dipinti | Quota della superficie di una zona più chiara di 2,5 volte la sua mediana e quasi senza saturazione | 0,5 % / 2 % |
+
+Le soglie partono dalle misure sopra: gli asset veri stanno a 1,10–1,28, una luce dipinta con ambiente 0,6 dà già
+1,6–2,2. Si ritarano sul pilota con le valutazioni dell'utente. La "luminosità non uniforme" del piano rientra nel
+primo controllo: una luce dipinta è proprio una luminosità che segue l'orientamento della superficie.
+
+Se il controllo fallisce, gli altri passi si fermano: dall'albedo con luce cotta uscirebbero zone e normal sbagliate
+(un'ombra dipinta diventerebbe un solco).
+
+## 3. Normal e rugosità ricavate dal colore
+
+**Si riusa**:
+- l'idea di Materialize (Bounding Box Software): altezza dall'albedo per bande di frequenza, normal dall'altezza. Il
+  codice **non si copia**: Materialize è GPL-3, AssetFurnace è Apache-2.0. Verificato su GitHub il 15/10/2026;
+- da `scripts/surface_detail.py`: la convenzione della normal glTF (+Y in alto, (128,128,255) piatta), la rugosità
+  dalla luminanza (più scuro = più ruvido), la maschera lucida per gli occhi, l'ordine dei canali ORM;
+- numpy e scipy (BSD) per sfocature e gradienti.
+
+**Si costruisce** (in `materials.py`, perché il pacchetto non può importare da `scripts/`; `surface_detail.py` resta
+com'è e più avanti può chiamare il pacchetto):
+- altezza a più scale: somma pesata di 4 bande (differenze fra sfocature gaussiane di 1, 2, 4, 8, 16 px) della
+  luminanza, invece della banda singola di oggi;
+- **sfocature mascherate per isola UV**: si sfoca dividendo per la copertura, così il nero dei margini non entra nelle
+  isole e non disegna un bordo in rilievo lungo ogni cucitura;
+- rugosità: un valore di base per zona (una zona è un materiale) più la variazione della luminanza, con ampiezza
+  piccola.
+
+**Dove mancano** significa:
+- normal: solo se il materiale non ha `normalTexture`;
+- rugosità: solo se manca la texture metallo-rugosità o se il suo canale G è costante (deviazione < 2 su 255, come
+  per TRELLIS); con Pixal3D di solito c'è e si tiene;
+- metallo: si tiene il canale B esistente; se manca, 0 (o un valore per zona da parametro).
+
+## 4. ORM e come viaggia col glTF
+
+- **Formato**: una PNG RGB lineare (non sRGB). R = occlusione, G = rugosità, B = metallo. È lo stesso schema di glTF,
+  dove una sola immagine serve sia da `occlusionTexture` sia da `metallicRoughnessTexture`, ed è lo schema ORM di
+  Unreal.
+- **Occlusione**: si cuoce con `scripts/blender_bake_ao.py` (già presente, Blender senza finestra, sulle UV esistenti).
+  Se non c'è, R = 255 (nessuna occlusione) e il materiale non dichiara `occlusionTexture`.
+- **Nel GLB**: il file si modifica **nel JSON, senza riesportare la geometria** (`image_to_3dlab/glb_turn.py` ha già
+  `parse_glb` e `build_glb`). Riesportare con trimesh perderebbe scheletro e animazioni dei GLB riggati. Si
+  aggiungono le immagini nuove; la maschera si dichiara in `materials[i].extras.assetfurnace.tintMask`
+  (`{"index": <texture>, "texCoord": 0}`) insieme alle zone.
+- **Accanto al GLB**, perché non tutti i programmi leggono gli `extras`:
+
+```
+<asset>.glb                      con normal, ORM e maschera dentro
+<asset>.materials.json           zone (canale, colore medio lineare, area), file, esito dei controlli, formula
+T_<asset>_TintMask.png           R, G, B = zone
+T_<asset>_N.png                  se ricavata
+T_<asset>_ORM.png
+```
+
+  I nomi `T_` vanno concordati con la sessione del profilo Unreal (funzione 5): li sceglie lei, io espongo il
+  parametro.
+- La provenienza: il `.provenance.json` dell'asset riceve una voce per il passo, senza modelli (niente AI).
+
+## Alternative scartate
+
+- **Togliere la luce con l'AI** (delighting): strumenti immaturi o con licenze strette, già escluso nel piano.
+- **Codice di Materialize, AwesomeBump, GeneradorMapsPbr, Bulk Texture Creator**: GPL-3, non si copia in una repo
+  Apache-2.0. **DeepBump** e pypbr con Depth Anything: usano reti neurali, il piano chiede "senza AI".
+- **Zone da segmentazione 3D** (SAMPart3D e simili): codice di ricerca, Linux con CUDA. Si rivaluta se il colore non
+  basta sul pilota.
+- **Zone da tagli geometrici** come scelta predefinita: tagliano a metà il disegno. Restano come opzione `materials`.
+- **KHR_materials_variants**: varianti fisse, non colori da parametro.
+- **Tinta canale per canale**: amplifica il rumore (vedi sopra).
+
+## Rischi
+
+- **Albedo molto scuri** (il guerriero ha L* medio 16): la tinta parte da poca luminanza e i colori chiari vengono
+  spenti. Si vede nel render di prova; se serve, un parametro di "luminosità della zona" in più.
+- **Colore vero confuso con luce**: un asset scuro in basso e chiaro in alto (stivali, capelli) dà già 1,1–1,3. Le
+  soglie lasciano margine; un falso allarme diventa un `warn`, non un `fail`.
+- **Normal inventate**: un segno dipinto diventa un solco (lo dice già `surface_detail.py`). Forza bassa, e solo dove
+  mancano.
+- **Extras ignorati da Interchange**: per questo il file accanto è la fonte sicura. Lo verifica la sessione Unreal.
+- **Nessun mostro fra i GLB esistenti**: la prova si fa sul guerriero 18k (umanoide, 3 zone nette). Il mostro vero
+  arriva col pilota.
+
+## Come provo i criteri di accettazione
+
+1. **Test prima del codice**, su fixture piccole fatte nel test (una sfera UV a 3 bande di colore):
+   - la maschera ha 3 canali che coincidono con le bande;
+   - con `t = c` l'uscita è identica all'albedo;
+   - albedo piatto → `pass`; luce lambertiana cotta con ambiente 0,4 → `fail` con la direzione giusta; macchia
+     bianca → `baked_light_highlights` in `fail`;
+   - albedo uniforme → `tint_zones` in `fail`;
+   - normal piatta su albedo piatto, nessun bordo in rilievo lungo le cuciture UV;
+   - ORM con i canali al posto giusto; il GLB riscritto conserva scheletro e animazioni (fixture riggata minima).
+2. **Asset veri**: il controllo sui 5 GLB di `output/` (valori registrati nel piano) e sul guerriero con luce finta.
+3. **Render in Blender** (Blender 5.2 senza finestra, Cycles su CPU per non pesare sulla GPU condivisa), con la
+   formula di tinta costruita in nodi dal file accanto:
+   - prima: colori originali, luce frontale come nel concept;
+   - dopo: le 3 zone ricolorate da parametri, stessa luce;
+   - dopo, con una luce diversa (laterale bassa, da dietro): nessuna ombra cotta deve "combattere" la luce nuova;
+   - per confronto, la versione con luce finta che il controllo boccia.
+
+   Un foglio unico con i 4 render, allegato al rapporto.
+4. **Unreal**: la prova con i parametri del materiale la fa la sessione del profilo Unreal dopo il merge.
+
+## Domande per l'approvazione
+
+1. Va bene che le zone vengano dal colore (con `materials` come alternativa), e che un asset senza zone torni indietro
+   invece di ricevere zone geometriche automatiche?
+2. Soglie iniziali della luce cotta: 1,5 avviso, 2,0 rifiuto. Va bene partire da qui e ritararle sul pilota?
+3. Va bene la formula di tinta "a scostamento" qui sopra? Unreal deve usare la stessa.
