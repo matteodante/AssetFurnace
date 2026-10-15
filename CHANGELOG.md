@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Material labels in Studio's review panel: for the version under review, say whether
+  light is painted into the colours, whether the materials look right, and click points
+  on the model with the material they show. Saved in `output/material-labels.jsonl`;
+  `scripts/material_label_set.py` queues a label set, reports progress and exports the
+  complete labels every material check is measured against.
+- Game materials, first part (`image_to_3dlab/materials.py`, `scripts/game_materials.py`):
+  a generated GLB's own roughness, metallic and occlusion packed as one ORM texture, the
+  GLB edited in place so rigs and animations survive, and the licence record carried
+  beside the result. Nothing is derived from the colour.
+- Multi-view piece for the material steps (`image_to_3dlab/multiview.py`,
+  `scripts/blender_render_views.py`): Blender renders the albedo unlit from an orbit, and
+  what a 2D model says about each view is carried back to the texels of the atlas.
 - Creature families: after rigging, the skeleton is read for legs, arms, wings, tail and
   neck and the creature is recognised as humanoid, digitigrade biped, quadruped, many-legged,
   winged, serpent or plant (`image_to_3dlab/creature_family.py`, `<rig>.family.json`).
