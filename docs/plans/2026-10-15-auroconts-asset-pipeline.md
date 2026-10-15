@@ -43,6 +43,15 @@ originali, tabella di corrispondenza, import in Unreal) resta nella repo di Auro
 - **Poi, dopo una prova**: un LoRA dello stile per il modello d'immagine.
 - **Accettazione**: il punteggio separa i concept che l'utente approva da quelli che rimanda, su un campione etichettato.
 
+**Quanto costa un LoRA dello stile.** Non tanto in soldi, quanto in preparazione:
+- Per Qwen-Image servono di base 24 GB di VRAM (le configurazioni di ai-toolkit sono pensate per 24 GB); la RTX 5070 Ti
+  ne ha 16, quindi in locale solo con scaricamento aggressivo in RAM, non garantito.
+- In alternativa una GPU a noleggio da 24–48 GB per qualche ora a corsa: probabilmente pochi euro a tentativo, da
+  verificare con un preventivo prima di spendere.
+- Il costo vero è il set di immagini: 20–50 concept già approvati dall'utente, più qualche giro di prova.
+- È opzionale: prima si prova senza (prompt fissi, Qwen-Image-Edit-2511 con immagini di riferimento, ControlNet). Il LoRA
+  si fa solo se il pilota mostra che lo stile deriva.
+
 ### 4. Parti per slot e adattamento a un corpo base
 
 Il "Part Composer" per il caso vincolato: corpi base fissi, slot fissi, uno scheletro.
@@ -120,6 +129,19 @@ Vince quella che dopo l'adattamento al corpo dà la qualità migliore con meno r
 - **Accettazione**: un asset difettoso costruito apposta viene fermato dal controllo giusto; un rimando torna in coda
   con la sua nota.
 
+### 8. Materiali pronti per il gioco
+
+- **Cosa**: per ogni asset generato:
+  - una **maschera di tinta** a 3 canali (zone ricolorabili), ricavata dalle regioni del modello;
+  - un controllo della **luce cotta** nell'albedo (luminosità e ombre troppo marcate), che rimanda indietro invece di
+    correggere;
+  - mappe normal e di rugosità ricavate dal colore dove mancano (approccio di Materialize, senza AI);
+  - texture ORM impacchettate.
+- **Perché**: un gioco intero usa pochi materiali master e migliaia di istanze; senza maschere di tinta e senza albedo
+  pulito, gli asset generati non si ricolorano e non reggono la luce dinamica.
+- **Accettazione**: un mostro esce con 3 zone ricolorabili che in Unreal cambiano colore da parametri, senza ombre cotte
+  visibili sotto una luce diversa da quella del concept.
+
 ## Ruote già fatte: cosa si riusa e cosa si costruisce (verifica del 15/10/2026)
 
 Prima di scrivere codice si cerca chi lo fa già bene. Stato e licenze verificati su GitHub il 15/10/2026.
@@ -151,10 +173,32 @@ sul forum di Epic (una risposta esperta, non una verifica ufficiale).
 
 ## Ordine
 
-1. Fondamenta: 1, 5, 7.
+1. Fondamenta: 1, 5, 7, 8.
 2. Una versione minima del 4 su un solo set di armatura.
 3. Stile: 2 e 3.
 4. 6, quando servono le creature non umanoidi.
+
+## Quanto sono maturi gli strumenti proposti (verifica del 15/10/2026)
+
+| Strumento | Maturità | Note |
+|---|---|---|
+| Unreal 5.8.3: GAS, Common UI, StateTree, PCG, World Partition, Niagara, Landscape, PBR | Stabile | Stato letto nei `.uplugin` del motore installato |
+| Game Features, Data Registry, Iris, Motion Warping, Mutable | Beta | Mutable ha una segnalazione di artefatti in 5.8 con il clip combinato al reshape |
+| Water, plugin MCP e toolset, toon di Substrate | Sperimentale | Si usano con cautela, il toon non si usa |
+| MegaLights / Lumen Lite | Stabile in 5.8 / beta in 5.8 | — |
+| Blender (Shrinkwrap, Surface Deform, Data Transfer) | Stabile, standard da anni | Base della tecnica di adattamento |
+| glTF-Transform, meshoptimizer, glTF-Validator | Stabili, attivi a ottobre 2026 | — |
+| ai-toolkit | Attivo (ottobre 2026) | — |
+| Nakama Unreal SDK, Flow Graph | Attivi, con versioni per 5.8 | — |
+| Send to Unreal | Mantenuto dalla comunità, attivo a settembre 2026 | Supporto a Blender 5 e UE 5.8 non dichiarato: da provare |
+| UniRig / SkinTokens | Attivi (giugno 2026) | SkinTokens è già in AssetFurnace |
+| Qwen-Image 2.1 Fun ControlNet Union | Molto recente (settembre 2026) | Supporto ComfyUI in revisione; licenza dei pesi da verificare |
+| OmniPart, HoloPart, PartCrafter, SAMPart3D, Puppeteer | **Codice di ricerca** (2025) | Funzionano, ma nessuno li mantiene come prodotto; pensati per Linux con CUDA. Vanno provati prima di dipenderne |
+| ComfyUI-3D-Pack | Fermo da dicembre 2025 | Non lo usiamo |
+| Strumenti di delighting con AI | Immaturi o con licenze restrittive | Si previene invece di correggere |
+
+In sintesi: la base (Unreal, Blender, formati, ottimizzazione) è matura; la generazione per parti e il controllo dello
+stile sono la parte nuova e incerta. Per questo si passa dal pilota prima di produrre in grande.
 
 ## Pilota di Auroconts
 
