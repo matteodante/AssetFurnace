@@ -821,6 +821,9 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
         bad = set(overrides) - set(CHANNELS)
         if bad:
             raise ValueError(f"unknown zone channels: {sorted(bad)}")
+    target = out_dir / f"{asset.stem}.glb"
+    if target.exists() and target.samefile(asset):
+        raise ValueError("out_dir is the asset's own folder: the result would overwrite the source")
     glb = EditGLB(asset.read_bytes())
     analysis = _analyse(glb, ao, zones_from, samples, seed)
     status = worst(r["status"] for r in analysis.checks)
@@ -832,6 +835,8 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
                "zones": analysis.zones, "tint": _tint_section(analysis.zones),
                "checks": analysis.checks}
     if status == "fail":
+        # A batch reads <stem>.glb as "done"; an older pass must not outlive this verdict.
+        (out_dir / f"{stem}.glb").unlink(missing_ok=True)
         sidecar_path.write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
         return MaterialsResult(status, analysis.checks, analysis.zones, None, sidecar_path, {}, {})
 

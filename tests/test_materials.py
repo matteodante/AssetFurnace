@@ -351,6 +351,26 @@ def test_failed_light_check_stops_before_writing_maps(tmp_path):
     assert not any(p.suffix == ".png" for p in (tmp_path / "out").iterdir())
 
 
+def test_a_rejected_rerun_leaves_no_game_ready_glb_behind(tmp_path):
+    """A batch reads `<stem>.glb` as "done": an older pass must not survive a new rejection."""
+    asset = tmp_path / "knight.glb"
+    make_glb(asset, banded_albedo())
+    first = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    assert first.glb_path.exists()
+    make_glb(asset, lit(banded_albedo(), ambient=0.3))
+    again = m.make_game_materials(asset, tmp_path / "out", samples=20000)
+    assert again.status == "fail"
+    assert not (tmp_path / "out" / "knight.glb").exists()
+
+
+def test_writing_into_the_assets_own_folder_is_refused(banded):
+    """The output GLB shares the source's name, so that folder would overwrite the source."""
+    before = banded.read_bytes()
+    with pytest.raises(ValueError):
+        m.make_game_materials(banded, banded.parent, samples=20000)
+    assert banded.read_bytes() == before
+
+
 def test_records_follow_the_shared_check_contract(banded):
     for record in m.run_checks(banded, samples=20000):
         assert {"check", "status", "value", "threshold", "message"} <= set(record)
