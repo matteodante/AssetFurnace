@@ -165,4 +165,10 @@ Si può scaricare `mmproj-Qwen3VL-8B-Instruct-F16.gguf` (1.159.029.824 byte, Apa
 
 ## 10. Seguiti
 
-(Vuoto finché non arrivano le review.)
+Dalla review di Codex della PR #9 (secondo giro, P2 rimandati: non sono errori visibili nei casi normali).
+- Rimuovere Qwen-Image cancella anche i file parziali (`*.incomplete`) di altre quantizzazioni scaricate a metà nella
+  stessa cartella della cache. Serve sapere quale blob parziale appartiene a quale file.
+- Un blob condiviso con un'altra voce della cache (stesso contenuto in un altro repo o snapshot fuori dalla cartella)
+  viene cancellato e lascia quel collegamento rotto. Meglio passare dall'API di cancellazione di `huggingface_hub`.
+- L'avanzamento del download conta tutta la cartella del file con nome, quindi anche file non dichiarati (altre
+  quantizzazioni): parte alto e sovrastima il totale. Era già così prima della PR, per il codificatore.
