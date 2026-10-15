@@ -89,8 +89,15 @@ contract. A done row whose skipped step later exists runs that step (and the one
 it) on the next run.
 
 **Nothing downloads.** Before the first row, each step checks what it needs (Pixal3D's
-build and weights, Blender) and the batch stops with the command to install it. SF3D and
-TRELLIS.2 fetch weights on first use, so they are not offered in batches yet.
+build and weights, the background remover an uncut picture would need, Blender, the
+repaint's files when asked for) and the batch stops with the command to install it. SF3D
+and TRELLIS.2 fetch weights on first use, so they are not offered in batches yet. A resume
+checks only the rows it will run.
+
+**Licences.** Every model a row would run is checked against the batch's intent before
+the first row: its generator, the repaint if asked, and for a row with only an asset, the
+model its record names. A repainted asset's provenance lists the paint model and takes the
+stricter licence class.
 
 ## What it writes
 
@@ -135,7 +142,9 @@ Run the same command again. Then:
   folder.
 
 One batch runs at a time per output folder: the GPU is the bottleneck, and a second one
-is refused while the first is alive. The studio does not check for running batches, so
+is refused while the first is alive. The lock is `<output folder>/.batch.lock`, taken
+atomically, so two submissions at once cannot both start; one left by a dead process is
+taken over. The studio does not check for running batches, so
 do not generate there at the same time.
 
 Exit codes: 0 every row done, 1 some rows failed, 2 the batch cannot start, 130
@@ -147,7 +156,8 @@ interrupted.
 the file (an uploaded spec is kept in `output/batches/.uploads/` and its relative paths
 resolve from there, so use absolute ones, or give the path instead). For a CSV, pick the
 use case, distribution and commercial intent. **Check** validates without running;
-**Start** runs it in the background. Each batch shows how far it got; open one to see every
+**Start** runs it in the background. The page follows batches in `output/batches/` only, so
+it refuses a spec that writes elsewhere (run that one with `pipeline.py --run-batch`). Each batch shows how far it got; open one to see every
 row with its status, why it failed, and its review state. **Resume** carries on a stopped
 batch, **Retry failed** also re-runs the failed rows, **Stop** stops it, **Open** shows a
 finished row in the viewer.
