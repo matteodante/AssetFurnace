@@ -80,8 +80,9 @@ def test_a_finished_model_without_a_sidecar_is_traced_to_its_generated_run(tmp_p
     shutil.copy(generated, finish / "input" / "source.glb")
     finished = fx.clean(finish / "knight_9k.glb")
     found = check(finished)
-    assert found["status"] == "pass"
-    assert "traced" in found["details"]["found"]
+    # Codex review 7: nothing in a finish run binds the finished bytes, so at most a warn.
+    assert found["status"] == "warn" and "not bound" in found["message"]
+    assert "inherited from the generated run" in found["details"]["found"]
     # A different source model breaks the trace: no record, so it fails.
     fx.cube(finish / "input" / "source.glb")
     assert check(finished)["status"] == "fail"
@@ -204,3 +205,17 @@ def test_every_part_of_a_composite_licence_is_classified(tmp_path, name, status)
     glb = fx.clean(tmp_path / "a.glb")
     fx.sidecar(glb, {"license": name})
     assert check(glb)["status"] == status
+
+
+def test_a_finished_model_is_traced_to_a_source_in_a_licence_class_folder(tmp_path):
+    """Codex review 7: pipeline.py writes output/<licence folder>/<stem>.glb, not output/<stem>/."""
+    output = tmp_path / "output"
+    stem = "knight__pixal3d__commercial-conditional__0a1b2c3d4e5f"
+    (output / "conditional").mkdir(parents=True)
+    generated = fx.clean(output / "conditional" / f"{stem}.glb")
+    fx.sidecar(generated, {**fx.PIXAL3D_RECORD, "output": {"sha256": checks.Asset(glb=generated).sha256}})
+    finish = output / "finish" / f"{stem}__finish__20261013-185337"
+    (finish / "input").mkdir(parents=True)
+    shutil.copy(generated, finish / "input" / "source.glb")
+    found = check(fx.clean(finish / "knight_9k.glb"))
+    assert found["status"] == "warn" and "conditional" in found["details"]["found"]

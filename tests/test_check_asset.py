@@ -20,6 +20,8 @@ def test_overrides_read_the_check_name_up_to_the_last_dot():
         "license.components": {"conditional": "warn"}}
     with pytest.raises(ValueError):
         check_asset.parse_overrides(["nonsense"])
+    with pytest.raises(ValueError):  # Codex review 7: a setting with no "=" is a typo, not max=""
+        check_asset.parse_overrides(["budget.faces.max"])
 
 
 def test_a_failing_asset_exits_1_and_lands_in_the_queue(tmp_path, capsys):

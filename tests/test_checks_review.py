@@ -6,6 +6,7 @@ Acceptance for feature 7: "a send-back returns to the queue with its note".
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 
 import _check_fixtures as fx
 import pytest
@@ -261,4 +262,34 @@ def test_a_licence_result_that_changes_reopens_an_approved_version(log):
     review.enqueue(log, report_for("a" * 64), "r.json", now=T[2])           # same result: stays approved
     assert review.fold(review.load(log))["mob_0412"]["state"] == "approved"
     review.enqueue(log, report_for("a" * 64, "fail", fails=["license.components"]), "r.json", now=T[3])
+    assert review.fold(review.load(log))["mob_0412"]["state"] == "to_review"
+
+
+def test_decide_returns_the_version_it_decided_even_if_a_new_one_lands_right_after(log, monkeypatch):
+    """Codex review 7: the item handed back (and its verdict) must be the decided version."""
+    review.enqueue(log, report_for("a" * 64), "r.json", now=T[0])
+    real_lock = review._file_lock
+
+    @contextmanager
+    def lock_then_new_version(*args, **kwargs):
+        with real_lock(*args, **kwargs):
+            yield
+        review._append(log, {"event": "queued", "key": "mob_0412", "at": T[2], "asset": "x.glb",
+                             "asset_sha256": "b" * 64, "status": "pass", "license_status": "pass"})
+
+    monkeypatch.setattr(review, "_file_lock", lock_then_new_version)
+    item = review.decide(log, "mob_0412", "approved", "", now=T[1], asset_sha256="a" * 64)
+    assert item["asset_sha256"] == "a" * 64 and item["state"] == "approved"
+
+
+def test_a_different_licence_with_the_same_status_reopens_an_approval(log):
+    """Codex review 7: MIT -> DINOv3 keeps 'pass' but changes the conditions."""
+    first = report_for("a" * 64)
+    review.enqueue(log, first, "r.json", now=T[0])
+    review.decide(log, "mob_0412", "approved", "", now=T[1], asset_sha256="a" * 64)
+    second = report_for("a" * 64)
+    for found in second["results"]:
+        if found["check"] == "license.components":
+            found["value"] = {"licenses": ["DINOv3 License"], "conditions": ["DINOv3 License terms apply."]}
+    review.enqueue(log, second, "r.json", now=T[2])
     assert review.fold(review.load(log))["mob_0412"]["state"] == "to_review"

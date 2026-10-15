@@ -153,6 +153,10 @@ def faces(asset, config):
     if count == 0:
         # An empty scene, or points and lines only: nothing for an engine to draw as a surface.
         return result("budget.faces", "fail", 0, limits, "the model draws no triangles at all", details)
+    if len(asset.welded.faces) == 0:
+        # Triangles whose corners collapse to one point or line have no area: still nothing drawn.
+        return result("budget.faces", "fail", count, limits,
+                      f"the model's {count:,} triangles all collapse to points or lines: no surface", details)
     return result("budget.faces", grade_max(count, **limits), count, limits,
                   f"{count:,} triangles against a budget of {budget:,}", details)
 

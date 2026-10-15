@@ -83,6 +83,20 @@ def licence_status(report: dict) -> str | None:
     return found["status"] if found else None
 
 
+def licence_digest(report: dict) -> str | None:
+    """A short fingerprint of the whole licence result (names and conditions), or None.
+
+    Two results can share a status (MIT and DINOv3 both pass) and still differ in what the
+    game must credit; a decided version is reviewed again when this changes.
+    """
+    import hashlib
+
+    found = next((r for r in report.get("results", []) if r.get("check") == "license.components"), None)
+    if found is None:
+        return None
+    return hashlib.sha256(json.dumps(found.get("value"), sort_keys=True).encode()).hexdigest()[:16]
+
+
 def summary(report: dict) -> dict[str, list[str]]:
     return {status: [r["check"] for r in report.get("results", []) if r["status"] == status]
             for status in ("fail", "warn")}
@@ -100,11 +114,12 @@ def fold(events: list[dict]) -> dict[str, dict]:
             # The same file checked again keeps its decision, unless its licence result
             # changed (new provenance beside the same GLB): then it is reviewed again.
             same_version = (item.get("asset_sha256") == event.get("asset_sha256")
-                            and item.get("license_status") == event.get("license_status"))
+                            and item.get("license_status") == event.get("license_status")
+                            and item.get("license_digest") == event.get("license_digest"))
             if not (same_version and item.get("state") in DECISIONS):
                 item["state"] = "to_review"
             for field in ("asset", "asset_sha256", "report", "status", "summary", "profile", "license_status",
-                          "source", "kind"):
+                          "license_digest", "source", "kind"):
                 item[field] = event.get(field)
         elif event["event"] in DECISIONS:
             if item is None or item.get("asset_sha256") != event.get("asset_sha256"):
@@ -141,7 +156,8 @@ def enqueue(log: Path, report: dict, report_file: str | Path, key: str | None = 
         _append(log, {"event": "queued", "key": key, "at": _now(now), "asset": report["asset"],
                       "asset_sha256": report["asset_sha256"], "report": str(report_file),
                       "status": report["status"], "summary": summary(report), "profile": report.get("profile"),
-                      "license_status": licence_status(report), "source": source, "kind": kind})
+                      "license_status": licence_status(report), "license_digest": licence_digest(report),
+                      "source": source, "kind": kind})
         return fold(load(log))[key]
 
 
@@ -255,7 +271,8 @@ def decide(log: Path, key: str, decision: str, note: str = "", now: str | None =
                 raise ReviewConflict(f"{key} cannot be approved: {blocker}")
         _append(log, {"event": decision, "key": key, "at": _now(now), "note": note,
                       "asset": current.get("asset"), "asset_sha256": current.get("asset_sha256")})
-    return fold(load(log))[key]
+        # Read back under the lock: a version queued right after must not be handed back as decided.
+        return fold(load(log))[key]
 
 
 def check_and_enqueue(asset, log: Path = LOG, profile: str = "prop", overrides: dict | None = None,

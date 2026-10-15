@@ -394,4 +394,15 @@ utente vedrebbe), più il lavoro che spetta ad altre parti della repo.
   come avviso. La correzione vera è nel passo dei prop (`viewer/props_api.py`, `scripts/finish_props.py`): scrivere
   accanto a ogni `<prop>_LOD0.glb` un sidecar con il suo `output.sha256`, che il controllo delle licenze legge già.
   [Thread](https://github.com/matteodante/AssetFurnace/pull/4#discussion_r4287008015)
+- Il controllo delle UV legge solo il primo set (TEXCOORD_0, quello che trimesh carica); una texture con `texCoord: 1`
+  non viene controllata sul suo set. Rimandato: raro nei modelli generati.
+  [Thread](https://github.com/matteodante/AssetFurnace/pull/4#discussion_r4287209897)
+- Il riferimento non è protetto da modifiche durante i controlli, a differenza del GLB controllato. Rimandato: serve una
+  sostituzione nei pochi secondi della corsa. [Thread](https://github.com/matteodante/AssetFurnace/pull/4#discussion_r4287209926)
+- Due controlli contemporanei dello stesso GLB scrivono lo stesso `<nome>.checks.json`; uno dei due eventi può puntare
+  al report dell'altro. Rimandato: serve un percorso del report per corsa, o il lock esteso alla scrittura.
+  [Thread](https://github.com/matteodante/AssetFurnace/pull/4#discussion_r4287209947)
+- I modelli finiti prima del sidecar derivato della funzione 1 ereditano la licenza dal run generato senza un hash che
+  leghi il file finito: passano al massimo come avviso. Quelli con il sidecar della funzione 1 sono legati.
+  [Thread](https://github.com/matteodante/AssetFurnace/pull/4#discussion_r4287209881)
 - Compenetrazioni nelle pose di prova: dopo la funzione 4.

@@ -151,3 +151,16 @@ def test_overlapping_uvs_under_a_normal_map_alone_are_caught(tmp_path):
     """Codex review 4: every texture slot counts, not only the base colour."""
     found = checks.run_checks(checks.Asset(glb=fx.normal_map_only(tmp_path / "n.glb")), only=["uv.overlap"])["results"][0]
     assert found["status"] == "fail", found
+
+
+def test_a_model_of_only_collapsed_triangles_fails_the_face_budget(tmp_path):
+    """Codex review 7: triangles whose corners are one point draw nothing."""
+    from image_to_3dlab.glb_turn import build_glb, parse_glb
+
+    document, binary = parse_glb(fx.clean(tmp_path / "a.glb").read_bytes())
+    view = document["bufferViews"][document["accessors"][document["meshes"][0]["primitives"][0]["indices"]]["bufferView"]]
+    start = view.get("byteOffset", 0)
+    binary = binary[:start] + bytes(view["byteLength"]) + binary[start + view["byteLength"]:]
+    (tmp_path / "flat.glb").write_bytes(build_glb(document, binary))
+    found = checks.run_checks(checks.Asset(glb=tmp_path / "flat.glb"), only=["budget.faces"])["results"][0]
+    assert found["status"] == "fail" and "no surface" in found["message"]

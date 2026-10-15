@@ -28,6 +28,7 @@ from image_to_3dlab.checks.registry import register, result
 # The props run keeps one record for all its props and no hash per prop, so a licence found
 # that way is inherited, not bound to the file: it can pass at most as a warn.
 INHERITED = "inherited from the props run, not bound to this file by a hash:"
+INHERITED_FINISH = "inherited from the generated run, not bound to this file by a hash:"
 PROPS_RUN = re.compile(r"^[A-Za-z0-9_-]{1,200}__props__\d{8}-\d{6}(?:-\d+)?$")
 FINISH_RUN = re.compile(r"^(?P<source>[A-Za-z0-9_-]{1,200})__finish__\d{8}-\d{6}(?:-\d+)?$")
 
@@ -130,13 +131,19 @@ def find_records(glb: Path, explicit: Path | None = None,
             continue
         source = folder / "input" / "source.glb"
         root = output_root or folder.parent.parent
-        generated = root / match["source"] / f"{match['source']}.glb"
-        if not (source.is_file() and generated.is_file()):
-            return [], f"finish run, but {generated} is not there to trace it"
-        if sha256_file(source) != sha256_file(generated):
-            return [], f"finish run, but {generated.name} is not the model it was finished from"
+        name = f"{match['source']}.glb"
+        # A studio run sits in output/<stem>/; pipeline.py writes output/<licence folder>/<stem>.glb.
+        candidates = [root / match["source"] / name, *sorted(root.glob(f"*/{name}"))]
+        found_files = [c for c in candidates if c.is_file()]
+        if not (source.is_file() and found_files):
+            return [], f"finish run, but its generated model {name} is not there to trace it"
+        wanted = sha256_file(source)
+        generated = next((c for c in found_files if sha256_file(c) == wanted), None)
+        if generated is None:
+            return [], f"finish run, but no {name} found is the model it was finished from"
         traced = [(p, r) for p in _beside(generated) if (r := _read(p)) and declared_hash_matches(r, generated)]
-        return traced, f"traced to {generated}"
+        # Nothing in an older finish run binds the finished bytes to it: inherited, so at most a warn.
+        return traced, f"{INHERITED_FINISH} {generated}"
     return [], None
 
 
@@ -195,10 +202,10 @@ def classify(name: str) -> tuple[list[str], list[str]]:
 def components(asset, config):
     found = _judge(asset, config)
     how = (found.get("details") or {}).get("found") or ""
-    if how.startswith(INHERITED) and found["status"] == "pass":
+    if how.startswith((INHERITED, INHERITED_FINISH)) and found["status"] == "pass":
         found = result("license.components", "warn", found["value"], found["threshold"],
-                       f"{found['message']}; licence {how.split(':')[0]} (a per-prop provenance sidecar would bind it)",
-                       found.get("details"))
+                       f"{found['message']}; licence {how.split(':')[0]} (a provenance sidecar with this file's "
+                       f"output.sha256 would bind it)", found.get("details"))
     return found
 
 

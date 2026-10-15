@@ -37,9 +37,9 @@ def parse_overrides(pairs: list[str]) -> dict:
     """
     overrides: dict[str, dict] = {}
     for pair in pairs:
-        name, _, raw = pair.partition("=")
-        check, _, setting = name.rpartition(".")
-        if not check or not setting or not _:
+        name, equals, raw = pair.partition("=")
+        check, dot, setting = name.rpartition(".")
+        if not (equals and dot and check and setting):
             raise ValueError(f"expected check.setting=value, got {pair!r}")
         try:
             value = json.loads(raw)
