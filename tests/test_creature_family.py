@@ -129,3 +129,24 @@ def test_classify_a_glb(tmp_path):
 
     found = cf.classify_glb(fx.write(tmp_path / "strip.glb"))
     assert found["family"] in cf.FAMILIES and found["legs"] == []
+
+
+@pytest.mark.parametrize("lift", [0.15, 0.06])  # well clear of the ground, and just short of it
+def test_a_generated_spider_whose_legs_stop_in_the_air_is_still_a_spider(lift):
+    parents, heads, _ = spider(8, lifted=("R1", "L2", "R3"), lift=lift)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "multileg" and len(found["legs"]) == 8
+
+
+def test_arms_hanging_in_an_a_pose_are_not_legs():
+    parents, heads, _ = humanoid(a_pose=True)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "humanoid" and len(found["legs"]) == 2 and len(found["arms"]) == 2
+
+
+def test_a_spider_faces_the_camera_whichever_way_its_feet_lean():
+    for splay in (0.25, -0.25):
+        parents, heads, _ = spider(8, splay=splay, palps=True)
+        found = cf.classify(parents, heads)
+        assert found["family"] == "multileg" and found["wings"] == [] and len(found["legs"]) == 8
+        assert found["frame"]["forward"][2] > 0.9

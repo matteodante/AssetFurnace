@@ -24,11 +24,14 @@ def chain(prefix, parent, points):
     return rows
 
 
-def humanoid():
+def humanoid(a_pose=False):
+    """A T-pose, or with `a_pose` arms hanging 45 degrees down."""
     rows = [("hips", None, (0, 1.0, 0))]
     rows += chain("spine", "hips", [(0, 1.15, 0), (0, 1.35, 0), (0, 1.5, 0), (0, 1.65, 0)])  # spine3 = neck
+    drop = 1.0 if a_pose else 0.0
     for side, x in (("L", 1), ("R", -1)):
-        rows += chain(f"arm{side}", "spine1", [(0.15 * x, 1.42, 0), (0.4 * x, 1.42, 0), (0.65 * x, 1.42, 0)])
+        rows += chain(f"arm{side}", "spine1", [(0.15 * x, 1.42, 0), (0.33 * x, 1.42 - 0.18 * drop, 0),
+                                                (0.5 * x, 1.42 - 0.35 * drop, 0)])
         rows += chain(f"leg{side}", "hips", [(0.1 * x, 0.95, 0), (0.1 * x, 0.5, 0.02), (0.1 * x, 0.08, 0),
                                               (0.1 * x, 0.0, 0.15)])
     return build(rows)
@@ -67,13 +70,27 @@ def quadruped(wings=False, tail=True):
     return build(rows)
 
 
-def spider(legs=8):
+def spider(legs=8, lifted=(), lift=0.15, splay=0.0, palps=False, twin=None):
+    """`lifted`: legs (like "R1") whose tips stop `lift` above the ground, as a generated
+    spider's do. `splay` moves every foot back (+) or forward (-). `palps` adds two short
+    feelers reaching forward and down from the head. `twin` (a leg number) doubles that
+    left leg's chain, a centimetre off."""
     rows = [("body", None, (0, 0.35, 0)), ("abdomen", "body", (0, 0.4, -0.35)), ("head", "body", (0, 0.36, 0.2))]
     for k in range(legs // 2):
         z = 0.15 - 0.1 * k
         for side, x in (("L", 1), ("R", -1)):
+            tip = lift if f"{side}{k}" in lifted else 0.0
             rows += chain(f"leg{side}{k}", "body", [(0.08 * x, 0.36, z), (0.35 * x, 0.6, z * 1.5),
-                                                      (0.6 * x, 0.25, z * 2), (0.7 * x, 0.0, z * 2.2)])
+                                                      (0.6 * x, 0.25 + tip, z * 2 - splay / 2),
+                                                      (0.7 * x, tip, z * 2.2 - splay)])
+    if twin:  # the auto-rig sometimes puts two chains inside one leg, side by side
+        x, z = 1, 0.15 - 0.1 * twin
+        rows += chain("twin", "body", [(0.08 * x, 0.37, z + 0.01), (0.35 * x, 0.61, z * 1.5 + 0.01),
+                                       (0.6 * x, 0.26, z * 2 + 0.01), (0.7 * x, 0.0, z * 2.2 + 0.01)])
+    if palps:
+        for side, x in (("L", 1), ("R", -1)):
+            rows += chain(f"palp{side}", "head", [(0.05 * x, 0.34, 0.26), (0.12 * x, 0.25, 0.34),
+                                                    (0.16 * x, 0.12, 0.4)])
     return build(rows)
 
 

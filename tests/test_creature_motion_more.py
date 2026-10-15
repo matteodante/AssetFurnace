@@ -85,3 +85,14 @@ def test_serpent_strike_lunges_the_head_and_keeps_the_tail(root):
 def test_new_families_have_clips():
     assert cm.clips_for("multileg") == ("walk", "attack")
     assert cm.clips_for("serpent") == ("slither", "attack")
+
+
+def test_two_chains_inside_one_leg_move_as_one():
+    rig, fam, n = rig_of(spider(8, twin=1))
+    frames = cm.multileg_walk(rig, fam)
+    legs = {leg["bones"][-1]: leg for leg in fam["legs"]}
+    twin, own = n["twin3"], n["legL13"]
+    assert twin in legs and own in legs
+    for f in frames:
+        p = positions(rig, f)
+        assert np.allclose(p[twin] - rig.heads[twin], p[own] - rig.heads[own], atol=1e-4)

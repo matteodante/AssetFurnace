@@ -5,8 +5,10 @@ Animating it needs to know which chains are legs, arms, wings, a tail or a neck,
 kind of body they make. That is all decided here from the tree's shape and where its
 joints sit, never from bone names or one creature's measurements:
 
-* a **leg** is a branch that hangs from the body and ends on the ground, touching it at
-  one spot (a tail or tentacle lying along the ground is not one);
+* a **leg** is a branch that hangs from the body and ends on or near the ground, touching
+  it at one spot (a tail or tentacle lying along the ground is not one). Once three legs are
+  found, long chains that reach out sideways and down count too: the auto-rig stops a
+  generated spider's leg bones at different heights, not all on the ground;
 * a leg is **digitigrade** when it stands on its toes: the mesh touches the ground only in
   front of the last joint (the hock), where a human foot puts its heel down behind the
   ankle. The joints alone cannot tell: SkinTokens puts a werewolf's hock and a booted
@@ -46,6 +48,8 @@ SUFFIX = ".family.json"
 # Fractions of the creature's height unless said otherwise. Provisional, like every
 # threshold the pilot has not calibrated yet.
 GROUND = 0.08            # a joint this close to the lowest one is on the ground
+NEAR_GROUND = 0.3        # of its attachment's height: a leg ends at least this low
+SPLAYED = 0.3            # of body size: a chain this long reaching out and down is a leg too
 LEG_ATTACH = 0.12        # a leg hangs from a body at least this far up
 CONTACT = 0.06           # of leg length: joints this low are the foot's contact
 DIGITIGRADE_JOINTS = 0.25  # of leg length: without a mesh, only a hock this high says digitigrade
@@ -126,6 +130,11 @@ class _Body:
         return path
 
 
+def _reaches_down(body: _Body, start: str, fork: str) -> bool:
+    """The branch from `fork` through `start` ends on or near the ground."""
+    return body.low[start] - body.ground <= max(GROUND * body.height, NEAR_GROUND * body.above(fork))
+
+
 def _legs(body: _Body) -> list[dict]:
     """Every branch that hangs from the body to one spot on the ground."""
     found = []
@@ -135,16 +144,16 @@ def _legs(body: _Body) -> list[dict]:
         if body.above(fork) < LEG_ATTACH * body.height:
             continue
         for start in body.kids[fork]:
-            if body.low[start] - body.ground > GROUND * body.height:
+            if not _reaches_down(body, start, fork):
                 continue
             path = body.lowest_path(start)
             top = body.above(start)
             # a trunk carrying two legs further on (a spine to the forelegs) is not a leg
-            if any(body.above(x) > 0.25 * top and sum(body.low[c] - body.ground <= GROUND * body.height
-                                                       for c in body.kids[x]) >= 2 for x in path[:-1]):
+            if any(body.above(x) > 0.25 * top and sum(_reaches_down(body, c, x) for c in body.kids[x]) >= 2
+                   for x in path[:-1]):
                 continue
             contact = [body.flat(body.heads[x]) for x in path if body.above(x) <= GROUND * body.height]
-            spread = max(float(np.linalg.norm(a - b)) for a in contact for b in contact)
+            spread = max((float(np.linalg.norm(a - b)) for a in contact for b in contact), default=0.0)
             if len(contact) >= 2 and spread > DRAG_SPREAD * body.above(fork):
                 continue  # lies along the ground: a tail or tentacle
             found.append({"fork": fork, "bones": path})
@@ -152,6 +161,33 @@ def _legs(body: _Body) -> list[dict]:
     # a knee pad or a toe that also reaches the ground sits inside a leg already found
     return [leg for leg in found
             if not any(a in starts for a in _path_up(leg["bones"][0], body.parents)[:-1])]
+
+
+def _splayed(body: _Body, legs: list[dict], left: np.ndarray) -> list[dict]:
+    """Long chains that reach out sideways and down from where legs attach, but stop short
+    of the ground: the rest of a many-legged creature's legs."""
+    taken = {b for leg in legs for b in _subtree(leg["bones"][0], body.kids)}
+    starts = {leg["bones"][0] for leg in legs}
+    found = []
+    for fork in body.order():
+        if fork in taken or (len(body.kids[fork]) < 2 and fork != body.root):
+            continue
+        if body.above(fork) < LEG_ATTACH * body.height:
+            continue
+        for start in body.kids[fork]:
+            branch = _subtree(start, body.kids)
+            if start in taken or starts & set(branch):
+                continue
+            tip = max(branch, key=lambda b: float(np.linalg.norm(body.heads[b] - body.heads[fork])))
+            path = [b for b in _path_up(tip, body.parents) if b in set(branch)]
+            reach = body.heads[tip] - body.heads[fork]
+            flat = body.flat(reach)
+            if (len(path) < 4 or _length(body, [fork, *path]) < SPLAYED * body.size
+                    or abs(float(reach @ left)) < 0.5 * float(np.linalg.norm(flat))
+                    or body.h[fork] - body.h[tip] < 0.15 * body.above(fork)):
+                continue
+            found.append({"fork": fork, "bones": path})
+    return found
 
 
 def _digitigrade(body: _Body, bones: list[str], forward: np.ndarray,
@@ -181,6 +217,10 @@ def _forward(body: _Body, legs: list[dict], front) -> np.ndarray:
             for leg in legs if len(leg["bones"]) >= 2]
     toes = np.mean(feet, axis=0) if feet else np.zeros(3)
     typical = float(np.mean([np.linalg.norm(f) for f in feet])) if feet else 0.0
+    if len(legs) >= 5:
+        # Many legs radiate from one hub: neither where they attach nor where their feet
+        # point says where the head is. A generated model faces the camera; trust that.
+        return hint
     starts = np.array([body.flat(body.heads[leg["bones"][0]]) for leg in legs])
     axis = None
     if len(legs) == 2:
@@ -228,6 +268,10 @@ def classify(parents: dict[str, str | None], heads: dict, up=(0.0, 1.0, 0.0), fr
     legs = _legs(body)
     forward = _forward(body, legs, front)
     left = _unit(np.cross(body.up, forward))
+    if len(legs) >= 3:
+        legs += _splayed(body, legs, left)
+        forward = _forward(body, legs, front)  # with every leg: five or more change the rule
+        left = _unit(np.cross(body.up, forward))
     soles = None
     if points is not None and len(points):
         points = np.asarray(points, float)
@@ -280,8 +324,10 @@ def classify(parents: dict[str, str | None], heads: dict, up=(0.0, 1.0, 0.0), fr
                 wings.append(mine.pop())
             arms += mine
     else:
+        # A wing is long and spreads out level or upwards; feelers and fangs reach down.
         trunk_length = _length(body, head_path)
-        wings = [x for x in lateral if x["length"] >= 0.5 * trunk_length]
+        wings = [x for x in lateral if x["length"] >= max(0.5 * trunk_length, SPLAYED * body.size)
+                 and body.h[x["fork"]] - body.h[x["bones"][-1]] < 0.15 * body.above(x["fork"])]
 
     attach = [x["fork"] for x in arms + wings] + [leg["fork"] for leg in legs if leg["fork"] in on_head]
     last = max((head_path.index(f) for f in attach), default=0)

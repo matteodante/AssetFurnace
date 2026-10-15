@@ -381,11 +381,28 @@ def _with_feet(rig: Rig, family: dict) -> dict:
     return {**family, "legs": legs}
 
 
+def twins(rig: Rig, legs: list[dict], near: float = 0.1) -> dict[int, int]:
+    """{leg: the leg it doubles}: chains whose feet stand within `near` of a leg length of
+    an earlier leg's. The auto-rig sometimes puts two chains inside one mesh leg; stepping
+    them apart tears the skin between them, so they must move as one."""
+    out: dict[int, int] = {}
+    for i, leg in enumerate(legs):
+        for j in range(i):
+            if j in out:
+                continue
+            gap = float(np.linalg.norm(rig.heads[leg["bones"][-1]] - rig.heads[legs[j]["bones"][-1]]))
+            if gap < near * _chain_length(rig, legs[j]["bones"]):
+                out[i] = j
+                break
+    return out
+
+
 def multileg_walk(rig: Rig, family: dict, frames: int | None = None) -> list[tuple[dict, np.ndarray]]:
     """Two alternating groups: each leg steps opposite its neighbours and its partner."""
     family = _with_feet(rig, family)
-    rows = leg_rows(family)
-    if len(rows["L"]) < 2 or len(rows["L"]) != len(rows["R"]):
+    double = twins(rig, family["legs"])
+    rows = {side: [i for i in row if i not in double] for side, row in leg_rows(family).items()}
+    if len(rows["L"]) < 2 or len(rows["R"]) < 2:
         raise ValueError(f"a crawl needs pairs of legs, found {len(rows['L'])} left and {len(rows['R'])} right")
     up, forward, _ = _frame(family)
     frames = frames or CRAWL["frames"]
@@ -394,6 +411,9 @@ def multileg_walk(rig: Rig, family: dict, frames: int | None = None) -> list[tup
         for rank, i in enumerate(rows[side]):
             phase[i] = 0.5 * ((rank + offset) % 2) + CRAWL["ripple"] * rank
     legs = family["legs"]
+    lead = {i: double.get(i, i) for i in range(len(legs))}  # a twin steps with the leg it doubles
+    for i in range(len(legs)):
+        phase.setdefault(i, phase.get(lead[i], 0.25))  # a leg straight under the body: off-beat
     root = rig.order[0]
     bob = CRAWL["bob"] * float(np.mean([_chain_length(rig, leg["bones"]) for leg in legs]))
     out = []
@@ -403,8 +423,8 @@ def multileg_walk(rig: Rig, family: dict, frames: int | None = None) -> list[tup
         turn: dict[str, np.ndarray] = {}
         toes = []
         for i, leg in enumerate(legs):
-            stride = CRAWL["stride"] * _chain_length(rig, leg["bones"])
-            fore_aft, rise = foot_offset(u, phase[i], CRAWL["duty"], stride, stride * CRAWL["lift_per_stride"])
+            stride = CRAWL["stride"] * _chain_length(rig, legs[lead[i]]["bones"])
+            fore_aft, rise = foot_offset(u, phase[lead[i]], CRAWL["duty"], stride, stride * CRAWL["lift_per_stride"])
             toes.append(rig.heads[leg["bones"][-1]] + forward * fore_aft + up * rise)
         root_pos = plant(rig, legs, turn, root_pos, toes, up)
         out.append((turn, root_pos))
@@ -414,8 +434,10 @@ def multileg_walk(rig: Rig, family: dict, frames: int | None = None) -> list[tup
 def multileg_attack(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[tuple[dict, np.ndarray]]:
     """Rear up on the back legs and lash out with the front pair."""
     family = _with_feet(rig, family)
-    rows = leg_rows(family)
+    double = twins(rig, family["legs"])
+    rows = {side: [i for i in row if i not in double] for side, row in leg_rows(family).items()}
     front = {rows["L"][0], rows["R"][0]} if rows["L"] and rows["R"] else set()
+    front |= {i for i, j in double.items() if j in front}
     up, forward, left = _frame(family)
     root = rig.order[0]
     legs = family["legs"]
@@ -424,8 +446,8 @@ def multileg_attack(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list
     out = []
     for index in range(frames + 1):
         t = index / frames
-        rear = _blend(t, 0.0, -3.0, -12.0, 4.0, 1.0)
-        lift = _blend(t, 0.0, 0.05, 0.45, 0.05, 0.0) * reach
+        rear = _blend(t, 0.0, -2.0, -7.0, 3.0, 1.0)
+        lift = _blend(t, 0.0, 0.04, 0.32, 0.04, 0.0) * reach
         lunge = _blend(t, 0.0, -0.02, 0.05, 0.3, 0.05) * reach
         turn = {root: axis_angle(left, rear)}
         root_pos = plant(rig, [legs[i] for i in standing], turn, rig.heads[root] + up * 0.3 * lift,
