@@ -6,6 +6,7 @@
     python scripts/style_bible.py use my-game                                 # "-" now means my-game
     python scripts/style_bible.py add - output/images/x/x.png --note "Colours are right." --kind creature
     python scripts/style_bible.py reject - wolf.png --note "Grey and photographic."
+    python scripts/style_bible.py reference - original.png --note "The original game's armour."
     python scripts/style_bible.py list -
     python scripts/style_bible.py prompt - creature "a forest troll" --references 2
     python scripts/style_bible.py refs - creature --k 2
@@ -47,7 +48,8 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("use", help="make a bible the active one").add_argument("name")
     commands.add_parser("bibles", help="list the registered bibles")
 
-    for name, text in (("add", "add an approved picture"), ("reject", "add a picture that is not the style")):
+    for name, text in (("add", "add an approved picture"), ("reject", "add a picture that is not the style"),
+                       ("reference", "add a style reference that is not ours (kept internal, never shipped)")):
         sub = commands.add_parser(name, help=text)
         sub.add_argument("bible")
         sub.add_argument("image", type=Path)
@@ -100,9 +102,10 @@ def run(args: argparse.Namespace) -> int:
         for known in registry.bibles(output):
             mark = "  (active)" if current and current["name"] == known["name"] else ""
             print(f"{known['name']}  {known['path']}{mark}")
-    elif args.command in ("add", "reject"):
+    elif args.command in ("add", "reject", "reference"):
         entry = sb.add(registry.find(output, args.bible), args.image, args.note, kind=args.kind,
-                       rejected=args.command == "reject", source_label=args.source)
+                       rejected=args.command == "reject", reference=args.command == "reference",
+                       source_label=args.source)
         print(f"{entry['sha256'][:8]}  {entry['file']}")
     elif args.command == "remove":
         print(f"removed {sb.remove(registry.find(output, args.bible), args.picture)['file']}")
@@ -112,11 +115,12 @@ def run(args: argparse.Namespace) -> int:
         root = registry.find(output, args.bible)
         data = sb.load(root)
         found = {"name": data["name"], "path": str(root), "images": data["images"],
-                 "rejected": data["rejected"], "problems": sb.problems(root)}
+                 "rejected": data["rejected"], "references": data["references"], "problems": sb.problems(root)}
         if args.json:
             print(json.dumps(found, indent=2))
         else:
-            for key, label in (("images", "approved"), ("rejected", "rejected")):
+            for key, label in (("references", "style references (internal)"), ("images", "approved"),
+                               ("rejected", "rejected")):
                 print(f"{label}: {len(found[key])}")
                 for e in found[key]:
                     print(f"  {e['sha256'][:8]}  {e.get('kind') or 'any':<14} {e['note']}")

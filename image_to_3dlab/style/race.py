@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 
 from image_to_3dlab.style import evaluate, refs, score
-from image_to_3dlab.style.bible import KINDS, load, sha256_file
+from image_to_3dlab.style.bible import KINDS, LISTS, load, sha256_file
 from image_to_3dlab.style.embed import Embedder, embed_paths
 
 LABELS = {"approved": True, "sent_back": False}
@@ -46,7 +46,7 @@ def load_labels(path: Path) -> list[dict]:
 
 def without_bible_pictures(root: Path, rows: list[dict]) -> tuple[list[dict], list[dict]]:
     data = load(root)
-    inside = {e["sha256"] for key in ("images", "rejected") for e in data[key]}
+    inside = {e["sha256"] for key in LISTS for e in data[key]}
     kept, dropped = [], []
     for row in rows:
         (dropped if sha256_file(row["path"]) in inside else kept).append(row)
