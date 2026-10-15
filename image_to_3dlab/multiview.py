@@ -28,7 +28,13 @@ import numpy as np
 from scipy import ndimage
 
 from image_to_3dlab.glb_turn import build_glb, parse_glb
-from image_to_3dlab.materials import REPEAT, Surface, transform_uv, wrap_uv
+from image_to_3dlab.materials import (
+    REPEAT,
+    Surface,
+    island_labels,
+    transform_uv,
+    wrap_uv,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "blender_render_views.py"
@@ -90,6 +96,7 @@ def render_views(asset: Path, folder: Path, *, size: int = 512, around: int = 16
     """Render the orbit with Blender, headless and on the CPU, and read the views back."""
     from image_to_3dlab.blender import find_blender
 
+    folder = Path(folder).resolve()     # Blender runs from the repo, not from the caller's folder
     render_plan(asset, folder, size, around)
     binary = blender or find_blender()
     if binary is None:
@@ -183,15 +190,32 @@ def vote(acc: Accumulator) -> tuple[np.ndarray, np.ndarray]:
     return labels, np.where(seen, mean.max(axis=-1), 0.0)
 
 
-def fill_unseen(values: np.ndarray, seen: np.ndarray, coverage: np.ndarray) -> np.ndarray:
-    """Give covered texels no view saw the value of the nearest texel that was seen."""
+def fill_unseen(values: np.ndarray, seen: np.ndarray, coverage: np.ndarray,
+                islands: np.ndarray | None = None) -> np.ndarray:
+    """Give covered texels no view saw the value of the nearest seen texel of their own island.
+
+    Atlas neighbours are not surface neighbours, so a fill never crosses into another UV
+    island; an island no view saw at all takes the nearest seen texel anywhere.
+    """
     if not seen.any():
         return values
-    _, (rows, cols) = ndimage.distance_transform_edt(~seen, return_indices=True)
-    nearest = values[rows, cols]
-    gap = coverage & ~seen
+    if islands is None:
+        islands = island_labels(coverage)
     out = values.copy()
-    out[gap] = nearest[gap]
+    gap = coverage & ~seen
+    _, (rows, cols) = ndimage.distance_transform_edt(~seen, return_indices=True)
+    out[gap] = values[rows, cols][gap]                       # fallback for unseen islands
+    for number, box in enumerate(ndimage.find_objects(islands), start=1):
+        if box is None:
+            continue
+        mine = islands[box] == number
+        own = seen[box] & mine
+        holes = gap[box] & mine
+        if not own.any() or not holes.any():
+            continue
+        _, (r, c) = ndimage.distance_transform_edt(~own, return_indices=True)
+        part = out[box]
+        part[holes] = values[box][r, c][holes]
     return out
 
 

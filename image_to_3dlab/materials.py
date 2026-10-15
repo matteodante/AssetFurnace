@@ -265,6 +265,9 @@ def referenced_outside_materials(document: dict, texture_index: int) -> bool:
 
 def _decode_image(glb: EditGLB, image_index: int, mode: str = "RGB") -> np.ndarray:
     image = glb.document["images"][image_index]
+    if image.get("mimeType") == "image/ktx2":
+        raise ValueError("the texture is KTX2 (KHR_texture_basisu), which this step cannot decode; "
+                         "export the GLB with PNG or JPEG textures first")
     if "bufferView" not in image:
         raise ValueError("only images embedded in the GLB are supported")
     view = glb.document["bufferViews"][image["bufferView"]]
@@ -414,7 +417,8 @@ def source_provenance(source: Path) -> dict:
             "note": "the source carried no provenance record"}
 
 
-def write_provenance(source: Path, source_sha256: str, record: dict, output: Path) -> Path:
+def write_provenance(source: Path, source_sha256: str, record: dict, output: Path,
+                     staged: Path | None = None, target: Path | None = None) -> Path:
     """Carry the source's licence record to the result, adding no models.
 
     The step only does image maths, so the result is licensed exactly as its source.
@@ -425,10 +429,40 @@ def write_provenance(source: Path, source_sha256: str, record: dict, output: Pat
     record["operation"] = OPERATION
     record["input"] = {"path": str(source), "sha256": source_sha256}
     # finalize_output keeps the licence classification under "output": update, never replace
-    record["output"] = {**(record.get("output") or {}), "path": str(output), "sha256": sha256_file(output)}
-    path = output.with_suffix(".provenance.json")
+    record["output"] = {**(record.get("output") or {}), "path": str(output),
+                        "sha256": sha256_file(staged or output)}
+    path = target or output.with_suffix(".provenance.json")
     path.write_text(json.dumps(record, indent=2), encoding="utf-8")
     return path
+
+
+def _publish(out_dir: Path, images, glb_bytes: bytes, glb_path: Path, sidecar: dict, sidecar_path: Path,
+             provenance) -> None:
+    """Stage every file under a temporary name, then put them in place, the sidecar last.
+
+    The sidecar is what Studio and batches read as "done". Nothing published changes
+    until every file has been written, so a failure part way leaves the last good result
+    as it was and only removes its own staging files.
+    """
+    staged = []
+
+    def stage(final: Path) -> Path:
+        temporary = out_dir / f".{final.name}.staging"
+        staged.append((temporary, final))
+        return temporary
+
+    try:
+        for final, array in images:
+            Image.fromarray(array).save(stage(final), format="PNG")
+        stage(glb_path).write_bytes(glb_bytes)
+        provenance(staged[-1][0], stage(glb_path.with_suffix(".provenance.json")))
+        stage(sidecar_path).write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
+    except BaseException:
+        for temporary, _ in staged:
+            temporary.unlink(missing_ok=True)
+        raise
+    for temporary, final in staged:
+        temporary.replace(final)
 
 
 def safe_name(name: str) -> str:
@@ -602,7 +636,7 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
     document = copy.deepcopy(glb.document)
     binary = glb.binary[:glb.buffer_size]
     users = _texture_users(document)
-    per_material = []
+    per_material, images = [], []
     for surface in found.values():
         material = document["materials"][surface.material]
         pbr = material["pbrMetallicRoughness"]
@@ -612,7 +646,7 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
         orm, maps = orm_image(glb, material, surface.image.shape[:2], ao_maps.get(surface.material))
         orm = fill_gutter(orm, coverage)
         written = {"orm": out_dir / f"{names[surface.material]}_ORM.png"}
-        Image.fromarray(orm).save(written["orm"])
+        images.append((written["orm"], orm))
 
         old = pbr.get("metallicRoughnessTexture")
         old_texture = document["textures"][old["index"]] if old is not None else None
@@ -654,15 +688,6 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
     drop_unused_extensions(document)
     glb_path = out_dir / f"{stem}.glb"
     sidecar_path = out_dir / f"{stem}.materials.json"
-    try:
-        # The GLB and its licence record first; the sidecar, which Studio and batches read
-        # as "done", only once both exist.
-        glb_path.write_bytes(build_glb(document, binary))
-        write_provenance(asset, source_sha256, licence, glb_path)
-    except BaseException:
-        for leftover in (glb_path, glb_path.with_suffix(".provenance.json"), sidecar_path):
-            leftover.unlink(missing_ok=True)
-        raise
     first = per_material[0]
     sidecar = {"schema": SIDECAR_SCHEMA, "asset": asset.name, "source_sha256": source_sha256,
                "status": "pass", "glb": glb_path.name, "zones": [], "checks": [],
@@ -671,6 +696,7 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
                             "srgb": {"orm": False}},
                "maps": first["maps"], "materials": per_material,
                "untextured": untextured_materials(glb.document)}
-    sidecar_path.write_text(json.dumps(sidecar, indent=2), encoding="utf-8")
+    _publish(out_dir, images, build_glb(document, binary), glb_path, sidecar, sidecar_path,
+             lambda staged, target: write_provenance(asset, source_sha256, licence, glb_path, staged, target))
     return MaterialsResult("pass", glb_path, sidecar_path,
                            {"orm": out_dir / first["textures"]["orm"]}, first["maps"])

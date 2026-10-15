@@ -5,6 +5,7 @@ test_multiview_blender.py."""
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -85,7 +86,8 @@ def test_covered_texels_no_view_saw_take_the_nearest_seen_value():
     seen = np.array([[True, False, False, False, False, True]])
     coverage = np.array([[True, True, True, True, True, False]])
     filled = mv.fill_unseen(values, seen, coverage)
-    assert filled[0, :, 0].tolist() == [1.0, 1.0, 1.0, 9.0, 9.0, 9.0]
+    # Texel 5 is seen but outside the island, so it lends nothing to the island's holes.
+    assert filled[0, :, 0].tolist() == [1.0, 1.0, 1.0, 1.0, 1.0, 9.0]
 
 
 def test_views_are_read_back_as_written(tmp_path):
@@ -115,3 +117,34 @@ def test_the_render_plan_says_what_blender_must_draw(tmp_path):
     assert plan["size"] == 64 and len(plan["directions"]) == 10
     tagged, _ = parse_glb((tmp_path / "views" / "tagged.glb").read_bytes())
     assert tagged["materials"][0]["name"] == "afmat_0"
+
+
+def test_unseen_texels_are_filled_from_their_own_island():
+    """Atlas neighbours are not surface neighbours: a fill never crosses into another island."""
+    values = np.zeros((1, 12, 1))
+    seen = np.zeros((1, 12), bool)
+    coverage = np.zeros((1, 12), bool)
+    islands = np.zeros((1, 12), np.int32)
+    coverage[0, 0:5] = True; islands[0, 0:5] = 1            # island 1: seen only at its left end
+    values[0, 0, 0], seen[0, 0] = 1.0, True
+    coverage[0, 6:9] = True; islands[0, 6:9] = 2            # island 2: seen at its left end, close by
+    values[0, 6, 0], seen[0, 6] = 9.0, True
+    coverage[0, 10:12] = True; islands[0, 10:12] = 3        # island 3: never seen
+    filled = mv.fill_unseen(values, seen, coverage, islands=islands)
+    assert filled[0, 0:5, 0].tolist() == [1.0] * 5           # not 9 from the nearer island
+    assert filled[0, 6:9, 0].tolist() == [9.0] * 3
+    assert filled[0, 10:12, 0].tolist() == [9.0, 9.0]        # no sample of its own: nearest anywhere
+
+
+def test_blender_gets_an_absolute_plan_path(tmp_path, monkeypatch):
+    asset = make_glb(tmp_path / "ball.glb", banded_albedo())
+    monkeypatch.chdir(tmp_path)
+    seen = {}
+
+    def fake_run(args, **kwargs):
+        plan = Path(args[-1])
+        seen["absolute"], seen["exists"] = plan.is_absolute(), plan.is_file()
+        (plan.parent / "views.json").write_text(json.dumps({"views": []}))
+
+    assert mv.render_views(asset, Path("views"), size=16, around=4, blender=Path("blender"), run=fake_run) == []
+    assert seen == {"absolute": True, "exists": True}

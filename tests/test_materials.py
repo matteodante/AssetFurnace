@@ -605,3 +605,31 @@ def test_script_writes_the_result_and_refuses_with_a_reason(banded, tmp_path, ca
     assert (tmp_path / "ok" / "banded.glb").exists()
     assert game_materials.main([str(banded), str(banded.parent)]) == 1      # its own folder
     assert "refused" in capsys.readouterr().out
+
+
+# --------------------------------------------------------------------------- PR 11 review
+
+def test_a_failed_rerun_leaves_the_published_result_untouched(banded, tmp_path, monkeypatch):
+    """Everything is staged first; the published files change only when the whole run succeeds."""
+    out = tmp_path / "out"
+    m.make_game_materials(banded, out)
+    before = {p.name: p.read_bytes() for p in out.iterdir()}
+
+    def full_disk(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(m, "write_provenance", full_disk)
+    with pytest.raises(OSError):
+        m.make_game_materials(banded, out)
+    assert {p.name: p.read_bytes() for p in out.iterdir()} == before
+
+
+def test_ktx2_textures_are_refused_with_a_reason(tmp_path):
+    asset = make_glb(tmp_path / "basis.glb", banded_albedo())
+    document, binary = parse_glb(asset.read_bytes())
+    document["images"][0]["mimeType"] = "image/ktx2"
+    document["textures"][0] = {"sampler": 0, "extensions": {"KHR_texture_basisu": {"source": 0}}}
+    document["extensionsUsed"] = document["extensionsRequired"] = ["KHR_texture_basisu"]
+    asset.write_bytes(build_glb(document, binary))
+    with pytest.raises(ValueError, match="KTX2"):
+        m.make_game_materials(asset, tmp_path / "out")

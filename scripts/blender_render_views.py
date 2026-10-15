@@ -37,6 +37,20 @@ def frame(corners, direction):
     return location, diagonal * 1.05
 
 
+def uv_set(node, depth: int = 0) -> str | None:
+    """The UV map a texture reads, found upstream through Mapping and other vector nodes."""
+    if node is None or depth > 8:
+        return None
+    if node.type == "UVMAP":
+        return node.uv_map or None
+    for socket in node.inputs:
+        if socket.links:
+            found = uv_set(socket.links[0].from_node, depth + 1)
+            if found:
+                return found
+    return None
+
+
 def save_array(bpy, exr: Path, size: int) -> None:
     """Keep an EXR pass as ``.npz`` float32, top row first, and drop the EXR."""
     import numpy as np
@@ -75,10 +89,9 @@ def main(plan_path: Path) -> int:
             colour.inputs["Color"].default_value = base.default_value
         index = int(material.name.split("_")[1].split(".")[0]) if material.name.startswith("afmat_") else -1
         uv_map = nodes.new("ShaderNodeUVMap")
-        source = base.links[0].from_node if base is not None and base.links else None
-        vector = source.inputs.get("Vector") if source is not None else None
-        if vector is not None and vector.links and vector.links[0].from_node.type == "UVMAP":
-            uv_map.uv_map = vector.links[0].from_node.uv_map   # the base colour's own UV set
+        found = uv_set(base.links[0].from_node) if base is not None and base.links else None
+        if found:
+            uv_map.uv_map = found          # the base colour's own UV set, through any Mapping node
         split = nodes.new("ShaderNodeSeparateXYZ")
         links.new(uv_map.outputs["UV"], split.inputs["Vector"])
         join = nodes.new("ShaderNodeCombineXYZ")
@@ -90,9 +103,21 @@ def main(plan_path: Path) -> int:
         geometry = nodes.new("ShaderNodeNewGeometry")
         normal = nodes.new("ShaderNodeEmission")
         links.new(geometry.outputs["Normal"], normal.inputs["Color"])
+        alpha = principled.inputs.get("Alpha") if principled else None
         for name, node in (("color", colour), ("uv", uv), ("normal", normal)):
-            passes[name].append((links, node, output))
-        material.blend_method = "OPAQUE" if hasattr(material, "blend_method") else None
+            shader = node.outputs["Emission"]
+            if alpha is not None and (alpha.links or alpha.default_value < 1.0):
+                # Keep cut-outs and blends see-through in every pass: a hair card or a leaf
+                # must not hide the surface behind it, nor claim its pixels.
+                mix = nodes.new("ShaderNodeMixShader")
+                if alpha.links:
+                    links.new(alpha.links[0].from_socket, mix.inputs["Fac"])
+                else:
+                    mix.inputs["Fac"].default_value = alpha.default_value
+                links.new(nodes.new("ShaderNodeBsdfTransparent").outputs["BSDF"], mix.inputs[1])
+                links.new(shader, mix.inputs[2])
+                shader = mix.outputs["Shader"]
+            passes[name].append((links, shader, output))
 
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
@@ -119,8 +144,8 @@ def main(plan_path: Path) -> int:
         camera.data.clip_end = scale * 10
         camera.rotation_euler = Vector(direction).to_track_quat("-Z", "Z" if abs(direction[2]) < 0.99 else "Y").to_euler()
         for name, extension in (("color", "PNG"), ("uv", "OPEN_EXR"), ("normal", "OPEN_EXR")):
-            for links, node, output in passes[name]:
-                links.new(node.outputs["Emission"], output.inputs["Surface"])
+            for links, shader, output in passes[name]:
+                links.new(shader, output.inputs["Surface"])
             settings = scene.render.image_settings
             settings.file_format = extension
             settings.color_mode = "RGBA"
