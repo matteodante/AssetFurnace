@@ -56,7 +56,8 @@ def _inside(output: Path, relative: str, what: str) -> Path:
 
 
 def _brief(item: dict) -> dict:
-    return {k: item.get(k) for k in ("key", "state", "status", "summary", "notes", "updated_at", "asset_sha256")} | {
+    return {k: item.get(k) for k in ("key", "state", "status", "summary", "notes", "updated_at", "asset_sha256",
+                                     "source", "kind")} | {
         "asset_url": url_for(item.get("asset")), "name": Path(item.get("asset") or "").name}
 
 

@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new version is checked. `scripts/check_asset.py` checks and queues a GLB,
   `scripts/review_queue.py` lists and decides, and the studio serves `/api/review/...`.
   Decisions are also recorded as `mark_asset` verdicts.
+  `image_to_3dlab.checks.enqueue_for_review(glb, key, source=..., kind=...)` lets a batch queue
+  an output before or after its checks.
 - **Review** in Studio: the queue of checked assets, a form to check a Library asset against
   a reference, and a review panel in place of Steps: the model turns 360°, the reference turns
   beside the checks, four silhouette overlays show where the outlines differ, and Approve or

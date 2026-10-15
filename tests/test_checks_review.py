@@ -113,3 +113,32 @@ def test_check_and_enqueue_writes_the_report_and_queues_it(tmp_path, log):
     [item] = review.queue(review.load(log))
     assert item["key"] == "barrel"          # no key given: the file's name
     assert item["status"] == report["status"]
+
+
+def test_a_batch_output_can_be_queued_before_any_check_ran(tmp_path, log):
+    """Feature 1 queues batch outputs; the checks step may not have run yet."""
+    glb = fx.clean(tmp_path / "row_07.glb")
+    item = review.enqueue_for_review(glb, "row_07", source="batch:props-01", kind="prop", log=log, now=T[0])
+    assert item["state"] == "to_review"
+    assert item["status"] is None and item["summary"] == {"fail": [], "warn": []}
+    assert item["source"] == "batch:props-01" and item["kind"] == "prop"
+    assert item["asset"] == str(glb.resolve())
+    [line] = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()]
+    assert line["asset_sha256"] == checks.Asset(glb=glb).sha256
+
+
+def test_queueing_with_a_report_carries_its_status(tmp_path, log):
+    glb = fx.clean(tmp_path / "row_08.glb")
+    fx.sidecar(glb, fx.PIXAL3D_RECORD)
+    report = checks.run_checks(checks.Asset(glb=glb), only=["mesh.holes"])
+    path = checks.write_report(report)
+    item = review.enqueue_for_review(glb, "row_08", source="batch:props-01", report=report,
+                                     report_file=path, log=log)
+    assert item["status"] == "pass" and item["report"] == str(path)
+
+
+def test_a_report_for_another_file_is_refused(tmp_path, log):
+    glb = fx.clean(tmp_path / "a.glb")
+    other = checks.run_checks(checks.Asset(glb=fx.cube(tmp_path / "b.glb")), only=["mesh.holes"])
+    with pytest.raises(ValueError, match="different file"):
+        review.enqueue_for_review(glb, "a", report=other, log=log)

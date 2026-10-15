@@ -5,7 +5,7 @@
 import { createModelViewport, disposeModelViewport } from '../components/model-viewport.js';
 import { closeSheet } from './pages.js';
 import {
-  STATE_LABELS, STATUS_LABELS, queueSections, summaryLine, checkRows, overlays, canDecide,
+  STATE_LABELS, STATUS_LABELS, statusLabel, queueSections, summaryLine, checkRows, overlays, canDecide,
   checkChoices, checksRequest,
 } from './review-model.js';
 
@@ -35,7 +35,7 @@ const choiceLabel = (choice) => `${choice.name} · ${choice.file.split('/').pop(
 function itemRow(item) {
   const note = item.notes?.length ? `<span class="rv-note">“${esc(item.notes[item.notes.length - 1].note)}”</span>` : '';
   return `<li><button class="rv-item ${esc(item.state)}" data-key="${esc(item.key)}">
-    <span class="rv-chip ${esc(item.status)}">${esc(STATUS_LABELS[item.status] || item.status)}</span>
+    <span class="rv-chip ${esc(item.status)}">${esc(statusLabel(item.status))}</span>
     <span class="rv-what"><b>${esc(item.name || item.key)}</b>
       <span class="meta">${esc(item.key)} · ${esc(summaryLine(item))} · ${esc(String(item.updated_at || '').slice(0, 16).replace('T', ' '))}</span>
       ${note}</span></button></li>`;
@@ -132,7 +132,7 @@ export function renderReviewPanel(root, item, { viewer, onDecided }) {
   const shots = overlays(item.report);
   const last = item.notes?.[item.notes.length - 1];
   root.innerHTML = `<li class="rv-panel">
-    <div class="rv-head"><span class="rv-chip ${esc(item.status)}">${esc(STATUS_LABELS[item.status] || item.status)}</span>
+    <div class="rv-head"><span class="rv-chip ${esc(item.status)}">${esc(statusLabel(item.status))}</span>
       <b>${esc(STATE_LABELS[item.state] || item.state)}</b><span class="meta">${esc(item.key)} · version ${esc(String(item.asset_sha256 || '').slice(0, 8))}</span></div>
     ${last ? `<p class="rv-last"><span class="meta">Last note (${esc(last.decision === 'sent_back' ? 'sent back' : 'approved')}):</span> ${esc(last.note)}</p>` : ''}
     <label class="check"><input type="checkbox" data-turn checked><span>Turn 360°</span></label>

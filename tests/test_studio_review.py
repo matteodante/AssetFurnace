@@ -35,10 +35,12 @@ def test_the_queue_reads_to_review_then_sent_back_then_approved():
     out = _run(f"""const q = {json.dumps(QUEUE)};
       console.log(JSON.stringify({{
         sections: m.queueSections(q).map((s) => [s.id, s.items.map((i) => i.key)]),
-        count: m.waitingCount(q), lines: q.items.map(m.summaryLine).concat(m.summaryLine(q.approved[0])) }}));""")
+        count: m.waitingCount(q), lines: q.items.map(m.summaryLine).concat(m.summaryLine(q.approved[0])),
+        unchecked: [m.summaryLine({{status: null}}), m.statusLabel(null), m.statusLabel('fail')] }}));""")
     assert out["sections"] == [["to_review", ["b"]], ["sent_back", ["a"]], ["approved", ["c"]]]
     assert out["count"] == 1
     assert out["lines"] == ["1 fail", "2 warn", "All checks pass"]
+    assert out["unchecked"] == ["Not checked yet", "Not checked", "Fail"]
 
 
 @needs_node

@@ -87,7 +87,7 @@ def fold(events: list[dict]) -> dict[str, dict]:
             same_version = item.get("asset_sha256") == event.get("asset_sha256")
             if not (same_version and item.get("state") in DECISIONS):
                 item["state"] = "to_review"
-            for field in ("asset", "asset_sha256", "report", "status", "summary", "profile"):
+            for field in ("asset", "asset_sha256", "report", "status", "summary", "profile", "source", "kind"):
                 item[field] = event.get(field)
         elif event["event"] in DECISIONS:
             if item is None or item.get("asset_sha256") != event.get("asset_sha256"):
@@ -112,13 +112,35 @@ def queue(events: list[dict]) -> list[dict]:
 
 
 def enqueue(log: Path, report: dict, report_file: str | Path, key: str | None = None,
-            now: str | None = None) -> dict:
+            now: str | None = None, source: str | None = None, kind: str | None = None) -> dict:
     """Record that the checks ran on a version; return the asset's new state."""
     key = safe_key(key or report.get("asset_key") or key_for(Path(report["asset"])))
     _append(log, {"event": "queued", "key": key, "at": _now(now), "asset": report["asset"],
                   "asset_sha256": report["asset_sha256"], "report": str(report_file),
-                  "status": report["status"], "summary": summary(report), "profile": report.get("profile")})
+                  "status": report["status"], "summary": summary(report), "profile": report.get("profile"),
+                  "source": source, "kind": kind})
     return fold(load(log))[key]
+
+
+def enqueue_for_review(glb: str | Path, key: str, *, source: str | None = None, kind: str | None = None,
+                       report: dict | None = None, report_file: str | Path | None = None,
+                       log: Path = LOG, now: str | None = None) -> dict:
+    """Put a GLB in the review queue, with or without a checks report. Stable: feature 1 calls it.
+
+    `key` is the asset's id (a batch row's id); `source` says who queued it ("batch:<name>"),
+    `kind` what it is (prop, creature, equipment_part). Without a report the item's status
+    is None: the checks have not run. A report must be for this very file (same sha256).
+    """
+    from image_to_3dlab.provenance import sha256_file
+
+    glb = Path(glb).resolve()
+    sha = sha256_file(glb)
+    if report is not None:
+        if report.get("asset_sha256") != sha:
+            raise ValueError(f"the report is for a different file than {glb.name}")
+        return enqueue(log, {**report, "asset": str(glb)}, report_file or "", key, now, source, kind)
+    empty = {"asset": str(glb), "asset_sha256": sha, "status": None, "results": [], "profile": None}
+    return enqueue(log, empty, "", key, now, source, kind)
 
 
 def decide(log: Path, key: str, decision: str, note: str = "", now: str | None = None) -> dict:

@@ -32,9 +32,9 @@ from image_to_3dlab.checks.registry import (
     validate_result,
     write_report,
 )
-from image_to_3dlab.checks.review import check_and_enqueue
+from image_to_3dlab.checks.review import check_and_enqueue, enqueue_for_review
 
 __all__ = [
-    "REGISTRY", "STATUSES", "Asset", "check_and_enqueue", "find_validator", "load_profile", "profile_names", "register",
+    "REGISTRY", "STATUSES", "Asset", "check_and_enqueue", "enqueue_for_review", "find_validator", "load_profile", "profile_names", "register",
     "report_path", "result", "run_checks", "validate_result", "write_report",
 ]

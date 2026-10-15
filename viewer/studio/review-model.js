@@ -2,6 +2,8 @@
 
 export const STATE_LABELS = { to_review: 'To review', sent_back: 'Sent back', approved: 'Approved' };
 export const STATUS_LABELS = { pass: 'Pass', warn: 'Warn', fail: 'Fail' };
+/** The chip text for an item's status; a batch can queue an asset before its checks run. */
+export const statusLabel = (status) => STATUS_LABELS[status] || 'Not checked';
 export const VIEW_LABELS = { front: 'Front', side: 'Side', three_quarter: 'Three-quarter', top: 'Top' };
 
 /** The queue split the way the sheet shows it: to review first, then sent back, then approved. */
@@ -19,8 +21,9 @@ export function waitingCount(payload) {
   return (payload?.items ?? []).filter((i) => i.state === 'to_review').length;
 }
 
-/** "2 fail · 1 warn", or "All checks pass". */
+/** "2 fail · 1 warn", "All checks pass", or "Not checked yet" (queued by a batch before its checks). */
 export function summaryLine(item) {
+  if (item?.status == null) return 'Not checked yet';
   const fail = item?.summary?.fail?.length ?? 0, warn = item?.summary?.warn?.length ?? 0;
   const parts = [fail && `${fail} fail`, warn && `${warn} warn`].filter(Boolean);
   return parts.length ? parts.join(' · ') : 'All checks pass';
