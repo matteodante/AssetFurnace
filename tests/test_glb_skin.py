@@ -51,3 +51,18 @@ def test_cubic_keys_follow_their_tangents(tmp_path):
 def test_more_than_one_skin_is_refused(tmp_path):
     with pytest.raises(ValueError, match="skin"):
         SkinnedGLB(fx.write(tmp_path / "two.glb", second_skin=True))
+
+
+def test_a_second_weight_set_is_read(tmp_path):
+    # all of each vertex's weight sits in WEIGHTS_1, on the upper bone: the strip must follow it
+    glb = SkinnedGLB(fx.write(tmp_path / "eight.glb", {"bend": [(0.0, fx.turn_z(0)), (1.0, fx.turn_z(90))]},
+                              second_weights=True))
+    posed = glb.deform(glb.pose(0, 1.0))
+    assert np.allclose(posed[0], [1.0, 1.0, 0.0], atol=1e-5)  # (0, 0) turned 90 degrees about (0, 1)
+
+
+def test_rotations_turn_at_a_steady_rate_between_keys(tmp_path):
+    glb = SkinnedGLB(fx.write(tmp_path / "half.glb", {"half": [(0.0, fx.turn_z(0)), (1.0, fx.turn_z(180))]}))
+    corner = glb.deform(glb.pose(0, 0.25))[5] - np.array([0, 1, 0])  # (0.5, 1) from the joint at rest
+    angle = np.degrees(np.arctan2(corner[1], corner[0])) - np.degrees(np.arctan2(1, 0.5))
+    assert abs(angle - 45.0) < 0.01

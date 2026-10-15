@@ -123,7 +123,9 @@ def measure_clip(rig, animation: int, duration: float, config: dict,
         bad = (ratio > config.get("stretch", 2.0)) | (ratio < config.get("squash", 0.4))
         stretched = max(stretched, 100.0 * float(bad.mean()) if len(bad) else 0.0)
         # where each triangle's own skinning carries its rest normal (its first corner's matrix)
-        carried = np.einsum("fij,fj->fi", blend[mesh.faces[:, 0], :3, :3], bind_normal)
+        corner = blend[mesh.faces[:, 0], :3, :3]
+        # a mirroring skin matrix reverses the winding, and with it the normal's sign
+        carried = np.einsum("fij,fj->fi", corner, bind_normal) * np.sign(np.linalg.det(corner))[:, None]
         turned = np.einsum("fi,fi->f", _normals(posed, mesh.faces), carried)[keep_faces]
         flipped = max(flipped, 100.0 * float((turned < 0).mean()) if len(turned) else 0.0)
         for bone, track in tracks.items():

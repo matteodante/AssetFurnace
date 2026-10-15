@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -23,10 +22,7 @@ from image_to_3dlab import creature_family  # noqa: E402
 CLIPS_SCRIPT = REPO / "scripts" / "creature_clips.py"
 AUTO = "auto"
 CHOICES = (AUTO, *creature_family.FAMILIES)
-PROCEDURAL_LICENSE = {
-    "name": "MIT",
-    "note": "Procedural test clip made by AssetFurnace (scripts/creature_motion.py); no motion data or model.",
-}
+PROCEDURAL_LICENSE = creature_family.PROCEDURAL_LICENSE
 
 
 def parse_family(value: Any) -> str:
@@ -54,14 +50,9 @@ def record_clips(rigged: Path, rig_record: dict[str, Any]) -> list[Path]:
     found = creature_family.read_family(rigged) or {}
     written = []
     for clip in clip_files(rigged):
-        record = dict(rig_record)
-        record.update({
-            "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "tool": "viewer Animate tab: scripts/creature_clips.py",
-            "motion": {"clip": clip.stem.removeprefix(rigged.stem.removesuffix("_rigged") + "_"),
-                       "family": found.get("family"), "made_with": "procedural test clip",
-                       "license": PROCEDURAL_LICENSE},
-        })
+        name = clip.stem.removeprefix(rigged.stem.removesuffix("_rigged") + "_")
+        record = creature_family.clip_record(rig_record, name, found.get("family"),
+                                             tool="viewer Animate tab: scripts/creature_clips.py")
         path = clip.with_suffix(".provenance.json")
         path.write_text(json.dumps(record, indent=2), encoding="utf-8")
         written.append(path)

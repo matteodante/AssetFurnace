@@ -129,3 +129,19 @@ def test_classify_a_glb(tmp_path):
 
     found = cf.classify_glb(fx.write(tmp_path / "strip.glb"))
     assert found["family"] in cf.FAMILIES and found["legs"] == []
+
+
+def test_legs_on_one_hub_still_split_front_and_back():
+    parents, heads, _ = quadruped(hub=True)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "quadruped"
+    assert sorted((leg["end"], leg["side"]) for leg in found["legs"]) == [
+        ("back", "L"), ("back", "R"), ("front", "L"), ("front", "R")]
+
+
+def test_a_clip_record_carries_the_rigs_licence(tmp_path):
+    rig = {"license": {"name": "MIT"}, "rig": {"tool": "SkinTokens"}}
+    record = cf.clip_record(rig, "digitigrade-walk", "digitigrade", tool="test")
+    assert record["license"] == {"name": "MIT"} and record["rig"] == {"tool": "SkinTokens"}
+    assert record["motion"]["clip"] == "digitigrade-walk" and record["motion"]["license"]["name"] == "MIT"
+    assert cf.clip_record(None, "x-walk", "x", tool="test")["license"] is None  # unknown, never invented

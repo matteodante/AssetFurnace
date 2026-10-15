@@ -78,3 +78,10 @@ def test_turning_the_whole_body_round_is_not_crossing_the_feet(tmp_path):
     (tmp_path / "spin_rigged.family.json").write_text(json.dumps(family), encoding="utf-8")
     found = run(glb)["results"][0]
     assert found["details"]["clips"]["spin"]["crossed"] == [], found
+
+
+def test_a_mirrored_rig_that_does_not_move_has_no_flips(tmp_path):
+    glb = fx.write(tmp_path / "mirror.glb", {"still": [(0.0, fx.turn_z(0)), (1.0, fx.turn_z(0))]},
+                   rest_scale=[-1, 1, 1])
+    found = run(glb)["results"][0]
+    assert found["details"]["clips"]["still"]["flipped_percent"] == 0.0, found

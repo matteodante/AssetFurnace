@@ -50,12 +50,13 @@ def werewolf():
     return build(rows, shuffle_seed=3)
 
 
-def quadruped(wings=False, tail=True):
-    """A dog-ish animal facing +Z: hips at the back, chest at the front."""
+def quadruped(wings=False, tail=True, hub=False):
+    """A dog-ish animal facing +Z: hips at the back, chest at the front. With `hub`, all
+    four legs hang from the hips joint, as an auto-rig sometimes builds them."""
     rows = [("hips", None, (0, 0.6, -0.4))]
     rows += chain("spine", "hips", [(0, 0.62, -0.1), (0, 0.63, 0.25), (0, 0.8, 0.45), (0, 0.85, 0.65)])
     for side, x in (("L", 1), ("R", -1)):
-        rows += chain(f"front{side}", "spine1", [(0.12 * x, 0.55, 0.25), (0.12 * x, 0.3, 0.22),
+        rows += chain(f"front{side}", "hips" if hub else "spine1", [(0.12 * x, 0.55, 0.25), (0.12 * x, 0.3, 0.22),
                                                    (0.12 * x, 0.06, 0.24), (0.12 * x, 0.0, 0.32)])
         rows += chain(f"back{side}", "hips", [(0.12 * x, 0.55, -0.42), (0.12 * x, 0.32, -0.32),
                                                 (0.12 * x, 0.1, -0.48), (0.12 * x, 0.0, -0.4)])
