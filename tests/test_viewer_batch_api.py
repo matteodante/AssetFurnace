@@ -354,3 +354,21 @@ def test_a_checks_only_rows_glb_inside_output_is_in_the_library(output, monkeypa
     batch.run_batch(batch.load_batch(spec))
     (asset,) = [a for a in assets_api.list_assets(output) if a["model"]]
     assert asset["model"] == "imported/crate.glb"
+
+
+
+def test_a_batch_never_takes_over_a_library_models_node(output, monkeypatch):
+    """A checks-only batch on a GLB the Library already shows adds no second node."""
+    from image_to_3dlab.batch_steps import StepResult
+
+    monkeypatch.setitem(batch.STEPS, "checks", fake_step(lambda ctx: StepResult()))
+    run = output / "knight__pixal3d__1"
+    run.mkdir()
+    glb = run / f"{run.name}.glb"
+    glb.write_bytes(b"glTFknight")
+    spec = output.parent / "checks.json"
+    spec.write_text(json.dumps({"schema_version": 1, "name": "checked", "rows": [
+        {"id": "SK_Knight", "asset": str(glb), "steps": ["checks"]}]}))
+    batch.run_batch(batch.load_batch(spec))
+    models = [a for a in assets_api.list_assets(output) if a["model"]]
+    assert [a["model"] for a in models] == [f"{run.name}/{run.name}.glb"]

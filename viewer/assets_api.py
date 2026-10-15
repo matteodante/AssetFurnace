@@ -193,6 +193,10 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
     from batch_api import library_nodes  # a batch's finished rows are assets too (docs/batches.md)
 
     batched = library_nodes(output)
+    # a batch that only checked or exported a GLB the Library already shows adds no
+    # second node for it: that one would take over the original's rigs and props
+    known = {model["file"].resolve() for model in models}
+    batched["model"] = [model for model in batched["model"] if model["file"].resolve() not in known]
     pictures, models = pictures + batched["picture"], models + batched["model"]
     finishes = finishes + batched["finished"]
 

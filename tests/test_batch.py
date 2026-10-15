@@ -1191,3 +1191,80 @@ def test_the_index_lists_this_runs_picture_not_a_leftover(tmp_path, monkeypatch,
     batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
     index = json.loads((tmp_path / "out" / "lot" / batch.INDEX_FILE).read_text())
     assert index["rows"][0]["references"] == ["rows/SM_Crate/input/second.png"]
+
+
+
+def test_a_research_only_source_refuses_a_commercial_run(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec = _asset_row_spec(tmp_path, {"output": {"classification": "research-only"}},
+                           commercial_intent=True)
+    with pytest.raises(batch.BatchError, match="non-commercial"):
+        batch.load_batch(spec)
+    spec2 = _asset_row_spec(tmp_path, {"output": {"classification": "research-only"}})
+    batch.load_batch(spec2)   # private, non-commercial showcase: fine
+
+
+def test_the_run_reads_the_usable_record_past_a_damaged_one(tmp_path, monkeypatch):
+    seen = {}
+
+    def finish(ctx):
+        from image_to_3dlab.batch_steps import StepResult
+        seen["sidecar"] = ctx.sidecar.name
+        return StepResult()
+
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(finish))
+    asset = tmp_path / "old" / "knight.glb"
+    asset.parent.mkdir()
+    asset.write_bytes(b"glTF")
+    asset.with_suffix(".provenance.json").write_text("{ broken")
+    asset.with_suffix(".json").write_text(json.dumps({"backend": "pixal3d"}))
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1, "output": {"directory": "out"},
+        "rows": [{"id": "SK_Knight", "asset": "old/knight.glb", "images": [],
+                  "steps": ["finish"]}]}))
+    install_fake_generator(monkeypatch)
+    batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
+    assert seen["sidecar"] == "knight.json"
+
+
+def test_a_rows_own_parameters_beat_a_default_seed(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=2)
+    spec = json.loads(spec_path.read_text())
+    spec["defaults"]["seed"] = 42
+    spec["rows"][0]["parameters"] = {"seed": 7}
+    spec["rows"][1]["seed"] = 9
+    spec_path.write_text(json.dumps(spec))
+    first, second = batch.load_batch(spec_path).rows
+    assert first.parameters["seed"] == 7 and second.parameters["seed"] == 9
+
+
+def test_a_staged_copy_stands_in_only_for_the_path_the_row_ran_with(tmp_path, monkeypatch,
+                                                                     fake_finish):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    batch.run_batch(batch.load_batch(spec_path))
+    (tmp_path / "refs" / "row01.png").unlink()
+    batch.load_batch(spec_path)   # same path as before: the staged copy stands in
+    spec = json.loads(spec_path.read_text())
+    spec["rows"][0]["images"] = ["elsewhere/row01.png"]   # edited to another, missing path
+    spec_path.write_text(json.dumps(spec))
+    with pytest.raises(batch.BatchError, match="does not exist"):
+        batch.load_batch(spec_path)
+
+
+def test_a_misspelt_output_field_is_refused(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1, output={"direcotry": "../big-disk"})
+    with pytest.raises(batch.BatchError, match="direcotry"):
+        batch.load_batch(spec_path)
+
+
+def test_the_same_bytes_from_another_batch_are_queued_again(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch)
+    for name in ("first", "second"):
+        spec_path = write_spec(tmp_path, rows=1, name=name)
+        batch.run_batch(batch.load_batch(spec_path))
+    events = [json.loads(line) for line in (tmp_path / batch.REVIEW_LOG).read_text().splitlines()]
+    assert [event["source"] for event in events] == ["batch:first", "batch:second"]
+    assert events[0]["asset_sha256"] == events[1]["asset_sha256"]

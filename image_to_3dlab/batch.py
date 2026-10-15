@@ -117,6 +117,8 @@ class BatchRow:
     options: dict[str, dict[str, Any]] = field(default_factory=dict)   # per step
     size_cm: float | None = None   # the asset's real size, for export_unreal
     measure: str | None = None     # what size_cm measures: "height" or "longest"
+    # the images as the spec named them, before a moved one was read from its staged copy
+    given_images: tuple[str, ...] = ()
 
     def fingerprint(self) -> str:
         """What the row asks for, files by content: moving the spec does not re-run it."""
@@ -229,8 +231,9 @@ def class_problem(classification: str, intent: dict[str, Any],
     if not policy.get("allow_conditional", True):
         return f"it is {classification}; the policy disallows conditional models"
     if classification == "research-only" and not (
-            intent["use_case"] == "showcase" and intent["distribution"] == "private"):
-        return "it is research-only (non-commercial): a private showcase only"
+            intent["use_case"] == "showcase" and intent["distribution"] == "private"
+            and not intent.get("commercial_intent")):
+        return "it is research-only (non-commercial): a private, non-commercial showcase only"
     if (classification == "territory-restricted" and intent["use_case"] == "game"
             and intent["distribution"] == "worldwide"):
         return "it is territory-restricted, not cleared for worldwide game distribution"
@@ -322,6 +325,9 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
     if not isinstance(output_field, dict):
         problems.append('output must be an object, like {"directory": "../output/batches"}')
         output_field = {}
+    elif set(output_field) - {"directory"}:
+        # a misspelt directory would silently write to the default folder
+        problems.append(f"output: unknown field(s) {', '.join(sorted(set(output_field) - {'directory'}))}")
     output = output_field.get("directory")
     if output is not None and not isinstance(output, str):
         problems.append(f"output.directory must be a folder path, not {output!r}")
@@ -346,10 +352,16 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
     problems += [f"defaults: unknown field {key!r}"
                  for key in sorted(set(defaults) - (ROW_KEYS - {"id", "images", "asset"}))]
 
+    # the images each row ran with last time, as the spec gave them: a staged copy stands
+    # in for a moved image only if the spec still names that same path
+    last = read_json(output_dir / name / SPEC_COPY)
+    ran_with = {row.get("id"): set(row.get("given_images") or [])
+                for row in (last or {}).get("rows", []) if isinstance(row, dict)}
     rows, seen = [], set()
     for number, raw in enumerate(raw_rows, start=1):
         row, row_problems = _parse_row(raw, defaults, base, number,
-                                       staged=output_dir / name / "rows")
+                                       staged=output_dir / name / "rows",
+                                       ran_with=ran_with)
         problems += row_problems
         if row is None:
             continue
@@ -438,7 +450,8 @@ def _read_csv(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
 
 
 def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
-               staged: Path | None = None) -> tuple[BatchRow | None, list[str]]:
+               staged: Path | None = None, ran_with: dict[str, set[str]] | None = None,
+               ) -> tuple[BatchRow | None, list[str]]:
     if not isinstance(raw, dict):
         return None, [f"row {number}: must be an object"]
     label = f"row {raw.get('id', number)}"
@@ -473,12 +486,16 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
         problems.append(f"{label}: asset must be a file path")
         value = {**value, "asset": None}
     images = tuple((base / image).resolve() for image in raw_images)
+    given = tuple(str(image) for image in images)
     if staged is not None:
         # an image moved away after its row ran is still in the row's folder: a resume of
-        # the rest of the batch reads that copy (same bytes, so the row stays done)
+        # the rest of the batch reads that copy (same bytes, so the row stays done). Only
+        # for the path it ran with: a spec edited to name another path is a new input.
         copies = staged / row_id / "input"
-        images = tuple(image if image.is_file() or not (copies / image.name).is_file()
-                       else copies / image.name for image in images)
+        known = (ran_with or {}).get(row_id, set())
+        images = tuple(copies / image.name
+                       if not image.is_file() and str(image) in known
+                       and (copies / image.name).is_file() else image for image in images)
     problems += [f"{label}: image does not exist: {image}"
                  for image in images if not image.is_file()]
     names = [image.name.lower() for image in images]
@@ -511,16 +528,17 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
     if not isinstance(backend, str):
         problems.append(f"{label}: backend must be a name, not {backend!r}")
         backend = DEFAULT_BACKEND
+    # defaults first (their parameters, then their seed), then the row's: a row's own
+    # parameters beat a default seed, and its own seed beats everything
     parameters: dict[str, Any] = {}
-    for source in (defaults.get("parameters"), raw.get("parameters")):
-        if source is None:
-            continue
-        if not isinstance(source, dict):
+    for source, seed in ((defaults.get("parameters"), defaults.get("seed")),
+                         (raw.get("parameters"), raw.get("seed"))):
+        if source is not None and not isinstance(source, dict):
             problems.append(f"{label}: parameters must be an object, not {source!r}")
-            continue
-        parameters.update(source)
-    if "seed" in value:
-        parameters["seed"] = value["seed"]
+        elif source is not None:
+            parameters.update(source)
+        if seed is not None:
+            parameters["seed"] = seed
     if "generate" in steps:
         generator = manifest_run.GENERATORS.get(backend)
         if generator is None:
@@ -563,7 +581,7 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
     return BatchRow(id=row_id, images=images, asset=asset, kind=kind, faces=faces,
                     profile=str(profile) if profile is not None else None,
                     steps=tuple(steps), backend=backend, parameters=parameters,
-                    options=options, size_cm=size_cm, measure=measure), []
+                    options=options, size_cm=size_cm, measure=measure, given_images=given), []
 
 
 # --------------------------------------------------------------------- step registry
@@ -1005,7 +1023,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
         entry["staged"] = [record for image in staged
                            for record in _file_records(row_dir / "input" / image.name, directory)]
     asset = row.asset
-    sidecar = _sidecar_for(asset) if asset else None
+    sidecar = recorded_sidecar(asset) if asset else None
     steps = entry.setdefault("steps", {})
     rerun = False   # once a step runs again, every step after it does too
     for name in row.steps:
@@ -1087,15 +1105,18 @@ def queue_for_review(spec: BatchSpec, row: BatchRow, asset: Path) -> None:
     """
     log_path = spec.output_dir.parent / REVIEW_LOG
     sha = sha256_file(asset)
+    kind = REVIEW_KINDS.get(row.kind, row.kind)
+    source = f"batch:{spec.name}"
+    # the key is the asset's id (feature 7's contract): the same bytes under it are the
+    # same version. Queued again only when who made it or what it is changed.
     if any(line.get("event") == "queued" and line.get("key") == row.id
-           and line.get("asset_sha256") == sha for line in _lines(log_path)):
+           and line.get("asset_sha256") == sha and line.get("source") == source
+           and line.get("kind") == kind for line in _lines(log_path)):
         return
     report_file = asset.with_suffix(".checks.json")
     report = read_json(report_file) if report_file.is_file() else None
     if not isinstance(report, dict) or report.get("asset_sha256") != sha:
         report, report_file = None, None
-    kind = REVIEW_KINDS.get(row.kind, row.kind)
-    source = f"batch:{spec.name}"
     try:
         from image_to_3dlab.checks import enqueue_for_review
     except ModuleNotFoundError as exc:
@@ -1166,19 +1187,12 @@ def review_state(log_path: Path, asset_key: str, sha256: str | None) -> dict[str
     return latest
 
 
-def _sidecar_for(asset: Path) -> Path | None:
-    """The licence record kept beside an existing GLB, if it has one."""
-    for candidate in (asset.with_suffix(".provenance.json"), asset.with_suffix(".json")):
-        if candidate.is_file():
-            return candidate
-    return None
-
-
 def _spec_record(spec: BatchSpec) -> dict[str, Any]:
     return {
         "schema_version": 1, "name": spec.name, "source": str(spec.path),
         "intent": spec.intent, "license_policy": spec.license_policy,
         "rows": [{"id": row.id, "images": [str(image) for image in row.images],
+                  "given_images": list(row.given_images or [str(i) for i in row.images]),
                   "asset": str(row.asset) if row.asset else None, "kind": row.kind,
                   "faces": row.faces, "profile": row.profile, "steps": list(row.steps),
                   "backend": row.backend, "parameters": row.parameters,
