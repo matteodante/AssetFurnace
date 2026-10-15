@@ -64,3 +64,26 @@ def test_the_request_carries_moves_only_for_creatures_and_a_body_only_for_equipm
     assert "animations" not in out["noMoves"]
     assert out["equipment"]["body"] == "b.glb" and "animations" not in out["equipment"]
     assert [bool(x) for x in out["sizes"]] == [True, True, True, False]
+
+
+# --- review round 1 ----------------------------------------------------------------------
+
+@needs_node
+def test_a_selected_blender_version_is_what_gets_exported():
+    out = _run(f"""
+      const version = {{id: 'v1', file: 'blender-edits/versions/v1/model.glb'}};
+      console.log(JSON.stringify(m.exportSource({json.dumps(KNIGHT)}, version.file, version)));""")
+    assert out == {"file": "blender-edits/versions/v1/model.glb", "kind": "creature", "moves": []}
+
+
+@needs_node
+def test_a_new_move_makes_a_different_request():
+    out = _run("""
+      const a = {file: 'r.glb', kind: 'creature', moves: ['idle.glb']};
+      console.log(JSON.stringify({
+        same: m.sameSource(a, {...a, moves: ['idle.glb']}),
+        moreMoves: m.sameSource(a, {...a, moves: ['idle.glb', 'walk.glb']}),
+        otherFile: m.sameSource(a, {...a, file: 'x.glb'}),
+        none: m.sameSource(a, null),
+      }));""")
+    assert out == {"same": True, "moreMoves": False, "otherFile": False, "none": False}

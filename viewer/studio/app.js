@@ -27,7 +27,7 @@ const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onClipChan
   displayedFile = clip.file;
   setDownload(clip.file);
   blenderPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
-  unrealPanel.update(current, clip.file);
+  unrealPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
 } });
 
 const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -150,7 +150,7 @@ function show(asset) {
     $('steps').innerHTML = '<li class="hint opened-note">This version contains only what was exported from Blender. Select Original pipeline to see its steps, moves and other outputs.</li>';
     setDownload(revision.file);
     blenderPanel.update(asset, revision.file, revision);
-    unrealPanel.update(asset, revision.file);
+    unrealPanel.update(asset, revision.file, revision);
     return;
   }
   displayedFile = displayModel(asset);

@@ -26,10 +26,14 @@ export const KIND_LABELS = { prop: 'Object', creature: 'Creature', equipment: 'E
 
 const basename = (path) => path?.split('/').pop() || '';
 
-// What to export for an asset: a character exports its rig with its moves; anything
-// else exports the model on screen (for a prop set, the prop being shown).
-export function exportSource(asset, file) {
+// What to export for an asset: a selected Blender version exports that version (it holds
+// only what was exported from Blender); a character exports its rig with its moves;
+// anything else exports the model on screen (for a prop set, the prop being shown).
+export function exportSource(asset, file, revision = null) {
   if (!asset) return null;
+  if (revision?.file) {
+    return { file: revision.file, kind: asset.kind === 'character' ? 'creature' : 'prop', moves: [] };
+  }
   if (asset.kind === 'character' && asset.rigged) {
     return { file: asset.rigged, kind: 'creature', moves: (asset.clips || []).map((c) => c.file) };
   }
@@ -40,6 +44,12 @@ export function exportSource(asset, file) {
 // Bodies an equipment piece can be worn by: every other rigged character.
 export function bodiesFor(assets, asset) {
   return (assets || []).filter((a) => a.rigged && a.id !== asset?.id).map((a) => ({ name: a.name, file: a.rigged }));
+}
+
+// Whether two export sources are the same request: same file and the same moves.
+export function sameSource(a, b) {
+  return Boolean(a && b) && a.file === b.file && a.kind === b.kind
+    && a.moves.length === b.moves.length && a.moves.every((move, i) => move === b.moves[i]);
 }
 
 export function requestBody({ source, kind, size, measure, body, moves, check }) {
@@ -113,18 +123,31 @@ export function createUnrealPanel({ root, url, assets }) {
     } catch (error) { message(error.message, true); }
     controls();
   }
-  function update(asset, file) {
-    const source = exportSource(asset, file);
-    if (context && !working && context.asset.id === asset?.id && context.source.file === source?.file) return;
+  function fillBodies(asset) {
+    // Rebuilt on every update: other assets may have been rigged since.
+    const chosen = el('body').value;
+    el('body').replaceChildren(new Option('Choose a character…', ''));
+    for (const body of bodiesFor(assets(), asset)) el('body').add(new Option(body.name, body.file));
+    el('body').value = [...el('body').options].some((o) => o.value === chosen) ? chosen : '';
+  }
+  function update(asset, file, revision = null) {
     if (working) return;  // the running export keeps its own asset; the panel follows when it ends
+    const source = exportSource(asset, file, revision);
+    if (context && context.asset.id === asset?.id && sameSource(context.source, source)) {
+      context.asset = asset;
+      fillBodies(asset);
+      controls();
+      return;
+    }
     clearTimeout(timer);
+    // A generated model has no size of its own: another asset never inherits this one's.
+    if (context?.asset.id !== asset?.id) el('size').value = '';
     context = asset && source ? { asset, source } : null;
     root.hidden = !context;
     if (!context) return;
     el('kind').value = source.kind;
     el('measure').value = source.kind === 'prop' ? 'longest' : 'height';
-    el('body').replaceChildren(new Option('Choose a character…', ''));
-    for (const body of bodiesFor(assets(), asset)) el('body').add(new Option(body.name, body.file));
+    fillBodies(asset);
     el('source').textContent = `From ${basename(source.file)}${source.moves.length ? ` and ${source.moves.length} move(s)` : ''}`;
     el('result').hidden = true;
     message('');

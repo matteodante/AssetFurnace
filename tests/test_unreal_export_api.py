@@ -197,3 +197,45 @@ def test_the_unreal_check_is_refused_without_unreal(server, monkeypatch):
     status, body = _request(server, "POST", "/api/unreal-export/jobs",
                             {"file": "props/p/barrel_LOD0.glb", "kind": "prop", "size_cm": 60, "check": True})
     assert status == 422 and b"Unreal" in body
+
+
+# --- review round 1 ----------------------------------------------------------------------
+
+def test_an_unreal_check_that_times_out_ends_the_job(output):
+    import subprocess
+
+    request = api.parse(output, {"file": "props/p/barrel_LOD0.glb", "kind": "prop", "size_cm": 60, "check": True})
+    job = api.start(output, request, runner=lambda: None)
+
+    def check(folders):
+        raise subprocess.TimeoutExpired("UnrealEditor", 1800)
+
+    api.run_job(output, job["id"], request, export=_fake_export(output), check=check)
+    view = api.status(output, job["id"])
+    assert view["state"] == "error" and "too long" in view["message"]
+    api.start(output, request, runner=lambda: None)  # the next export is not blocked
+
+
+def test_an_unexpected_failure_still_ends_the_job(output):
+    request = api.parse(output, {"file": "props/p/barrel_LOD0.glb", "kind": "prop", "size_cm": 60})
+    job = api.start(output, request, runner=lambda: None)
+
+    def export(*args, **kwargs):
+        raise KeyError("boom")
+
+    api.run_job(output, job["id"], request, export=export)
+    assert api.status(output, job["id"])["state"] == "error"
+
+
+@pytest.mark.parametrize("editor, version", [
+    (Path("UnrealEditor"), None),
+    (Path("/opt/ue/UnrealEditor"), None),
+    (Path("C:/Epic/UE_5.8/Engine/Binaries/Win64/UnrealEditor.exe"), "UE_5.8"),
+])
+def test_capabilities_name_any_unreal_path_without_failing(monkeypatch, editor, version):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(api.up, "find_unreal_editor", lambda: editor)
+    monkeypatch.setattr(api, "local_desktop", lambda handler: True)
+    result = api.capabilities(SimpleNamespace())
+    assert result["unreal"] is True and result["unreal_version"] == version

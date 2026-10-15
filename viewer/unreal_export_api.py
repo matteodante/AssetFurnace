@@ -99,8 +99,12 @@ def run_job(output: Path, job_id: str, request: dict, export=None, check=None) -
             job.update(state="checking", message="Importing into Unreal and checking (about two minutes)…")
             job["checked"] = bool(check([Path(result["out_dir"])]))
         job.update(state="done", message="Ready for Unreal." if result["ok"] else "Exported, with problems.")
+    except subprocess.TimeoutExpired:
+        job.update(state="error", message="Unreal took too long and was stopped. The exported files are kept.")
     except (ValueError, RuntimeError, OSError, SystemExit) as exc:
         job.update(state="error", message=str(exc) or type(exc).__name__)
+    except Exception as exc:  # noqa: BLE001 - a stuck "running" job would block every later export
+        job.update(state="error", message=f"The export stopped unexpectedly: {type(exc).__name__}: {exc}")
 
 
 def start(output: Path, request: dict, runner=None) -> dict:
@@ -168,8 +172,9 @@ def reveal(folder: Path, popen=subprocess.Popen) -> None:
 def capabilities(handler) -> dict:
     editor = up.find_unreal_editor()
     local = local_desktop(handler)
+    version = next((part for part in editor.parts if part.startswith("UE_")), None) if editor else None
     return {"blender": find_blender() is not None, "unreal": editor is not None and local,
-            "unreal_version": editor.parts[-5] if editor is not None else None,
+            "unreal_version": version,
             "can_reveal": local, "kinds": list(up.KINDS), "measures": list(up.MEASURES)}
 
 
