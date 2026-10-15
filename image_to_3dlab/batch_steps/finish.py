@@ -24,7 +24,7 @@ from typing import Any
 
 from image_to_3dlab.batch import image_from_record, recorded_image
 from image_to_3dlab.batch_steps import StepContext, StepResult
-from image_to_3dlab.blender import find_blender, missing_help
+from image_to_3dlab.blender import blender_version, find_blender, missing_help, version_problem
 from image_to_3dlab.host import APPLE, host_platform
 from image_to_3dlab.provenance import LICENSES, sha256_file
 
@@ -69,6 +69,10 @@ def preflight(rows) -> list[str]:
     blender = find_blender()
     if blender is None or not Path(blender).is_file():
         problems.append(missing_help())
+    else:
+        too_old = version_problem(blender_version(Path(blender)))
+        if too_old:
+            problems.append(too_old)
     if any(row.options.get("finish", {}).get("paint") for row in rows):
         if host_platform() != APPLE:
             problems.append(REPAINT_OFF_MAC)
@@ -210,7 +214,9 @@ def provenance_record(ctx: StepContext, output: Path,
         "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "tool": "batch finish: scripts/retopo_repaint.py",
         "input": {"path": str(ctx.asset), "sha256": sha256_file(ctx.asset),
-                  "source": "generated" if source else "unknown"},
+                  "source": "generated" if source else "unknown",
+                  **({"image": {"path": str(image), "sha256": sha256_file(image)}}
+                     if (image := source_image(ctx)) is not None else {})},
         "output": {"path": str(output), "sha256": sha256_file(output)},
         "license": (source or {}).get("license"),
         "classification": classification,

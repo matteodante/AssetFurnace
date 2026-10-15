@@ -135,7 +135,8 @@ each row's current version stands.
 
 Run the same command again. Then:
 
-- a **done** row is skipped;
+- a **done** row is skipped, as long as every file its steps wrote is still there at the
+  size recorded; one whose files went missing runs again from its first broken step;
 - an **interrupted** row starts again from its first step whose files are not all still
   there with the recorded hash, so a finish that crashed does not cost a generation;
 - a **failed** row stays failed (its reason is in the state) unless you add
@@ -156,8 +157,9 @@ interrupted.
 ## The Batches page
 
 **Batches** in the studio's top bar. Give a spec by its path on this computer, or choose
-the file (an uploaded spec is kept in `output/batches/.uploads/` and its relative paths
-resolve from there, so use absolute ones, or give the path instead). For a CSV, pick the
+the file (an uploaded spec is kept in `output/batches/.uploads/<content hash>/`, so a later
+upload with the same name never changes an earlier batch's spec; its relative paths resolve
+from there, so use absolute ones, or give the path instead). For a CSV, pick the
 use case, distribution and commercial intent. **Check** validates without running;
 **Start** runs it in the background. The page follows batches in `output/batches/` only, so
 it refuses a spec that writes elsewhere (run that one with `pipeline.py --run-batch`). Each batch shows how far it got; open one to see every

@@ -103,6 +103,8 @@ def test_run_manifest_refuses_before_the_generator_when_weights_are_missing(tmp_
     ({"seed": 1}, {"input": {"views": ["cat.png", "cat.png"]}}, "one image"),
     ({"seed": 1}, {"input": {"views": []}}, "no input image"),
     ({"seed": 1}, {"license_policy": {"allow_conditional": "false"}}, "true or false"),
+    ({"seed": 1}, {"input": {"path": 42}}, "file paths"),
+    ({"seed": 1}, {"input": {"views": ["cat.png", 7]}}, "file paths"),
 ])
 def test_run_manifest_rejects_bad_manifests_with_code_2(tmp_path, monkeypatch, parameters,
                                                         extra, message):
@@ -224,3 +226,13 @@ def test_pixal3d_parameter_values_are_checked(parameters, message):
     assert message in problem
     assert manifest_run.pixal3d_check_parameters(
         {"seed": 7, "steps": 8, "gss": 10.0, "fov": 0.35, "matte": False}) == []
+
+
+
+def test_a_broken_picture_is_caught_before_the_run(tmp_path, monkeypatch):
+    monkeypatch.setenv("U2NET_HOME", str(tmp_path / "no-models"))
+    broken = tmp_path / "broken.png"
+    broken.write_bytes(b"\x89PNG\r\n\x1a\nnot really")
+    for parameters in ({}, {"matte": False}):
+        (problem,) = manifest_run.pixal3d_input_check([broken], parameters)
+        assert "not a readable picture" in problem

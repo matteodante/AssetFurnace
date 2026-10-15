@@ -297,3 +297,24 @@ def test_an_unknown_source_stays_unknown_after_a_repaint(tmp_path):
         _context(tmp_path, _row(tmp_path), asset, None, {"paint": True}), output, None)
     assert record["classification"] is None
     assert record["input"]["source"] == "unknown" and record["components"]
+
+
+
+def test_an_old_blender_is_caught_before_the_batch(tmp_path, monkeypatch):
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"")
+    monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
+    monkeypatch.setattr(finish_step, "blender_version", lambda path: (3, 6))
+    (problem,) = finish_step.preflight([_row(tmp_path)])
+    assert "older than" in problem
+
+
+def test_the_finish_record_names_the_picture_it_used(tmp_path, generated):
+    asset, sidecar = generated
+    image = tiny_png(tmp_path / "refs" / "cat.png")
+    output = tmp_path / "out.glb"
+    output.write_bytes(b"glTFdone")
+    record = finish_step.provenance_record(_context(tmp_path, _row(tmp_path), asset, sidecar),
+                                           output, None)
+    assert record["input"]["image"]["path"] == str(image)
+    assert record["input"]["image"]["sha256"]

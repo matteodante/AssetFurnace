@@ -958,3 +958,77 @@ def test_the_generation_records_its_inputs_and_log(tmp_path, monkeypatch, fake_f
     files = [f["path"] for f in _state(spec_path)["rows"]["SM_row01"]["steps"]["generate"]["files"]]
     assert "rows/SM_row01/input/row01.png" in files
     assert all("bytes" in f for f in _state(spec_path)["rows"]["SM_row01"]["steps"]["generate"]["files"])
+
+
+
+def test_a_source_backend_without_a_reviewed_licence_is_refused(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    asset = tmp_path / "old" / "thing.glb"
+    asset.parent.mkdir()
+    asset.write_bytes(b"glTF")
+    asset.with_suffix(".provenance.json").write_text(json.dumps(
+        {"model": {"backend": "mystery3d"}, "input": {"path": "x"}}))
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1,
+        "rows": [{"id": "SM_Thing", "asset": "old/thing.glb", "steps": ["finish"]}]}))
+    with pytest.raises(batch.BatchError, match="mystery3d"):
+        batch.load_batch(tmp_path / "lot.json")
+
+
+@pytest.mark.parametrize("field, value", [
+    ("commercial_intent", "false"), ("use_case", "arcade"), ("distribution", "galaxy")])
+def test_the_intent_must_be_real_values_for_every_batch(tmp_path, monkeypatch, field, value):
+    install_fake_generator(monkeypatch)
+    asset = tmp_path / "crate.glb"
+    asset.write_bytes(b"glTF")
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1, field: value,
+        "rows": [{"id": "SM_Crate", "asset": "crate.glb", "steps": ["finish"]}]}))
+    with pytest.raises(batch.BatchError, match=field):
+        batch.load_batch(tmp_path / "lot.json")
+
+
+def test_two_batch_names_that_are_one_folder_are_refused(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1, name="Oak")
+    batch.run_batch(batch.load_batch(spec_path))
+    spec = json.loads(spec_path.read_text())
+    spec["name"] = "oak"
+    spec_path.write_text(json.dumps(spec))
+    loaded = batch.load_batch(spec_path)
+    loaded_dir = loaded.output_dir / "Oak"   # where the first one lives, whatever the OS
+    monkeypatch.setattr(batch.BatchSpec, "directory", property(lambda self: loaded_dir))
+    with pytest.raises(batch.BatchError, match="ignoring case"):
+        batch.run_batch(loaded)
+
+
+def test_a_finish_only_row_stages_the_picture_its_record_leads_to(tmp_path, monkeypatch,
+                                                                  fake_finish):
+    asset = tmp_path / "old" / "crate.glb"
+    asset.parent.mkdir()
+    asset.write_bytes(b"glTFold")
+    image = tiny_png(tmp_path / "old" / "crate_concept.png")
+    asset.with_suffix(".provenance.json").write_text(json.dumps({"input": {"path": str(image)}}))
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1, "output": {"directory": "out"},
+        "rows": [{"id": "SM_Crate", "asset": "old/crate.glb", "steps": ["finish"]}]}))
+    batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
+    index = json.loads((tmp_path / "out" / "lot" / batch.INDEX_FILE).read_text())
+    assert index["rows"][0]["references"] == ["rows/SM_Crate/input/crate_concept.png"]
+
+
+def test_a_reused_pid_does_not_hold_the_lock(tmp_path, monkeypatch):
+    batch.acquire_lock(tmp_path, "old", os.getpid(), "dead runner")
+    lock = json.loads((tmp_path / batch.LOCK_FILE).read_text())
+    assert lock["identity"] == batch.process_identity(os.getpid())
+    lock["identity"] = "a process that started long ago"
+    (tmp_path / batch.LOCK_FILE).write_text(json.dumps(lock))
+    assert batch.running_batches(tmp_path) == []
+    batch.acquire_lock(tmp_path, "new", os.getpid(), "fresh")   # taken over as stale
+    assert json.loads((tmp_path / batch.LOCK_FILE).read_text())["batch"] == "new"
+
+
+def test_a_record_leads_to_the_picture_a_finish_used(tmp_path):
+    image = tiny_png(tmp_path / "concept.png")
+    record = {"input": {"path": str(tmp_path / "older.glb"), "image": {"path": str(image)}}}
+    assert batch.image_from_record(record) == image

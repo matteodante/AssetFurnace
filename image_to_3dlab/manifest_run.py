@@ -113,16 +113,20 @@ def pixal3d_check_parameters(parameters: dict[str, Any]) -> list[str]:
 def pixal3d_input_check(images: list[Path], parameters: dict[str, Any]) -> list[str]:
     """An image that is not cut out gets matted, and rembg downloads a missing remover on
     its own: that must be an explicit install, never a side effect of a run."""
+    from PIL import Image, UnidentifiedImageError
+
     from .matte import is_matted, matte_model, model_file
 
+    try:   # a broken picture fails here, not minutes into a batch
+        with Image.open(images[0]) as opened:
+            opened.load()
+            matted = is_matted(opened)
+    except (OSError, UnidentifiedImageError, ValueError) as exc:
+        return [f"{images[0].name} is not a readable picture: {exc}"]
     if parameters.get("matte") is False or model_file(matte_model()).is_file():
         return []
-    if parameters.get("matte") is not True:
-        from PIL import Image
-
-        with Image.open(images[0]) as opened:
-            if is_matted(opened):
-                return []
+    if parameters.get("matte") is not True and matted:
+        return []
     return [f"{images[0].name} needs its background removed and no remover is installed: "
             "install BiRefNet-lite with python scripts/bootstrap_matte.py (224 MB; it asks "
             'first), give a cut-out image, or set "matte": false']
@@ -195,6 +199,9 @@ def run_manifest(path: Path, log: Callable[[str], None] = print) -> tuple[Path, 
     except (KeyError, TypeError, ValueError) as exc:
         raise ManifestRunError(f"invalid run manifest: {exc}") from exc
 
+    if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+        raise ManifestRunError("invalid run manifest: input.path and input.views must be "
+                               "file paths")
     images = [(source.parent / name).resolve() for name in names]
     if not images:
         raise ManifestRunError("the manifest names no input image")

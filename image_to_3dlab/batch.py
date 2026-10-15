@@ -50,7 +50,7 @@ from typing import Any
 from . import manifest_run
 from .batch_steps import StepContext
 from .processes import process_alive
-from .provenance import LICENSES, validate_run_policy
+from .provenance import validate_run_policy
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = REPO / "output" / "batches"
@@ -168,10 +168,11 @@ def image_from_record(record: Any) -> Path | None:
     """The concept image a provenance record leads back to: a finish record's input is the
     GLB it finished, so the image is found in the records it nests."""
     for level in _records(record):
-        path = (level.get("input") or {}).get("path")
-        if (isinstance(path, str) and Path(path).suffix.lower() in IMAGE_SUFFIXES
-                and Path(path).is_file()):
-            return Path(path)
+        given = level.get("input") or {}
+        for path in ((given.get("image") or {}).get("path"), given.get("path")):
+            if (isinstance(path, str) and Path(path).suffix.lower() in IMAGE_SUFFIXES
+                    and Path(path).is_file()):
+                return Path(path)
     return None
 
 
@@ -256,6 +257,15 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
 
     resolved_intent = {key: top.get(key, DEFAULT_INTENT[key]) for key in INTENT_KEYS}
     resolved_intent.update(intent)
+    # they go into every manifest and provenance record as they are: they must be real
+    if resolved_intent["use_case"] not in ("showcase", "game"):
+        problems.append(f"use_case must be showcase or game, not {resolved_intent['use_case']!r}")
+    if resolved_intent["distribution"] not in ("private", "public", "worldwide"):
+        problems.append("distribution must be private, public or worldwide, not "
+                        f"{resolved_intent['distribution']!r}")
+    if not isinstance(resolved_intent["commercial_intent"], bool):
+        problems.append("commercial_intent must be true or false, not "
+                        f"{resolved_intent['commercial_intent']!r}")
     policy = top.get("license_policy", {})
     if not isinstance(policy, dict):
         problems.append("license_policy must be an object")
@@ -304,9 +314,11 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
 
     for row in rows:
         # every model a row would run is gated: its generator, and the repaint if asked
+        # a recorded backend this repo has no reviewed licence for is refused, not skipped;
+        # only an asset with no record at all goes without (its finish record says so)
         source = None if "generate" in row.steps else recorded_backend(row.asset)
         gated = ([(row.backend, row.backend)] if "generate" in row.steps else []) + (
-            [(source, f"its source ({source})")] if source in LICENSES else []) + (
+            [(source, f"its source ({source})")] if source is not None else []) + (
             [(REPAINT_BACKEND, "the repaint")]
             if "finish" in row.steps and row.options.get("finish", {}).get("paint") else [])
         for backend, what in gated:
@@ -603,9 +615,43 @@ def _read_lock(output_dir: Path) -> dict[str, Any] | None:
     return lock if isinstance(lock, dict) and isinstance(lock.get("pid"), int) else None
 
 
+def process_identity(pid: int) -> str | None:
+    """When the process `pid` started, as the OS says: with the pid, it tells the process
+    apart from a later one that reused the number. None when it cannot be read."""
+    try:
+        if os.name == "nt":
+            import ctypes
+            from ctypes import wintypes
+
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(0x1000, False, pid)   # QUERY_LIMITED_INFORMATION
+            if not handle:
+                return None
+            try:
+                times = [wintypes.FILETIME() for _ in range(4)]
+                if not kernel32.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+                    return None
+                return str((times[0].dwHighDateTime << 32) | times[0].dwLowDateTime)
+            finally:
+                kernel32.CloseHandle(handle)
+        import subprocess
+
+        started = subprocess.run(["ps", "-o", "lstart=", "-p", str(pid)], capture_output=True,
+                                 text=True, timeout=10, check=False).stdout.strip()
+        return started or None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
 def _live_lock(output_dir: Path) -> dict[str, Any] | None:
+    """The lock, if its process is alive and is the one that took it: a pid the OS has
+    since given to another process does not hold it."""
     lock = _read_lock(output_dir)
-    return lock if lock and process_alive(lock["pid"]) else None
+    if not lock or not process_alive(lock["pid"]):
+        return None
+    recorded = lock.get("identity")
+    current = process_identity(lock["pid"]) if recorded else None
+    return None if recorded and current and current != recorded else lock
 
 
 def acquire_lock(output_dir: Path, name: str, pid: int, token: str,
@@ -620,8 +666,8 @@ def acquire_lock(output_dir: Path, name: str, pid: int, token: str,
     path = output_dir / LOCK_FILE
     # `starting`: a reservation made by a submitter in its own name, until the runner's
     # pid is known; nothing may stop that pid
-    record = {"batch": name, "pid": pid, "token": token, "since": now(),
-              **({"starting": True} if starting else {})}
+    record = {"batch": name, "pid": pid, "identity": process_identity(pid), "token": token,
+              "since": now(), **({"starting": True} if starting else {})}
     for _ in range(3):
         try:
             handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -634,7 +680,7 @@ def acquire_lock(output_dir: Path, name: str, pid: int, token: str,
             if lock and lock.get("token") == token and lock.get("batch") == name:
                 write_json(path, record)
                 return
-            if lock and process_alive(lock["pid"]):
+            if lock and _live_lock(output_dir) == lock:
                 if lock.get("batch") == name:
                     raise BatchError(f"batch {name} is already running (pid {lock['pid']})") from None
                 raise BatchError(f"another batch is using the GPU: {lock.get('batch')}. "
@@ -763,6 +809,10 @@ def run_batch(spec: BatchSpec, retry_failed: bool = False,
     try:
         state_path = directory / STATE_FILE
         state = read_json(state_path)
+        if state and state.get("name") not in (None, spec.name):
+            # on Windows and macOS `Oak` and `oak` are one folder: never two batches in it
+            raise BatchError(f"batch {spec.name} would share its folder with batch "
+                             f"{state['name']} (names are compared ignoring case); rename it")
         if state and state.get("intent_fingerprint") != spec.intent_fingerprint():
             raise BatchError(
                 f"the intent or licence policy of batch {spec.name} changed since it ran "
@@ -858,11 +908,12 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     entry.pop("finished_at", None)
     save()
 
-    if "generate" not in row.steps and row.images:
-        # generate copies a row's images; a finish-only row's are staged here, so its
-        # folder and outputs.json carry its picture all the same
+    staged = row.images or tuple(i for i in [recorded_image(row.asset)] if i is not None)
+    if "generate" not in row.steps and staged:
+        # generate copies a row's images; a finish-only row's (or the picture its asset's
+        # record leads to) are staged here, so its folder and outputs.json carry it too
         (row_dir / "input").mkdir(parents=True, exist_ok=True)
-        for image in row.images:
+        for image in staged:
             shutil.copyfile(image, row_dir / "input" / image.name)
     asset = row.asset
     sidecar = _sidecar_for(asset) if asset else None
@@ -1041,12 +1092,13 @@ def _index(spec: BatchSpec, rows: dict[str, Any]) -> dict[str, Any]:
         if entry["status"] != "done":
             continue
         inputs = directory / "rows" / row.id / "input"
+        pictures = row.images or tuple(sorted(p for p in inputs.glob("*") if p.is_file()))
         listed.append({
             "id": row.id, "kind": row.kind, "profile": row.profile, "faces": row.faces,
             "size_cm": row.size_cm, "measure": row.measure,
             "asset": entry.get("asset"), "sidecar": entry.get("sidecar"),
             "references": [_relative(inputs / image.name, directory)
-                           for image in row.images if (inputs / image.name).is_file()],
+                           for image in pictures if (inputs / image.name).is_file()],
             "steps": {name: step.get("status") for name, step in entry["steps"].items()},
             "files": [record["path"] for step in entry["steps"].values()
                       for record in step.get("files", [])],
