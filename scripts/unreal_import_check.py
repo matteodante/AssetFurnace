@@ -496,7 +496,9 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
             # A walk swings the feet apart; legs that do not follow barely step.
             manny_step, _ = widest_step(load(MANNY_WALK))
             step, _ = widest_step(load(kept["Walk"]))
-            result.update(walk_stride=step, manny_walk_stride=manny_step)
+            sides, rest = feet_sides(load(kept["Walk"]))
+            # raw numbers only: whether they cross is judged outside Unreal (unreal_profile.feet_cross)
+            result.update(walk_stride=step, manny_walk_stride=manny_step, walk_feet_sides=sides, walk_feet_rest=rest)
             result["walk"] = "ok" if step > 0.5 * manny_step else (
                 f"legs barely move ({step:.2f} of height, Manny {manny_step:.2f})")
         return result
@@ -519,6 +521,22 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
             right = unreal.AnimPoseExtensions.get_bone_pose(pose, "foot_r", unreal.AnimPoseSpaces.WORLD).translation
             spreads.append((abs(left.y - right.y) / max(bone_z(pose, "head"), 1e-3), time))
         return max(spreads) if spreads else (0.0, 0.0)
+
+    def feet_sides(animation, samples=24):
+        """The left foot's sideways (X) offset from the right one over the cycle, and in the
+        reference pose. Characters face +Y in their own space, like Manny."""
+        length = length_of(animation)
+        sides = []
+        for i in range(samples):
+            pose = unreal.AnimPoseExtensions.get_anim_pose_at_time(animation, length * i / samples,
+                                                                  unreal.AnimPoseEvaluationOptions())
+            left = unreal.AnimPoseExtensions.get_bone_pose(pose, "foot_l", unreal.AnimPoseSpaces.WORLD).translation
+            right = unreal.AnimPoseExtensions.get_bone_pose(pose, "foot_r", unreal.AnimPoseSpaces.WORLD).translation
+            sides.append(left.x - right.x)
+        ref = unreal.AnimPoseExtensions.get_reference_pose(animation.get_skeleton())
+        left = unreal.AnimPoseExtensions.get_bone_pose(ref, "foot_l", unreal.AnimPoseSpaces.WORLD).translation
+        right = unreal.AnimPoseExtensions.get_bone_pose(ref, "foot_r", unreal.AnimPoseSpaces.WORLD).translation
+        return sides, left.x - right.x
 
     def bone_z(pose, bone):
         return unreal.AnimPoseExtensions.get_bone_pose(pose, bone, unreal.AnimPoseSpaces.WORLD).translation.z

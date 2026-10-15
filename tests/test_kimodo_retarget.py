@@ -416,3 +416,20 @@ def test_arms_hanging_at_the_sides_are_still_arms():
             heads[roles[role]] = heads[roles[f"{lr}hand"]] + np.array([0, 0, -0.03 - 0.01 * int(role[-1])])
     m, _ = kr.map_skintokens_to_soma(parents, heads)
     assert m[roles["Lhand"]] == "LeftHand" and m[roles["Rarm"]] == "RightArm" and m[roles["head"]] == "Head"
+
+
+def test_feet_turned_out_unevenly_do_not_turn_the_character():
+    """A generated werewolf stood with one foot turned out further than the other, and the
+    feet alone put its front 17 degrees off its body. The front is across the hips; the
+    feet only say which of the two ways."""
+    parents, heads, roles = _humanoid()
+    heads = dict(heads)
+    toe = heads[roles["Rtoe"]] - heads[roles["Rfoot"]]
+    turn = np.array([[np.cos(0.8), -np.sin(0.8), 0], [np.sin(0.8), np.cos(0.8), 0], [0, 0, 1]])
+    heads[roles["Rtoe"]] = heads[roles["Rfoot"]] + turn @ toe  # right foot turned out 46 degrees
+    _, frame = kr.map_skintokens_to_soma(parents, heads)
+    assert np.allclose(frame[:, 2], [0, 1, 0], atol=1e-9)
+    hips = [heads[roles["Lleg"]], heads[roles["Rleg"]]]
+    frame = kr.character_frame(heads, [roles["Ltoe"], roles["Rtoe"]], [roles["Lfoot"], roles["Rfoot"]], hips=hips)
+    assert np.allclose(frame[:, 2], [0, 1, 0], atol=1e-9)
+
