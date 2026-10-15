@@ -4,8 +4,9 @@
 
 A batch is a list of assets, one row each. Every row runs the same steps with the same
 checks, gets its own `.provenance.json`, and a stopped batch picks up where it left off
-when you run the same command again. An agent in another repository can drive the same
-thing through the [MCP server](#the-mcp-server).
+when you run the same command again. In the studio, **Batches** in the top bar does the
+same from a page; an agent in another repository drives it through the
+[MCP server](#the-mcp-server). Finished rows join the Library and the review queue.
 
 Why it works the way it does: [the design](plans/2026-10-15-batch-mcp-design.md).
 
@@ -43,6 +44,8 @@ the spec file**, like in a run manifest.
 | `kind` | `prop` (default), `creature` or `equipment` |
 | `faces` | Face budget for `finish`, 1,000 to 200,000 (default 40,000) |
 | `profile` | Output profile, for `export_unreal` once it exists |
+| `size_cm` | The asset's real size in centimetres, for `export_unreal` |
+| `measure` | What `size_cm` measures: `height` (default) or `longest` side |
 | `steps` | In order. Default `generate`, `finish` |
 | `backend` | Default `pixal3d`, the only generator batches run today (see below) |
 | `parameters`, `seed` | Generator settings: `seed`, `steps`, `gss`, `gsh`, `fov`, `matte` for Pixal3D |
@@ -55,8 +58,8 @@ A CSV holds rows only, one per line, with `;` between several values in a cell a
 empty cell for the default:
 
 ```csv
-id,images,kind,faces,profile,steps,backend,seed
-SM_Barrel_01,refs/barrel.png,prop,3000,unreal,generate;finish,pixal3d,42
+id,images,kind,faces,profile,steps,backend,seed,size_cm,measure
+SM_Barrel_01,refs/barrel.png,prop,3000,unreal,generate;finish,pixal3d,42,90,height
 ```
 
 A CSV on its own runs as a private showcase, like a single run without a manifest; for a
@@ -104,9 +107,19 @@ output/batches/<name>/
     finish/<id>.glb, <id>.provenance.json, <id>.retopo-repaint.json, finish.log
 ```
 
-`outputs.json` is the hand-off for whatever reviews the assets next (the review queue of
-function 7, the studio's library): it lists only finished rows, with their kind, profile,
-final asset, its provenance and every file the steps wrote.
+`outputs.json` lists only finished rows, with their kind, profile, size, final asset,
+its provenance and every file the steps wrote: the hand-off for anything that reads a
+batch's results.
+
+**The Library.** Finished rows under `output/batches/` are Library assets: the row's
+picture, its 3D model and its finished model, linked the way the studio links its own
+runs, so you can rig or hide a batch asset like any other.
+
+**The review queue.** Each finished row adds a `queued` line to `output/review-log.jsonl`
+(the folder that holds the batches folder), keyed by the row's id and its GLB's sha256,
+with the `checks` result when that step ran. The same version is never queued twice; a
+new version is. Approving or sending back happens in the review queue, and the Batches
+page shows where each row stands.
 
 ## Stopping and resuming
 
@@ -127,6 +140,17 @@ do not generate there at the same time.
 
 Exit codes: 0 every row done, 1 some rows failed, 2 the batch cannot start, 130
 interrupted.
+
+## The Batches page
+
+**Batches** in the studio's top bar. Give a spec by its path on this computer, or choose
+the file (an uploaded spec is kept in `output/batches/.uploads/` and its relative paths
+resolve from there, so use absolute ones, or give the path instead). For a CSV, pick the
+use case, distribution and commercial intent. **Check** validates without running;
+**Start** runs it in the background. Each batch shows how far it got; open one to see every
+row with its status, why it failed, and its review state. **Resume** carries on a stopped
+batch, **Retry failed** also re-runs the failed rows, **Stop** stops it, **Open** shows a
+finished row in the viewer.
 
 ## The MCP server
 
@@ -149,10 +173,12 @@ Then, in that repository's `.mcp.json`:
 |---|---|
 | `validate_batch(spec)` | Checks a spec and its installs; runs nothing |
 | `submit_batch(spec, retry_failed)` | Starts `pipeline.py --run-batch` in the background and answers at once |
+| `resume_batch(batch_ref, retry_failed)` | Starts a stopped batch again with the spec and intent it ran with |
 | `batch_status(batch_ref)` | Counts and per-row status, with the reason for failures. `batch_ref` is the batch folder or its spec |
 | `list_outputs(batch_ref, row_id)` | Finished rows and their files, as absolute paths on this machine |
 | `cancel_batch(batch_ref)` | Stops the runner; the row in progress goes back in the queue |
 | `list_steps()` | Step names and which exist yet |
 
-It speaks stdio, uses the official MCP Python SDK (`MCPServer`, version 2.x) and never
+`validate_batch` and `submit_batch` also take `use_case`, `distribution` and `commercial`
+for a CSV spec. It speaks stdio, uses the official MCP Python SDK (`MCPServer`, version 2.x) and never
 downloads weights: a spec that needs a missing install comes back with the problems.

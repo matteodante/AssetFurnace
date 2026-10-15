@@ -32,6 +32,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import image_api
 import blender_edit_api
+import batch_api
 from image_to_3dlab import processes
 from image_to_3dlab.blender import find_blender, missing_help as blender_missing_help
 from image_to_3dlab.gpu_memory import gpu_busy_note
@@ -2075,6 +2076,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         if blender_edit_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
+        if batch_api.handle(self, OUTPUT_ROOT, mutation=True):
+            return
         parts = self._path_parts()
         if parts == ["api", "chains"]:
             try:
@@ -2314,6 +2317,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if blender_edit_api.handle(self, OUTPUT_ROOT):
+            return
+        if batch_api.handle(self, OUTPUT_ROOT):
             return
         if urlparse(self.path).path in ("", "/", "/viewer", "/viewer/"):
             self.send_response(HTTPStatus.FOUND)  # the front door is the studio
