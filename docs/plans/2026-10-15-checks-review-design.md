@@ -1,6 +1,8 @@
 # Funzione 7: controlli e coda di revisione (progetto)
 
-Data: 15 ottobre 2026. Stato: **proposta, da approvare**. Nessun codice scritto.
+Data: 15 ottobre 2026. Stato: **approvato e implementato** sul ramo `claude/feat-checks-review-744c44` (in attesa di
+merge). Le compenetrazioni nelle pose restano per un secondo passo. Le differenze rispetto alla proposta sono segnate
+con *Implementato*.
 Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 7.
 
 In breve: un registro di controlli che danno tutti lo stesso JSON, un file di esito accanto a ogni GLB, e una coda
@@ -121,13 +123,16 @@ Tolleranza relativa dal profilo: warn oltre ±5%, fail oltre ±15%.
 Il punto delicato: deve essere **simile ma non identica**.
 
 **Metodo.**
-1. Asset e riferimento vengono centrati e scalati alla stessa altezza. La dimensione assoluta la giudica già
-   `measure.height`: qui conta solo la forma.
+1. Asset e riferimento vengono messi alla **stessa scala**: in ogni vista la sagoma viene adattata al riquadro (il lato
+   più lungo riempie il 90%) e centrata, con una scala uguale sui due assi. La dimensione assoluta la giudica già
+   `measure.height`: qui conta solo la forma, quindi lo stesso modello grande il doppio dà 1,00.
 2. Proiezione **ortografica** (senza prospettiva) da 4 viste: fronte, lato, tre quarti (45°), alto. Non uso fronte,
    retro, sinistra e destra: in ortografica il retro è lo specchio del fronte e la sinistra della destra, quindi
    darebbero solo 2 viste vere.
-3. Ogni vista diventa una maschera di 256 × 256 disegnando tutti i triangoli in un colpo con `cv2.fillPoly` (OpenCV);
-   le due maschere si allineano sul baricentro.
+3. Ogni vista diventa una maschera di 256 × 256. *Implementato*: non con `cv2.fillPoly`, come proposto. Con molti
+   poligoni usa la regola pari-dispari, quindi dove due triangoli si sovrappongono si annullano, e una mesh chiusa
+   (fronte e retro su ogni pixel) esce quasi vuota. Lo fa un rasterizzatore vettoriale in numpy
+   (`geometry.raster_hits`), che fa l'unione dei triangoli.
 4. Per ogni vista: **IoU** (intersezione diviso unione: quanta parte delle due sagome si sovrappone; 1 = identiche,
    0 = nessuna sovrapposizione). `value` = media delle 4 viste; `details` ha i valori per vista e 4 immagini di
    confronto (riferimento e asset in due colori).
@@ -137,7 +142,8 @@ Il punto delicato: deve essere **simile ma non identica**.
 Se il riferimento è solo un'immagine (un concept), si confronta solo la vista di fronte, con la maschera ricavata dallo
 sfondo dell'immagine come in `compare_to_source.py`.
 
-**Taratura: prova esplorativa di oggi su 7 GLB già in `output/`** (codice usa e getta, fuori dalla repo):
+**Taratura, prima versione: prova esplorativa su 7 GLB già in `output/`** (codice usa e getta, fuori dalla repo;
+normalizzazione per altezza 3D):
 
 | Coppia | IoU medio | Vista peggiore |
 |---|---|---|
@@ -152,7 +158,24 @@ Cosa dice: l'IoU separa bene "stesso oggetto, ritoccato" (sopra 0,78) da "oggett
 ordina bene le cose diverse tra loro** (una ragazza e una tartaruga a 0,42, due umanoidi a 0,23). Quindi è adatto a
 "si riconosce come lo stesso oggetto", non a misurare "quanto è lontano".
 
-**Fascia iniziale proposta**: `min` 0,65, `max` 0,95, `min_view` 0,50. Sopra 0,95 c'è solo lo stesso modello a un'altra
+**Taratura ripetuta dopo la normalizzazione al riquadro** (richiesta del coordinatore), sugli stessi 8 GLB con il codice
+consegnato:
+
+| Coppia | IoU medio | Vista peggiore |
+|---|---|---|
+| Stesso guerriero ingrandito ×2 (scala uniforme) | **1,00** | 1,00 |
+| Stesso guerriero, originale contro versione finita a 9k facce | 0,96 | 0,96 |
+| Stesso guerriero allargato del 15% (X) o del 25% (Z) | 0,87 | 0,77-0,79 |
+| Due allargamenti diversi dello stesso guerriero | 0,78 | 0,69 |
+| Due generazioni dallo stesso prompt | 0,52 | 0,47 |
+| Umanoidi diversi fra loro | 0,27-0,53 | 0,16-0,48 |
+| Umanoide contro tartaruga | 0,19-0,44 | 0,10-0,41 |
+
+L'allargamento su un solo asse resta a 0,87: non è una questione di scala, ma di proporzioni cambiate, ed è giusto che
+la sagoma lo veda. Con una scala uniforme il punteggio è 1,00.
+
+**Fascia di partenza**: `min` 0,65, `max` 0,95, `min_view` **0,60** (prima 0,50: nei modelli ritoccati la vista peggiore
+non scende sotto 0,69, in quelli diversi non sale sopra 0,48). Sopra 0,95 c'è solo lo stesso modello a un'altra
 risoluzione. **Parte come solo warn**: uno stile più marcato (testa e mani più grandi) può scendere sotto 0,65 e restare
 riconoscibile. Si tara nel pilota sulle approvazioni e i rimandi dell'utente: si sceglie la fascia che li separa,
 lo stesso metodo previsto per il punteggio di stile della funzione 3. Il calcolo della fascia dai dati etichettati è
@@ -292,9 +315,9 @@ File nuovi: `viewer/review_api.py`, `viewer/studio/review.js`. Ritocchi piccoli:
 ## 6. Rischi
 
 - **Soglie sbagliate all'inizio.** Per questo sono nei profili e la sagoma e la densità dei texel partono come solo warn.
-- **Velocità sui GLB grezzi** (circa un milione di facce). La prova esplorativa con un ciclo Python per triangolo ha
-  impiegato 4 minuti per 8 asset; con `cv2.fillPoly` vettoriale l'obiettivo è sotto 10 secondi per asset, misurato nei
-  test sui GLB veri.
+- **Velocità sui GLB grezzi** (circa un milione di facce). *Misurato*: tutti i controlli tranne la sagoma impiegano
+  15 s sul guerriero grezzo da 957k facce (erano 173 s finché le UV si disegnavano un'isola alla volta) e 0,7 s sulla
+  versione finita da 9k facce. La sagoma aggiunge 2-7 s sul grezzo e 0,2 s sul finito.
 - **Mesh aperte di proposito** (foglie, mantelli) e **UV specchiate di proposito**: gestite nei profili, non nel codice.
 - **Provenienza eterogenea** (tre forme, più i modelli finiti senza file proprio): un test per ogni forma.
 - **Conflitti di merge** su `generate_api.py`, `studio.html`, `app.js`, `CHANGELOG.md`, `scripts/README.md`: aggiunte
@@ -336,3 +359,22 @@ mano nel browser dello studio.
 - Taratura definitiva delle soglie (nel pilota).
 - Registrazione dei controlli `material.*` della funzione 8 (dopo il suo merge: una riga).
 - Provenienza propria per i modelli finiti (è un buco del passo di finitura, non di questa funzione: va proposto a parte).
+
+## 9. Come è stato consegnato
+
+| Pezzo | Dove |
+|---|---|
+| Registro, contratto, profili | `image_to_3dlab/checks/registry.py`, `profiles/*.json` |
+| Asset e misure condivise | `image_to_3dlab/checks/asset.py`, `geometry.py` |
+| Controlli | `mesh_checks.py`, `budget_checks.py`, `measure_checks.py`, `silhouette.py`, `validator.py`, `licenses.py` |
+| Coda di revisione | `image_to_3dlab/checks/review.py` (`check_and_enqueue` è la chiamata per la funzione 1) |
+| Riga di comando | `scripts/check_asset.py`, `scripts/review_queue.py`, `scripts/bootstrap_gltf_validator.py` |
+| Studio | `viewer/review_api.py` (due righe in `generate_api.py`), `viewer/studio/review.js`, `review-model.js`, pulsante in `studio.html`, girata in `viewer.js` |
+| Test | `tests/test_checks_*.py`, `tests/_check_fixtures.py`, `test_check_asset.py`, `test_viewer_review_api.py`, `test_studio_review.py`, `test_bootstrap_gltf_validator.py` |
+
+Il glTF-Validator nativo è stato provato dal vivo: 0 errori sul guerriero finito, 2 avvisi sul rigato (spazio delle
+tangenti generato a runtime), un errore `ACCESSOR_TOO_LONG` sul GLB rotto apposta.
+
+*Implementato, in più*: le misure lette dai numeri di una riga di lotto hanno la precedenza su quelle del modello di
+riferimento, e un controllo di misura senza il dato che gli serve (per esempio larghezza e profondità) viene saltato
+invece di avvisare.
