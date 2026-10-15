@@ -116,6 +116,7 @@ The asset's surface, as opposed to its shape.
 | `feature_mask.py` | Build a UV-space mask for one feature of a mesh, from a point in 3D. |
 | `bake_stiffness.py` | Bake foliage stiffness into a GLB as vertex colours, for engine-side wind. |
 | `classify_thickness.py` | Separate solid body from thin foliage by measuring local thickness. |
+| `game_materials.py` | Make a generated GLB game-ready: tint mask, baked-light checks, normal, roughness and ORM. |
 
 ## Measure and judge
 

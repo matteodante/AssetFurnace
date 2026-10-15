@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Experimental canonical editing snapshots and a Blender no-op bridge, preserving
   untouched GLB data and reporting geometry, UV and weight round-trip checks.
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
+- Game-ready materials (`scripts/game_materials.py`, `image_to_3dlab.materials`): a
+  three-zone tint mask from the albedo's colour regions, baked-light checks that send an
+  asset back (painted key light, painted occlusion, painted highlights), normal and
+  roughness from colour where missing, and a packed ORM texture. The GLB is edited in
+  place, so rigs and animations survive; a `.materials.json` sidecar carries the zones
+  and the tint formula. `scripts/blender_tint_preview.py` renders the recolour.
 
 ### Fixed
 - Auto-rig setup finds the virtual environment's Python executable on Windows.
