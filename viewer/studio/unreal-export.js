@@ -52,8 +52,15 @@ export function sameSource(a, b) {
     && a.moves.length === b.moves.length && a.moves.every((move, i) => move === b.moves[i]);
 }
 
+// Equipment is scaled with the body that wears it, so its size is the wearer's.
+export function sizeLabel(kind) {
+  return kind === 'equipment' ? "Wearer's height (cm)" : 'Real size (cm)';
+}
+
 export function requestBody({ source, kind, size, measure, body, moves, check }) {
-  const data = { file: source.file, kind, size_cm: Number(size), measure, check: Boolean(check) };
+  // Equipment is checked in Unreal together with its body's export, which the panel does
+  // not have, so only from the command line.
+  const data = { file: source.file, kind, size_cm: Number(size), measure, check: Boolean(check) && kind !== 'equipment' };
   if (kind === 'creature' && moves) data.animations = source.moves;
   if (kind === 'equipment') data.body = body;
   return data;
@@ -87,7 +94,7 @@ export function createUnrealPanel({ root, url, assets }) {
     <h3>Export for Unreal</h3>
     <label class="field">What it is<select data-kind></select></label>
     <div class="pair">
-      <label class="field">Real size (cm)<input data-size type="number" min="0.1" step="0.1" inputmode="decimal" placeholder="e.g. 180"></label>
+      <label class="field"><span data-size-label>Real size (cm)</span><input data-size type="number" min="0.1" step="0.1" inputmode="decimal" placeholder="e.g. 180"></label>
       <label class="field">Measured as<select data-measure><option value="height">Height</option><option value="longest">Longest side</option></select></label>
     </div>
     <label class="field" data-body-label hidden>Worn by<select data-body></select></label>
@@ -99,7 +106,7 @@ export function createUnrealPanel({ root, url, assets }) {
     <div data-result hidden></div>`;
   const el = (key) => root.querySelector(`[data-${key}]`);
   for (const [value, label] of Object.entries(KIND_LABELS)) el('kind').add(new Option(label, value));
-  let context = null, capabilities = null, working = false, timer = null;
+  let context = null, capabilities = null, working = false, timer = null, pending = null;
 
   function message(text, error = false) {
     el('status').textContent = text;
@@ -109,11 +116,14 @@ export function createUnrealPanel({ root, url, assets }) {
     const kind = el('kind').value;
     el('body-label').hidden = kind !== 'equipment';
     el('moves-label').hidden = kind !== 'creature' || !context?.source.moves.length;
-    el('check-label').hidden = !capabilities?.unreal;
+    el('check-label').hidden = !capabilities?.unreal || kind === 'equipment';
+    el('size-label').textContent = sizeLabel(kind);
+    if (kind === 'equipment') el('measure').value = 'height';
     const blocked = !context || working || !capabilities?.blender || sizeProblem(el('size').value)
       || (kind === 'equipment' && !el('body').value);
     el('export').disabled = Boolean(blocked);
     for (const key of ['kind', 'size', 'measure', 'body', 'moves', 'check']) el(key).disabled = working;
+    el('measure').disabled = working || kind === 'equipment';
   }
   async function load() {
     if (capabilities) return;
@@ -131,7 +141,8 @@ export function createUnrealPanel({ root, url, assets }) {
     el('body').value = [...el('body').options].some((o) => o.value === chosen) ? chosen : '';
   }
   function update(asset, file, revision = null) {
-    if (working) return;  // the running export keeps its own asset; the panel follows when it ends
+    // The running export keeps its own asset; the latest selection is applied when it ends.
+    if (working) { pending = [asset, file, revision]; return; }
     const source = exportSource(asset, file, revision);
     if (context && context.asset.id === asset?.id && sameSource(context.source, source)) {
       context.asset = asset;
@@ -146,6 +157,7 @@ export function createUnrealPanel({ root, url, assets }) {
     root.hidden = !context;
     if (!context) return;
     el('kind').value = source.kind;
+    lastKind = source.kind;
     el('measure').value = source.kind === 'prop' ? 'longest' : 'height';
     fillBodies(asset);
     el('source').textContent = `From ${basename(source.file)}${source.moves.length ? ` and ${source.moves.length} move(s)` : ''}`;
@@ -208,28 +220,48 @@ export function createUnrealPanel({ root, url, assets }) {
     }
     result.hidden = false;
   }
-  async function poll(id, ctx) {
+  function finish() {
+    working = false;
+    controls();
+    if (pending) {
+      const next = pending;
+      pending = null;
+      update(...next);
+    }
+  }
+  async function poll(id, ctx, failures = 0) {
     try {
       const job = await request(`/jobs/${id}`);
       if (job.state === 'done' || job.state === 'error') {
-        working = false;
         if (context === ctx) {
           message(job.message, job.state === 'error');
           if (job.state === 'done') render(job);
         }
-        controls();
+        finish();
         return;
       }
       if (context === ctx) message(job.message);
       timer = setTimeout(() => poll(id, ctx), 1500);
     } catch (error) {
-      working = false;
-      if (context === ctx) message(error.message, true);
-      controls();
+      // A long Blender or Unreal run outlives a hiccup: keep the job and ask again.
+      if (failures < 5) {
+        if (context === ctx) message('Lost contact with Studio for a moment; still waiting for the export…');
+        timer = setTimeout(() => poll(id, ctx, failures + 1), 3000);
+        return;
+      }
+      if (context === ctx) {
+        message(`${error.message} The export may still finish; its files land in output/unreal.`, true);
+      }
+      finish();
     }
   }
+  let lastKind = null;
   el('kind').addEventListener('change', () => {
-    el('measure').value = el('kind').value === 'prop' ? 'longest' : 'height';
+    const kind = el('kind').value;
+    // An object's size is not a wearer's height, nor the other way round.
+    if ((kind === 'equipment') !== (lastKind === 'equipment')) el('size').value = '';
+    lastKind = kind;
+    el('measure').value = kind === 'prop' ? 'longest' : 'height';
     controls();
   });
   for (const key of ['size', 'body', 'measure']) el(key).addEventListener('input', controls);
@@ -252,9 +284,8 @@ export function createUnrealPanel({ root, url, assets }) {
       });
       await poll(job.id, ctx);
     } catch (error) {
-      working = false;
       if (context === ctx) message(error.message, true);
-      controls();
+      finish();
     }
   });
   return { update };

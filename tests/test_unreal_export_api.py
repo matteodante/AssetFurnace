@@ -239,3 +239,14 @@ def test_capabilities_name_any_unreal_path_without_failing(monkeypatch, editor, 
     monkeypatch.setattr(api, "local_desktop", lambda handler: True)
     result = api.capabilities(SimpleNamespace())
     assert result["unreal"] is True and result["unreal_version"] == version
+
+
+# --- review round 2 ----------------------------------------------------------------------
+
+def test_equipment_is_not_checked_in_unreal_without_its_body(output):
+    with pytest.raises(ValueError, match="body"):
+        api.parse(output, {"file": "animate/w/helm.glb", "kind": "equipment", "size_cm": 180,
+                           "body": "animate/w/w_rigged.glb", "check": True})
+    request = api.parse(output, {"file": "animate/w/helm.glb", "kind": "equipment", "size_cm": 180,
+                                 "body": "animate/w/w_rigged.glb"})
+    assert request["check"] is False

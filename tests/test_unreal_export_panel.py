@@ -87,3 +87,17 @@ def test_a_new_move_makes_a_different_request():
         none: m.sameSource(a, null),
       }));""")
     assert out == {"same": True, "moreMoves": False, "otherFile": False, "none": False}
+
+
+# --- review round 2 ----------------------------------------------------------------------
+
+@needs_node
+def test_equipment_asks_for_the_wearers_height_and_is_not_checked_alone():
+    out = _run("""
+      const source = {file: 'helm.glb', kind: 'prop', moves: []};
+      console.log(JSON.stringify({
+        equipment: m.sizeLabel('equipment'), object: m.sizeLabel('prop'),
+        request: m.requestBody({source, kind: 'equipment', size: '180', measure: 'height', body: 'b.glb', check: true}),
+      }));""")
+    assert out["equipment"] == "Wearer's height (cm)" and out["object"] == "Real size (cm)"
+    assert out["request"]["check"] is False

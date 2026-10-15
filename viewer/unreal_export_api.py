@@ -73,6 +73,9 @@ def parse(output: Path, data: dict) -> dict:
                "check": bool(data.get("check"))}
     if kind == "equipment":
         request["body"] = resolve(output, data.get("body"))
+        if request["check"]:
+            raise ValueError("Equipment is checked in Unreal together with its body's export; run "
+                             "scripts/unreal_import_check.py BODY_EXPORT_DIR PART_EXPORT_DIR")
     name = data.get("name")
     if name:
         request["name"] = up.base_name(str(name))
