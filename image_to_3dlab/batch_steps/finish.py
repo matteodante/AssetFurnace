@@ -54,6 +54,10 @@ def preflight(rows) -> list[str]:
         if unknown:
             problems.append(f"row {row.id}: unknown finish option(s) {', '.join(unknown)}; "
                             f"options are {', '.join(sorted(OPTIONS))}")
+    for row in rows:
+        if not row.images and _recorded_image(row.asset) is None:
+            problems.append(f"row {row.id}: finish needs the source image: give the row "
+                            "an image, or an asset whose provenance names one that exists")
     blender = find_blender()
     if blender is None or not Path(blender).is_file():
         problems.append(missing_help())
@@ -74,9 +78,23 @@ def source_image(ctx: StepContext) -> Path | None:
     if ctx.row.images:
         copy = ctx.row_dir / "input" / ctx.row.images[0].name
         return copy if copy.is_file() else ctx.row.images[0]
-    record = _read(ctx.sidecar)
+    return _image_in(_read(ctx.sidecar))
+
+
+def _image_in(record: dict[str, Any]) -> Path | None:
     path = (record.get("input") or {}).get("path")
     return Path(path) if path and Path(path).is_file() else None
+
+
+def _recorded_image(asset: Path | None) -> Path | None:
+    """The source image the provenance beside an existing GLB names, if it still exists."""
+    if asset is None:
+        return None
+    for candidate in (asset.with_suffix(".provenance.json"), asset.with_suffix(".json")):
+        image = _image_in(_read(candidate))
+        if image is not None:
+            return image
+    return None
 
 
 def views_for(asset: Path) -> Path | None:
@@ -153,7 +171,9 @@ def provenance_record(ctx: StepContext, output: Path,
     implying it is clear to ship.
     """
     source = _read(ctx.sidecar) or None
-    classification = ((source or {}).get("output") or {}).get("classification")
+    # a generation record keeps it under output; Props and Animate records at the top
+    classification = (((source or {}).get("output") or {}).get("classification")
+                      or (source or {}).get("classification"))
     painted = bool(ctx.options.get("paint", False))
     components = []
     if painted:

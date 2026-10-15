@@ -115,12 +115,14 @@ def library_nodes(output: Path) -> dict[str, list[dict[str, Any]]]:
             picture = next((ref for ref in references if ref.is_file()), None)
             model = _made(directory, steps, "generate")
             finished = _made(directory, steps, "finish")
+            # `<picture stem>__...` is how the Library ties a picture to its model, so the
+            # batch is part of both stems: two batches' rows with one id stay apart. The
+            # name shown is the part before the first `__`, the row's id.
+            stem = f"{row['id']}__{directory.name}"
             if picture is not None:
-                nodes["picture"].append({"stem": row["id"], "file": picture})
+                nodes["picture"].append({"stem": stem, "file": picture})
             if model is not None:
-                # `<picture stem>__...` is how the Library ties a picture to its model
-                nodes["model"].append({"stem": f"{row['id']}__batch__{directory.name}",
-                                       "file": model})
+                nodes["model"].append({"stem": f"{stem}__batch", "file": model})
             if finished is not None:
                 nodes["finished"].append({"stem": row["id"], "file": finished,
                                           "source": model, "image": picture})

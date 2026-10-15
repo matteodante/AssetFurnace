@@ -42,12 +42,12 @@ def output(tmp_path, monkeypatch):
 
 
 def _spec(root: Path, rows: int = 3, name: str = "lot") -> Path:
-    refs = root.parent / "refs"
+    refs = root.parent / "refs" / name   # each batch its own pictures, so its own models
     spec = {"schema_version": 1, "name": name, "use_case": "game",
             "defaults": {"backend": "fake", "kind": "creature", "parameters": {"seed": 1}},
             "rows": []}
     for index in range(1, rows + 1):
-        tiny_png(refs / f"row{index:02d}.png", index)
+        tiny_png(refs / f"row{index:02d}.png", index + sum(map(ord, name)))
         spec["rows"].append({"id": f"SK_row{index:02d}",
                              "images": [str(refs / f"row{index:02d}.png")]})
     path = root.parent / f"{name}.json"
@@ -267,3 +267,15 @@ def test_another_batchs_review_of_the_same_row_id_does_not_show(server, ran, out
     _, body = request(server, "GET", "/api/batches/lot")
     row = next(row for row in body["rows"] if row["id"] == "SK_row01")
     assert row["review"]["event"] == "queued"
+
+
+
+def test_two_batches_with_the_same_row_ids_stay_apart_in_the_library(output):
+    batch.run_batch(batch.load_batch(_spec(output, rows=1, name="first")))
+    batch.run_batch(batch.load_batch(_spec(output, rows=1, name="second")))
+    assets = assets_api.list_assets(output)
+    assert len(assets) == 2
+    for asset in assets:
+        batch_name = asset["model"].split("/")[1]
+        assert asset["finished"].split("/")[1] == batch_name
+        assert asset["picture"].split("/")[1] == batch_name

@@ -43,6 +43,8 @@ class Generated:
     # Files the generator writes beside its GLB, by suffix. They move with it, so the
     # final GLB keeps them under its own name (`<stem>.json`, `<stem>.svviews/`).
     companions: dict[str, Path] = field(default_factory=dict)
+    # Models the generator ran besides its own (a background remover), for provenance.
+    components: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,8 @@ class Generator:
     parameters: frozenset[str]           # the manifest parameters it accepts
     max_images: int = 1
     repo: Path | None = None             # backend checkout, for its git revision
+    # What these inputs would need beyond the install (a remover's weights); empty when fine.
+    input_check: Callable[[list[Path], dict[str, Any]], list[str]] = lambda images, parameters: []
 
 
 # ------------------------------------------------------------------------------ Pixal3D
@@ -78,6 +82,24 @@ def pixal3d_readiness() -> list[str]:
     problem = (f"Pixal3D is not ready (built: {state.get('cli_built')}, weight files: "
                f"{state.get('weights_present')} of 9). Install it with {PIXAL3D_BOOTSTRAP}")
     return [problem]
+
+
+def pixal3d_input_check(images: list[Path], parameters: dict[str, Any]) -> list[str]:
+    """An image that is not cut out gets matted, and rembg downloads a missing remover on
+    its own: that must be an explicit install, never a side effect of a run."""
+    from .matte import is_matted, matte_model, model_file
+
+    if parameters.get("matte") is False or model_file(matte_model()).is_file():
+        return []
+    if parameters.get("matte") is not True:
+        from PIL import Image
+
+        with Image.open(images[0]) as opened:
+            if is_matted(opened):
+                return []
+    return [f"{images[0].name} needs its background removed and no remover is installed: "
+            "install BiRefNet-lite with python scripts/bootstrap_matte.py (224 MB; it asks "
+            'first), give a cut-out image, or set "matte": false']
 
 
 def pixal3d_command(image: Path, output: Path, parameters: dict[str, Any]) -> list[str]:
@@ -112,15 +134,15 @@ def run_pixal3d(images: list[Path], working: Path, parameters: dict[str, Any],
     views = output.with_suffix(".svviews")
     if views.is_dir():
         companions[".svviews"] = views
-    applied = parameters
-    if record.is_file():
-        applied = json.loads(record.read_text(encoding="utf-8")).get("parameters", parameters)
-    return Generated(glb=output, parameters=dict(applied), companions=companions)
+    data = json.loads(record.read_text(encoding="utf-8")) if record.is_file() else {}
+    return Generated(glb=output, parameters=dict(data.get("parameters", parameters)),
+                     companions=companions, components=list(data.get("components", [])))
 
 
 GENERATORS: dict[str, Generator] = {
     "pixal3d": Generator(name="pixal3d", run=run_pixal3d, readiness=pixal3d_readiness,
-                         parameters=PIXAL3D_PARAMETERS, repo=PIXAL3D_ROOT),
+                         parameters=PIXAL3D_PARAMETERS, repo=PIXAL3D_ROOT,
+                         input_check=pixal3d_input_check),
 }
 
 
@@ -162,7 +184,7 @@ def run_manifest(path: Path, log: Callable[[str], None] = print) -> tuple[Path, 
                                       policy.get("allow_conditional", True))
     except ValueError as exc:
         raise ManifestRunError(f"license policy: {exc}") from exc
-    problems = generator.readiness()
+    problems = generator.readiness() + generator.input_check(images, parameters)
     if problems:
         raise ManifestRunError("; ".join(problems))
 
@@ -179,4 +201,8 @@ def run_manifest(path: Path, log: Callable[[str], None] = print) -> tuple[Path, 
     for suffix, companion in generated.companions.items():
         if companion.exists():
             shutil.move(str(companion), str(result.with_suffix(suffix)))
+    if generated.components:
+        record = json.loads(sidecar.read_text(encoding="utf-8"))
+        record["components"] = [*record.get("components", []), *generated.components]
+        sidecar.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return result, sidecar

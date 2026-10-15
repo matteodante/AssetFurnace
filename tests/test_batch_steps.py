@@ -219,3 +219,36 @@ def test_the_repaint_install_is_checked_before_the_batch(tmp_path, monkeypatch):
     assert any("uv sync" in problem for problem in problems)
     assert any("weights" in problem for problem in problems)
     assert finish_step.preflight([_row(tmp_path)]) == []
+
+
+
+def test_a_finish_only_row_without_a_source_image_is_caught_before_the_batch(tmp_path,
+                                                                            monkeypatch):
+    blender = tmp_path / "blender.exe"
+    blender.write_bytes(b"")
+    monkeypatch.setattr(finish_step, "find_blender", lambda: blender)
+    asset = tmp_path / "old" / "crate.glb"
+    asset.parent.mkdir()
+    asset.write_bytes(b"glTF")
+    row = _row(tmp_path, images=(), steps=("finish",), asset=asset)
+    assert any("source image" in p for p in finish_step.preflight([row]))
+    image = tiny_png(tmp_path / "old" / "crate.png")
+    asset.with_suffix(".provenance.json").write_text(json.dumps({"input": {"path": str(image)}}))
+    assert finish_step.preflight([row]) == []
+
+
+def test_a_top_level_classification_is_kept(tmp_path, monkeypatch):
+    asset = tmp_path / "props" / "barrel_LOD0.glb"
+    asset.parent.mkdir()
+    asset.write_bytes(b"glTF")
+    sidecar = asset.with_suffix(".provenance.json")
+    sidecar.write_text(json.dumps({"classification": "commercial-conditional",
+                                   "license": {"name": "MIT + DINOv3"}}))
+    output = tmp_path / "out.glb"
+    output.write_bytes(b"glTFdone")
+    record = finish_step.provenance_record(
+        _context(tmp_path, _row(tmp_path), asset, sidecar), output, None)
+    assert record["classification"] == "commercial-conditional"
+    painted = finish_step.provenance_record(
+        _context(tmp_path, _row(tmp_path), asset, sidecar, {"paint": True}), output, None)
+    assert painted["classification"] == "territory-restricted"

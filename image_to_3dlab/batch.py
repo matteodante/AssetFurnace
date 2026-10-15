@@ -73,6 +73,9 @@ ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
 MEASURES = ("height", "longest")
 SIZE_LIMIT_CM = 10_000_000
 
+# The licence profile of finish's repaint (Hunyuan 2.1 Paint), for the run policy.
+REPAINT_BACKEND = "hunyuan-comfyui"
+
 STATE_FILE = "batch-state.json"
 INDEX_FILE = "outputs.json"
 SPEC_COPY = "spec.json"
@@ -230,13 +233,17 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         rows.append(row)
 
     for row in rows:
-        if "generate" in row.steps:
+        # every model a row would run is gated: its generator, and the repaint if asked
+        gated = ([row.backend] if "generate" in row.steps else []) + (
+            [REPAINT_BACKEND] if row.options.get("finish", {}).get("paint") else [])
+        for backend in gated:
             try:
-                validate_run_policy(row.backend, resolved_intent["use_case"],
+                validate_run_policy(backend, resolved_intent["use_case"],
                                     resolved_intent["distribution"],
                                     policy.get("allow_conditional", True))
             except ValueError as exc:
-                problems.append(f"row {row.id}: license policy: {exc}")
+                what = "the repaint" if backend == REPAINT_BACKEND else backend
+                problems.append(f"row {row.id}: license policy for {what}: {exc}")
     if problems:
         raise BatchError(problems)
     return BatchSpec(name=name, path=path, rows=rows, intent=resolved_intent,
@@ -332,7 +339,14 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path,
                         f"{FACE_RANGE[1]:,}, not {faces!r}")
 
     backend = value.get("backend", DEFAULT_BACKEND)
-    parameters = {**(defaults.get("parameters") or {}), **(raw.get("parameters") or {})}
+    parameters: dict[str, Any] = {}
+    for source in (defaults.get("parameters"), raw.get("parameters")):
+        if source is None:
+            continue
+        if not isinstance(source, dict):
+            problems.append(f"{label}: parameters must be an object, not {source!r}")
+            continue
+        parameters.update(source)
     if "seed" in value:
         parameters["seed"] = value["seed"]
     if "generate" in steps:
@@ -348,10 +362,15 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path,
 
     options = {}
     for step in STEP_NAMES:
-        merged = {**(defaults.get(step) or {}), **(raw.get(step) or {})}
-        if not isinstance(merged, dict):
-            problems.append(f"{label}: options for {step} must be an object")
-        elif merged:
+        merged: dict[str, Any] = {}
+        for source in (defaults.get(step), raw.get(step)):
+            if source is None:
+                continue
+            if not isinstance(source, dict):
+                problems.append(f"{label}: the settings for {step} must be an object")
+                continue
+            merged.update(source)
+        if merged:
             options[step] = merged
     size_cm, measure = value.get("size_cm"), value.get("measure")
     if size_cm is not None and (isinstance(size_cm, bool) or not isinstance(size_cm, (int, float))
@@ -452,10 +471,11 @@ def _absolute(text: str | None, directory: Path) -> Path | None:
     return None if text is None else directory / text
 
 
-def _file_record(path: Path, directory: Path) -> dict[str, Any]:
-    if path.is_dir():   # a folder (a Pixal3D camera): kept, not hashed
-        return {"path": _relative(path, directory), "sha256": None}
-    return {"path": _relative(path, directory), "sha256": sha256_file(path)}
+def _file_records(path: Path, directory: Path) -> list[dict[str, Any]]:
+    """A file and its hash; a folder (a Pixal3D camera) as every file in it, so a resume
+    notices one of them changed, not only that the folder is gone."""
+    files = sorted(p for p in path.rglob("*") if p.is_file()) if path.is_dir() else [path]
+    return [{"path": _relative(file, directory), "sha256": sha256_file(file)} for file in files]
 
 
 def _files_intact(files: list[dict[str, Any]], directory: Path) -> bool:
@@ -698,19 +718,22 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
         sidecar = result.sidecar if result.asset else sidecar
         steps[name] = {
             "status": "done", "finished_at": now(),
-            "files": [_file_record(path, directory) for path in result.files],
+            "files": [record for path in result.files
+                      for record in _file_records(path, directory)],
             "asset": _relative(result.asset, directory) if result.asset else None,
             "sidecar": _relative(result.sidecar, directory) if result.sidecar else None,
             **({"record": result.record} if result.record else {}),
         }
         save()
 
+    # Queued first: a runner stopped in between leaves the row running, and its resume
+    # queues it (the same version is never queued twice) before recording it done.
+    if asset is not None:
+        queue_for_review(spec, row, asset)
     entry.update(status="done", finished_at=now(),
                  asset=_relative(asset, directory) if asset else None,
                  sidecar=_relative(sidecar, directory) if sidecar else None)
     save()
-    if asset is not None:
-        queue_for_review(spec, row, asset)
     log("done")
 
 

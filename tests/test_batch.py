@@ -123,6 +123,8 @@ def test_intent_flags_apply_to_a_csv_and_are_refused_for_json(tmp_path, monkeypa
     ({"id": "SM_A", "steps": ["finish"]}, "asset"),
     ({"id": "SM_A", "images": [], "steps": ["generate"]}, "image"),
     ({"id": "SM_A", "steps": []}, "at least one step"),
+    ({"id": "SM_A", "images": ["refs/row01.png"], "parameters": "seed=1"}, "parameters"),
+    ({"id": "SM_A", "images": ["refs/row01.png"], "finish": "fast"}, "settings for finish"),
     ({"id": "SM_A", "images": ["refs/row01.png", "other/row01.png"]}, "same file name"),
 ])
 def test_a_bad_row_stops_the_batch_before_anything_runs(tmp_path, monkeypatch, row, message):
@@ -666,3 +668,56 @@ def test_the_review_state_belongs_to_one_version_of_one_asset(tmp_path):
     assert batch.review_state(log, "SM_Crate", "new")["event"] == "queued"
     assert batch.review_state(log, "SM_Crate", "old")["note"] == "too big"
     assert batch.review_state(log, "SM_Barrel", "new") is None
+
+
+
+def test_the_repaint_goes_through_the_licence_gate(tmp_path, monkeypatch):
+    """Hunyuan's paint is not cleared for a worldwide game, whatever generated the model."""
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1, distribution="worldwide")
+    spec = json.loads(spec_path.read_text())
+    spec["rows"][0]["finish"] = {"paint": True}
+    spec_path.write_text(json.dumps(spec))
+    with pytest.raises(batch.BatchError, match="the repaint"):
+        batch.load_batch(spec_path)
+    spec["rows"][0]["finish"] = {}
+    spec_path.write_text(json.dumps(spec))
+    batch.load_batch(spec_path)   # the fake generator alone is fine worldwide
+
+
+def test_a_changed_file_in_a_camera_folder_runs_the_step_again(tmp_path, monkeypatch,
+                                                               fake_finish):
+    generator = install_fake_generator(monkeypatch, FakeGenerator(interrupt_on="row02"))
+    spec_path = write_spec(tmp_path, rows=2)
+    with pytest.raises(KeyboardInterrupt):
+        batch.run_batch(batch.load_batch(spec_path))
+    state = _state(spec_path)
+    files = state["rows"]["SM_row01"]["steps"]["generate"]["files"]
+    camera = next(f["path"] for f in files if f["path"].endswith("transforms.json"))
+    directory = spec_path.parent / "out" / "test-batch"
+    (directory / camera).write_text("{}")
+    state["rows"]["SM_row01"]["status"] = "running"
+    (directory / batch.STATE_FILE).write_text(json.dumps(state))
+    generator.calls.clear()
+    batch.run_batch(batch.load_batch(spec_path))
+    assert generator.calls == ["row01", "row02"]
+
+
+def test_a_row_stopped_after_queueing_is_queued_once_and_finished(tmp_path, monkeypatch,
+                                                                  fake_finish):
+    install_fake_generator(monkeypatch)
+    real = batch.queue_for_review
+
+    def queue_then_stop(spec, row, asset):
+        real(spec, row, asset)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(batch, "queue_for_review", queue_then_stop)
+    spec_path = write_spec(tmp_path, rows=1)
+    with pytest.raises(KeyboardInterrupt):
+        batch.run_batch(batch.load_batch(spec_path))
+    assert _state(spec_path)["rows"]["SM_row01"]["status"] == "running"
+    monkeypatch.setattr(batch, "queue_for_review", real)
+    batch.run_batch(batch.load_batch(spec_path))
+    assert _state(spec_path)["rows"]["SM_row01"]["status"] == "done"
+    assert len((tmp_path / batch.REVIEW_LOG).read_text().splitlines()) == 1

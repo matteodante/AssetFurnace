@@ -134,3 +134,79 @@ def test_cli_reports_a_manifest_error(tmp_path, monkeypatch, capsys):
     install_fake_generator(monkeypatch, ready=False)
     assert cli.main(["--run-manifest", str(_manifest(tmp_path))]) == 2
     assert "bootstrap_fake.py" in capsys.readouterr().err
+
+
+
+def test_pixal3d_never_lets_rembg_download_a_remover(tmp_path, monkeypatch):
+    from image_to_3dlab import matte
+
+    monkeypatch.setenv("U2NET_HOME", str(tmp_path / "no-models"))
+    opaque = tiny_png(tmp_path / "opaque.png")
+    problems = manifest_run.pixal3d_input_check([opaque], {})
+    assert problems and "bootstrap_matte.py" in problems[0]
+    assert manifest_run.pixal3d_input_check([opaque], {"matte": False}) == []
+    (tmp_path / "no-models").mkdir()
+    matte.model_file(matte.FALLBACK_MODEL).write_bytes(b"onnx")
+    assert manifest_run.pixal3d_input_check([opaque], {}) == []
+
+
+def test_a_cut_out_image_needs_no_remover(tmp_path, monkeypatch):
+    from PIL import Image
+
+    monkeypatch.setenv("U2NET_HOME", str(tmp_path / "no-models"))
+    cut = tmp_path / "cut.png"
+    Image.new("RGBA", (8, 8), (0, 0, 0, 0)).save(cut)
+    assert manifest_run.pixal3d_input_check([cut], {}) == []
+    assert manifest_run.pixal3d_input_check([cut], {"matte": True})
+
+
+def test_the_input_check_stops_a_run_before_the_generator(tmp_path, monkeypatch):
+    generator = FakeGenerator()
+    monkeypatch.setitem(manifest_run.GENERATORS, "fake", manifest_run.Generator(
+        name="fake", run=generator.run, readiness=lambda: [], parameters=frozenset({"seed"}),
+        input_check=lambda images, parameters: ["no remover"]))
+    from batch_fakes import FAKE_PROFILE
+
+    from image_to_3dlab import provenance
+
+    monkeypatch.setitem(provenance.LICENSES, "fake", FAKE_PROFILE)
+    monkeypatch.setattr(provenance, "_pipeline_revision", lambda: None)
+    with pytest.raises(manifest_run.ManifestRunError, match="no remover"):
+        manifest_run.run_manifest(_manifest(tmp_path))
+    assert generator.calls == []
+
+
+def test_the_generators_own_components_reach_the_provenance(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    original = manifest_run.GENERATORS["fake"].run
+
+    def with_remover(images, working, parameters, log):
+        generated = original(images, working, parameters, log)
+        generated.components = [{"component": "rembg/u2net", "purpose": "background removal",
+                                 "license": "MIT"}]
+        return generated
+
+    monkeypatch.setitem(manifest_run.GENERATORS, "fake", manifest_run.Generator(
+        name="fake", run=with_remover, readiness=lambda: [], parameters=frozenset({"seed"})))
+    glb, sidecar = manifest_run.run_manifest(_manifest(tmp_path))
+    record = json.loads(sidecar.read_text())
+    assert record["components"] == [{"component": "rembg/u2net",
+                                     "purpose": "background removal", "license": "MIT"}]
+    assert record["output"]["sha256"]
+
+
+def test_run_pixal3d_carries_the_remover_it_used(tmp_path, monkeypatch):
+    image = tiny_png(tmp_path / "cat.png")
+
+    def fake_run(command, **kwargs):
+        output = Path(command[4])
+        output.write_bytes(b"glTF")
+        output.with_name(f"{output.stem}.json").write_text(json.dumps({
+            "parameters": {"seed": 1},
+            "components": [{"component": "rembg/birefnet-general-lite", "license": "MIT"}]}))
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(manifest_run.subprocess, "run", fake_run)
+    generated = manifest_run.run_pixal3d([image], tmp_path / "w", {}, print)
+    assert generated.components == [{"component": "rembg/birefnet-general-lite",
+                                     "license": "MIT"}]

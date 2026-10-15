@@ -210,3 +210,25 @@ def test_status_after_a_stop_shows_the_interrupted_row_queued(tmp_path, monkeypa
     assert status["active"] is None and status["counts"] == {"done": 1, "queued": 2}
     row = next(row for row in status["rows"] if row["id"] == "SM_row02")
     assert row["status"] == "queued" and "interrupted" in row["note"]
+
+
+
+def test_a_launched_runner_is_waited_for(tmp_path, monkeypatch):
+    """On POSIX an exited child nobody waits for stays a zombie and keeps the lock alive."""
+    import threading
+
+    waited = threading.Event()
+
+    class Child:
+        pid = 4242
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def wait(self):
+            waited.set()
+            return 0
+
+    monkeypatch.setattr(mcp_server.subprocess, "Popen", Child)
+    assert mcp_server.launch(["python"], tmp_path / "run.log") == 4242
+    assert waited.wait(2)

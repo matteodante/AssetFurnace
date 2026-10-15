@@ -28,6 +28,12 @@ def preflight(rows) -> list[str]:
         generator = manifest_run.GENERATORS.get(backend)
         if generator is not None:
             problems += generator.readiness()
+    for row in rows:
+        generator = manifest_run.GENERATORS.get(row.backend)
+        if generator is not None and row.images:
+            problems += [f"row {row.id}: {problem}"
+                         for problem in generator.input_check(list(row.images[:1]),
+                                                              row.parameters)]
     return problems
 
 

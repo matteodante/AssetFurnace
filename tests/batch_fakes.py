@@ -67,8 +67,11 @@ class FakeGenerator:
         out.write_bytes(b"glTF" + digest)
         record = working / f"{stem}.json"
         record.write_text(json.dumps({"backend": "fake", "parameters": parameters}))
+        views = working / f"{stem}.svviews"
+        views.mkdir(exist_ok=True)
+        (views / "transforms.json").write_text(json.dumps({"camera": stem}))
         return manifest_run.Generated(glb=out, parameters=dict(parameters),
-                                      companions={".json": record})
+                                      companions={".json": record, ".svviews": views})
 
 
 def install_fake_generator(monkeypatch, generator: FakeGenerator | None = None,

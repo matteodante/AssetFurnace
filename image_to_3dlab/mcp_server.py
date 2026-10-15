@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -73,6 +74,9 @@ def launch(command: list[str], log_path: Path, env: dict[str, str] | None = None
         process = subprocess.Popen(command, cwd=str(REPO), stdin=subprocess.DEVNULL,
                                    stdout=handle, stderr=subprocess.STDOUT, env=env,
                                    **group_popen_kwargs())
+    # Waited on in the background: on POSIX an exited child nobody waits for stays a
+    # zombie, which still answers kill(pid, 0) and would hold the batch lock forever.
+    threading.Thread(target=process.wait, daemon=True).start()
     return process.pid
 
 
