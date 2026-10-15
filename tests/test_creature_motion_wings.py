@@ -121,3 +121,16 @@ def test_long_wings_do_not_beat_the_feet_into_the_ground():
     for f in cm.winged_hover(rig, fam):
         p = positions(rig, f)
         assert min(p[leg["bones"][-1]][1] for leg in fam["legs"]) > floor
+
+
+def test_long_wings_never_beat_below_the_ground():
+    parents, heads, n = quadruped(wings=True)
+    heads = dict(heads)
+    for side in ("L", "R"):
+        for k in range(1, 4):
+            heads[n[f"wing{side}{k}"]] = heads[n[f"wing{side}0"]] + 2 * (heads[n[f"wing{side}{k}"]] - heads[n[f"wing{side}0"]])
+    rig, fam, _ = rig_of((parents, heads, n))
+    assert fam["family"] == "winged"
+    floor = min(rig.heads[b][1] for b in rig.order)
+    for f in cm.winged_hover(rig, fam):
+        assert min(p[1] for p in positions(rig, f).values()) >= floor - 1e-6

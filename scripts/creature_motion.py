@@ -671,7 +671,16 @@ def winged_hover(rig: Rig, family: dict, frames: int | None = None) -> list[tupl
         for i, bone in enumerate(neck[:2]):
             turn[bone] = axis_angle(left, follow_through(u, 1, 3.0, 0.1 * (i + 1)))
         out.append((turn, root_pos))
-    return out
+    # hover high enough that nothing, wing tips at the bottom of the beat included, touches the ground
+    floor = min(float(p @ up) for p in rig.heads.values())
+    lowest = min(float(p @ up) for turn, root_pos in out for p in positions_of(rig, turn, root_pos).values())
+    raise_by = max(0.0, floor + 0.02 * span - lowest)
+    return [(turn, root_pos + up * raise_by) for turn, root_pos in out]
+
+
+def positions_of(rig: Rig, turn: dict[str, np.ndarray], root: np.ndarray) -> dict[str, np.ndarray]:
+    """Every joint's position for one frame."""
+    return posed_heads(rig, accumulate(rig, turn), root)
 
 
 def winged_attack(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[tuple[dict, np.ndarray]]:

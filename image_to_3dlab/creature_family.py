@@ -320,7 +320,8 @@ def classify(parents: dict[str, str | None], heads: dict, up=(0.0, 1.0, 0.0), fr
     if len(legs) >= 3:
         # the tail rule again, over every candidate: one chain lying out along the ground is a
         # tail, several are a sprawling creature's legs
-        found = legs + _splayed(body, legs, left) + ([lone] if lone is not None else [])
+        known = legs + ([lone] if lone is not None else [])
+        found = known + _splayed(body, known, left)  # the tail set aside is not found again
         lone = _lone_tail(body, found)
         legs = [leg for leg in found if leg is not lone]
         forward = _forward(body, legs, front)  # with every leg: five or more change the rule

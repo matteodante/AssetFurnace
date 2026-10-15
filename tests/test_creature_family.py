@@ -306,3 +306,16 @@ def test_choosing_plant_gives_the_stem_not_the_widest_chain():
         heads[n[f"leaf{side}1"]] = np.array([1.2 * x, 0.25, 0])
     found = cf.classify(parents, heads, family="plant")
     assert found["body"][0] == n["stem0"] and found["body"][-1] == n["stem4"]
+
+
+def test_a_long_sideways_tail_is_counted_once():
+    parents, heads, n = quadruped(wings=True, tail=False)
+    parents, heads = dict(parents), dict(heads)
+    tail = [(0.05, 0.45, -0.65), (0.35, 0.3, -0.85), (0.7, 0.15, -1.0), (1.0, 0.0, -1.1)]  # only its tip down
+    prev = n["hips"]
+    for k, pos in enumerate(tail):
+        name = f"bone_tail{k}"
+        parents[name], heads[name], prev = prev, np.array(pos), name
+    found = cf.classify(parents, heads)
+    bones = [b for leg in found["legs"] for b in leg["bones"]]
+    assert found["family"] == "winged" and len(found["legs"]) == 4 and len(bones) == len(set(bones))
