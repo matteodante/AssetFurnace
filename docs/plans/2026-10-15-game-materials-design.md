@@ -251,6 +251,11 @@ normali dei vertici, strip e fan), conserva occlusione già presente, provenienz
 modello riggato), rifiuta le combinazioni che non può impacchettare senza errori (mappe su altre UV, AO con trasformazione,
 materiali unlit) e dice quali materiali senza texture restano come sono.
 
+**Nel registro dei controlli della funzione 7** (`image_to_3dlab/checks/material_checks.py`): `material.tint_zones`,
+`material.baked_light_direction` e `material.baked_light_highlights`, con una sola analisi per GLB. Le zone di tinta si
+chiedono solo nei profili `creature` ed `equipment_part`: un sasso o un barile non devono essere ricolorabili. Il
+controllo dell'occlusione resta allo script, perché richiede l'AO cotta che l'`Asset` del registro non porta.
+
 **Fuori dal mio perimetro, da fare dopo il merge**: il passo `materials` in `cli.py` (sessione della funzione 1); la
 registrazione dei controlli nella coda (funzione 7); il Material Function di Unreal che rifà la formula dal
 `.materials.json` (funzione 5).

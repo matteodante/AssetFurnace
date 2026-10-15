@@ -14,6 +14,7 @@ Every check returns `{"check", "status", "value", "threshold", "message"}` (plus
 from image_to_3dlab.checks import (  # noqa: F401 - importing registers the checks
     budget_checks,
     licenses,
+    material_checks,
     measure_checks,
     mesh_checks,
     silhouette,
