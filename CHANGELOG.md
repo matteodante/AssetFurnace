@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Batches**: `pipeline.py --run-batch spec.json` (or `.csv`) runs one row per asset
+  through `generate` and `finish`, with a state per row, resume from where it stopped,
+  `--retry-failed`, and a `.provenance.json` for every output. Reserved step names
+  (`materials`, `export_unreal`, `checks`) are skipped with a warning until they exist.
+  An MCP server (`python -m image_to_3dlab.mcp_server`) lets an agent in another
+  repository submit batches, follow them and collect their files, and a **Batches** page
+  in the studio does the same by hand. Finished rows join the Library and the review
+  queue (`output/review-log.jsonl`). Rows can state their real size (`size_cm`,
+  `measure`) for the Unreal export. See [Batches](docs/batches.md).
+- `--run-manifest` runs Pixal3D manifests.
 - Style bibles (`image_to_3dlab/style`): a self-contained folder per project with approved and
   rejected pictures, each with a note and its provenance, so a game keeps its look in its own
   repository. Prompt templates per asset kind put the 3D recipe first and the project's style

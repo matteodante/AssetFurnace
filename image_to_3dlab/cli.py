@@ -5,6 +5,7 @@ import os
 import sys
 from pathlib import Path
 
+from . import batch, manifest_run
 from .provenance import (
     finalize_output,
     load_run_manifest,
@@ -20,6 +21,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--run-manifest", type=Path, help="JSON run manifest (schema v1)"
     )
+    lot = parser.add_argument_group("Batches (docs/batches.md)")
+    lot.add_argument(
+        "--run-batch", type=Path, metavar="SPEC",
+        help="run every row of a batch spec (JSON or CSV); run it again to resume",
+    )
+    lot.add_argument(
+        "--retry-failed", action="store_true",
+        help="with --run-batch: run rows that failed before again",
+    )
+    lot.add_argument("--use-case", choices=("showcase", "game"),
+                     help="with --run-batch and a CSV spec: the batch's use case")
+    lot.add_argument("--distribution", choices=("private", "public", "worldwide"),
+                     help="with --run-batch and a CSV spec: where the outputs go")
+    lot.add_argument("--commercial", action="store_true", default=None,
+                     help="with --run-batch and a CSV spec: commercial intent")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--fast", action="store_true", help="Run SF3D in this process")
     mode.add_argument(
@@ -130,6 +146,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    batch_intent = {"use_case": args.use_case, "distribution": args.distribution,
+                    "commercial_intent": args.commercial}
+    if args.run_batch:
+        if args.run_manifest or args.image or args.fast or args.quality or args.trellis:
+            print("error: --run-batch runs a whole spec; it takes no IMAGE, --run-manifest "
+                  "or --fast/--quality/--trellis (the spec names each row's backend)",
+                  file=sys.stderr)
+            return 2
+        return batch.run_from_cli(args.run_batch, batch_intent, args.retry_failed)
+    if any(value is not None for value in batch_intent.values()) or args.retry_failed:
+        print("error: --use-case, --distribution, --commercial and --retry-failed go "
+              "with --run-batch", file=sys.stderr)
+        return 2
     source_manifest = None
     manifest_data = None
     if args.run_manifest:
@@ -138,6 +167,8 @@ def main(argv: list[str] | None = None) -> int:
             manifest_data = load_run_manifest(source_manifest)
             model = manifest_data["model"]
             backend = model["backend"]
+            if backend in manifest_run.GENERATORS:
+                return _run_registered(source_manifest)
             # A manifest may name one image, or several views of the same subject in
             # the same pose. Extra views replace guessing about unseen sides.
             manifest_input = manifest_data["input"]
@@ -338,6 +369,18 @@ def main(argv: list[str] | None = None) -> int:
             args.sf3d_repo if args.fast else args.trellis_repo if args.trellis else None
         ),
     )
+    print(result)
+    print(sidecar)
+    return 0
+
+
+def _run_registered(manifest: Path) -> int:
+    """A backend run through `manifest_run` (Pixal3D), the path batches use too."""
+    try:
+        result, sidecar = manifest_run.run_manifest(manifest)
+    except manifest_run.ManifestRunError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return exc.code
     print(result)
     print(sidecar)
     return 0
