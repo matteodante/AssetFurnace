@@ -22,7 +22,7 @@ originali, tabella di corrispondenza, import in Unreal) resta nella repo di Auro
 | 1 | Lotti e accesso per agenti | [batch-mcp](2026-10-15-batch-mcp-design.md) | **Su `main`** (PR #2): lotti, ripresa, server MCP, pagina Batches |
 | 2 | Dal riferimento al concept | [reference-concept](2026-10-15-reference-concept-design.md) | Strada decisa: Qwen-Image 2.1 in modifica dentro `sd-cli`. File della visione su `main` (PR #9); prova dei 4 casi in corso, giudicata a occhio dall'utente |
 | 3 | Bibbia dello stile | [style-bible](2026-10-15-style-bible-design.md) | PR 1 su `main` (PR #10: bibbia, prompt, riferimenti). PR 2 (gara fra giudici imparati) in corso. Lo stile si ricava dai riferimenti originali del progetto (vedi sotto) |
-| 4 | Parti per slot | progetto della prova sul ramo `claude/spike-slot-parts-79e80d` | Prova delle tre strade in corso; rapporto in arrivo |
+| 4 | Parti per slot | [rapporto della prova](2026-10-15-slot-parts-spike.md) | Prova fatta: strada B senza HoloPart consigliata; OmniPart escluso (PartField non commerciale) |
 | 5 | Profilo Unreal | [unreal-profile](2026-10-15-unreal-profile-design.md) | **Su `main`** (PR #6, #7), accettazione superata su UE 5.8.3 |
 | 6 | Famiglie di creature | [creature-families](2026-10-15-creature-families-design.md) | PR 1 su `main` (PR #8: riconoscimento, `rig.deformation`, digitigradi e quadrupedi). PR #13 (molte zampe, serpenti) in attesa della ricerca sugli approcci più recenti per l'animazione |
 | 7 | Controlli e revisione | [checks-review](2026-10-15-checks-review-design.md) | **Su `main`** (PR #4) |
@@ -134,6 +134,8 @@ I tre non sono alternative uguali: fanno lavori diversi.
 Nel confronto pubblicato con CubePart (dati degli autori, non verificati da noi) OmniPart con maschere SAM3 batte
 PartCrafter e PartPacker. **Nessuno dei tre è provato su questo PC**: requisiti e Windows vanno verificati (PartCrafter ha
 una guida per Windows in un fork; OmniPart e HoloPart sono pensati per Linux con CUDA).
+
+**Esito della prova (16/10/2026)**: vince Pixal3D sul personaggio intero più divisione per slot, senza HoloPart; il `partfield_encoder.ckpt` di OmniPart è il checkpoint non commerciale di PartField. Dettagli in [`2026-10-15-slot-parts-spike.md`](2026-10-15-slot-parts-spike.md).
 
 Proposta: nella versione minima della funzione 4 si mettono a confronto, sullo stesso set di armatura, tre strade:
 1. **OmniPart** con le maschere degli slot;
