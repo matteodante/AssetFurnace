@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   baked LODs, box collision, one ORM texture per material, Mannequin bone names and a
   `root` bone for humanoids, equipment on its body's Skeleton. `scripts/unreal_import_check.py`
   imports the result headless, checks it and photographs Manny's idle and walk retargeted onto it.
+  In Studio, **Export for Unreal** on any Library asset does the same and hands back the files.
 - Experimental canonical editing snapshots and a Blender no-op bridge, preserving
   untouched GLB data and reporting geometry, UV and weight round-trip checks.
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
