@@ -63,6 +63,7 @@ class FakeGenerator:
             images[0].read_bytes() + json.dumps(parameters, sort_keys=True).encode()
         ).digest()
         working.mkdir(parents=True, exist_ok=True)
+        (working / "fake.log").write_text(f"generated {stem}\n")
         out = working / f"{stem}.glb"
         out.write_bytes(b"glTF" + digest)
         record = working / f"{stem}.json"

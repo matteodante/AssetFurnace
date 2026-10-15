@@ -69,8 +69,15 @@ def run(ctx: StepContext) -> StepResult:
         glb, sidecar = manifest_run.run_manifest(manifest, log=ctx.log)
     except manifest_run.ManifestRunError as exc:
         return StepResult(ok=False, reason=str(exc))
-    shutil.rmtree(ctx.step_dir / ".working", ignore_errors=True)
+    working = ctx.step_dir / ".working"
+    logs = []
+    for log in sorted(working.glob("*.log")):   # the generator's log outlives its scratch
+        logs.append(ctx.step_dir / log.name)
+        shutil.move(str(log), str(logs[-1]))
+    shutil.rmtree(working, ignore_errors=True)
     companions = sorted(path for path in glb.parent.glob(f"{glb.stem}.*")
                         if path not in (glb, sidecar))
-    return StepResult(asset=glb, sidecar=sidecar, files=[glb, sidecar, *companions, manifest],
+    # the copied inputs too: changed before a resume, they make the generation run again
+    return StepResult(asset=glb, sidecar=sidecar,
+                      files=[glb, sidecar, *companions, manifest, *images, *logs],
                       record={"manifest": manifest.name})

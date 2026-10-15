@@ -232,3 +232,15 @@ def test_a_launched_runner_is_waited_for(tmp_path, monkeypatch):
     monkeypatch.setattr(mcp_server.subprocess, "Popen", Child)
     assert mcp_server.launch(["python"], tmp_path / "run.log") == 4242
     assert waited.wait(2)
+
+
+
+def test_a_resume_submission_does_not_need_what_its_done_rows_needed(tmp_path, monkeypatch,
+                                                                     launched):
+    install_fake_generator(monkeypatch, FakeGenerator(fail_on="row02"))
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(FakeFinish().run))
+    spec_path = write_spec(tmp_path, rows=2)
+    batch.run_batch(batch.load_batch(spec_path))
+    install_fake_generator(monkeypatch, ready=False)
+    assert mcp_server.validate_batch(str(spec_path))["ok"] is False   # the full check
+    assert mcp_server.submit_batch(str(spec_path))["started"] is True

@@ -57,6 +57,8 @@ class Generator:
     repo: Path | None = None             # backend checkout, for its git revision
     # What these inputs would need beyond the install (a remover's weights); empty when fine.
     input_check: Callable[[list[Path], dict[str, Any]], list[str]] = lambda images, parameters: []
+    # Wrong parameter values, found before the run rather than by the generator's argparse.
+    check_parameters: Callable[[dict[str, Any]], list[str]] = lambda parameters: []
 
 
 # ------------------------------------------------------------------------------ Pixal3D
@@ -82,6 +84,30 @@ def pixal3d_readiness() -> list[str]:
     problem = (f"Pixal3D is not ready (built: {state.get('cli_built')}, weight files: "
                f"{state.get('weights_present')} of 9). Install it with {PIXAL3D_BOOTSTRAP}")
     return [problem]
+
+
+def pixal3d_check_parameters(parameters: dict[str, Any]) -> list[str]:
+    def number(value: Any) -> bool:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+    problems = []
+    seed, steps = parameters.get("seed"), parameters.get("steps")
+    if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int) or seed < 0):
+        problems.append(f"seed must be a whole number from 0, not {seed!r}")
+    if steps is not None and (isinstance(steps, bool) or not isinstance(steps, int)
+                              or not 1 <= steps <= 64):
+        problems.append(f"steps must be a whole number from 1 to 64, not {steps!r}")
+    for key in ("gss", "gsh"):
+        value = parameters.get(key)
+        if value is not None and not (number(value) and value > 0):
+            problems.append(f"{key} must be a positive number, not {value!r}")
+    fov = parameters.get("fov")
+    if fov is not None and not (number(fov) and 0 < fov < 3.14159):
+        problems.append(f"fov must be an angle in radians between 0 and pi, not {fov!r}")
+    matte = parameters.get("matte")
+    if matte is not None and not isinstance(matte, bool):
+        problems.append(f"matte must be true, false or left out, not {matte!r}")
+    return problems
 
 
 def pixal3d_input_check(images: list[Path], parameters: dict[str, Any]) -> list[str]:
@@ -142,7 +168,8 @@ def run_pixal3d(images: list[Path], working: Path, parameters: dict[str, Any],
 GENERATORS: dict[str, Generator] = {
     "pixal3d": Generator(name="pixal3d", run=run_pixal3d, readiness=pixal3d_readiness,
                          parameters=PIXAL3D_PARAMETERS, repo=PIXAL3D_ROOT,
-                         input_check=pixal3d_input_check),
+                         input_check=pixal3d_input_check,
+                         check_parameters=pixal3d_check_parameters),
 }
 
 
@@ -169,6 +196,8 @@ def run_manifest(path: Path, log: Callable[[str], None] = print) -> tuple[Path, 
         raise ManifestRunError(f"invalid run manifest: {exc}") from exc
 
     images = [(source.parent / name).resolve() for name in names]
+    if not images:
+        raise ManifestRunError("the manifest names no input image")
     if len(images) > generator.max_images:
         raise ManifestRunError(f"{backend} takes one image" if generator.max_images == 1
                                else f"{backend} takes at most {generator.max_images} images")
@@ -179,6 +208,12 @@ def run_manifest(path: Path, log: Callable[[str], None] = print) -> tuple[Path, 
     if unknown:
         raise ManifestRunError(f"{backend} does not take parameter(s) {', '.join(unknown)}; "
                                f"it takes {', '.join(sorted(generator.parameters))}")
+    wrong = generator.check_parameters(parameters)
+    if wrong:
+        raise ManifestRunError(f"{backend}: {'; '.join(wrong)}")
+    if not isinstance(policy, dict) or not isinstance(policy.get("allow_conditional", True), bool):
+        # "false" as a string is truthy: the licence gate must not fail open on a typo
+        raise ManifestRunError("license_policy.allow_conditional must be true or false")
     try:
         profile = validate_run_policy(backend, intent["use_case"], intent["distribution"],
                                       policy.get("allow_conditional", True))

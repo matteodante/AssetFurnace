@@ -45,12 +45,18 @@ def _intent(use_case: str | None, distribution: str | None,
             if value is not None}
 
 
-def _check(spec_path: str, intent: dict[str, Any]) -> tuple[batch.BatchSpec | None, list[str]]:
+def _check(spec_path: str, intent: dict[str, Any], retry_failed: bool | None = None,
+           ) -> tuple[batch.BatchSpec | None, list[str]]:
+    """Load and preflight a spec: every row, or with `retry_failed` given, only the rows a
+    run would execute now (a resume does not need what its done rows needed)."""
     try:
         spec = batch.load_batch(Path(spec_path), intent=intent)
     except batch.BatchError as exc:
         return None, exc.problems
-    return spec, batch.preflight(spec)
+    if retry_failed is None:
+        return spec, batch.preflight(spec)
+    state = batch.read_json(spec.directory / batch.STATE_FILE)
+    return spec, batch.preflight(spec, batch.pending_rows(spec, state, retry_failed))
 
 
 def validate_batch(spec: str, use_case: str | None = None, distribution: str | None = None,
@@ -87,7 +93,7 @@ def submit_batch(spec: str, retry_failed: bool = False, use_case: str | None = N
     resumes it; retry_failed also re-runs rows that failed. One batch runs at a time.
     use_case, distribution and commercial are for a CSV spec, as in validate_batch."""
     intent = _intent(use_case, distribution, commercial)
-    loaded, problems = _check(spec, intent)
+    loaded, problems = _check(spec, intent, retry_failed)
     if loaded is None or problems:
         return {"started": False, "problems": problems}
     directory = loaded.directory
@@ -95,7 +101,7 @@ def submit_batch(spec: str, retry_failed: bool = False, use_case: str | None = N
     # pass. The runner gets the reservation's token and takes the lock over.
     token = uuid.uuid4().hex
     try:
-        batch.acquire_lock(loaded.output_dir, loaded.name, os.getpid(), token)
+        batch.acquire_lock(loaded.output_dir, loaded.name, os.getpid(), token, starting=True)
     except batch.BatchError as exc:
         return {"started": False, "problems": exc.problems}
     command = [sys.executable, str(PIPELINE), "--run-batch", str(loaded.path)]
@@ -191,6 +197,9 @@ def cancel_batch(batch_ref: str) -> dict[str, Any]:
     holder = batch.lock_holder(directory)
     if holder is None:
         return {"cancelled": False, "reason": "the batch is not running"}
+    if (batch.lock_info(directory) or {}).get("starting"):
+        # the pid is still the server that is starting it: stopping it would stop the server
+        return {"cancelled": False, "reason": "the batch is starting; stop it in a moment"}
     terminate_group(holder)
     return {"cancelled": True, "pid": holder}
 

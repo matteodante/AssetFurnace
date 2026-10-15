@@ -101,6 +101,8 @@ def test_run_manifest_refuses_before_the_generator_when_weights_are_missing(tmp_
     ({"sed": 1}, {}, "sed"),
     ({"seed": 1}, {"use_case": "arcade"}, "use_case"),
     ({"seed": 1}, {"input": {"views": ["cat.png", "cat.png"]}}, "one image"),
+    ({"seed": 1}, {"input": {"views": []}}, "no input image"),
+    ({"seed": 1}, {"license_policy": {"allow_conditional": "false"}}, "true or false"),
 ])
 def test_run_manifest_rejects_bad_manifests_with_code_2(tmp_path, monkeypatch, parameters,
                                                         extra, message):
@@ -210,3 +212,15 @@ def test_run_pixal3d_carries_the_remover_it_used(tmp_path, monkeypatch):
     generated = manifest_run.run_pixal3d([image], tmp_path / "w", {}, print)
     assert generated.components == [{"component": "rembg/birefnet-general-lite",
                                      "license": "MIT"}]
+
+
+
+@pytest.mark.parametrize("parameters, message", [
+    ({"seed": "random"}, "seed"), ({"seed": True}, "seed"), ({"steps": 0}, "steps"),
+    ({"gss": "strong"}, "gss"), ({"fov": 4}, "fov"), ({"matte": "false"}, "matte"),
+])
+def test_pixal3d_parameter_values_are_checked(parameters, message):
+    (problem,) = manifest_run.pixal3d_check_parameters(parameters)
+    assert message in problem
+    assert manifest_run.pixal3d_check_parameters(
+        {"seed": 7, "steps": 8, "gss": 10.0, "fov": 0.35, "matte": False}) == []

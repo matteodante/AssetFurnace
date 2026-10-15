@@ -193,9 +193,14 @@ def test_an_uploaded_csv_is_kept_and_started_with_its_intent(server, output, lau
         "filename": "crates.csv", "content": content, "use_case": "game",
         "distribution": "private", "commercial": True})
     assert status == 202, body
-    kept = output / "batches" / batch_api.UPLOADS / "crates.csv"
+    (kept,) = (output / "batches" / batch_api.UPLOADS).glob("*/crates.csv")
     assert kept.read_text() == content
     assert launched[0][3] == str(kept) and "--commercial" in launched[0]
+    # another file under the same name gets its own path: the first batch's spec stays
+    request(server, "POST", "/api/batches", {"filename": "crates.csv", "check_only": True,
+                                             "content": content.replace("SM_Crate", "SM_Box")})
+    assert kept.read_text() == content
+    assert len(list((output / "batches" / batch_api.UPLOADS).glob("*/crates.csv"))) == 2
 
 
 def test_a_bad_spec_comes_back_with_its_problems(server, output, launched):
@@ -279,3 +284,12 @@ def test_two_batches_with_the_same_row_ids_stay_apart_in_the_library(output):
         batch_name = asset["model"].split("/")[1]
         assert asset["finished"].split("/")[1] == batch_name
         assert asset["picture"].split("/")[1] == batch_name
+
+
+
+def test_stop_never_targets_the_server_while_a_batch_is_starting(server, ran, monkeypatch):
+    batch.acquire_lock(ran.output_dir, "lot", os.getpid(), "submitting", starting=True)
+    stopped = []
+    monkeypatch.setattr(mcp_server, "terminate_group", stopped.append)
+    status, body = request(server, "POST", "/api/batches/lot/cancel", {})
+    assert body["cancelled"] is False and "starting" in body["reason"] and stopped == []

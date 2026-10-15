@@ -52,6 +52,8 @@ def test_generate_writes_a_row_manifest_and_keeps_inputs_in_the_row(tmp_path, mo
     assert result.sidecar == result.asset.with_suffix(".provenance.json")
     assert result.asset in result.files and result.sidecar in result.files
     assert not (ctx.step_dir / ".working").exists()
+    assert ctx.step_dir / "fake.log" in result.files          # the generator's log is kept
+    assert ctx.row_dir / "input" / "cat.png" in result.files  # and the inputs it used
 
 
 def test_generate_preflight_reports_each_backend_once(monkeypatch, tmp_path):

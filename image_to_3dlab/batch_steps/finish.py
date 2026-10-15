@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from image_to_3dlab.batch import recorded_image
+from image_to_3dlab.batch import image_from_record, recorded_image
 from image_to_3dlab.batch_steps import StepContext, StepResult
 from image_to_3dlab.blender import find_blender, missing_help
 from image_to_3dlab.host import APPLE, host_platform
@@ -112,12 +112,7 @@ def source_image(ctx: StepContext) -> Path | None:
     if ctx.row.images:
         copy = ctx.row_dir / "input" / ctx.row.images[0].name
         return copy if copy.is_file() else ctx.row.images[0]
-    return _image_in(_read(ctx.sidecar))
-
-
-def _image_in(record: dict[str, Any]) -> Path | None:
-    path = (record.get("input") or {}).get("path")
-    return Path(path) if path and Path(path).is_file() else None
+    return image_from_record(_read(ctx.sidecar))
 
 
 

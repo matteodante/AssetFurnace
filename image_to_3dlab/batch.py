@@ -119,12 +119,12 @@ class BatchRow:
 
     def fingerprint(self) -> str:
         """What the row asks for, files by content: moving the spec does not re-run it."""
-        def digest(path: Path) -> str:
-            return hashlib.sha256(path.read_bytes()).hexdigest()
+        digest = sha256_file   # streamed: a large GLB is not read into memory
 
-        # a row with only an asset takes its concept from the asset's record: both count
-        record = recorded_sidecar(self.asset) if self.asset and not self.images else None
-        image = recorded_image(self.asset) if record else None
+        # an asset's record is part of what the row works from (its licence, its models),
+        # and without images of its own the row takes its concept from that record too
+        record = recorded_sidecar(self.asset) if self.asset else None
+        image = recorded_image(self.asset) if self.asset and not self.images else None
         payload = {
             "images": [digest(image) for image in self.images],
             "asset": digest(self.asset) if self.asset else None,
@@ -149,25 +149,52 @@ def recorded_sidecar(asset: Path | None) -> Path | None:
     return None
 
 
-def recorded_image(asset: Path | None) -> Path | None:
-    """The source image an existing GLB's records name, if it still exists."""
-    if asset is None:
-        return None
-    for candidate in (asset.with_suffix(".provenance.json"), asset.with_suffix(".json")):
-        record = read_json(candidate) if candidate.is_file() else None
-        path = ((record or {}).get("input") or {}).get("path") if isinstance(record, dict) else None
-        if isinstance(path, str) and Path(path).is_file():
+IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
+# A finished asset's record nests the record of what it was made from under
+# `source_record`, and so on back to the generation; deeper than this is not real.
+RECORD_DEPTH = 8
+
+
+def _records(record: Any):
+    """A record and the records it nests, newest first."""
+    for _ in range(RECORD_DEPTH):
+        if not isinstance(record, dict):
+            return
+        yield record
+        record = record.get("source_record")
+
+
+def image_from_record(record: Any) -> Path | None:
+    """The concept image a provenance record leads back to: a finish record's input is the
+    GLB it finished, so the image is found in the records it nests."""
+    for level in _records(record):
+        path = (level.get("input") or {}).get("path")
+        if (isinstance(path, str) and Path(path).suffix.lower() in IMAGE_SUFFIXES
+                and Path(path).is_file()):
             return Path(path)
     return None
 
 
-def recorded_backend(asset: Path | None) -> str | None:
-    """The model an existing GLB was generated with, as its record names it."""
-    record = read_json(recorded_sidecar(asset)) if recorded_sidecar(asset) else None
-    if not isinstance(record, dict):
+def recorded_image(asset: Path | None) -> Path | None:
+    """The source image an existing GLB's records lead back to, if it still exists."""
+    if asset is None:
         return None
-    backend = (record.get("model") or {}).get("backend") or record.get("backend")
-    return backend if isinstance(backend, str) else None
+    for candidate in (asset.with_suffix(".provenance.json"), asset.with_suffix(".json")):
+        image = image_from_record(read_json(candidate)) if candidate.is_file() else None
+        if image is not None:
+            return image
+    return None
+
+
+def recorded_backend(asset: Path | None) -> str | None:
+    """The model an existing GLB was generated with, as its records name it, however many
+    finishes ago."""
+    sidecar = recorded_sidecar(asset)
+    for level in _records(read_json(sidecar) if sidecar else None):
+        backend = (level.get("model") or {}).get("backend") or level.get("backend")
+        if isinstance(backend, str):
+            return backend
+    return None
 
 
 @dataclass
@@ -268,9 +295,11 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         problems += row_problems
         if row is None:
             continue
-        if row.id in seen:
-            problems.append(f"row {number}: id {row.id!r} is used twice")
-        seen.add(row.id)
+        # rows/<id>/ is a folder: on Windows and macOS `Tree` and `tree` are the same one
+        if row.id.lower() in seen:
+            problems.append(f"row {number}: id {row.id!r} is used twice (ids are compared "
+                            "ignoring case, as folder names are)")
+        seen.add(row.id.lower())
         rows.append(row)
 
     for row in rows:
@@ -279,7 +308,7 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         gated = ([(row.backend, row.backend)] if "generate" in row.steps else []) + (
             [(source, f"its source ({source})")] if source in LICENSES else []) + (
             [(REPAINT_BACKEND, "the repaint")]
-            if row.options.get("finish", {}).get("paint") else [])
+            if "finish" in row.steps and row.options.get("finish", {}).get("paint") else [])
         for backend, what in gated:
             try:
                 validate_run_policy(backend, resolved_intent["use_case"],
@@ -305,9 +334,14 @@ def _read_csv(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
     problems = [f"{path.name}: unknown column {column!r}"
                 for column in columns if column not in CSV_COLUMNS]
     rows = []
-    for record in records:
+    for number, record in enumerate(records, start=2):   # line 1 is the header
         row: dict[str, Any] = {}
+        if record.get(None):   # DictReader keeps surplus cells under None
+            problems.append(f"{path.name} line {number}: more cells than columns (a comma "
+                            "inside a value needs quotes)")
         for key, value in record.items():
+            if key is None or not isinstance(value, (str, type(None))):
+                continue
             value = (value or "").strip()
             if not value or key not in CSV_COLUMNS:
                 continue
@@ -389,6 +423,9 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path,
                         f"{FACE_RANGE[1]:,}, not {faces!r}")
 
     backend = value.get("backend", DEFAULT_BACKEND)
+    if not isinstance(backend, str):
+        problems.append(f"{label}: backend must be a name, not {backend!r}")
+        backend = DEFAULT_BACKEND
     parameters: dict[str, Any] = {}
     for source in (defaults.get("parameters"), raw.get("parameters")):
         if source is None:
@@ -409,6 +446,8 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path,
         else:
             problems += [f"{label}: {backend} does not take parameter {key!r}"
                          for key in sorted(set(parameters) - generator.parameters)]
+            problems += [f"{label}: {problem}"
+                         for problem in generator.check_parameters(parameters)]
 
     options = {}
     for step in STEP_NAMES:
@@ -483,7 +522,7 @@ def pending_rows(spec: BatchSpec, state: dict[str, Any] | None,
     for row in spec.rows:
         entry = previous.get(row.id)
         if entry is not None and entry.get("fingerprint") == row.fingerprint():
-            if entry.get("status") == "done" and not _newly_available(entry):
+            if _still_done(entry, spec.directory):
                 continue
             if entry.get("status") == "failed" and not retry_failed:
                 continue
@@ -544,7 +583,8 @@ def _file_records(path: Path, directory: Path) -> list[dict[str, Any]]:
     """A file and its hash; a folder (a Pixal3D camera) as every file in it, so a resume
     notices one of them changed, not only that the folder is gone."""
     files = sorted(p for p in path.rglob("*") if p.is_file()) if path.is_dir() else [path]
-    return [{"path": _relative(file, directory), "sha256": sha256_file(file)} for file in files]
+    return [{"path": _relative(file, directory), "sha256": sha256_file(file),
+             "bytes": file.stat().st_size} for file in files]
 
 
 def _files_intact(files: list[dict[str, Any]], directory: Path) -> bool:
@@ -568,7 +608,8 @@ def _live_lock(output_dir: Path) -> dict[str, Any] | None:
     return lock if lock and process_alive(lock["pid"]) else None
 
 
-def acquire_lock(output_dir: Path, name: str, pid: int, token: str) -> None:
+def acquire_lock(output_dir: Path, name: str, pid: int, token: str,
+                 starting: bool = False) -> None:
     """Take the batches folder's lock for batch `name`, or raise BatchError.
 
     Created with O_EXCL, so of two processes asking at once exactly one gets it. A lock
@@ -577,7 +618,10 @@ def acquire_lock(output_dir: Path, name: str, pid: int, token: str) -> None:
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / LOCK_FILE
-    record = {"batch": name, "pid": pid, "token": token, "since": now()}
+    # `starting`: a reservation made by a submitter in its own name, until the runner's
+    # pid is known; nothing may stop that pid
+    record = {"batch": name, "pid": pid, "token": token, "since": now(),
+              **({"starting": True} if starting else {})}
     for _ in range(3):
         try:
             handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
@@ -650,6 +694,12 @@ def release_lock(output_dir: Path, token: str) -> None:
         # if it stays held open, it names this process, about to end: the next taker
         # finds it stale
         _unlink(output_dir / LOCK_FILE)
+
+
+def lock_info(directory: Path) -> dict[str, Any] | None:
+    """The live lock of the batch in `directory`, or None."""
+    lock = _live_lock(directory.parent)
+    return lock if lock and lock.get("batch") == directory.name else None
 
 
 def lock_holder(directory: Path) -> int | None:
@@ -749,12 +799,19 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
         state["updated_at"] = now()
         write_json(directory / STATE_FILE, state)
 
+    for row in spec.rows:   # a done row that will run again is not finished any more
+        if rows[row.id]["status"] == "done" and not _still_done(rows[row.id], directory):
+            rows[row.id]["status"] = "queued"
+
     write_json(directory / SPEC_COPY, _spec_record(spec))
     save()
+    # a row reset to the queue (edited, its files gone) leaves the index now, not after
+    # its rerun: a stop in between must not show an old result as finished
+    write_json(directory / INDEX_FILE, _index(spec, rows))
     for number, row in enumerate(spec.rows, start=1):
         entry = rows[row.id]
         label = f"[batch] {number}/{len(spec.rows)} {row.id}"
-        if entry["status"] == "done" and not _newly_available(entry):
+        if _still_done(entry, directory):
             continue
         if entry["status"] == "failed" and not retry_failed:
             log(f"{label}: failed before ({entry.get('reason')}); --retry-failed runs it again")
@@ -769,6 +826,21 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
     failed = {row.id: rows[row.id].get("reason", "")
               for row in spec.rows if rows[row.id]["status"] == "failed"}
     return BatchReport(directory=directory, counts=counts, failed=failed)
+
+
+def _still_done(entry: dict[str, Any], directory: Path) -> bool:
+    """A done row to skip: no step it skipped has appeared since, and every file its steps
+    wrote is still there at the size recorded. Size, not hash: hashing every finished GLB
+    of a batch of thousands on each resume would take longer than the resume saves. A row
+    whose files went missing runs again from its first broken step, which is hashed."""
+    if entry.get("status") != "done" or _newly_available(entry):
+        return False
+    for step in entry.get("steps", {}).values():
+        for record in step.get("files", []) if step.get("status") == "done" else []:
+            path = directory / record["path"]
+            if not path.is_file() or ("bytes" in record and path.stat().st_size != record["bytes"]):
+                return False
+    return True
 
 
 def _newly_available(entry: dict[str, Any]) -> bool:
@@ -786,6 +858,12 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     entry.pop("finished_at", None)
     save()
 
+    if "generate" not in row.steps and row.images:
+        # generate copies a row's images; a finish-only row's are staged here, so its
+        # folder and outputs.json carry its picture all the same
+        (row_dir / "input").mkdir(parents=True, exist_ok=True)
+        for image in row.images:
+            shutil.copyfile(image, row_dir / "input" / image.name)
     asset = row.asset
     sidecar = _sidecar_for(asset) if asset else None
     steps = entry.setdefault("steps", {})

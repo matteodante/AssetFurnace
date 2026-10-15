@@ -20,6 +20,7 @@ origin, and a custom header on anything that starts or stops work.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -147,7 +148,9 @@ def submit(output: Path, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         content = str(payload["content"])
         if len(content.encode()) > MAX_SPEC:
             raise ValueError("The spec is larger than 2 MB")
-        uploads = batches_root(output) / UPLOADS
+        # one folder per content: a batch's state points at its spec, so a later upload
+        # under the same name must not change what a resume of the earlier one reads
+        uploads = batches_root(output) / UPLOADS / hashlib.sha256(content.encode()).hexdigest()[:16]
         uploads.mkdir(parents=True, exist_ok=True)
         spec = uploads / filename
         spec.write_text(content, encoding="utf-8")

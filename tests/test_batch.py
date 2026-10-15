@@ -126,6 +126,7 @@ def test_intent_flags_apply_to_a_csv_and_are_refused_for_json(tmp_path, monkeypa
     ({"id": "SM_A", "images": ["refs/row01.png"], "parameters": "seed=1"}, "parameters"),
     ({"id": "SM_A", "images": ["refs/row01.png"], "finish": "fast"}, "settings for finish"),
     ({"id": "SM_A", "images": [42]}, "list of file paths"),
+    ({"id": "SM_A", "images": ["refs/row01.png"], "backend": {"x": 1}}, "backend must be a name"),
     ({"id": "SM_A", "asset": 42, "steps": ["finish"]}, "asset must be a file path"),
     ({"id": "SM_A", "images": ["refs/row01.png", "other/row01.png"]}, "same file name"),
 ])
@@ -848,3 +849,112 @@ def test_a_finish_only_rows_recorded_image_is_part_of_its_fingerprint(tmp_path):
     before = row.fingerprint()
     tiny_png(image, 2)
     assert row.fingerprint() != before
+
+
+
+def test_ids_differing_only_in_case_are_the_same_folder(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    spec = json.loads(spec_path.read_text())
+    spec["rows"].append({"id": "sm_ROW01", "images": ["refs/row01.png"]})
+    spec_path.write_text(json.dumps(spec))
+    with pytest.raises(batch.BatchError, match="ignoring case"):
+        batch.load_batch(spec_path)
+
+
+def test_a_csv_line_with_too_many_cells_is_a_problem(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    tiny_png(tmp_path / "a.png")
+    (tmp_path / "lot.csv").write_text("id,images,backend\nSM_A,a.png,fake,oops\n")
+    with pytest.raises(batch.BatchError, match="more cells than columns"):
+        batch.load_batch(tmp_path / "lot.csv")
+
+
+def test_the_repaint_is_gated_only_where_finish_runs(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1, distribution="worldwide")
+    spec = json.loads(spec_path.read_text())
+    spec["defaults"]["finish"] = {"paint": True}
+    spec["rows"][0]["steps"] = ["generate"]
+    spec_path.write_text(json.dumps(spec))
+    batch.load_batch(spec_path)   # no finish, no repaint, nothing to refuse
+
+
+def test_nested_provenance_leads_to_the_source_backend_and_image(tmp_path):
+    image = tiny_png(tmp_path / "concept.png")
+    asset = tmp_path / "SK_Knight.glb"
+    asset.write_bytes(b"glTF")
+    asset.with_suffix(".provenance.json").write_text(json.dumps({
+        "input": {"path": str(tmp_path / "older.glb")},          # a finish record
+        "source_record": {"input": {"path": str(image)},
+                          "model": {"backend": "hunyuan-comfyui"}}}))
+    assert batch.recorded_backend(asset) == "hunyuan-comfyui"
+    assert batch.recorded_image(asset) == image
+
+
+def test_an_asset_rows_record_counts_even_with_its_own_image(tmp_path):
+    asset = tmp_path / "crate.glb"
+    asset.write_bytes(b"glTF")
+    record = asset.with_suffix(".provenance.json")
+    record.write_text(json.dumps({"classification": "commercial-conditional"}))
+    row = batch.BatchRow(id="SM_Crate", images=(tiny_png(tmp_path / "c.png"),), asset=asset,
+                         kind="prop", faces=None, profile=None, steps=("finish",),
+                         backend="pixal3d")
+    before = row.fingerprint()
+    record.write_text(json.dumps({"classification": "territory-restricted"}))
+    assert row.fingerprint() != before
+
+
+def test_a_done_row_whose_files_went_missing_runs_again(tmp_path, monkeypatch, fake_finish):
+    generator = install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=2)
+    batch.run_batch(batch.load_batch(spec_path))
+    finished = spec_path.parent / "out" / "test-batch" / "rows" / "SM_row01" / "finish"
+    (finished / "SM_row01.glb").unlink()
+    generator.calls.clear()
+    fake_finish.calls.clear()
+    report = batch.run_batch(batch.load_batch(spec_path))
+    assert report.counts == {"done": 2}
+    assert generator.calls == [] and fake_finish.calls == ["SM_row01"]
+    assert (finished / "SM_row01.glb").is_file()
+
+
+def test_a_row_reset_to_the_queue_leaves_the_index_at_once(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    batch.run_batch(batch.load_batch(spec_path))
+    spec = json.loads(spec_path.read_text())
+    spec["rows"][0]["parameters"] = {"seed": 5}
+    spec_path.write_text(json.dumps(spec))
+
+    def stop(ctx):
+        index = json.loads((spec_path.parent / "out" / "test-batch" / batch.INDEX_FILE).read_text())
+        assert index["rows"] == []   # the old result is gone before the rerun
+        raise KeyboardInterrupt
+
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(stop))
+    with pytest.raises(KeyboardInterrupt):
+        batch.run_batch(batch.load_batch(spec_path))
+
+
+def test_a_finish_only_rows_picture_is_staged_and_indexed(tmp_path, monkeypatch, fake_finish):
+    asset = tmp_path / "old" / "crate.glb"
+    asset.parent.mkdir()
+    asset.write_bytes(b"glTFold")
+    tiny_png(tmp_path / "old" / "crate.png")
+    (tmp_path / "lot.json").write_text(json.dumps({
+        "schema_version": 1, "output": {"directory": "out"},
+        "rows": [{"id": "SM_Crate", "asset": "old/crate.glb", "images": ["old/crate.png"],
+                  "steps": ["finish"]}]}))
+    batch.run_batch(batch.load_batch(tmp_path / "lot.json"))
+    index = json.loads((tmp_path / "out" / "lot" / batch.INDEX_FILE).read_text())
+    assert index["rows"][0]["references"] == ["rows/SM_Crate/input/crate.png"]
+
+
+def test_the_generation_records_its_inputs_and_log(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    batch.run_batch(batch.load_batch(spec_path))
+    files = [f["path"] for f in _state(spec_path)["rows"]["SM_row01"]["steps"]["generate"]["files"]]
+    assert "rows/SM_row01/input/row01.png" in files
+    assert all("bytes" in f for f in _state(spec_path)["rows"]["SM_row01"]["steps"]["generate"]["files"])
