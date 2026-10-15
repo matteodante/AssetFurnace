@@ -37,7 +37,8 @@ KINDS = ("prop", "creature", "equipment")
 # What the batch rows and the checks call the same kinds.
 KIND_ALIASES = {"object": "prop", "equipment_part": "equipment"}
 MEASURES = ("height", "longest")
-COLLISIONS = ("box", "convex", "none")
+# `unreal` leaves the collision to Interchange, which makes a convex hull of its own.
+COLLISIONS = ("box", "convex", "unreal")
 ROOT_BONE = "root"
 MAX_NAME = 40  # keeps output paths well under Windows' 260 characters
 SIDECAR_SCHEMA = 1
@@ -125,7 +126,8 @@ def lod_material(base: str, index: int) -> str:
     return f"MI_{base}" if index == 0 else f"MI_{base}_LOD{index}"
 
 
-_ROLE_SUFFIX = {"base_color": "BaseColor", "normal": "N", "orm": "ORM", "tint": "Tint", "emissive": "E"}
+_ROLE_SUFFIX = {"base_color": "BaseColor", "normal": "N", "orm": "ORM", "tint": "Tint", "emissive": "E",
+                "occlusion": "AO"}
 
 
 def texture_name(material: str, role: str) -> str:
@@ -265,6 +267,8 @@ def bone_rename_plan(order: list[str], parents: Mapping[str, str | None],
             target, follows_parent = f"{family}_{counted[family]:02d}", False
         if target in used or follows_parent:
             count = extras.get(target, 0)
+            while f"{target}_extra{count}" in used:  # an unmapped bone may already own it
+                count += 1
             extras[target] = count + 1
             name = f"{target}_extra{count}"
         else:
@@ -497,19 +501,28 @@ def finalize_glb(data: bytes, stamp: Mapping[str, Any] | None = None) -> tuple[b
         if mr_ref is not None:
             mr = pixels(mr_ref["index"])
             occlusion_ref = material.get("occlusionTexture")
-            ao = None
-            if occlusion_ref is not None:
-                ao = _resized(pixels(occlusion_ref["index"]), mr.shape[:2])
+            # Occlusion packs into R only when it is read the same way as metal-roughness;
+            # another UV set or transform keeps it a texture of its own.
+            packable = occlusion_ref is not None and occlusion_ref.get("texCoord", 0) == mr_ref.get("texCoord", 0) \
+                and occlusion_ref.get("extensions") == mr_ref.get("extensions")
+            ao = _resized(pixels(occlusion_ref["index"]), mr.shape[:2]) if packable else None
             orm = pack_orm(mr, ao)
             images.append({"name": texture_name(name, "orm")})
             new_index = len(images) - 1
             new_images[new_index] = _encode_png(orm)
             added_textures.append({"source": new_index})
             texture_index = len(textures) + len(added_textures) - 1
-            texcoord = mr_ref.get("texCoord", 0)
-            pbr["metallicRoughnessTexture"] = {"index": texture_index, "texCoord": texcoord}
-            material["occlusionTexture"] = {"index": texture_index, "texCoord": texcoord}
-            record.update(orm=texture_name(name, "orm"), occlusion="baked" if ao is not None else "none")
+            # Each slot keeps its own settings (UV set, transform, strength); only the
+            # texture it points at changes.
+            pbr["metallicRoughnessTexture"] = dict(mr_ref, index=texture_index)
+            if occlusion_ref is None or packable:
+                base = occlusion_ref if packable else {k: v for k, v in mr_ref.items() if k != "scale"}
+                material["occlusionTexture"] = dict(base, index=texture_index)
+                record.update(occlusion="baked" if packable else "none")
+            else:
+                names[textures[occlusion_ref["index"]]["source"]] = texture_name(name, "occlusion")
+                record.update(occlusion="separate")
+            record["orm"] = texture_name(name, "orm")
         for role, ref in (("base_color", pbr.get("baseColorTexture")), ("normal", material.get("normalTexture")),
                           ("emissive", material.get("emissiveTexture"))):
             if ref is not None:
@@ -628,10 +641,10 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
     results.append(_check("names", expected["mesh"] in names, f"assets: {', '.join(names)}"))
     want_lods = expected["lods"]
     results.append(_check("lods", measured.get("lods", 0) >= want_lods, f"{measured.get('lods')} LODs, wanted {want_lods}"))
-    if expected.get("collision") in ("box", "convex"):
+    if expected.get("collision") in ("box", "convex", "unreal"):
         key = "box_elems" if expected["collision"] == "box" else "convex_elems"
         count = (measured.get("collision") or {}).get(key, 0)
-        results.append(_check("collision", count >= 1, f"{count} {expected['collision']} collision shape(s)"))
+        results.append(_check("collision", count >= 1, f"{count} {key[:-6]} collision shape(s)"))
     if expected.get("orm", True):
         srgb = measured.get("orm_srgb", [])
         results.append(_check("orm", bool(srgb) and not any(srgb), f"ORM textures sRGB: {srgb}"))
@@ -639,10 +652,14 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
         srgb = measured.get("tint_srgb")
         results.append(_check("tint", srgb is False, "tint mask imported as linear data" if srgb is False else
                               "tint mask missing" if srgb is None else "tint mask imported as sRGB colour"))
-    if expected.get("skinned") and "root_cm" in measured:
-        root = measured["root_cm"]
-        results.append(_check("root", all(abs(v) <= BASE_TOLERANCE_CM for v in root),
-                              f"root bone at {[round(v, 1) for v in root]} cm in the reference pose, wanted the origin"))
+    if expected.get("skinned") and ("root_cm" in measured or "root_error" in measured):
+        root = measured.get("root_cm")
+        if root is None:
+            results.append(_check("root", False, f"Unreal could not read the root bone: {measured['root_error']}"))
+        else:
+            results.append(_check("root", all(abs(v) <= BASE_TOLERANCE_CM for v in root),
+                                  f"root bone at {[round(v, 1) for v in root]} cm in the reference pose, "
+                                  "wanted the origin"))
     if want.get("facing"):
         forward = measured.get("forward") or [0, 0, 0]
         results.append(_check("facing", forward[1] > 0.7, f"faces {forward}, wanted +Y like Manny"))
@@ -651,8 +668,8 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
                               "IK Rig recognised the skeleton" if measured.get("ik_recognised") else
                               "IK Rig did not recognise the skeleton"))
         results.append(_check("retarget", measured.get("retarget") == "ok", f"retarget of MM_Idle: {measured.get('retarget')}"))
-        if "walk" in measured:
-            results.append(_check("walk", measured["walk"] == "ok", f"retarget of a walk: {measured['walk']}"))
+        walk = measured.get("walk", "no walk was retargeted")
+        results.append(_check("walk", walk == "ok", f"retarget of a walk: {walk}"))
     if equipment and expected.get("skeleton_from"):
         reused = str(measured.get("skeleton", "")).endswith(expected["skeleton"]) and measured.get("new_skeletons", 1) == 0
         results.append(_check("skeleton", reused, f"skeleton {measured.get('skeleton')}, new skeletons {measured.get('new_skeletons')}"))

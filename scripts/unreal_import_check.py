@@ -129,6 +129,11 @@ def load_exports(folders: list[Path]) -> list[dict]:
         sidecar = json.loads(sidecars[0].read_text(encoding="utf-8"))
         exports.append({"dir": str(Path(folder).resolve()), "glb": str((Path(folder) / sidecar["glb"]).resolve()),
                         "sidecar": sidecar})
+    names = [e["sidecar"]["mesh"] for e in exports]
+    twice = sorted({n for n in names if names.count(n) > 1})
+    if twice:
+        # They would import into one folder and share one set of measurements.
+        raise SystemExit(f"two exports are both called {', '.join(twice)}; export one with another --name")
     return ordered(exports)
 
 
@@ -282,7 +287,8 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
         if side["import"]["reuse_skeleton"]:
             body = next(e for e in job["exports"] if e["sidecar"]["mesh"] == side["skeleton_from"])
             skeleton = mesh_of(body).get_editor_property("skeleton")
-            pipeline_path = f"{job['content_root']}/Pipelines/P_{side['mesh']}"
+            # Inside the asset's own folder, the only place the check ever replaces.
+            pipeline_path = f"{folder}/P_{side['mesh']}"
             if unreal.EditorAssetLibrary.does_asset_exist(pipeline_path):
                 unreal.EditorAssetLibrary.delete_asset(pipeline_path)
             pipeline = unreal.EditorAssetLibrary.duplicate_asset(
@@ -326,9 +332,16 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
                 unreal.EditorAssetLibrary.save_loaded_asset(texture)
 
     def name_animations(export):
-        """Interchange calls a glTF animation `<mesh><animation>`; give it back its own name."""
-        for animation in [a for a in assets_in(folder_of(export)) if isinstance(a, unreal.AnimSequence)]:
-            for wanted in export["sidecar"]["animations"]:
+        """Interchange calls a glTF animation `<mesh><animation>`, or `<mesh>_Anim` when the
+        file holds only one; give each back its own name."""
+        found = [a for a in assets_in(folder_of(export)) if isinstance(a, unreal.AnimSequence)]
+        expected = export["sidecar"]["animations"]
+        if len(found) == 1 and len(expected) == 1 and found[0].get_name() != expected[0]:
+            current = found[0].get_path_name().split(".")[0]
+            unreal.EditorAssetLibrary.rename_asset(current, current.rsplit("/", 1)[0] + "/" + expected[0])
+            return
+        for animation in found:
+            for wanted in expected:
                 current = animation.get_path_name().split(".")[0]
                 if animation.get_name() != wanted and animation.get_name().endswith(wanted):
                     unreal.EditorAssetLibrary.rename_asset(current, current.rsplit("/", 1)[0] + "/" + wanted)

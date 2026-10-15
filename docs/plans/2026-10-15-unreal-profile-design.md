@@ -64,7 +64,7 @@ Altre cose emerse:
    collisione `UBX_` (predefinita) o `UCX_` (convesso con pochi vertici), esporta il GLB **senza compressione**.
 3. `scripts/export_unreal.py`, la riga di comando, e la funzione `export_unreal(...)` che la sessione della funzione 1
    aggancia come passo `export_unreal`. Argomenti: `--kind prop|creature|equipment`, `--name`, `--height-cm` o
-   `--size-cm`, `--lods`, `--collision box|convex|none`, `--skeleton-from` (per l'equipaggiamento: lo scheletro del
+   `--size-cm`, `--lods`, `--collision box|convex|unreal`, `--skeleton-from` (per l'equipaggiamento: lo scheletro del
    corpo), `--out`.
 4. `scripts/unreal_import_check.py`, che gira dentro Unreal: importa con Interchange seguendo la scheda (LOD degli
    scheletrici, equipaggiamento sullo Skeleton già esistente) e scrive un rapporto con le misure di accettazione.

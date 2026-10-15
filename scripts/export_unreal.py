@@ -74,7 +74,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
     if size_cm is None or size_cm <= 0:
         raise ValueError("--size-cm is required: a generated model has no real size of its own")
     collision = collision or default_collision(kind)
-    if collision not in up.COLLISIONS:
+    if kind == "prop" and collision not in up.COLLISIONS:
         raise ValueError(f"--collision must be one of {', '.join(up.COLLISIONS)}")
     if kind == "equipment" and body is None:
         raise ValueError("equipment needs --body, the rigged GLB it was cut from")
@@ -86,9 +86,10 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
         if not Path(path).is_file():
             raise ValueError(f"{path} does not exist")
     if tint is None:
-        # The material step leaves its tint mask beside the model; take it when it is unambiguous.
-        masks = sorted(source.parent.glob("T_*_Tint.png"))
-        tint = masks[0] if len(masks) == 1 else None
+        # The material step leaves `T_<model>_Tint.png` beside the model; only that one is
+        # taken, never a mask that belongs to another model in the same folder.
+        own = source.with_name(f"T_{source.stem}_Tint.png")
+        tint = own if own.is_file() else None
     record = source.with_name(source.stem + ".materials.json")
     animations = [Path(p) for p in (animations or [])]
     prefix = up.model_prefix([source.stem, *(p.stem for p in animations)])
@@ -99,6 +100,10 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
     lods = [Path(p) for p in (lods or [])] if kind == "prop" else []
     out_dir = Path(out_dir) if out_dir else OUTPUT_ROOT / f"{base}__{time.strftime('%Y%m%d-%H%M%S')}"
     work = out_dir / ".work"
+    inputs = {Path(p).resolve() for p in [source, *lods, *animations, *([body] if body else []), *([tint] if tint else [])]}
+    for written in (out_dir / f"{names['mesh']}{suffix}" for suffix in (".glb", ".unreal.json", ".provenance.json")):
+        if written.resolve() in inputs:
+            raise ValueError(f"the export would overwrite its own input {written.name}; choose another --out")
     job = {
         "source": str(source.resolve()), "kind": kind, "base": base, "size_cm": float(size_cm), "measure": measure,
         "lods": [str(p.resolve()) for p in lods], "collision": collision if kind == "prop" else "none",
@@ -201,7 +206,7 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
     problems = up.check_document(parse_glb(data)[0], p["names"])
     sidecar = up.sidecar(kind=kind, names=p["names"], glb=p["glb"].name, size_cm=size_cm, measure=measure,
                          lods=report.get("lods", 1) if kind == "prop" else (3 if kind == "creature" else 1),
-                         collision=p["job"]["collision"] if kind == "prop" and p["job"]["collision"] != "none" else None,
+                         collision=p["job"]["collision"] if kind == "prop" else None,
                          humanoid=bool(report.get("humanoid")), skeleton_from=p["skeleton_from"],
                          animations=report.get("animations", []), tint=p["tint"].name if p["tint"] else None,
                          problems=problems, orm=any(m.get("orm") for m in textures["materials"].values()))
@@ -234,7 +239,8 @@ def main(argv=None) -> int:
     parser.add_argument("--out", type=Path, help="output folder (default output/unreal/<Name>__<time>/)")
     parser.add_argument("--lods", type=Path, nargs="*", default=None,
                         help="objects: LOD1, LOD2... GLBs (default: <name>_LODn.glb beside a _LOD0 source)")
-    parser.add_argument("--collision", choices=up.COLLISIONS, help="objects: box (default), convex or none")
+    parser.add_argument("--collision", choices=up.COLLISIONS,
+                        help="objects: box (default), convex, or unreal (Interchange makes its own convex hull)")
     parser.add_argument("--body", type=Path, help="equipment: the rigged body GLB it belongs to")
     parser.add_argument("--body-name", help="equipment: the body's --name, if it was exported with one")
     parser.add_argument("--animations", type=Path, nargs="*", default=[], help="creatures: more animated GLBs")

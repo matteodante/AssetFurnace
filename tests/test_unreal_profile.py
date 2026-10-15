@@ -460,10 +460,10 @@ def test_unreal_report_checks_a_character_faces_like_manny_and_is_recognised():
                          skeleton_from=None, animations=["AS_Wolf_Idle"], tint=None, problems=[])
     measured = {"class": "SkeletalMesh", "bounds_cm": [90, 40, 180.5], "min_z": 0.0, "lods": 3,
                 "names": ["SK_Wolf"], "orm_srgb": [False], "forward": [0.0, 1.0, 0.0],
-                "ik_recognised": True, "retarget": "ok", "animations": ["AS_Wolf_Idle"]}
+                "ik_recognised": True, "retarget": "ok", "walk": "ok", "animations": ["AS_Wolf_Idle"]}
     results = {r["check"]: r["ok"] for r in up.evaluate_unreal(measured, sidecar)}
     assert results == {"size": True, "base": True, "names": True, "lods": True, "orm": True,
-                       "facing": True, "skeleton": True, "retarget": True, "animations": True}
+                       "facing": True, "skeleton": True, "retarget": True, "walk": True, "animations": True}
     measured["forward"] = [1.0, 0.0, 0.0]
     assert {r["check"]: r["ok"] for r in up.evaluate_unreal(measured, sidecar)}["facing"] is False
 
@@ -561,8 +561,8 @@ def test_unreal_report_checks_the_walk_too():
     assert results["walk"]["ok"] is False and "legs" in results["walk"]["detail"]
     measured["walk"] = "ok"
     assert {r["check"]: r["ok"] for r in up.evaluate_unreal(measured, sidecar)}["walk"] is True
-    del measured["walk"]
-    assert "walk" not in {r["check"] for r in up.evaluate_unreal(measured, sidecar)}
+    del measured["walk"]  # a humanoid whose walk was never retargeted does not pass
+    assert {r["check"]: r["ok"] for r in up.evaluate_unreal(measured, sidecar)}["walk"] is False
 
 
 def test_a_closeup_frames_one_figure_from_the_same_side_as_the_wide_shot():
@@ -613,3 +613,66 @@ def test_the_unreal_check_skips_orm_when_none_was_exported():
 def test_problems_the_export_reported_fail_the_unreal_check():
     results = {r["check"]: r for r in up.evaluate_unreal(_measured(), _prop_sidecar(problems=["material 'X'"]))}
     assert results["export"]["ok"] is False and "material 'X'" in results["export"]["detail"]
+
+
+# --- review round 2 ----------------------------------------------------------------------
+
+def test_extra_bone_names_never_collide_with_a_cleaned_name():
+    order = ["h", "x", "s", "hair"]
+    parents = {"h": None, "x": "h", "s": "h", "hair": "s"}
+    plan = up.bone_rename_plan(order, parents, {"h": "Hips", "x": "head_extra0", "s": "Head", "hair": "Head"})
+    assert plan["x"] == "head_extra0"
+    assert len(set(plan.values())) == len(plan)
+
+
+def test_orm_keeps_each_slots_settings_and_a_differently_mapped_occlusion_apart():
+    transform = {"KHR_texture_transform": {"scale": [2, 2]}}
+    data = _glb(
+        [{"name": "MI_Barrel", "pbrMetallicRoughness": {"metallicRoughnessTexture": {"index": 0, "extensions": transform}},
+          "occlusionTexture": {"index": 1, "texCoord": 1, "strength": 0.5}}],
+        [("mr", _png(_mr_image())), ("ao", _png(np.full((4, 4), 100, np.uint8)))])
+    out, info = up.finalize_glb(data)
+    document, _ = parse_glb(out)
+    material = document["materials"][0]
+    mr = material["pbrMetallicRoughness"]["metallicRoughnessTexture"]
+    assert mr["extensions"] == transform
+    occlusion = material["occlusionTexture"]
+    assert occlusion["texCoord"] == 1 and occlusion["strength"] == 0.5 and occlusion["index"] != mr["index"]
+    assert info["materials"]["MI_Barrel"]["occlusion"] == "separate"
+    assert sorted(i["name"] for i in document["images"]) == ["T_Barrel_AO", "T_Barrel_ORM"]
+
+
+def test_orm_keeps_the_occlusion_strength_when_packed():
+    data = _glb([{"name": "MI_Rock", "pbrMetallicRoughness": {"metallicRoughnessTexture": {"index": 0}},
+                  "occlusionTexture": {"index": 1, "strength": 0.7}}],
+                [("mr", _png(_mr_image())), ("ao", _png(np.full((4, 4), 90, np.uint8)))])
+    material = parse_glb(up.finalize_glb(data)[0])[0]["materials"][0]
+    assert material["occlusionTexture"]["strength"] == 0.7
+    assert material["occlusionTexture"]["index"] == material["pbrMetallicRoughness"]["metallicRoughnessTexture"]["index"]
+
+
+def test_a_root_unreal_could_not_measure_fails():
+    sidecar = up.sidecar(kind="equipment", names=up.asset_names("equipment", "Helm"), glb="SK_Helm.glb",
+                         size_cm=180, measure="height", lods=1, collision=None, humanoid=True,
+                         skeleton_from="SK_W", animations=[], tint=None, problems=[])
+    measured = {"lods": 1, "names": ["SK_Helm"], "orm_srgb": [False], "skeleton": "/Game/SK_W_Skeleton",
+                "new_skeletons": 0, "root_error": "RuntimeError('no root')"}
+    results = {r["check"]: r for r in up.evaluate_unreal(measured, sidecar)}
+    assert results["root"]["ok"] is False and "no root" in results["root"]["detail"]
+
+
+def test_a_humanoid_without_its_walk_retarget_fails():
+    sidecar = up.sidecar(kind="creature", names=up.asset_names("creature", "W"), glb="SK_W.glb", size_cm=180,
+                         measure="height", lods=1, collision=None, humanoid=True, skeleton_from=None,
+                         animations=[], tint=None, problems=[])
+    measured = {"bounds_cm": [1, 1, 180], "min_z": 0, "lods": 1, "names": ["SK_W"], "orm_srgb": [False],
+                "forward": [0, 1, 0], "root_cm": [0, 0, 0], "ik_recognised": True, "retarget": "ok"}
+    results = {r["check"]: r["ok"] for r in up.evaluate_unreal(measured, sidecar)}
+    assert results["walk"] is False
+
+
+def test_letting_unreal_make_the_collision_expects_its_convex_hull():
+    results = {r["check"]: r["ok"] for r in up.evaluate_unreal(
+        _measured(collision={"box_elems": 0, "convex_elems": 1}), _prop_sidecar(collision="unreal"))}
+    assert results["collision"] is True
+    assert "none" not in up.COLLISIONS and "unreal" in up.COLLISIONS
