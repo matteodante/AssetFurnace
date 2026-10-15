@@ -43,6 +43,7 @@ def row_manifest(ctx: StepContext, images: list[Path]) -> dict:
         "output": {"directory": str(ctx.step_dir)},
         "batch": {"id": row.id, "kind": row.kind, "faces": row.faces,
                   "profile": row.profile, "steps": list(row.steps),
+                  "size_cm": row.size_cm, "measure": row.measure,
                   "references": [str(image) for image in images[1:]]},
     }
 

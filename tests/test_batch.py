@@ -522,3 +522,87 @@ def test_the_example_specs_only_lack_your_pictures(name):
         batch.load_batch(batch.REPO / "manifests" / name)
     assert raised.value.problems
     assert all("does not exist" in problem for problem in raised.value.problems)
+
+
+# ---------------------------------------------------------------- the true size
+
+def test_size_and_measure_reach_the_row_and_its_records(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=2)
+    spec = json.loads(spec_path.read_text())
+    spec["rows"][0].update(size_cm=180, measure="height")
+    spec["rows"][1].update(size_cm=42.5)
+    spec_path.write_text(json.dumps(spec))
+    loaded = batch.load_batch(spec_path)
+    assert (loaded.rows[0].size_cm, loaded.rows[0].measure) == (180, "height")
+    assert (loaded.rows[1].size_cm, loaded.rows[1].measure) == (42.5, "height")
+    batch.run_batch(loaded)
+    directory = spec_path.parent / "out" / "test-batch"
+    manifest = json.loads((directory / "rows" / "SM_row01" / "manifest.json").read_text())
+    assert manifest["batch"]["size_cm"] == 180 and manifest["batch"]["measure"] == "height"
+    index = json.loads((directory / batch.INDEX_FILE).read_text())
+    assert index["rows"][1]["size_cm"] == 42.5 and index["rows"][1]["measure"] == "height"
+
+
+def test_size_and_measure_come_from_csv_columns(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    tiny_png(tmp_path / "a.png")
+    (tmp_path / "lot.csv").write_text(
+        "id,images,backend,size_cm,measure\nSM_A,a.png,fake,250,longest\n")
+    row = batch.load_batch(tmp_path / "lot.csv").rows[0]
+    assert (row.size_cm, row.measure) == (250, "longest")
+
+
+@pytest.mark.parametrize("fields, message", [
+    ({"size_cm": 0}, "size_cm"),
+    ({"size_cm": -3}, "size_cm"),
+    ({"size_cm": "tall"}, "size_cm"),
+    ({"size_cm": True}, "size_cm"),
+    ({"size_cm": 120, "measure": "width"}, "measure"),
+    ({"measure": "height"}, "size_cm"),
+])
+def test_bad_sizes_are_refused(tmp_path, monkeypatch, fields, message):
+    install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    spec = json.loads(spec_path.read_text())
+    spec["rows"][0].update(fields)
+    spec_path.write_text(json.dumps(spec))
+    with pytest.raises(batch.BatchError, match=message):
+        batch.load_batch(spec_path)
+
+
+# ---------------------------------------------------------------- the review queue
+
+def test_finished_rows_are_queued_for_review(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch, FakeGenerator(fail_on="row02"))
+    spec_path = write_spec(tmp_path, rows=3)
+    batch.run_batch(batch.load_batch(spec_path))
+    log = tmp_path / batch.REVIEW_LOG
+    events = [json.loads(line) for line in log.read_text().splitlines()]
+    assert [event["asset_key"] for event in events] == ["SM_row01", "SM_row03"]
+    event = events[0]
+    directory = spec_path.parent / "out" / "test-batch"
+    asset = directory / "rows" / "SM_row01" / "finish" / "SM_row01.glb"
+    assert event["event"] == "queued" and event["sha256"] == _sha(asset)
+    assert event["asset"] == "out/test-batch/rows/SM_row01/finish/SM_row01.glb"
+    assert event["source"] == "batch:test-batch" and event["kind"] == "prop"
+    assert event["checks"] is None and event["status"] is None
+    # a resumed batch does not queue the same version again
+    batch.run_batch(batch.load_batch(spec_path))
+    assert len(log.read_text().splitlines()) == 2
+
+
+def test_the_review_event_carries_the_checks_result_when_there_is_one(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+
+    def checks(ctx):
+        from image_to_3dlab.batch_steps import StepResult
+        report = ctx.asset.with_suffix(".checks.json")
+        report.write_text(json.dumps({"status": "warn"}))
+        return StepResult(files=[report])
+
+    monkeypatch.setitem(batch.STEPS, "checks", fake_step(checks))
+    spec_path = write_spec(tmp_path, rows=1, steps=["generate", "checks"])
+    batch.run_batch(batch.load_batch(spec_path))
+    event = json.loads((tmp_path / batch.REVIEW_LOG).read_text().splitlines()[0])
+    assert event["status"] == "warn" and event["checks"].endswith(".checks.json")

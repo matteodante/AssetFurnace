@@ -21,6 +21,10 @@ Resuming is running the same spec again. Done rows are skipped; an interrupted r
 starts again from its first step whose files are not all still there with the hash
 recorded; failed rows stay failed unless `retry_failed`; a row edited in the spec runs
 again; a changed intent or licence policy refuses to resume.
+
+Every finished row is also put in the review queue of the checks (feature 7): a `queued`
+line in `review-log.jsonl`, in the folder that holds the batches folder (`output/` for the
+default `output/batches/`).
 """
 
 from __future__ import annotations
@@ -61,19 +65,25 @@ KINDS = ("prop", "creature", "equipment")
 FACE_RANGE = (1000, 200_000)
 # Ids become folder and file names: short and plain, so Windows paths stay short too.
 ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+# The real size an asset should have, for the Unreal export: along its height, or along
+# its longest side. 100 km is not a game asset.
+MEASURES = ("height", "longest")
+SIZE_LIMIT_CM = 10_000_000
 
 STATE_FILE = "batch-state.json"
 INDEX_FILE = "outputs.json"
 SPEC_COPY = "spec.json"
 LOCK_FILE = "batch.lock"
+REVIEW_LOG = "review-log.jsonl"
 
 INTENT_KEYS = ("use_case", "distribution", "commercial_intent")
 DEFAULT_INTENT = {"use_case": "showcase", "distribution": "private", "commercial_intent": False}
 TOP_KEYS = {"schema_version", "name", "_about", "license_policy", "output", "defaults",
             "rows", *INTENT_KEYS}
 ROW_KEYS = {"id", "images", "asset", "kind", "faces", "profile", "steps", "backend",
-            "parameters", "seed", *STEP_NAMES}
-CSV_COLUMNS = ("id", "images", "asset", "kind", "faces", "profile", "steps", "backend", "seed")
+            "parameters", "seed", "size_cm", "measure", *STEP_NAMES}
+CSV_COLUMNS = ("id", "images", "asset", "kind", "faces", "profile", "steps", "backend", "seed",
+               "size_cm", "measure")
 
 
 class BatchError(Exception):
@@ -96,6 +106,8 @@ class BatchRow:
     backend: str
     parameters: dict[str, Any] = field(default_factory=dict)
     options: dict[str, dict[str, Any]] = field(default_factory=dict)   # per step
+    size_cm: float | None = None   # the asset's real size, for export_unreal
+    measure: str | None = None     # what size_cm measures: "height" or "longest"
 
     def fingerprint(self) -> str:
         """What the row asks for, files by content: moving the spec does not re-run it."""
@@ -108,6 +120,7 @@ class BatchRow:
             "kind": self.kind, "faces": self.faces, "profile": self.profile,
             "steps": list(self.steps), "backend": self.backend,
             "parameters": self.parameters, "options": self.options,
+            "size_cm": self.size_cm, "measure": self.measure,
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -240,6 +253,11 @@ def _read_csv(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
                 row[key] = [part.strip() for part in value.split(";") if part.strip()]
             elif key in ("faces", "seed"):
                 row[key] = int(value) if value.lstrip("-").isdigit() else value
+            elif key == "size_cm":
+                try:
+                    row[key] = int(value) if value.isdigit() else float(value)
+                except ValueError:
+                    row[key] = value
             else:
                 row[key] = value
         rows.append(row)
@@ -317,13 +335,24 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path,
             problems.append(f"{label}: options for {step} must be an object")
         elif merged:
             options[step] = merged
+    size_cm, measure = value.get("size_cm"), value.get("measure")
+    if size_cm is not None and (isinstance(size_cm, bool) or not isinstance(size_cm, (int, float))
+                                or not 0 < size_cm <= SIZE_LIMIT_CM):
+        problems.append(f"{label}: size_cm must be a positive number of centimetres, "
+                        f"not {size_cm!r}")
+    if measure is not None and measure not in MEASURES:
+        problems.append(f"{label}: measure {measure!r} is not one of {', '.join(MEASURES)}")
+    if measure is not None and size_cm is None:
+        problems.append(f"{label}: measure says what size_cm measures; give size_cm too")
+    if size_cm is not None and measure is None:
+        measure = "height"
     profile = value.get("profile")
     if problems:
         return None, problems
     return BatchRow(id=row_id, images=images, asset=asset, kind=kind, faces=faces,
                     profile=str(profile) if profile is not None else None,
                     steps=tuple(steps), backend=backend, parameters=parameters,
-                    options=options), []
+                    options=options, size_cm=size_cm, measure=measure), []
 
 
 # --------------------------------------------------------------------- step registry
@@ -597,6 +626,8 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
                  asset=_relative(asset, directory) if asset else None,
                  sidecar=_relative(sidecar, directory) if sidecar else None)
     save()
+    if asset is not None:
+        queue_for_review(spec, row, asset)
     log("done")
 
 
@@ -605,6 +636,58 @@ def _fail(entry, steps, name, reason, save, log) -> None:
     entry.update(status="failed", reason=f"{name}: {reason}", finished_at=now())
     save()
     log(f"failed: {entry['reason']}")
+
+
+def queue_for_review(spec: BatchSpec, row: BatchRow, asset: Path) -> None:
+    """Put a finished row in the review queue: one `queued` line, never rewritten.
+
+    The key is the row's id plus the asset's sha256, so a new version of the same asset
+    is told apart and the same version is not queued twice. When a `checks` step left a
+    `<asset>.checks.json` beside it, its overall status comes along.
+    """
+    log_path = spec.output_dir.parent / REVIEW_LOG
+    sha = sha256_file(asset)
+    for line in _lines(log_path):
+        if (line.get("event") == "queued" and line.get("asset_key") == row.id
+                and line.get("sha256") == sha):
+            return
+    report = asset.with_suffix(".checks.json")
+    checks = read_json(report) if report.is_file() else None
+    event = {
+        "event": "queued", "time": now(), "asset_key": row.id, "sha256": sha,
+        "asset": _relative(asset, log_path.parent), "kind": row.kind,
+        "profile": row.profile, "source": f"batch:{spec.name}",
+        "status": checks.get("status") if isinstance(checks, dict) else None,
+        "checks": _relative(report, log_path.parent) if checks is not None else None,
+    }
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(event) + "\n")
+
+
+def _lines(path: Path) -> list[dict[str, Any]]:
+    """The JSON lines of a log; a damaged line is skipped, not fatal."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    lines = []
+    for raw in text.splitlines():
+        try:
+            value = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            lines.append(value)
+    return lines
+
+
+def review_states(log_path: Path) -> dict[str, dict[str, Any]]:
+    """The latest review event per asset key: queued, approved or sent_back (with its note)."""
+    states: dict[str, dict[str, Any]] = {}
+    for line in _lines(log_path):
+        if isinstance(line.get("asset_key"), str):
+            states[line["asset_key"]] = line
+    return states
 
 
 def _sidecar_for(asset: Path) -> Path | None:
@@ -623,6 +706,7 @@ def _spec_record(spec: BatchSpec) -> dict[str, Any]:
                   "asset": str(row.asset) if row.asset else None, "kind": row.kind,
                   "faces": row.faces, "profile": row.profile, "steps": list(row.steps),
                   "backend": row.backend, "parameters": row.parameters,
+                  "size_cm": row.size_cm, "measure": row.measure,
                   **row.options} for row in spec.rows],
     }
 
@@ -639,6 +723,7 @@ def _index(spec: BatchSpec, rows: dict[str, Any]) -> dict[str, Any]:
         inputs = directory / "rows" / row.id / "input"
         listed.append({
             "id": row.id, "kind": row.kind, "profile": row.profile, "faces": row.faces,
+            "size_cm": row.size_cm, "measure": row.measure,
             "asset": entry.get("asset"), "sidecar": entry.get("sidecar"),
             "references": [_relative(inputs / image.name, directory)
                            for image in row.images if (inputs / image.name).is_file()],
