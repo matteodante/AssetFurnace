@@ -1,5 +1,8 @@
 # Funzione 8, materiali pronti per il gioco: progetto
 
+> **Superato dalla [v2](2026-10-15-game-materials-v2-design.md)** (15/10/2026): l'utente ha chiesto di rifare il metodo
+> (zone per materiale, niente luce cotta all'origine, controlli imparati). Qui restano la storia e i Seguiti.
+
 Data: 15 ottobre 2026. Stato: **approvato dall'utente e implementato** (ramo `claude/feat-game-materials-62a00b`).
 Parte da [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 8.
 Cosa è cambiato implementando, rispetto alla proposta qui sotto: sezione [Esito](#esito-dellimplementazione) in fondo.
