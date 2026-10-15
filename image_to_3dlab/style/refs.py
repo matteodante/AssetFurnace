@@ -22,6 +22,11 @@ def pick(root: Path, kind: str | None, k: int = 3,
     """Up to `k` (1 to 3) picture paths, best first; fewer when the bible has fewer."""
     if not 1 <= k <= MAX_REFERENCES:
         raise ValueError(f"ask for between 1 and {MAX_REFERENCES} references, got {k}")
+    return ordered(root, kind, typicality)[:k]
+
+
+def ordered(root: Path, kind: str | None, typicality: dict[str, float] | None = None) -> list[Path]:
+    """Every usable approved picture, in the order `pick` takes them."""
     root = Path(root)
     typicality = typicality or {}
 
@@ -34,4 +39,4 @@ def pick(root: Path, kind: str | None, k: int = 3,
     entries = [(i, e) for i, e in enumerate(load(root)["images"])
                if (root / e["file"]).is_file() and sha256_file(root / e["file"]) == e["sha256"]]
     entries.sort(key=lambda item: (group(item[1]), -typicality.get(item[1]["sha256"], 0.0), item[0]))
-    return [(root / e["file"]).resolve() for _, e in entries[:k]]
+    return [(root / e["file"]).resolve() for _, e in entries]
