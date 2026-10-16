@@ -1,7 +1,7 @@
 # Funzione 2: dal riferimento al concept (progetto)
 
-Data: 15 ottobre 2026. Stato: **strada scelta dall'utente (Qwen-Image 2.1 in modifica), in attesa dell'approvazione
-del download**. Niente scaricato, niente installato, nessun codice.
+Data: 15 ottobre 2026. Stato: **prova dei quattro casi fatta (sezione 10), in attesa del giudizio dell'utente**. File
+della visione scaricato dal catalogo (PR #9).
 Piano delle funzioni: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 2. La
 funzione è generica: vale per qualunque riferimento e qualunque progetto.
 
@@ -163,7 +163,40 @@ errori veri visibili; massimo 3 giri). Non unisco io.
 
 Si può scaricare `mmproj-Qwen3VL-8B-Instruct-F16.gguf` (1.159.029.824 byte, Apache-2.0) dal catalogo?
 
-## 10. Seguiti
+## 10. Esito della prova (16/10/2026, da giudicare dall'utente)
+
+50 immagini, tutte riuscite (2 al secondo tentativo, sotto). Qwen-Image 2.1 Q8_0, 8 passi, cfg 1.0, 1024 × 1024,
+`sd-cli` commit `60423ab`, RTX 5070 Ti. I fogli e gli script stanno in `journal/reference-concept/` (locale).
+
+**Tempi e memoria.** Generazione mediana **32 s** a immagine (24–57 s; la prima della serata 157 s, con poca RAM libera
+perché giravano altre sessioni). Picco di VRAM della scheda intera **15,6 GB su 16** (massimo 15,9): `sd-cli` sceglie da
+solo quanto caricare in VRAM e la riempie. Due immagini sono cadute per memoria esaurita quando un altro programma ha
+preso qualche centinaio di MB a corsa iniziata; ripetute, sono riuscite.
+
+**Caso 1, riferimento ridisegnato** (cosa vedo io; il giudizio è dell'utente):
+- a, solo il riferimento: un ridisegno pulito ma **molto vicino all'originale**. Il cavaliere e il lupo sono quasi
+  copie; il forziere e il robot cambiano un po' di più. IoU 0,79–0,96.
+- b, mappa più riferimento: **copia** del riferimento. IoU 0,94–1,00.
+- c, solo la mappa, colori scritti nel prompt (aggiunta durante la prova): il più "nuovo". Stessa sagoma (IoU
+  0,91–1,00), disegno interno rifatto: armatura del cavaliere diversa, forziere più cartoon. Dalla lineart di
+  un'immagine passano anche i dettagli interni, quindi il guerriero nordico resta vicino; dalla profondità di un modello
+  il disegno interno è libero.
+- Nessuna variante dà una sagoma "simile ma non identica": il modello rispetta la sagoma quasi alla lettera. La
+  differenza sta nel disegno interno.
+
+**Caso 2, T-pose esatta del corpo base**: riesce. Con il corpo come riferimento (a) posa, proporzioni e inquadratura
+coincidono (IoU 0,90–0,92 contro il corpo); con la sola mappa di posa (b) la T-pose c'è, braccia appena più larghe
+(0,86–0,88).
+
+**Caso 3, armatura sopra il corpo base**: riesce. Il pezzo chiesto (corazza, oppure elmo e spallacci) si aggiunge e il
+resto del corpo, la posa e il contorno restano identici. Più pulito dell'inpainting della funzione 4, che ridisegna
+tutto il personaggio.
+
+**Caso 4, altre viste della stessa creatura**: riesce a metà. Di lato, con la profondità di quel lato (b) la sagoma è
+giusta; con la sola vista frontale (a) il corpo viene più magro. Da dietro, 1 immagine su 4 (a, seme 11) ridisegna il
+davanti. I colori restano della stessa creatura, con l'arancio più acceso.
+
+## 11. Seguiti
 
 Dalla review di Codex della PR #9 (secondo giro, P2 rimandati: non sono errori visibili nei casi normali).
 - Rimuovere Qwen-Image cancella anche i file parziali (`*.incomplete`) di altre quantizzazioni scaricate a metà nella
@@ -172,3 +205,5 @@ Dalla review di Codex della PR #9 (secondo giro, P2 rimandati: non sono errori v
   viene cancellato e lascia quel collegamento rotto. Meglio passare dall'API di cancellazione di `huggingface_hub`.
 - L'avanzamento del download conta tutta la cartella del file con nome, quindi anche file non dichiarati (altre
   quantizzazioni): parte alto e sovrastima il totale. Era già così prima della PR, per il codificatore.
+- `sd-cli` riempie la VRAM (15,6 GB su 16) e cade se un altro programma ne prende durante la corsa. Per lo studio:
+  passare un margine con `--max-vram` in `image_api.py`, misurando quanto rallenta.

@@ -694,6 +694,12 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
         results.append(_check("retarget", measured.get("retarget") == "ok", f"retarget of MM_Idle: {measured.get('retarget')}"))
         walk = measured.get("walk", "no walk was retargeted")
         results.append(_check("walk", walk == "ok", f"retarget of a walk: {walk}"))
+        if "walk_feet_sides" in measured:
+            sides, rest = measured["walk_feet_sides"], measured.get("walk_feet_rest", 0.0)
+            narrowest = min((abs(s) for s in sides), default=0.0)
+            results.append(_check("walk_feet", not feet_cross(sides, rest),
+                                  f"feet {'cross' if feet_cross(sides, rest) else 'stay apart'} in the walk: "
+                                  f"narrowest gap {narrowest:.1f} cm, {abs(rest):.1f} cm at rest"))
     if equipment and expected.get("skeleton_from"):
         reused = str(measured.get("skeleton", "")).endswith(expected["skeleton"]) and measured.get("new_skeletons", 1) == 0
         results.append(_check("skeleton", reused, f"skeleton {measured.get('skeleton')}, new skeletons {measured.get('new_skeletons')}"))
@@ -707,6 +713,17 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
 def stride(widths: Iterable[float]) -> float:
     """The widest step in a walk cycle, from the feet's fore-aft spread sampled over it."""
     return max(widths, default=0.0)
+
+
+def feet_cross(sides: Iterable[float], rest: float) -> bool:
+    """True when, at some point in a walk, the left foot is on the right of the right foot.
+
+    `sides` are the left foot's sideways offset from the right one over the cycle (Unreal
+    X, the character facing +Y), `rest` the same in the reference pose. A walk whose feet
+    pass across each other reads as legs crossing however well the skin holds."""
+    if rest == 0:
+        return False
+    return any(side * rest < 0 for side in sides)
 
 
 def stage_layout(widths: list[float], height: float, sun: Iterable[float], fov: float = 50.0,
