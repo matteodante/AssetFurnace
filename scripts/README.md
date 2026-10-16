@@ -121,6 +121,7 @@ The asset's surface, as opposed to its shape.
 | `bake_stiffness.py` | Bake foliage stiffness into a GLB as vertex colours, for engine-side wind. |
 | `classify_thickness.py` | Separate solid body from thin foliage by measuring local thickness. |
 | `material_label_set.py` | Queue assets for the user's material labels, follow the progress, export what is complete. |
+| `reference_concept.py` | Draw a new concept from a reference: prepare a map, then redraw, dress, add a piece or turn it. |
 | `game_materials.py` | Pack a generated GLB's own maps as a game-ready ORM, with its sidecar and licence record. |
 | `bootstrap_materials.py` | Install the game-material models and their environment, after saying what, how big and under which licence. |
 | `delight_materials.py` | Take the light painted into an asset's texture, or into a concept, back out. |

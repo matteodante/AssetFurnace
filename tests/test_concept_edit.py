@@ -47,3 +47,9 @@ def test_a_missing_or_unreadable_picture_is_refused_before_the_run(tmp_path):
     broken.write_bytes(b"not a picture")
     with pytest.raises(ValueError, match="broken.png"):
         edit.with_references(["sd-cli"], [broken], tmp_path / "v.gguf")
+
+
+def test_the_edit_arguments_alone_are_what_with_references_inserts(tmp_path):
+    shape = picture(tmp_path / "shape.png")
+    assert edit.edit_args([shape], tmp_path / "v.gguf") == ["--llm_vision", str(tmp_path / "v.gguf"),
+                                                            "-r", str(shape.resolve())]

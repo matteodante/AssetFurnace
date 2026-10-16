@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- From a reference to a concept in the viewer (`viewer/concept_api.py`,
+  `scripts/reference_concept.py`): upload a reference, prepare a map from a model or a
+  picture, and run one of the four ways as an ordinary image job, with the
+  `<image>.concept.json` record and the silhouette IoU against the shape picture.
+  `generate(prompt, references, seed)` is the same edit as one call for other steps.
+  Image jobs take extra arguments, extra provenance and a name (`viewer/image_api.py`).
 - FLUX.2 klein 4B in Setup & Status: an Apache-2.0 image editor for the sd-cli already
   installed, three files (12.3 GB), fetched only on request by
   `scripts/bootstrap_flux2_klein.py`. The VAE is BFL's Apache-2.0 small decoder, not
