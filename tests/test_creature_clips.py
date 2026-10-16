@@ -16,7 +16,8 @@ def test_humanoids_get_test_clips_only_when_asked():
     assert creature_clips.wanted_motions("quadruped", chosen=False) == ("trot", "attack")
     assert creature_clips.wanted_motions("humanoid", chosen=False) == ()
     assert creature_clips.wanted_motions("humanoid", chosen=True) == ("walk", "attack")
-    assert creature_clips.wanted_motions("plant", chosen=True) == ()  # none yet
+    assert creature_clips.wanted_motions("plant", chosen=False) == ("sway", "attack")
+    assert creature_clips.wanted_motions("kraken", chosen=True) == ()  # not a family
 
 
 def test_clips_made_from_the_command_line_get_provenance(tmp_path):

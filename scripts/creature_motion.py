@@ -33,9 +33,9 @@ from quadruped_gait import GAITS, follow_through, foot_offset
 FPS = 30
 CLIPS = {"digitigrade": ("walk", "attack"), "humanoid": ("walk", "attack"),
          "quadruped": ("trot", "attack"), "multileg": ("walk", "attack"),
-         "serpent": ("slither", "attack")}
+         "serpent": ("slither", "attack"), "winged": ("hover", "attack"), "plant": ("sway", "attack")}
 # humanoids already have the preset moves; they get test clips only when asked for
-DEFAULT_CLIPS = {"digitigrade", "quadruped", "multileg", "serpent"}
+DEFAULT_CLIPS = {"digitigrade", "quadruped", "multileg", "serpent", "winged", "plant"}
 
 # Biped walk, as fractions of leg length (hip to toe, vertically).
 WALK = {"frames": 32, "duty": 0.6, "stride": 0.42, "lift": 0.12, "bob": 0.018, "sway": 0.012,
@@ -50,6 +50,12 @@ CRAWL = {"frames": 24, "duty": 0.6, "stride": 0.16, "lift_per_stride": 0.6, "rip
 # Serpents: a wave travelling from head to tail, growing towards the tail. Degrees per joint.
 SLITHER = {"frames": 40, "bend": 9.0, "waves": 1.2}
 STRIKE = {"neck": 0.35, "coil": 14.0, "rear": 12.0}
+# Wings: degrees of stroke at the shoulder, each segment out softer and later; the body
+# hovers `lift` of a leg length up and bobs `bob` of a wing's length with each beat.
+WINGS = {"frames": 24, "down": 0.4, "stroke": 35.0, "taper": 0.6, "lag": 0.06, "lift": 0.25, "bob": 0.04,
+         "tuck": 20.0, "tail": 8.0}
+# Plants: degrees per joint, growing up the stem. `snap` is (draw back, back most, strike, settle).
+PLANT = {"frames": 48, "sway": 6.0, "lag": 0.25, "snap": (-6.0, -16.0, 24.0, 4.0)}
 
 
 @dataclass
@@ -473,7 +479,8 @@ def multileg_attack(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list
     return out
 
 
-def pose_path(rig: Rig, path: list[str], desired: dict[str, np.ndarray], turn: dict[str, np.ndarray]) -> np.ndarray:
+def pose_path(rig: Rig, path: list[str], desired: dict[str, np.ndarray], turn: dict[str, np.ndarray],
+              still: str | None = None) -> np.ndarray:
     """Turn the bones along `path` so its joints land on `desired`; returns the root's head.
 
     The path may run with or against the tree (a snake can be rooted at its head, its tail
@@ -497,6 +504,8 @@ def pose_path(rig: Rig, path: list[str], desired: dict[str, np.ndarray], turn: d
             have = [inherited @ (rig.heads[c] - rig.heads[b]) for c in children]
             want = [desired[c] - actual[b] for c in children]
             turn[b] = rotation_between(have[0], want[0]) if len(children) == 1 else _fit(have, want)
+        elif b == still:  # the anchor at the chain's end keeps its rest turn: roots stay planted
+            turn[b] = inherited.T
         total[b] = turn.get(b, np.eye(3)) @ inherited
     return actual[root]
 
@@ -613,7 +622,130 @@ def serpent_strike(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[
     return out
 
 
+def wingbeat(u: float, down: float = WINGS["down"]) -> float:
+    """+1 with the wings up, -1 down: a fast downstroke over `down` of the cycle, then a
+    slower recovery, eased at both ends so the loop does not snap."""
+    u %= 1.0
+    if u < down:
+        return math.cos(math.pi * u / down)
+    return -math.cos(math.pi * (u - down) / (1.0 - down))
+
+
+def _wing_turns(family: dict, angle_of) -> dict[str, np.ndarray]:
+    """Each wing bone turned about the body's forward axis, mirrored left and right.
+    `angle_of(segment index)` gives degrees for the left wing (positive raises it)."""
+    _, forward, _ = _frame(family)
+    out = {}
+    for wing in family.get("wings", []):
+        side = 1.0 if wing["side"] == "L" else -1.0
+        for i, bone in enumerate(wing["bones"][:-1]):
+            out[bone] = axis_angle(forward, side * angle_of(i))
+    return out
+
+
+def winged_hover(rig: Rig, family: dict, frames: int | None = None) -> list[tuple[dict, np.ndarray]]:
+    """Flying on the spot: the wings beat (down fast, up slow, the tips trailing), the body
+    rises with each downstroke, the legs hang tucked and the tail follows."""
+    if len(family.get("wings", [])) < 2:
+        raise ValueError("a hover needs two wings")
+    up, forward, left = _frame(family)
+    frames = frames or WINGS["frames"]
+    root = rig.order[0]
+    legs, tail, neck = family.get("legs", []), family.get("tail", []), family.get("neck", [])
+    reach = float(np.mean([leg_length(rig, leg, up) for leg in legs])) if legs else 0.0
+    span = float(np.mean([_chain_length(rig, w["bones"]) for w in family["wings"]]))
+    # the beat's bob must never sink the hovering body back to the ground
+    bob = min(WINGS["bob"] * span, 0.8 * WINGS["lift"] * reach)
+    out = []
+    for index in range(frames + 1):
+        u = (index % frames) / frames
+        beat = wingbeat(u)
+        root_pos = rig.heads[root] + up * (WINGS["lift"] * reach + bob * -beat)
+        turn = _wing_turns(family, lambda i: WINGS["stroke"] * WINGS["taper"] ** i
+                           * wingbeat(u - WINGS["lag"] * i))
+        for leg in legs:  # tucked back under the body
+            turn[leg["bones"][0]] = axis_angle(left, WINGS["tuck"])
+        for i, bone in enumerate(tail):
+            turn[bone] = axis_angle(left, follow_through(u, 1, WINGS["tail"] * 0.7 ** i, 0.08 * (i + 1))) \
+                @ axis_angle(up, follow_through(u, 1, WINGS["tail"] * 0.7 ** i, 0.08 * i + 0.25))
+        for i, bone in enumerate(neck[:2]):
+            turn[bone] = axis_angle(left, follow_through(u, 1, 3.0, 0.1 * (i + 1)))
+        out.append((turn, root_pos))
+    # hover high enough that nothing, wing tips at the bottom of the beat included, touches the ground
+    floor = min(float(p @ up) for p in rig.heads.values())
+    lowest = min(float(p @ up) for turn, root_pos in out for p in positions_of(rig, turn, root_pos).values())
+    raise_by = max(0.0, floor + 0.02 * span - lowest)
+    return [(turn, root_pos + up * raise_by) for turn, root_pos in out]
+
+
+def positions_of(rig: Rig, turn: dict[str, np.ndarray], root: np.ndarray) -> dict[str, np.ndarray]:
+    """Every joint's position for one frame."""
+    return posed_heads(rig, accumulate(rig, turn), root)
+
+
+def winged_attack(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[tuple[dict, np.ndarray]]:
+    """The ground attack of its legs (rear and slam on four, a swipe on two), with the wings
+    thrown up and open as it rears and swept down with the blow."""
+    legs = family.get("legs", [])
+    if len(legs) >= 4:
+        base = quadruped_attack(rig, {**family, "family": "quadruped"}, frames)
+    elif len(legs) == 2:
+        base = biped_attack(rig, family, frames)
+    else:
+        base = [({}, rig.heads[rig.order[0]].copy()) for _ in range(frames + 1)]
+    out = []
+    for index, (turn, root_pos) in enumerate(base):
+        t = index / frames
+        spread = _blend(t, 0.0, 0.3, 1.0, -0.3, 0.0) * WINGS["stroke"]
+        turn = {**turn, **_wing_turns(family, lambda i, s=spread: s * WINGS["taper"] ** i)}
+        out.append((turn, root_pos))
+    return out
+
+
+def _plant_frames(rig: Rig, family: dict, frames: int, angles) -> list[tuple[dict, np.ndarray]]:
+    """Pose the stem from its base: `angles(index, s)` gives (forward, sideways) degrees of
+    bend at each joint, `s` being its distance up the stem (0 at the base, 1 at the top)."""
+    path = family.get("body") or []
+    if len(path) < 3:
+        raise ValueError("a plant clip needs a stem of at least three joints")
+    up, forward, left = _frame(family)
+    s, share = _arc(rig, path), _per_length(rig, path, segments=4)  # tuned on a four-segment stem
+    out = []
+    for index in range(frames + 1):
+        bends = []
+        for i in range(len(path) - 1):
+            ahead, aside = angles(index, s[i])
+            bends.append(axis_angle(left, ahead * share[i]) @ axis_angle(forward, aside * share[i]))
+        turn: dict[str, np.ndarray] = {}
+        root = pose_path(rig, path, _bent(rig, path, path[0], _rigid_at_root(rig, path, path, bends)), turn,
+                         still=path[0])
+        out.append((turn, root))
+    return out
+
+
+def plant_sway(rig: Rig, family: dict, frames: int | None = None) -> list[tuple[dict, np.ndarray]]:
+    """An idle sway: the stem bends more towards its top, each joint a little behind the last."""
+    frames = frames or PLANT["frames"]
+
+    def angles(index: int, s: float) -> tuple[float, float]:
+        u = (index % frames) / frames
+        return (PLANT["sway"] * s * math.sin(2 * math.pi * (u - PLANT["lag"] * s)),
+                0.6 * PLANT["sway"] * s * math.sin(2 * math.pi * (u - PLANT["lag"] * s) + 1.1))
+
+    return _plant_frames(rig, family, frames, angles)
+
+
+def plant_attack(rig: Rig, family: dict, frames: int = ATTACK_FRAMES) -> list[tuple[dict, np.ndarray]]:
+    """Draw back, then snap the head forward and down, and recover."""
+    def angles(index: int, s: float) -> tuple[float, float]:
+        return _blend(index / frames, 0.0, *PLANT["snap"]) * s, 0.0
+
+    return _plant_frames(rig, family, frames, angles)
+
+
 MOTIONS = {
+    ("winged", "hover"): winged_hover, ("winged", "attack"): winged_attack,
+    ("plant", "sway"): plant_sway, ("plant", "attack"): plant_attack,
     ("humanoid", "walk"): biped_walk, ("digitigrade", "walk"): biped_walk,
     ("humanoid", "attack"): biped_attack, ("digitigrade", "attack"): biped_attack,
     ("quadruped", "trot"): quadruped_trot, ("quadruped", "attack"): quadruped_attack,

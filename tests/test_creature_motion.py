@@ -125,7 +125,7 @@ def test_quadruped_attack_lifts_only_the_forefeet():
 
 def test_clip_names():
     assert cm.clips_for("digitigrade") == ("walk", "attack")
-    assert cm.clips_for("plant") == ()
+    assert cm.clips_for("kraken") == ()  # not a family
     assert cm.clip_name("quadruped", "trot") == "quadruped-trot"
     with pytest.raises(ValueError):
         cm.make("moonwalk", *rig_of(werewolf())[:2])
