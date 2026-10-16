@@ -113,7 +113,7 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     folder = output / "sets" / set_name / body_mod.load(body_json)["name"]
     folder.mkdir(parents=True, exist_ok=True)
     spec = folder / "slots.json"
-    spec.write_text(json.dumps(chosen, indent=1) + "\n")
+    spec.write_text(json.dumps(chosen, indent=1) + "\n", encoding="utf-8")
     command = [sys.executable, str(REPO / "scripts" / "slot_parts.py"), "run", "--body", str(body_json),
                "--set", set_name, "--slots-json", str(spec), "--seeds", ",".join(map(str, seeds)),
                "--concept-seeds", str(seeds[0]), "--root", str(output / "sets")]
