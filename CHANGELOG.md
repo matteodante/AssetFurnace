@@ -103,6 +103,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
 
 ### Fixed
+- Pictures are sharp again: text to image now runs the Qwen-Image 2.1 Turbo checkpoint with
+  its own schedule (`--sigmas qwen-image-2.1-turbo`, cfg 1.0) at 1024 px. It used to run
+  the base checkpoint with the Turbo's numbers (8 steps, cfg 1.0), which stopped the
+  sampler half way: soft pictures with frayed edges and ghost shapes, worst with reference
+  pictures. Setup now fetches the Turbo weights (7.6 GB) instead of the base ones.
 - A character is faced across its hips, not along its feet: a werewolf whose feet turned out
   unevenly was exported to Unreal turned 17 degrees off its body. The Unreal check also
   records the feet's and knees' sideways gap over the retargeted walk (and Manny's), and fails
