@@ -49,8 +49,9 @@ TRIAL = ("not run: needs the user's material points (design section 6, scripts/z
          "at least 75% of the points in the zone of their material")
 
 # Starting roughness and metallic per material, after the material -> roughness/metallic table of
-# MaterialSeg3D++ (2026). Only where an asset has no map of its own, and only once they pass the
-# Poly Haven trial (design sections 4 and 6; scripts/zones_trial.py pbr).
+# MaterialSeg3D++ (2026). They failed the Poly Haven trial on 2026-10-17 (SAM 2.1 zones: roughness
+# RMSE 0.30, 32% worse than a constant; metal wrong on 42% of the area; design section 10), so
+# nothing writes them into an asset; they are kept to measure better zones the same way.
 DEFAULT_PBR = {
     "cloth": (0.9, 0.0), "leather": (0.6, 0.0), "metal": (0.35, 1.0), "skin": (0.55, 0.0),
     "fur": (0.9, 0.0), "hair": (0.6, 0.0), "feathers": (0.85, 0.0), "scales": (0.45, 0.0),

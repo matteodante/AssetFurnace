@@ -449,6 +449,21 @@ Download confermati dall'utente il 16/10/2026 ("permesso per tutto"): Qwen3.5-4B
   - I nomi dati regione per regione cambiano da una vista all'altra, e il voto attenua ma non corregge. È proprio ciò
     che misura la prova con i punti dell'utente; SAM 3, che segmenta per frase, dovrebbe soffrirne meno.
 - **Non ancora verificato con i pesi veri**: `segment_sam3`, che aspetta il modulo di accesso.
+- **Valori di partenza per materiale: non passano** (`zones_trial.py pbr --segmenter sam2 --views 8`, 30 asset Poly
+  Haven, 41 minuti con la GPU condivisa):
+
+  | Criterio | Soglia | Valori dalle zone (SAM 2.1 + Qwen3.5) | Marigold Appearance (PR 6) |
+  |---|---|---|---|
+  | Rugosità, RMSE | ≤ 0,15 | 0,300 | 0,247 |
+  | Rugosità, meglio della costante | ≥ 20 % | −32 % | −4 % |
+  | Metallo, F1 | ≥ 0,8 | 0,41 | 0,37 |
+  | Metallo sbagliato | < 5 % dell'area | 42 % | 58 % |
+
+  Il metallo va un po' meglio di Marigold, ma resta lontano dalla soglia. La rugosità per materiale è peggio di un
+  numero solo: dentro lo stesso materiale (legno grezzo o verniciato, metallo lucido o arrugginito) varia più che fra
+  materiali diversi. Con SAM 3 la segmentazione potrebbe migliorare, la tabella no.
+  **Decisione**: rugosità e metallo restano quelli dell'asset (Pixal3D) o i suoi fattori. Non si stimano finché
+  qualcosa non supera questa prova. `DEFAULT_PBR` resta solo per misurare.
 - **La prova**:
   - `zones_trial.py human` conta quanti punti cliccati dall'utente cadono nella zona del loro materiale;
   - entra con almeno il 75 %, lo stesso numero dell'IoU della sezione 6;
