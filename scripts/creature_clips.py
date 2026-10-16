@@ -90,7 +90,7 @@ def plan(family: str, chosen: bool, legs: int, installed: bool | None = None) ->
         return []
     installed = cl.installed() if installed is None else installed
     source = cl.source_for(family, legs) if installed else None
-    library = [(motion, source) for motion in cl.SOURCES[source]["clips"]] if source else []
+    library = [(motion, source) for motion in [*cl.SOURCES[source]["clips"], *cl.variations(source)]]         if source else []
     have = {motion for motion, _ in library}
     return library + [(motion, None) for motion in wanted_motions(family, chosen) if motion not in have]
 
@@ -163,9 +163,12 @@ def _write_clip(rigged: Path, family: str, motion: str, blend: Path | None,  # p
     if source:
         import chain_retarget as cr
 
-        clip, loop = cl.SOURCES[source]["clips"][motion]
-        frames = cr.retarget(rig, roles, cr.load_source(cl.pack_dir() / cl.SOURCES[source]["file"],
-                                                        cl.source_roles(source), clip, loop=loop))
+        clip, loop = cl.SOURCES[source]["clips"][cl.base_motion(motion)]
+        clip_source = cr.load_source(cl.pack_dir() / cl.SOURCES[source]["file"], cl.source_roles(source), clip,
+                                     loop=loop)
+        if motion != cl.base_motion(motion):
+            clip_source = cr.longer(clip_source, cl.LONGER_FACTOR, cl.LONGER_SEED, loop)
+        frames = cr.retarget(rig, roles, clip_source)
     else:
         frames = cm.make(motion, rig, roles)
 

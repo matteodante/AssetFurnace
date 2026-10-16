@@ -413,6 +413,16 @@ def _limb(rig, kind, mine, theirs, start, inherited, source, src_rest, posed, de
     return out
 
 
+def longer(source: Source, factor: float, seed: int, loop: bool) -> Source:
+    """A take of the source clip `factor` times as long, made of its own pieces in a new
+    order (`image_to_3dlab.motion_variation`, after GenMM)."""
+    from image_to_3dlab.motion_variation import vary
+
+    poses = vary(source.parents, source.rest, source.poses, _up(source),
+                 length=round(len(source.poses) * factor), seed=seed, loop=loop)
+    return Source(parents=source.parents, rest=source.rest, poses=poses, roles=source.roles)
+
+
 # -- reading a library clip ----------------------------------------------------------------
 
 def load_source(glb: Path, roles: dict, clip: str, fps: int = FPS, loop: bool = False) -> Source:

@@ -530,3 +530,50 @@ Lettura:
 - Le clip con pose estreme (attacco, colpo, morte) superano le soglie anche sulle sorgenti: valutare soglie per tipo
   di clip, o un controllo che confronti con la sorgente invece che con un numero fisso.
 - Il collo del bersaglio: oggi la testa gira solo con l'ultimo segmento del collo.
+
+## 16. Com'è andata la PR 3 della libreria: varianti con GenMM (16/10/2026)
+
+Ogni clip della libreria che si ripete (idle, walk, run, fly, glide, slither) ha anche una versione lunga il
+doppio, `<famiglia>-<movimento>-long`. È fatta dei pezzi della clip in un ordine nuovo e si ripete anch'essa.
+Così una creatura non sta ferma in un giro di due secondi.
+
+**GenMM è portato in numpy, non messo in `vendor/`** (`image_to_3dlab/motion_variation.py`, circa 200 righe):
+- il `main` di GenMM non gira più: dal commit `b2b1539` usa `GenMM.KEYFRAME_INDICES`, che non è mai definito;
+- servirebbero torch e unfoldNd, da aggiungere alla `.venv` di SkinTokens;
+- nella stessa cartella c'è l'add-on GPL-3.
+
+Il porting segue `GenMM.py`, `nearest_neighbor/` e `configs/default.yaml` al commit `fae65cd`, l'ultimo funzionante
+dopo la licenza. Ha i valori predefiniti di GenMM: toppe di 11 fotogrammi, alpha 0,01, 3 passi per livello, piramide
+0,75. Le differenze sono numpy al posto di torch, una sola clip d'esempio e le due piramidi allineate, in modo che
+la lunghezza esca esatta. Nessun download e nessun peso. Il NOTICE e i crediti lo dichiarano. Applicato alle pose,
+lavora sulla rotazione di ogni osso rispetto al padre (6D) e, per le radici, sull'altezza e sul passo lungo il
+terreno; le ossa mantengono la lunghezza di riposo.
+
+La variante si fa sulla clip sorgente, prima del retarget. Nella provenienza `varied_with` dice come è stata fatta
+(fattore 2, seme 0), accanto alla clip CC0 di partenza.
+
+Misure sui quattro rig. Le deformazioni sono quelle della clip di base. Lo scatto più grande di un'articolazione fra
+due fotogrammi cresce un poco nelle giunzioni fra pezzi:
+
+| Clip | Lati stirati / rovesciati, base → lunga | Scatto massimo, base → lunga |
+|---|---|---|
+| Lupo, idle | 0,11 / 0,06 → 0,11 / 0,06 | 0,38% → 0,56% |
+| Lupo, walk | 0,08 / 0,10 → 0,06 / 0,10 | 4,35% → 5,62% |
+| Ragno, idle | 0,58 / 0,49 → 0,54 / 0,44 | 0,40% → 0,85% |
+| Ragno, walk | 1,47 / 1,06 → 1,50 / 1,05 | 5,44% → 6,83% |
+| Serpente, idle | 0,49 / 0,39 → 0,49 / 0,39 | 2,25% → 4,60% |
+| Serpente, slither | 0,30 / 0,21 → 0,23 / 0,18 | 14,28% → 16,47% |
+| Draghetto, idle | 0,97 / 2,02 → 0,97 / 1,94 | 0,48% → 0,64% |
+| Draghetto, walk | 1,38 / 1,80 → 1,27 / 1,79 | 3,52% → 3,81% |
+| Draghetto, fly | 0,83 / 1,77 → 0,83 / 1,33 | 23,01% → 20,43% |
+| Draghetto, glide | 0,30 / 0,51 → 0,30 / 0,51 | 0,23% → 0,40% |
+
+Lungo la strada, misurare gli scatti ha fatto emergere un difetto della PR 2: i piedi saltavano al distacco. È
+stato corretto sul suo ramo (sezione 15).
+
+**Seguiti della PR 3**
+- Le giunzioni fra pezzi raddoppiano lo scatto massimo dell'attesa del serpente (dal 2,3% al 4,6%): toppe più lunghe
+  o un passo di levigatura sulle giunzioni, se si vede.
+- Le varianti di attacco e di colpo (pezzi diversi, non più lunghi) richiedono una sintesi guidata da fotogrammi
+  chiave, che GenMM aveva iniziato a introdurre nel commit che lo ha rotto.
+

@@ -44,7 +44,7 @@ def test_library_clips_come_first_and_replace_procedural_ones_of_the_same_name()
     plan = creature_clips.plan("digitigrade", chosen=False, legs=2, installed=True)
     assert plan[:5] == [("idle", "kaiju"), ("walk", "kaiju"), ("attack", "kaiju"), ("hit", "kaiju"),
                         ("death", "kaiju")]
-    assert plan[5:] == []  # walk and attack are the library's now
+    assert all(source == "kaiju" for _, source in plan)  # walk and attack are the library's now
     quadruped = creature_clips.plan("quadruped", chosen=False, legs=4, installed=True)
     assert ("trot", None) in quadruped and ("attack", "fox") in quadruped and ("attack", None) not in quadruped
 
@@ -79,3 +79,18 @@ def test_a_library_clip_records_where_its_motion_came_from(tmp_path):
     assert motion["license"]["name"] == "CC0-1.0" and motion["source_clip"] == "Walk"
     assert motion["source_sha256"] == cl.MESH2MOTION["files"]["static/animations/kaiju-animations.glb"][0]
     assert motion["clip"] == "digitigrade-walk"
+
+
+def test_every_looping_library_clip_also_gets_a_longer_variation():
+    plan = creature_clips.plan("quadruped", chosen=False, legs=4, installed=True)
+    assert ("idle-long", "fox") in plan and ("walk-long", "fox") in plan and ("run-long", "fox") in plan
+    assert ("attack-long", "fox") not in plan  # an attack does not loop: nothing to vary into
+    assert creature_clips.plan("plant", chosen=False, legs=0, installed=True) == [("sway", None), ("attack", None)]
+
+
+def test_a_variation_records_how_it_was_made():
+    from image_to_3dlab import clip_library as cl
+
+    made = cl.motion_record("fox", "walk-long")
+    assert made["source_clip"] == "Walk" and made["license"]["name"] == "CC0-1.0"
+    assert "GenMM" in made["varied_with"]

@@ -282,6 +282,15 @@ def test_the_library_spider_has_all_eight_legs():
     assert len(legs) == 8 and len({leg["bones"][0] for leg in legs}) == 8
 
 
+def test_a_longer_take_of_a_source_clip_keeps_its_skeleton_and_roles():
+    src_rig, src_roles = _quadruped()
+    source = _source(src_rig, src_roles, _walkish(src_rig, n=24))
+    longer = cr.longer(source, factor=2.0, seed=0, loop=True)
+    assert len(longer.poses) == 48 and longer.roles is source.roles and longer.rest is source.rest
+    hips = [p["hips"][:3, 3] for p in longer.poses]
+    assert max(abs(h[1] - src_rig.heads["hips"][1]) for h in hips) < 0.05
+
+
 def test_a_source_foot_far_below_its_rest_is_not_on_the_ground():
     """A drake's feet hang below their standing height in flight; taken for planted, they
     were pulled down and its legs folded across each other."""
