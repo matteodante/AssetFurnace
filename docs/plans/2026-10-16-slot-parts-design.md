@@ -51,7 +51,7 @@ non nella pipeline.
 | Uscita Unreal di un pezzo | `scripts/export_unreal.py --kind equipment --body RIGGED.glb` | Su `main`: misura, verso e scheletro presi dal corpo |
 | Deformazione in posa | controllo `rig.deformation` (funzione 6) | Su `main` |
 | Clip per umanoidi | `image_to_3dlab/motions/` + `scripts/kimodo_retarget.py` (`walk`, `sword_swing`…) | Su `main` |
-| Immagini | `sd-cli` con Qwen-Image 2.1 Turbo (`viewer/image_api.py`, ricetta della PR #21) | Su `main`, **ma senza `-r`**: i riferimenti li passano solo gli script della prova |
+| Immagini | `sd-cli` con Qwen-Image 2.1 Turbo (`viewer/image_api.py`, ricetta della PR #21); modifica con riferimenti in `image_to_3dlab/concept/` (funzione 2) | Su `main` |
 | Normali girate | `scripts/fix_winding.py` | Su `main`: serve per i pezzi che Pixal3D gira tutti all'interno |
 | 3D, rig | Pixal3D, finitura, SkinTokens, `clean_skin_weights.py` | Su `main` |
 | Script della prova | `journal/spike-slot-parts/` (locali) | Da ripulire: `roles.py`, `camera.py`, `slot_masks.py`, `part_images.py`, `flatten_cuts.py`, `make_config_c2.py`, `fit_set.py`, `piece_quality.py`; `segment_project.py` per la riserva B0 |
@@ -192,8 +192,9 @@ Nei file condivisi metto solo le righe d'aggancio.
 | 8 | Uscita per Unreal e riadattamento a un secondo corpo; prova di accettazione |
 
 Dettagli:
-- **PR 3 e la funzione 2**: `-r` serve anche alla funzione 2. Se il suo `generate(prompt, references, seed)` è già su
-  `main`, lo uso. Altrimenti aggiungo io il passaggio dei riferimenti e del file della visione, e lo dico alla sua sessione.
+- **PR 3 e la funzione 2**: la funzione 2 ha messo su `main` `image_to_3dlab/concept/` (`edit.with_references` per
+  `-r` e il file della visione, `prompts.dress` e `prompts.add_piece`, `maps.flatten`, il sidecar `.concept.json`).
+  Lo uso così com'è e aggiungo solo il prompt "completa questo pezzo".
 - **PR 8, Unreal**:
   - la maschera del corpo va nel colore dei vertici (attributo `covered`), che il materiale usa per nascondere;
   - i pezzi condividono lo scheletro del corpo (Leader Pose);
