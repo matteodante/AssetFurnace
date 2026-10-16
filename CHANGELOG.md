@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces, route B0 fallback (`slot_parts/segment.py`,
+  `scripts/blender_segment_parts.py`): a slot set to `B0` (`--slots torso:B0`) is cut from
+  the whole concept made once in 3D. Visible faces read the slot map, hidden ones the base
+  body's bones carried into the model's frame, two rounds of majority clean the borders,
+  every cut edge is filled, and the fit places it by the whole model's extent and splits a
+  paired piece by side. Route C and B0 slots mix in one set.
 - Characters in pieces, checks and the whole run: `fit.clipping` (the share of a piece's
   outer skin sinking into skin the mask leaves visible) and `fit.holes` (the body a piece
   covers at rest that a pose leaves bare), posed in numpy with the body's own clips at rest
