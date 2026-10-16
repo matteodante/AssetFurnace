@@ -66,7 +66,7 @@ def list_sets(output: Path) -> list[dict[str, Any]]:
     found = []
     for path in sorted((output / "sets").glob("*/*/*.parts.json")):
         try:
-            parts = json.loads(path.read_text())
+            parts = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         preview = path.parent / "fit" / "preview.glb"
@@ -141,7 +141,7 @@ def job_status(output: Path) -> dict[str, Any]:
     process = _JOB["process"]
     code = process.poll()
     log = Path(_JOB["log"])
-    tail = log.read_text(errors="replace").splitlines()[-12:] if log.is_file() else []
+    tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-12:] if log.is_file() else []
     parts = Path(_JOB["folder"]) / f"{_JOB['set']}.parts.json"
     return {"running": code is None, "returncode": code, "set": _JOB["set"], "body": _JOB["body"],
             "started": _JOB["started"], "log": tail,
