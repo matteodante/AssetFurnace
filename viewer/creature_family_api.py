@@ -52,7 +52,8 @@ def record_clips(rigged: Path, rig_record: dict[str, Any]) -> list[Path]:
     for clip in clip_files(rigged):
         name = clip.stem.removeprefix(rigged.stem.removesuffix("_rigged") + "_")
         record = creature_family.clip_record(rig_record, name, found.get("family"),
-                                             tool="viewer Animate tab: scripts/creature_clips.py", output=clip)
+                                             tool="viewer Animate tab: scripts/creature_clips.py", output=clip,
+                                             made=(found.get("clip_sources") or {}).get(name))
         path = clip.with_suffix(".provenance.json")
         path.write_text(json.dumps(record, indent=2), encoding="utf-8")
         written.append(path)
@@ -63,9 +64,12 @@ def facts(rigged: Path | None) -> dict[str, Any]:
     """What the Library and the rig job report about a rig's family."""
     found = creature_family.read_family(rigged) if rigged else None
     if not found:
-        return {"family": None, "family_label": None, "family_chosen": None, "clips_error": None}
+        return {"family": None, "family_label": None, "family_chosen": None, "clips_error": None,
+                "library_clips": []}
     return {"family": found["family"], "family_label": creature_family.LABELS[found["family"]],
-            "family_chosen": bool(found.get("chosen")), "clips_error": found.get("clips_error")}
+            "family_chosen": bool(found.get("chosen")), "clips_error": found.get("clips_error"),
+            # the clips carried over from the CC0 library, as opposed to procedural tests
+            "library_clips": sorted(found.get("clip_sources") or {})}
 
 
 def done_message(fit: dict[str, Any], rigged: Path) -> str | None:
