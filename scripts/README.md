@@ -121,6 +121,7 @@ The asset's surface, as opposed to its shape.
 | `bake_stiffness.py` | Bake foliage stiffness into a GLB as vertex colours, for engine-side wind. |
 | `classify_thickness.py` | Separate solid body from thin foliage by measuring local thickness. |
 | `material_label_set.py` | Queue assets for the user's material labels, follow the progress, export what is complete. |
+| `reference_concept.py` | Draw a new concept from a reference: prepare a map, then redraw, dress, add a piece or turn it. |
 | `game_materials.py` | Pack a generated GLB's own maps as a game-ready ORM, with its sidecar and licence record. |
 | `bootstrap_materials.py` | Install the game-material models and their environment, after saying what, how big and under which licence. |
 | `delight_materials.py` | Take the light painted into an asset's texture, or into a concept, back out. |
@@ -222,6 +223,16 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 | `blender_rigify_walk_cycle.py` | Author a trot cycle on the Rigify-generated 'rig' armature in the live Blender scene. |
 | `blender_idle_cycle.py` | Author a looping idle for the rigged fox. |
 | `blender_attack_cycle.py` | Author a slam-attack clip on a rigged quadruped in the live Blender scene. |
+
+## Characters in pieces
+
+Feature 4: armour slots worn on a rigged base body. The logic is in `image_to_3dlab/slot_parts/`.
+
+| Script | What it does |
+|---|---|
+| `slot_parts.py` | Characters in pieces (feature 4): register a base body, then cut a concept into slots. |
+| `blender_fit_parts.py` | Fit armour pieces onto a rigged base body in Blender, skin them to its skeleton, mask the body. |
+| `blender_segment_parts.py` | Route B0: split a whole-character model into one piece per slot, cut edges closed. |
 
 ## Export for Unreal
 

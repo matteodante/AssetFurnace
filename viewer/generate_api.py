@@ -35,7 +35,9 @@ import blender_edit_api
 import batch_api
 import review_api
 import material_labels_api
+import concept_api
 import creature_family_api
+import slot_parts_api
 import unreal_export_api
 from image_to_3dlab import processes
 from image_to_3dlab.blender import find_blender, missing_help as blender_missing_help
@@ -318,7 +320,7 @@ def mlx_attention_status(vendor: Path | None = None, dispatch: Path | None = Non
     vendor = vendor or TRELLIS_VENDOR
     dispatch = dispatch or MLX_DISPATCH_FILE
     try:
-        patched = dispatch.is_file() and MLX_DISPATCH_MARKER in dispatch.read_text()
+        patched = dispatch.is_file() and MLX_DISPATCH_MARKER in dispatch.read_text(encoding="utf-8")
     except OSError:
         patched = False
     package = any((vendor / ".venv" / "lib").glob("python*/site-packages/mlx"))
@@ -784,7 +786,7 @@ def image_border_opaque_fraction(path: Path) -> float | None:
 
 def _read_seconds(path: Path) -> dict[str, float]:
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
         seconds = data.get("seconds", data.get("stages", {}))
         return {str(k): float(v) for k, v in seconds.items() if v is not None}
     except (OSError, ValueError, TypeError, AttributeError):
@@ -805,7 +807,7 @@ def _update_baseline(job: Job) -> None:
     data = {"schema_version": 1, "seconds": seconds,
             "source": "learned from completed Generate jobs on this machine"}
     LEARNED_BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    LEARNED_BASELINE_PATH.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    LEARNED_BASELINE_PATH.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def _slugify(value: str) -> str:
@@ -1101,7 +1103,7 @@ def _write_pid_file(directory: Path, pid: int) -> None:
     dying (memory-only Job/JobManager state does not) -- see _reconcile_orphaned_jobs,
     which reads this file back on the next server startup to find and clean up jobs
     whose tracker died mid-run."""
-    _pid_file_path(directory).write_text(processes.pid_record(pid))
+    _pid_file_path(directory).write_text(processes.pid_record(pid), encoding="utf-8")
 
 
 def _remove_pid_file(directory: Path) -> None:
@@ -1175,7 +1177,7 @@ def _reconcile_orphaned_jobs(output_root: Path) -> list[str]:
             continue    # a folder that happens to be called pid (a prop, say), not a job's
         directory = pid_file.parent
         try:
-            pid, owner = processes.parse_pid_record(pid_file.read_text())
+            pid, owner = processes.parse_pid_record(pid_file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             pid_file.unlink(missing_ok=True)
             continue
@@ -2082,9 +2084,11 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if material_labels_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
+        if concept_api.handle(self, OUTPUT_ROOT, mutation=True):
+            return
         if unreal_export_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
-        if batch_api.handle(self, OUTPUT_ROOT, mutation=True):
+        if batch_api.handle(self, OUTPUT_ROOT, mutation=True) or slot_parts_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
         parts = self._path_parts()
         if parts == ["api", "chains"]:
@@ -2328,9 +2332,11 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if material_labels_api.handle(self, OUTPUT_ROOT):
             return
+        if concept_api.handle(self, OUTPUT_ROOT):
+            return
         if unreal_export_api.handle(self, OUTPUT_ROOT):
             return
-        if batch_api.handle(self, OUTPUT_ROOT):
+        if batch_api.handle(self, OUTPUT_ROOT) or slot_parts_api.handle(self, OUTPUT_ROOT):
             return
         if urlparse(self.path).path in ("", "/", "/viewer", "/viewer/"):
             self.send_response(HTTPStatus.FOUND)  # the front door is the studio
@@ -2347,7 +2353,7 @@ class Handler(SimpleHTTPRequestHandler):
         if parts == ["api", "recipes"]:
             # what we know about prompting each goal; the CLI and MCP read the same file
             try:
-                self._send_json(200, json.loads((REPO / "image_to_3dlab" / "prompt_recipes.json").read_text()))
+                self._send_json(200, json.loads((REPO / "image_to_3dlab" / "prompt_recipes.json").read_text(encoding="utf-8")))
             except (OSError, ValueError) as exc:
                 self._send_json(500, {"error": f"prompt recipes unreadable: {exc}"})
             return

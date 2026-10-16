@@ -9,6 +9,8 @@ open. Image 1 is always the shape picture; `other_view` with depth adds image 2.
 - `add_piece`: one piece of equipment on the base body, the rest untouched.
 - `other_view`: the same creature from the side or the back, from its front picture,
   optionally with the depth map of that side (without it the body came out thinner).
+- `complete_piece`: one armour piece cut out of a concept and flattened on grey, redrawn
+  whole and alone (feature 4, route C; the second trial of 16/10/2026).
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ STRUCTURES = {"depth": "depth map (lighter is nearer)", "lineart": "line drawing
 GUIDES = ("body", "pose")
 # Only the directions the trial drew; a three-quarter view was never tried.
 VIEWS = {"side": "its left side, in profile", "back": "behind"}
-MODES = ("redraw", "dress", "add_piece", "other_view")
+MODES = ("redraw", "dress", "add_piece", "other_view", "complete_piece")
 
 
 def _tail(style: str, *parts: str) -> str:
@@ -60,6 +62,17 @@ def add_piece(piece: str, style: str = "") -> str:
             f"same body, bodysuit, proportions, T-pose, framing and background. " + _tail(style))
 
 
+def complete_piece(piece: str, style: str = "") -> str:
+    """The cut-out `piece` of image 1 completed: hidden and cut-off parts filled in, nothing inside.
+
+    The edit keeps the piece where and how large it found it, which is how the piece is
+    placed back on the body afterwards.
+    """
+    return (f"Complete this cut-out armour piece into {piece}: fill in every part that was hidden or cut "
+            f"off, keep its design, colours and style, no body, no person, nothing inside, front view, "
+            f"centred. " + _tail(style))
+
+
 def other_view(view: str, depth: bool = False, style: str = "") -> str:
     """The creature of image 1 (its front) seen from `view`; with `depth`, image 2 is that side's depth."""
     if view not in VIEWS:
@@ -79,3 +92,15 @@ def shape_pictures(mode: str, depth: bool = False) -> int:
     if mode not in MODES:
         raise ValueError(f"mode is one of {', '.join(MODES)}, got {mode!r}")
     return 2 if mode == "other_view" and depth else 1
+
+
+def style_sentence(first: int, count: int) -> str:
+    """The words for `count` style pictures that follow the shape pictures, from image `first`."""
+    if count <= 0:
+        return ""
+    if count == 1:
+        return (f" Image {first} is a style reference: paint it in the same style (same brushwork, colours "
+                f"and proportions), but do not copy its subject.")
+    which = f"{first} and {first + 1}" if count == 2 else f"{first} to {first + count - 1}"
+    return (f" Images {which} are style references: paint it in the same style (same brushwork, colours "
+            f"and proportions), but do not copy their subjects.")

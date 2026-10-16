@@ -64,9 +64,12 @@ def facts(rigged: Path | None) -> dict[str, Any]:
     """What the Library and the rig job report about a rig's family."""
     found = creature_family.read_family(rigged) if rigged else None
     if not found:
-        return {"family": None, "family_label": None, "family_chosen": None, "clips_error": None}
+        return {"family": None, "family_label": None, "family_chosen": None, "clips_error": None,
+                "library_clips": []}
     return {"family": found["family"], "family_label": creature_family.LABELS[found["family"]],
-            "family_chosen": bool(found.get("chosen")), "clips_error": found.get("clips_error")}
+            "family_chosen": bool(found.get("chosen")), "clips_error": found.get("clips_error"),
+            # the clips carried over from the CC0 library, as opposed to procedural tests
+            "library_clips": sorted(found.get("clip_sources") or {})}
 
 
 def done_message(fit: dict[str, Any], rigged: Path) -> str | None:

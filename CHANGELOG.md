@@ -14,6 +14,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   judge. None passes even the synthetic test (best ROC AUC 0.86, lower bound 0.80), so there is
   no baked-light check; `human` scores the best head on the user's labels when they exist.
   Views can be lit by a sun fixed in the world (`render_views(lit=True, light=...)`).
+- Characters in pieces in the studio: a **Pieces** page with the three ways to make a
+  character (one piece through + Create; a dressed character split into pieces; a bare base
+  body with sets of equipment), base bodies registered from rigged humanoids in the Library,
+  the slots with their route, two shoulder pieces or one, words per piece, a weapon and a
+  shield, a run followed live (`viewer/slot_parts_api.py` starts `slot_parts.py run`), and
+  the sets made so far, each shown on its trimmed body.
+- Characters in pieces, route B0 fallback (`slot_parts/segment.py`,
+  `scripts/blender_segment_parts.py`): a slot set to `B0` (`--slots torso:B0`) is cut from
+  the whole concept made once in 3D. Visible faces read the slot map, hidden ones the base
+  body's bones carried into the model's frame, two rounds of majority clean the borders,
+  every cut edge is filled, and the fit places it by the whole model's extent and splits a
+  paired piece by side. Route C and B0 slots mix in one set.
+- Characters in pieces, checks and the whole run: `fit.clipping` (the share of a piece's
+  outer skin sinking into skin the mask leaves visible) and `fit.holes` (the body a piece
+  covers at rest that a pose leaves bare), posed in numpy with the body's own clips at rest
+  and through each clip, in the `equipment_part` profile (`Asset.body`, `Asset.body_clips`).
+  `slot_parts.py run` makes one set on one body start to finish: the outfit drawn on the
+  body, cuts, pieces, a weapon or shield made on its own and held in the hand or on the
+  forearm, the fit, the checks with every piece in the review queue, and `<set>.parts.json`
+  with the licence of every model; each fitted file gets its `.provenance.json`.
+  `slot_parts.py body --clip` records the body's clips. Fitted pieces keep their seams
+  welded and smooth, so the exporter no longer splits every corner.
+- Characters in pieces, fitting (`slot_parts/fit.py`, `scripts/blender_fit_parts.py`,
+  `slot_parts.py fit`): each piece is placed on the base body from its box through the body's
+  camera, paired pieces per side (the left from the mirrored box, not a mirrored copy of the
+  fitted right), gauntlets turned onto the forearm, then a voxel cage shrinkwrapped outside
+  the body drives it by Surface Deform (several cage sizes tried before Mesh Deform), seams
+  welded first, cage spikes put back, sunken vertices pushed out, skin weights copied (at most
+  4) or one bone for the helmet. The body gets a `covered` vertex colour (alpha 0 under a
+  piece) and a trimmed copy; `set.glb`, `preview.glb`, one GLB per piece and `fit.json`.
+- Characters in pieces, route C pieces (`slot_parts/pieces.py`, `slot_parts.py pieces`): each
+  slot's flattened cut is completed by a Qwen-Image edit into one clean picture per seed
+  (new `complete_piece` wording in `concept.prompts`, with its `.concept.json` record), and
+  the picked picture becomes a 3D piece through Pixal3D, the finish step at the slot's face
+  budget and `fix_winding.py`; `pieces.json` records where each piece sits on the concept.
+- Characters in pieces, first part (`image_to_3dlab/slot_parts/`, `scripts/slot_parts.py`):
+  register a rigged humanoid as a base body (picture, Pixal3D camera, bone roles from the
+  skeleton's shape), choose the armour slots, map a concept drawn on that body to slots by
+  projecting its bones, and cut one piece per slot, flattened on grey with the way back to
+  the concept recorded, ready for the "complete this piece" edit of route C.
+- Creature families, documented: `docs/creature-families.md` (families, clips and where they
+  come from, the studio, Unreal, known limits), a line in the README, and the Animate step
+  says which clips come from the CC0 library and which are procedural tests.
+- Export for Unreal turns a creature that is not a humanoid to face forward from its family file
+  (a drake generated facing between two axes no longer arrives turned), and records the
+  family in the export job; its library, procedural and `-long` clips go along as
+  `AS_<Name>_<Family><Move>`.
 - FLUX.2 klein 4B in Setup & Status: an Apache-2.0 image editor for the sd-cli already
   installed, three files (12.3 GB), fetched only on request by
   `scripts/bootstrap_flux2_klein.py`. The VAE is BFL's Apache-2.0 small decoder, not
@@ -149,8 +196,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Experimental canonical editing snapshots and a Blender no-op bridge, preserving
   untouched GLB data and reporting geometry, UV and weight round-trip checks.
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
+- From a reference to a concept in the viewer (`viewer/concept_api.py`,
+  `scripts/reference_concept.py`): upload a reference, prepare a map from a model or a
+  picture, and run one of the four ways as an ordinary image job, with the
+  `<image>.concept.json` record and the silhouette IoU against the shape picture.
+  `generate(prompt, references, seed)` is the same edit as one call for other steps.
+  Image jobs take extra arguments, extra provenance and a name (`viewer/image_api.py`).
+- Studio: "Draw from a reference" in the Create sheet (`viewer/studio/reference-concept.js`).
+  Pick a way, a model or picture from the Library (or upload one), the words and 1-4 tries;
+  the sheet prepares the map, runs each try through the image queue and shows the shape
+  picture beside each result with its outline IoU. Keep or Discard is saved in the
+  concept record and `output/concept/judgements.jsonl`.
 
 ### Fixed
+- The studio reads and writes its JSON and text files as UTF-8 on every machine, and the
+  test suite passes on Windows without `PYTHONUTF8=1`: with the locale's cp1252, an em dash
+  or a middle dot written as UTF-8 failed to decode. `tests/test_text_encoding.py` keeps new
+  reads and writes in the studio from leaving the encoding out.
+- A skinned model is sized for Unreal after it is turned to face forward: a creature facing
+  half-way between two axes was sized on its wider box and arrived 20% too long. A creature
+  that is not a humanoid is checked for facing in Unreal from its hips and head (named in
+  the sidecar's `facing_bones`) instead of failing for want of Manny's feet.
 - Pictures are sharp again: text to image now runs the Qwen-Image 2.1 Turbo checkpoint with
   its own schedule (`--sigmas qwen-image-2.1-turbo`, cfg 1.0) at 1024 px. It used to run
   the base checkpoint with the Turbo's numbers (8 steps, cfg 1.0), which stopped the

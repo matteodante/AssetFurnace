@@ -67,3 +67,18 @@ def test_how_many_shape_pictures_each_way_needs():
     assert prompts.shape_pictures("other_view") == 1
     with pytest.raises(ValueError):
         prompts.shape_pictures("inpaint")
+
+
+def test_style_pictures_are_named_after_the_shape_pictures():
+    assert prompts.style_sentence(2, 1) == (" Image 2 is a style reference: paint it in the same style (same "
+                                            "brushwork, colours and proportions), but do not copy its subject.")
+    assert prompts.style_sentence(3, 2).startswith(" Images 3 and 4 are style references:")
+    assert prompts.style_sentence(2, 3).startswith(" Images 2 to 4 are style references:")
+    assert prompts.style_sentence(2, 0) == ""
+
+
+def test_complete_piece_fills_the_hidden_parts_and_leaves_nothing_inside():
+    text = prompts.complete_piece("a single shoulder pauldron", style="hand-painted")
+    assert "Complete this cut-out armour piece into a single shoulder pauldron" in text
+    assert "nothing inside" in text and "hand-painted" in text and text.endswith("lighting.")
+    assert prompts.shape_pictures("complete_piece") == 1
