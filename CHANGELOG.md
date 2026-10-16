@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Baked-light removal, not yet admitted (`image_to_3dlab/delight.py`,
+  `scripts/delight_materials.py`): Marigold-IID Lighting v1.1 (Open RAIL++-M) takes the light
+  painted into a GLB's base colour back out, through the orbit of unlit views, or out of a
+  concept before the 3D. Only luminance moves, relative to its median, at most 3x; the
+  provenance names the model and its use restrictions. Off unless asked for until it passes
+  the test against the user's labels.
+- Game-material models (`image_to_3dlab/material_models.py`, `scripts/bootstrap_materials.py`):
+  Marigold-IID Lighting and Appearance, Qwen3.5-4B and SAM 3 pinned with licence and size,
+  installed into their own environment (`vendor/materials/.venv`) only after a yes; SAM 3 is
+  skipped until its owner has been granted access. Setup lists baked-light removal as a tool.
+- Shared GPU lock in code (`image_to_3dlab/gpu_lock.py`): held only while a job computes,
+  released on error, a dead holder's lock taken over.
 - Material labels in Studio's review panel: for the version under review, say whether
   light is painted into the colours, whether the materials look right, and click points
   on the model with the material they show. Saved in `output/material-labels.jsonl`;

@@ -1,7 +1,7 @@
 # Funzione 8, materiali pronti per il gioco: progetto v2
 
 Data: 15 ottobre 2026 (aggiornato lo stesso giorno: SAM 3.1, lavori del 2026, video, Qwen3.5, togliere la luce, date).
-Stato: **proposta, in attesa di approvazione**. Niente di nuovo è implementato.
+Stato: **approvato**. PR 1 e 2 unite (#11, #12); la PR 4 (luce tolta) è la prossima, vedi la sezione 10.
 Sostituisce il metodo di [`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md) (v1), di cui
 tiene l'infrastruttura. La PR [#3](https://github.com/matteodante/AssetFurnace/pull/3) è in bozza e in pausa.
 
@@ -282,7 +282,53 @@ di qualsiasi lavoro lungo). Tutto passa dal lucchetto della GPU condivisa.
 5. **Controllo imparato** della luce cotta: dati sintetici, addestramento, prova contro l'insieme umano.
 6. **Rugosità e metallo stimati** dove mancano: prova su Poly Haven.
 
-Ogni PR passa la review di Codex con le regole correnti (P1 sempre; P2 solo se è un errore visibile; al massimo 2 giri).
+Ogni PR può avere un giro di review di Codex, facoltativo; si correggono solo i P1 veri (regola di `AGENTS.md`).
+
+**Ordine aggiornato il 16/10/2026.** SAM 3 resta bloccato finché l'utente non compila il modulo di accesso su Hugging
+Face (dati personali: lo fa lui). Quindi le PR che non ne dipendono vengono prima: **4 → 6 → 5 → 3**. La PR 3 arriva
+con un'interfaccia del segmentatore pronta a ricevere SAM 3 e il ripiego SAM 2.1 dietro la stessa interfaccia.
+
+## 10. Stato del lavoro
+
+### PR 4, luce tolta (16/10/2026)
+
+Download confermati dall'utente il 16/10/2026 ("permesso per tutto"): Qwen3.5-4B, Marigold-IID v1.1, SigLIP 2.
+
+- **Registro dei modelli** (`image_to_3dlab/material_models.py`): Marigold-IID Lighting e Appearance, Qwen3.5-4B e
+  SAM 3, ognuno con revisione fissata, elenco dei file, dimensione e licenza. Di Marigold si scaricano solo i file
+  fp16 (2,40 GB a modello invece di 9,6). Installazione con `scripts/bootstrap_materials.py`, che annuncia e chiede;
+  SAM 3 viene saltato finché l'account non ha l'accesso.
+- **Ambiente separato** (`vendor/materials/.venv`, 3,1 GB): `diffusers` richiede `huggingface-hub` sotto la 2, e
+  l'ambiente del visore è alla 2.2. Scaricarlo lì avrebbe cambiato le dipendenze di tutti. Marigold gira quindi in un
+  processo a parte (`scripts/materials_worker.py`), come SkinTokens. Dentro ci sono anche `transformers` 5.20 per
+  Qwen3.5 e SAM 3.
+- **Licenza**: i pesi sono CreativeML Open RAIL++-M (il codice di Marigold è Apache-2.0). Le restrizioni d'uso
+  (allegato A) e l'obbligo di passarle a chi riceve i pesi finiscono nella provenienza di ogni risultato; sulle uscite
+  il licenziante non rivendica diritti. Attenzione per la PR 5: un modello addestrato a imitare le uscite di Marigold
+  sarebbe un suo "derivato" con le stesse restrizioni; usare le sue uscite come caratteristiche no.
+- **Metodo**: Marigold risponde a 768 pixel, l'atlante è a 2K, quindi non si sostituisce la texture con il suo albedo.
+  Ogni pixel dice di quanto il suo albedo è più chiaro o più scuro del colore mostrato (un guadagno di luminanza). I
+  guadagni si lisciano **nella vista** (2 % del lato), dove la superficie è continua: Marigold legge anche il dettaglio
+  dipinto fine (profili, incisioni) come ombreggiatura, e deve andare via solo la luce larga. Poi si riportano sulle UV
+  con il pezzo comune, si lisciano poco dentro ogni isola, si prendono rispetto alla mediana (la luminosità complessiva
+  del modello non è affidabile su arte stilizzata) e si limitano a 3 volte. La texture a piena risoluzione si
+  moltiplica per il guadagno: tinta e dettaglio dipinto restano. Stesso metodo sul concept, prima del 3D
+  (`delight_image`).
+- **Prova vera** (cavaliere di `output/compare-20261015`, 18 viste a 768 px): Marigold 42,8 s sulla 5070 Ti, il render
+  in Blender pochi secondi. Il riflesso dipinto sul pettorale e le luci di contorno su spalle e ginocchia si attenuano,
+  profili e incisioni restano. Senza il liscio nella vista i guadagni toccavano i limiti (×1/3 e ×3) e appiattivano il
+  dettaglio; con il liscio il 95° percentile scende a ×1,78. Il 5° resta a ×1/3: le zone più chiare dipinte vengono
+  scurite molto, ed è proprio ciò che la prova della sezione 6 deve giudicare.
+- **Correzione al pezzo comune** (PR 1): le camere delle viste ad anello ruotavano attorno al proprio asse
+  (`to_track_quat("-Z", "Z")`, il "su" era l'asse stesso di mira), e il cavaliere compariva sdraiato in metà delle viste.
+  Per il riporto sulle UV non contava; per un modello 2D sì. Ora la base della camera è costruita a mano con il "su" del
+  mondo, e l'inquadratura segue il contorno del modello visto da ogni camera (il cavaliere passa dal 65 % a circa il
+  95 % dell'altezza).
+- **Lucchetto della GPU** in codice (`image_to_3dlab/gpu_lock.py`): preso solo attorno al processo di Marigold, non
+  durante il render in Blender (CPU) né le installazioni.
+- **Non ammesso**: il passo si usa solo se chiesto (`scripts/delight_materials.py`), e il file accanto al GLB lo
+  dichiara (`admitted: false`). Entra quando supera la prova della sezione 6 (ombre dipinte sotto luce laterale),
+  che richiede l'insieme etichettato.
 
 ## Seguiti
 
