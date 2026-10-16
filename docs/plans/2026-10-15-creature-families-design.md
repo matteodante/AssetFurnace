@@ -1,5 +1,7 @@
 # Funzione 6: famiglie di creature (progetto)
 
+**Ricerca sugli approcci più recenti (16/10/2026)**: [`2026-10-16-creature-families-research.md`](2026-10-16-creature-families-research.md).
+
 Data: 15 ottobre 2026. Stato: **approvato; PR 1 implementata** (riconoscimento, controllo, bipede digitigrado e
 quadrupede, studio). Le differenze rispetto al progetto sono nella sezione 11.
 Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 6.
@@ -276,6 +278,54 @@ lo segnalo, non è una deformazione.
 **Seguiti**
 - Pelle che si attraversa (`BVHTree.overlap` fra parti lontane), quando servirà davvero.
 - Orientare dalle anche anche `kimodo_retarget.character_frame` e il profilo Unreal (PR 4, dopo la #6 e la #7).
+- `rig.deformation` misura anche le clip accanto al rig, ma l'esito resta legato all'hash del solo rig: se una clip
+  cambia dopo un'approvazione, la coda di revisione non lo vede (terzo giro di review di Codex). Va deciso con chi
+  cura la funzione 7: includere le clip misurate nella versione dell'asset, o rivedere ogni clip a sé.
 - La coda del lupo è nella mesh ma non nello scheletro di SkinTokens: segue il bacino. Con la famiglia giusta si
   potrebbe chiedere a SkinTokens un altro tentativo (altro seme) quando manca una coda visibile.
+
+## 12. Com'è andata la PR 2: ragni e serpenti (15/10/2026)
+
+Creature generate con la catena (Qwen-Image → Pixal3D → finitura con `--skip-paint`, perché il ridipinto gira solo su
+Apple Silicon) e rigate dallo studio con *Recognise it for me*.
+
+**Cosa ho imparato dalle immagini.** Per un modello da animare la camera va **all'altezza del suolo**: il primo ragno,
+visto dall'alto, è uscito da Pixal3D inclinato (ricostruisce nel riferimento della camera) e il suolo non era più
+orizzontale. E un serpente **avvolto su se stesso** non si rigga: SkinTokens gli ha dato 21 ossa su un solo giro di
+spira. Disteso, di fianco, ha avuto una catena pulita di 13 ossa. Qwen-Image disegna il basilisco con le zampe (quello
+della tradizione): per la famiglia serpente il prompt dice "serpente, senza zampe".
+
+**Cosa ho cambiato nel riconoscimento**, misurando sui rig veri:
+- una zampa deve solo arrivare **vicino** al suolo (entro il 30% dell'altezza a cui si attacca): SkinTokens ferma le
+  catene delle zampe di un ragno ad altezze diverse;
+- trovate tre zampe, contano anche le catene lunghe che vanno **di lato e in basso** (le altre zampe del ragno);
+- una zampa deve **scendere** (dislivello almeno un quarto della sua lunghezza): un serpente disteso ha il ventre a
+  terra e non è una gamba;
+- con cinque o più zampe il fronte è quello del modello generato (la camera): zampe che si irraggiano non dicono dove
+  sta la testa; un serpente guarda lungo il corpo, verso la testa;
+- **zampe gemelle**: SkinTokens ha messo due catene dentro la stessa zampa del ragno (punte a 1 cm). Muoverle in fase
+  diversa strappava la pelle fra le due (0,95% di lati stirati); ora si muovono insieme.
+
+**Risultati**
+
+| Creatura | Famiglia riconosciuta | Clip | Lati stirati | Triangoli rovesciati |
+|---|---|---|---|---|
+| Ragno (seme 23, camera a terra) | multileg, 6 zampe, fiducia alta | walk | 0,37% | 0,42% |
+| | | attack | 0,55% | 0,52% |
+| Serpente (seme 8, disteso) | serpent, fiducia alta | slither | 0,00% | 0,01% |
+| | | attack | 0,00% | 0,02% |
+
+L'attacco del ragno resta appena sopra la soglia di avviso (0,5%): al culmine dell'impennata si vede una membrana
+chiara tesa fra due zampe destre che la mesh di Pixal3D ha fuso. È un difetto della mesh più che della clip; ho già
+ridotto l'impennata (da 12° a 7°). Il ragno ha 6 zampe riconosciute su 8: due sono alzate in avanti nella posa del
+modello e risultano "ali" (una catena laterale lunga che sale). Per un ragno non cambia le clip, ma l'etichetta è
+sbagliata.
+
+**Seguiti della PR 2**
+- Zampe alzate di un ragno scambiate per ali: con cinque o più zampe, una catena laterale lunga attaccata allo stesso
+  mozzo andrebbe trattata come zampa.
+- Una coda lunga tenuta di lato e verso il basso, su un quadrupede, può passare per una quinta zampa (terzo giro di
+  review di Codex): serve una regola che riconosca le code fra le catene laterali, non solo fra quelle all'indietro.
+- Un "obiettivo creatura" nelle ricette dei prompt (`image_to_3dlab/prompt_recipes.json`), con camera a terra, corpo
+  intero e niente spire, invece della T-pose dei personaggi. Oggi lo studio aggiunge la T-pose a ogni personaggio.
 

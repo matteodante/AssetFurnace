@@ -85,3 +85,10 @@ def test_a_mirrored_rig_that_does_not_move_has_no_flips(tmp_path):
                    rest_scale=[-1, 1, 1])
     found = run(glb)["results"][0]
     assert found["details"]["clips"]["still"]["flipped_percent"] == 0.0, found
+
+
+def test_clips_with_the_same_name_are_all_reported(tmp_path):
+    glb = fx.write(tmp_path / "twins.glb", {"Action": [(0.0, fx.turn_z(0)), (1.0, fx.turn_z(170))]},
+                   duplicate_clip=True)
+    clips = run(glb)["results"][0]["details"]["clips"]
+    assert len(clips) == 2 and any(c["flipped_percent"] > 0 for c in clips.values())

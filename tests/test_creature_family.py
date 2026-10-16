@@ -9,7 +9,7 @@ import json
 
 import numpy as np
 import pytest
-from _creature_skeletons import humanoid, plant, quadruped, snake, spider, werewolf
+from _creature_skeletons import build, chain, flat_snake, humanoid, plant, quadruped, snake, spider, werewolf
 
 from image_to_3dlab import creature_family as cf
 
@@ -131,6 +131,35 @@ def test_classify_a_glb(tmp_path):
     assert found["family"] in cf.FAMILIES and found["legs"] == []
 
 
+@pytest.mark.parametrize("lift", [0.15, 0.06])  # well clear of the ground, and just short of it
+def test_a_generated_spider_whose_legs_stop_in_the_air_is_still_a_spider(lift):
+    parents, heads, _ = spider(8, lifted=("R1", "L2", "R3"), lift=lift)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "multileg" and len(found["legs"]) == 8
+
+
+def test_arms_hanging_in_an_a_pose_are_not_legs():
+    parents, heads, _ = humanoid(a_pose=True)
+    found = cf.classify(parents, heads)
+    assert found["family"] == "humanoid" and len(found["legs"]) == 2 and len(found["arms"]) == 2
+
+
+def test_a_spider_faces_the_camera_whichever_way_its_feet_lean():
+    for splay in (0.25, -0.25):
+        parents, heads, _ = spider(8, splay=splay, palps=True)
+        found = cf.classify(parents, heads)
+        assert found["family"] == "multileg" and found["wings"] == [] and len(found["legs"]) == 8
+        assert found["frame"]["forward"][2] > 0.9
+
+
+def test_a_flat_snake_is_a_serpent_facing_its_head():
+    parents, heads, n = flat_snake()
+    found = cf.classify(parents, heads)
+    assert found["family"] == "serpent" and found["legs"] == []
+    assert found["body"][0] == n["seg0"] and found["body"][-1] == n["seg12"]
+    assert found["frame"]["forward"][0] < -0.3  # along the body, towards the head at -X
+
+
 def test_legs_on_one_hub_still_split_front_and_back():
     parents, heads, _ = quadruped(hub=True)
     found = cf.classify(parents, heads)
@@ -145,3 +174,57 @@ def test_a_clip_record_carries_the_rigs_licence(tmp_path):
     assert record["license"] == {"name": "MIT"} and record["rig"] == {"tool": "SkinTokens"}
     assert record["motion"]["clip"] == "digitigrade-walk" and record["motion"]["license"]["name"] == "MIT"
     assert cf.clip_record(None, "x-walk", "x", tool="test")["license"] is None  # unknown, never invented
+
+
+def test_a_low_slung_spider_is_still_a_spider():
+    parents, heads, _ = spider(8)
+    low = {b: p * np.array([1, 0.6, 1]) for b, p in heads.items()}  # the same spider, squatting
+    found = cf.classify(parents, low)
+    assert found["family"] == "multileg" and len(found["legs"]) == 8
+
+
+def test_a_tail_hanging_just_above_the_ground_is_not_a_leg():
+    parents, heads, n = quadruped()
+    heads = dict(heads)
+    for k, z in enumerate((-0.6, -0.85, -1.1)):
+        heads[n[f"tail{k}"]] = np.array([0, (0.0 if k else 0.3) + 0.1, z])
+    found = cf.classify(parents, heads)
+    assert found["family"] == "quadruped" and len(found["legs"]) == 4
+
+
+def test_a_clip_record_names_the_clip_not_the_rig(tmp_path):
+    clip = tmp_path / "wolf_digitigrade-walk.glb"
+    clip.write_bytes(b"clip bytes")
+    rig = {"license": {"name": "MIT"}, "output": {"path": "wolf_rigged.glb", "sha256": "0" * 64,
+                                                   "classification": "commercial"}}
+    record = cf.clip_record(rig, "digitigrade-walk", "digitigrade", tool="test", output=clip)
+    from image_to_3dlab.provenance import sha256_file
+    assert record["output"]["sha256"] == sha256_file(clip) and record["output"]["path"] == str(clip)
+    assert record["output"]["classification"] == "commercial"  # the licence class carries over
+
+
+def test_toe_walking_legs_with_their_toes_further_forward_are_still_legs():
+    parents, heads, n = werewolf()
+    heads = dict(heads)
+    for leg in ("legL3", "legR3"):
+        heads[n[leg]] = heads[n[leg]] + np.array([0, 0, 0.05])
+    found = cf.classify(parents, heads, family="digitigrade")
+    assert len(found["legs"]) == 2
+
+
+def test_raised_legs_sharing_a_second_hub_are_each_one_leg():
+    rows = [("body", None, (0, 0.35, 0)), ("abdomen", "body", (0, 0.4, -0.35)), ("head", "body", (0, 0.36, 0.2)),
+            ("hub", "body", (0.05, 0.36, 0.0))]
+    for k in range(4):  # four grounded legs on the left
+        z = 0.15 - 0.1 * k
+        rows += chain(f"legL{k}", "body", [(0.08, 0.36, z), (0.35, 0.6, z * 1.5), (0.6, 0.25, z * 2), (0.7, 0.0, z * 2.2)])
+    for k in range(4):  # four raised legs on the right, three of them from one hub
+        z = 0.15 - 0.1 * k
+        parent = "hub" if k else "body"
+        rows += chain(f"legR{k}", parent, [(-0.08, 0.36, z), (-0.35, 0.6, z * 1.5), (-0.6, 0.3, z * 2),
+                                             (-0.7, 0.15, z * 2.2)])
+    parents, heads, _ = build(rows)
+    found = cf.classify(parents, heads)
+    bones = [b for leg in found["legs"] for b in leg["bones"]]
+    assert len(bones) == len(set(bones))  # no bone in two legs
+    assert len(found["legs"]) <= 8

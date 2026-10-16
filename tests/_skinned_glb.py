@@ -50,12 +50,15 @@ class _Buffer:
 def write(path: Path, clips: dict[str, list[tuple[float, list[float]]]] | None = None,
           weights: np.ndarray | None = None, node: int = 2, channel: str = "rotation",
           interpolation: str = "LINEAR", rest_turn: list[float] | None = None, second_skin: bool = False,
-          rest_scale: list[float] | None = None, second_weights: bool = False) -> Path:
+          rest_scale: list[float] | None = None, second_weights: bool = False,
+          second_primitive: bool = False, duplicate_clip: bool = False) -> Path:
     """`node` is the bone the clips move: 2 the upper one (a bend), 1 the lower (the whole strip).
     `rest_turn` turns the lower bone at rest without changing the bind matrices, so the
     rest pose and the bind pose differ, as they do in many exported rigs; `rest_scale` mirrors
     it the same way. `second_weights` moves every weight to a JOINTS_1/WEIGHTS_1 set on the
-    upper bone, leaving the first set empty."""
+    upper bone, leaving the first set empty. `second_primitive` adds a copy of the strip with
+    only the first set (four influences beside eight). `duplicate_clip` repeats every clip
+    with its keys reset to rest, under the same name."""
     buf = _Buffer()
     pos = buf.add(VERTICES, "VEC3", 5126, min=VERTICES.min(0).tolist(), max=VERTICES.max(0).tolist())
     idx = buf.add(FACES.reshape(-1), "SCALAR", 5123)
@@ -93,8 +96,17 @@ def write(path: Path, clips: dict[str, list[tuple[float, list[float]]]] | None =
         "accessors": buf.accessors, "bufferViews": buf.views,
         "buffers": [{"byteLength": len(buf.data)}],
     }
+    if duplicate_clip:
+        rest_keys = buf.add(np.tile(np.array([0, 0, 0, 1], np.float32), (2, 1)), "VEC4", 5126)
+        animations += [{"name": a["name"], "samplers": [{"input": a["samplers"][0]["input"], "output": rest_keys}],
+                        "channels": a["channels"]} for a in list(animations)]
     if animations:
         doc["animations"] = animations
+    if second_primitive:
+        doc["meshes"][0]["primitives"].append(
+            {"attributes": {"POSITION": pos, "JOINTS_0": jnt, "WEIGHTS_0": buf.add(
+                np.tile(np.array([1, 0, 0, 0], np.float32), (6, 1)), "VEC4", 5126)}, "indices": idx})
+        doc["buffers"][0]["byteLength"] = len(buf.data)
     if second_skin:
         doc["skins"].append({"joints": [2]})
         doc["nodes"].append({"name": "strip_2", "mesh": 0, "skin": 1})

@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Digitigrade bipeds and quadrupeds get two procedural test clips, a walk or trot and an
   attack (`scripts/creature_motion.py`, `scripts/creature_clips.py`). In Studio the Rig step
   asks what the creature is (or recognises it) and Animate names its test clips.
+- Test clips for many-legged creatures (a walk in two alternating groups, a rear-up attack
+  with the front pair) and serpents (a slither from head to tail, a strike out of a coil).
+  A generated spider whose leg bones stop short of the ground, and two chains inside one
+  mesh leg, are handled.
 - `rig.deformation` check: plays every clip of a rig and measures stretched edges, folded
   triangles and feet that cross sides (warn only until calibrated).
 - Qwen-Image's setup also fetches Qwen3-VL-8B's vision file (`mmproj-Qwen3VL-8B-Instruct-F16.gguf`,
