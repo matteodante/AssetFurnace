@@ -13,7 +13,6 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 
 
 @dataclass(frozen=True)
@@ -56,6 +55,9 @@ def alpha_box(mask: np.ndarray) -> tuple[int, int, int, int]:
 
 def read_views(views: Path) -> tuple[float, float, np.ndarray]:
     """(fov, distance, input alpha) from a Pixal3D `<model>.svviews` folder."""
+    # here, not at the top: Blender's Python has no PIL and imports this module
+    from PIL import Image
+
     views = Path(views)
     meta = json.loads((views / "transforms.json").read_text())
     frame = meta["frames"][0]

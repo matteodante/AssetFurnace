@@ -7,6 +7,8 @@
         --slots helmet,torso,shoulders:split,gloves,boots --out output/sets/red-knight/knight/cuts
     python scripts/slot_parts.py pieces --cuts output/sets/red-knight/knight/cuts/cuts.json \
         --seeds 3,7,11 [--images-only | --models-only --pick helmet=7,boots=3]
+    python scripts/slot_parts.py fit --pieces output/sets/red-knight/knight/pieces/pieces.json \
+        --body output/bodies/knight/body.json [--out output/sets/red-knight/knight/fit]
 
 `body` writes `output/bodies/<name>/body.json`: picture, rigged GLB, Pixal3D camera and bone
 roles. The body must be a humanoid made from one front picture with Pixal3D (its camera
@@ -26,6 +28,11 @@ picture (`--pick slot=seed`, else the first seed) goes through Pixal3D, the fini
 `fix_winding.py`. `pieces.json` says, per slot, which picture, which GLB and where the piece
 sits on the concept. `--images-only` stops before 3D so a person can pick; `--models-only`
 reuses the pictures already made.
+
+`fit` writes a Blender job and runs `blender_fit_parts.py` headless: each piece placed on
+the body from its box, paired pieces per side, a cage fit, skin weights from the body (one
+bone for the helmet), and the `covered` mask on the body. It writes `set.glb`, one GLB per
+piece, `body_masked.glb` and `fit.json` into `--out` (default `fit/` beside `pieces/`).
 
 Exit code 0 when written, 1 when refused (the reason is printed).
 """
@@ -172,6 +179,36 @@ def make_pieces(cuts_json: Path, seeds: list[int], picks: dict[str, int] | None 
     return result
 
 
+def fit_job(pieces_json: Path, body_json: Path, out: Path, options: dict | None = None) -> dict:
+    """The job `blender_fit_parts.py` reads: the body, the concept's size and each piece's box."""
+    record = json.loads(Path(pieces_json).read_text())
+    cut_record = json.loads(Path(record["cuts"]).read_text())
+    with Image.open(cut_record["concept"]) as concept:
+        size = list(concept.size)
+    if not record["slots"]:
+        raise ValueError(f"{pieces_json} has no pieces: run the pieces command first")
+    entries = [{"slot": slot, "glb": entry["glb"], "concept_box": entry["concept_box"]}
+               for slot, entry in record["slots"].items()]
+    return {"body": str(Path(body_json).resolve()), "concept_size": size, "out": str(Path(out).resolve()),
+            "pieces": entries, **(options or {})}
+
+
+def run_fit(job: dict, blender: Path | None = None, run=None) -> dict:
+    """Write job.json and run Blender on it; returns fit.json."""
+    from image_to_3dlab.blender import find_blender, missing_help
+
+    out = Path(job["out"])
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / "job.json"
+    path.write_text(json.dumps(job, indent=1) + "\n")
+    blender = blender or find_blender()
+    if blender is None:
+        raise ValueError(missing_help())
+    (run or _run)([str(blender), "-b", "--factory-startup", "--python-exit-code", "1", "--python",
+                   str(REPO / "scripts" / "blender_fit_parts.py"), "--", str(path)])
+    return json.loads((out / "fit.json").read_text())
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="command", required=True)
@@ -199,9 +236,18 @@ def main(argv: list[str] | None = None) -> int:
     stage = q.add_mutually_exclusive_group()
     stage.add_argument("--images-only", action="store_true", help="stop after the pictures")
     stage.add_argument("--models-only", action="store_true", help="reuse the pictures, make the 3D")
+    f = sub.add_parser("fit", help="fit the pieces onto the body in Blender, skin them, mask the body")
+    f.add_argument("--pieces", type=Path, required=True, help="pieces.json from the pieces command")
+    f.add_argument("--body", type=Path, required=True, help="body.json of the body the concept was drawn on")
+    f.add_argument("--out", type=Path, help="default: fit/ beside pieces/")
+    f.add_argument("--blender", type=Path, help="Blender executable (found automatically when omitted)")
     args = p.parse_args(argv)
     try:
-        if args.command == "pieces":
+        if args.command == "fit":
+            out = args.out or args.pieces.parent.parent / "fit"
+            report = run_fit(fit_job(args.pieces, args.body, out), args.blender)
+            print(f"fitted {', '.join(report['pieces'])}; body covered {report['covered_share']:.0%}; wrote {out}")
+        elif args.command == "pieces":
             seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
             result = make_pieces(args.cuts, seeds, pieces.parse_picks(args.pick), images=not args.models_only,
                                  models=not args.images_only, style=args.style)

@@ -128,3 +128,37 @@ def test_a_pick_for_a_slot_that_was_not_cut_is_refused(tmp_path):
     path, _ = _cut_record(tmp_path)
     with pytest.raises(ValueError, match="gloves"):
         cli.make_pieces(path, [3], picks={"gloves": 3}, run=lambda c: None, edit=lambda *a: [])
+
+
+def test_fit_job_carries_each_piece_box_and_the_concept_size(tmp_path):
+    path, _ = _cut_record(tmp_path)
+    concept = tmp_path / "concept.png"
+    Image.new("RGB", (512, 512)).save(concept)
+    record = json.loads(path.read_text())
+    record["concept"] = str(concept)
+    path.write_text(json.dumps(record))
+    pieces_json = tmp_path / "pieces.json"
+    pieces_json.write_text(json.dumps({"cuts": str(path), "slots": {
+        "helmet": {"glb": "h.glb", "concept_box": [1, 2, 3, 4]}}}))
+    job = cli.fit_job(pieces_json, tmp_path / "body.json", tmp_path / "fit", {"offset": 0.003})
+    assert job["concept_size"] == [512, 512] and job["offset"] == 0.003
+    assert job["pieces"] == [{"slot": "helmet", "glb": "h.glb", "concept_box": [1, 2, 3, 4]}]
+    pieces_json.write_text(json.dumps({"cuts": str(path), "slots": {}}))
+    with pytest.raises(ValueError, match="no pieces"):
+        cli.fit_job(pieces_json, tmp_path / "body.json", tmp_path / "fit")
+
+
+def test_run_fit_writes_the_job_and_runs_blender_headless(tmp_path):
+    job = {"body": "b.json", "concept_size": [8, 8], "pieces": [], "out": str(tmp_path / "fit")}
+    seen = []
+
+    def run(command):
+        seen.append(command)
+        (tmp_path / "fit" / "fit.json").write_text(json.dumps({"pieces": {}, "covered_share": 0.5}))
+
+    report = cli.run_fit(job, blender=Path("blender.exe"), run=run)
+    assert report["covered_share"] == 0.5
+    command = seen[0]
+    assert command[:4] == ["blender.exe", "-b", "--factory-startup", "--python-exit-code"]
+    assert command[-1] == str(tmp_path / "fit" / "job.json")
+    assert json.loads((tmp_path / "fit" / "job.json").read_text())["body"] == "b.json"
