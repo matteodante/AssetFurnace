@@ -9,8 +9,9 @@ and written as a glTF metallic-roughness texture (G roughness, B metallic).
 
     result = estimate_pbr(asset, out_dir)          # only materials without their own map
 
-Not admitted (design section 6) until it beats a constant on Poly Haven assets with true maps:
-``image_to_3dlab.pbr_trial`` and ``scripts/pbr_trial.py``. The sidecar says so.
+Not admitted: it failed the Poly Haven trial of design section 6 (``image_to_3dlab.pbr_trial``,
+``scripts/pbr_trial.py``; numbers in ``TRIAL`` and in design section 10). It stays as a step a
+better model can be dropped into and measured the same way; the sidecar says so.
 """
 
 from __future__ import annotations
@@ -48,8 +49,9 @@ MODEL = mm.MARIGOLD_APPEARANCE
 SIDECAR_SCHEMA = "assetfurnace.pbr-estimate/1"
 OPERATION = "Roughness and metallic estimated with Marigold-IID Appearance v1.1, where the asset had none"
 SIGMA = 0.003                 # smoothing on the atlas, as a share of its longer side
-TRIAL = ("not run: needs the Poly Haven trial of design section 6 (roughness RMSE <= 0.15 and 20% better "
-         "than a constant; metallic F1 >= 0.8, wrong metal on < 5% of the area; blind preference)")
+TRIAL = ("failed on Poly Haven, 16 of 30 assets, 2026-10-16 (design section 10): roughness RMSE 0.247 "
+         "against 0.238 for a constant; metal F1 0.37 (0.44 at the best threshold in hindsight), wrong on "
+         "58% of the area. Neither can pass whatever the other 14 score.")
 
 
 def roughness_metallic(material: np.ndarray, record: dict) -> tuple[np.ndarray, np.ndarray]:

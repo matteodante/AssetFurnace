@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Roughness and metallic estimated where an asset has none, not yet admitted
   (`image_to_3dlab/pbr_estimate.py`, `scripts/estimate_pbr.py`): Marigold-IID Appearance v1.1
   on the orbit of unlit views, carried back to the atlas as a glTF metallic-roughness map; an
-  asset's own map is kept. `scripts/pbr_trial.py` scores it against the true maps of 30 Poly
-  Haven CC0 models; Setup lists it as a tool.
+  asset's own map is kept. `scripts/pbr_trial.py` scores it against the true maps of Poly
+  Haven CC0 models. It failed (roughness no better than a constant, metal wrong on 58% of the
+  area), so Setup does not offer it.
 - Baked-light removal, not yet admitted (`image_to_3dlab/delight.py`,
   `scripts/delight_materials.py`): Marigold-IID Lighting v1.1 (Open RAIL++-M) takes the light
   painted into a GLB's base colour back out, through the orbit of unlit views, or out of a

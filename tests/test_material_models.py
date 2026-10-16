@@ -106,8 +106,8 @@ def test_an_unknown_part_is_refused():
         boot.parts("marigold")
 
 
-def test_roughness_and_metallic_estimation_is_its_own_tool_with_its_own_weights():
-    backend = bc.BY_ID["materials-pbr"]
-    assert backend.kind == "tool" and [w.source for w in backend.weights] == [mm.MARIGOLD_APPEARANCE.repo]
-    command = download_api.command_for("materials-pbr", host=bc.NVIDIA)
-    assert command[-3:] == ["--only", "env,marigold-appearance", "--yes"]
+
+def test_a_step_that_failed_its_trial_is_not_offered_in_setup():
+    # Marigold-IID Appearance failed the Poly Haven trial (design section 10): no card for it.
+    assert "materials-pbr" not in bc.BY_ID
+    assert download_api.command_for("materials-pbr", host=bc.NVIDIA) is None
