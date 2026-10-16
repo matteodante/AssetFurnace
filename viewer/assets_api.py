@@ -62,7 +62,7 @@ class _Hashes:
         self.output = output
         self.path = output / INDEX_NAME
         try:
-            self.index = json.loads(self.path.read_text())
+            self.index = json.loads(self.path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             self.index = {}
         self.changed = False
@@ -103,7 +103,7 @@ class _Hashes:
         if not self.changed:
             return
         try:
-            self.path.write_text(json.dumps(self.index, indent=0, sort_keys=True))
+            self.path.write_text(json.dumps(self.index, indent=0, sort_keys=True), encoding="utf-8")
         except OSError:
             pass  # a read-only output folder still gets a Library, just a slower one
 
@@ -155,7 +155,7 @@ def _rigs(output: Path) -> list[dict[str, Any]]:
         for rigged in sorted(run.glob("*_rigged.glb")):
             base = rigged.name.removesuffix("_rigged.glb")
             try:
-                record = json.loads(rigged.with_suffix(".provenance.json").read_text())
+                record = json.loads(rigged.with_suffix(".provenance.json").read_text(encoding="utf-8"))
                 input_sha = (record.get("input") or {}).get("sha256")
             except (OSError, ValueError, AttributeError):
                 input_sha = None
@@ -336,7 +336,7 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
 
 def _read_meta(output: Path) -> dict[str, Any]:
     try:
-        meta = json.loads((output / META_NAME).read_text())
+        meta = json.loads((output / META_NAME).read_text(encoding="utf-8"))
         return meta if isinstance(meta, dict) else {}
     except (OSError, ValueError):
         return {}
@@ -352,7 +352,7 @@ def set_hidden(output: Path, asset_id: str, hidden: bool) -> None:
     ids = set(meta.get("hidden", []))
     ids.add(asset_id) if hidden else ids.discard(asset_id)
     meta["hidden"] = sorted(ids)
-    (output / META_NAME).write_text(json.dumps(meta, indent=1))
+    (output / META_NAME).write_text(json.dumps(meta, indent=1), encoding="utf-8")
 
 
 NAME_LIMIT = 80
@@ -374,7 +374,7 @@ def set_name(output: Path, asset_id: str, name: str) -> str:
     else:
         names.pop(asset_id, None)
     meta["names"] = names
-    (output / META_NAME).write_text(json.dumps(meta, indent=1))
+    (output / META_NAME).write_text(json.dumps(meta, indent=1), encoding="utf-8")
     return clean or next(a["name"] for a in list_assets(output) if a["id"] == asset_id)
 
 
