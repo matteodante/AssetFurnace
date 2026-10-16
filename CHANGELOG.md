@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<body>.unreal-set.json` (Leader Pose, the body's opacity mask from its vertex alpha).
   The Unreal exporter keeps a `covered` vertex colour. In mode 3 the outfit is now added to
   the bodysuit (`add_piece`) instead of dressing the whole body, so slots left out stay bare.
+  A helmet keeps its shape, grows to hold the head and follows the head bone carrying most of
+  it; weapons and shields stay out of the body mask and skip `fit.holes`. `kimodo_retarget.py`
+  takes legs hanging from a pelvis chain under the root.
 - Characters in pieces in the studio: a **Pieces** page with the three ways to make a
   character (one piece through + Create; a dressed character split into pieces; a bare base
   body with sets of equipment), base bodies registered from rigged humanoids in the Library,
