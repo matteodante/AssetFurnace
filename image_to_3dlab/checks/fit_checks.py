@@ -154,7 +154,7 @@ def clipping(asset, config):
                   {"poses": [{"pose": p["pose"], "percent": round(100 * p["clipping"], 2)} for p in measured["poses"]]})
 
 
-@register("fit.holes", needs=("body",))
+@register("fit.holes", needs=("body", "worn"))
 def holes(asset, config):
     measured = measure(asset, config)
     worst = max(measured["poses"], key=lambda p: p["holes"])
