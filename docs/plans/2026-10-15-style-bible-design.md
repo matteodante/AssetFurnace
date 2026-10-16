@@ -283,6 +283,12 @@ escludere; la misura vera si raffina con i giudizi del pilota (sezione 4.4).
 
 ### 7.1 Risultato della prova (16/10/2026)
 
+**Avvertenza, scoperta dopo la gara:** il campione r1b è stato generato con la ricetta sbagliata: il modello base di
+Qwen-Image 2.1 con i parametri del Turbo (8 passi, cfg 1,0). Molte immagini sono velate, con forme "fantasma". I numeri
+qui sotto sono quindi falsati due volte, dalla qualità delle immagini oltre che dalle punte. La ricetta giusta è il
+Turbo Q8 (`--sigmas qwen-image-2.1-turbo`, cfg 1,0, euler, 1536 px). Il secondo campione (r1c) usa quella, con gli
+stessi soggetti, semi e riferimenti, così il confronto regge.
+
 Bibbia del primo progetto pilota (fuori da git): 32 immagini di riferimento originali del progetto, solo per uso
 interno, e 2 approvate. Campione: 75 concept, 25 soggetti nei 5 tipi × 3 bracci, etichettati dall'utente alla cieca
 (l'id non diceva il braccio): **41 approvati, 34 rimandati**. Rapporto e punteggi in
@@ -310,8 +316,8 @@ Stile all'origine (punto 5), quota approvata per braccio: solo prompt 13/25, +1 
 13/25; per tipo (solo prompt/+1/+3) personaggi 4/4/2, creature 1/0/0, equipaggiamento 3/3/3, oggetti di mappa
 1/4/4, oggetti 4/4/4. Un riferimento aiuta soprattutto gli oggetti di mappa; tre non aggiungono altro.
 
-Prossimo passo: un secondo campione con la descrizione corretta, così che i rimandati lo siano per lo stile e non per
-le punte. Poi si rifà la gara con gli stessi tre candidati. Le domande del giudice possono aggiungere il contenuto
+Prossimo passo: un secondo campione (r1c) con la descrizione corretta e la ricetta Turbo, così che i rimandati lo
+siano per lo stile e non per le punte o per il velo. Poi si rifà la gara con gli stessi tre candidati. Le domande del giudice possono aggiungere il contenuto
 ("la forma è quella del soggetto chiesto, senza armature dove non servono?"), ma solo se la nuova prova lo giustifica.
 
 ## 8. Le PR
