@@ -15,7 +15,9 @@ cameras look along. For each view this writes, in the plan's folder:
 - ``view_NN_lit.png``, only when the plan asks for ``"lit"``: the base colour (and its normal
   map) on a neutral dielectric, roughness 0.5, under a key light from the camera's upper left
   and a dim grey sky. Models that read materials from shading (Marigold-IID Appearance) need
-  light to read; it is neutral so that no reflection in the picture is one we invented;
+  light to read; it is neutral so that no reflection in the picture is one we invented.
+  With ``"light"`` (the direction the light travels, world axes) the key light stays fixed in
+  the world instead, as light painted into a texture does;
 
 and ``views.json`` with every view's direction. The data passes are rendered to EXR and
 saved as NumPy arrays by Blender itself, so reading them needs no EXR support elsewhere. Cameras are orthographic, keep the world's up
@@ -198,8 +200,8 @@ def main(plan_path: Path) -> int:
         # Blender cameras look down their local -Z, with local +Y up the picture.
         camera.rotation_euler = Matrix((right, up, [-f for f in forward])).transposed().to_euler()
         if lit:
-            # The light travels from the camera's upper left towards the model.
-            travel = [forward[i] - 0.6 * up[i] + 0.5 * right[i] for i in range(3)]
+            # The light travels from the camera's upper left towards the model, or as the plan says.
+            travel = plan.get("light") or [forward[i] - 0.6 * up[i] + 0.5 * right[i] for i in range(3)]
             sun.rotation_euler = Vector(travel).to_track_quat("-Z", "Y").to_euler()
         names = (("color", "PNG"), ("uv", "OPEN_EXR"), ("normal", "OPEN_EXR")) + ((("lit", "PNG"),) if lit else ())
         for name, extension in names:

@@ -107,7 +107,7 @@ def require(model: HubModel, hub: Path | None = None) -> Path:
 # Pinned together: diffusers 0.40 is the newest that installs with this transformers, and it
 # brings huggingface-hub 1.33 into this environment only. torch comes from PyTorch's own index.
 ENV_PACKAGES = ("diffusers==0.40.0", "transformers==5.20.0", "numpy<2", "pillow", "safetensors")
-TORCH = ("torch==2.14.1",)
+TORCH = ("torch==2.14.1", "torchvision==0.29.1")      # torchvision: Qwen3.5's image processor
 PYTHON_VERSION = "3.11"
 
 

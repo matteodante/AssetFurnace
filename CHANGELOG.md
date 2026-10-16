@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A learned check for light painted into the albedo, and its trial (`image_to_3dlab/baked_light.py`,
+  `scripts/baked_light_trial.py`): synthetic pairs from 100 Poly Haven CC0 models baked under
+  suns fixed in the world, a logistic head on SigLIP 2, Marigold's shading and a Qwen3.5 yes/no
+  judge. None passes even the synthetic test (best ROC AUC 0.86, lower bound 0.80), so there is
+  no baked-light check; `human` scores the best head on the user's labels when they exist.
+  Views can be lit by a sun fixed in the world (`render_views(lit=True, light=...)`).
 - Characters in pieces in the studio: a **Pieces** page with the three ways to make a
   character (one piece through + Create; a dressed character split into pieces; a bare base
   body with sets of equipment), base bodies registered from rigged humanoids in the Library,
