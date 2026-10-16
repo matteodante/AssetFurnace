@@ -90,15 +90,27 @@ def _spread(chain: list[str], names: list[str]) -> dict[str, str]:
 
 
 def character_frame(heads: dict[str, np.ndarray], toes: list[str], feet: list[str],
-                    up=Z_UP) -> np.ndarray:
+                    up=Z_UP, hips: list[np.ndarray] | None = None) -> np.ndarray:
     """3x3 matrix whose columns are the character's (left, up, forward) in world space.
 
-    Forward is the mean foot->toe direction flattened onto the ground, the one cue every
-    standing humanoid carries regardless of how it was exported.
+    Forward is across the line between the two `hips` (where the legs start), on the side
+    the feet point to: the mean foot->toe direction, flattened onto the ground, only picks
+    the side. The feet alone are not enough: a generated werewolf stood with one foot
+    turned out further than the other, and its feet put its front 17 degrees off its body,
+    so the export turned it that far and Manny's walk crossed its legs. Without `hips` the
+    feet give the front, as before.
     """
+    up = np.asarray(up, float)
     f = np.mean([heads[t] - heads[k] for t, k in zip(toes, feet)], axis=0)
     f = f - (f @ up) * up
     f /= np.linalg.norm(f)
+    if hips is not None and len(hips) == 2:
+        across = np.asarray(hips[0], float) - np.asarray(hips[1], float)
+        across = across - (across @ up) * up
+        if np.linalg.norm(across) > 1e-9:
+            square = np.cross(across, up)
+            square /= np.linalg.norm(square)
+            f = square if float(square @ f) >= 0 else -square
     left = np.cross(up, f)
     return np.stack([left, up, f], axis=1)
 
@@ -184,7 +196,8 @@ def map_skintokens_to_soma(parents: dict[str, str | None], heads: dict[str, np.n
     leg_chains = [_limb(c, kids, lambda x: -_subtree_low(x, kids, heads, up), 4) for c in legs]
     if min(len(ch) for ch in leg_chains) < 2:
         raise ValueError(f"legs too short to find the feet: {leg_chains}")
-    frame = character_frame(heads, [ch[-1] for ch in leg_chains], [ch[-2] for ch in leg_chains], up)
+    frame = character_frame(heads, [ch[-1] for ch in leg_chains], [ch[-2] for ch in leg_chains], up,
+                            hips=[heads[ch[0]] for ch in leg_chains])
     left_axis = frame[:, 0]
 
     floor = min(low[c] for c in legs)
