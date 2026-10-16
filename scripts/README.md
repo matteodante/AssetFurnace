@@ -222,6 +222,14 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 | `blender_idle_cycle.py` | Author a looping idle for the rigged fox. |
 | `blender_attack_cycle.py` | Author a slam-attack clip on a rigged quadruped in the live Blender scene. |
 
+## Characters in pieces
+
+Feature 4: armour slots worn on a rigged base body. The logic is in `image_to_3dlab/slot_parts/`.
+
+| Script | What it does |
+|---|---|
+| `slot_parts.py` | Characters in pieces (feature 4): register a base body, then cut a concept into slots. |
+
 ## Export for Unreal
 
 A finished asset in, files Unreal Engine 5.8 imports with no touch-ups out: real size, on

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces, first part (`image_to_3dlab/slot_parts/`, `scripts/slot_parts.py`):
+  register a rigged humanoid as a base body (picture, Pixal3D camera, bone roles from the
+  skeleton's shape), choose the armour slots, map a concept drawn on that body to slots by
+  projecting its bones, and cut one piece per slot, flattened on grey with the way back to
+  the concept recorded, ready for the "complete this piece" edit of route C.
 - FLUX.2 klein 4B in Setup & Status: an Apache-2.0 image editor for the sd-cli already
   installed, three files (12.3 GB), fetched only on request by
   `scripts/bootstrap_flux2_klein.py`. The VAE is BFL's Apache-2.0 small decoder, not
