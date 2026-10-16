@@ -12,6 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   installed, three files (12.3 GB), fetched only on request by
   `scripts/bootstrap_flux2_klein.py`. The VAE is BFL's Apache-2.0 small decoder, not
   the non-commercial one inside FLUX.2-dev.
+- From a reference to a concept, first part (`image_to_3dlab/concept/`): the words for the
+  four ways of drawing from a reference (redraw from a structure map with the colours in
+  words, dress the base body, add a piece to it, another view of the same creature), the
+  sd-cli edit arguments of Qwen-Image 2.1 (vision file and reference pictures), and the
+  `<image>.concept.json` record of which pictures shaped a concept.
+- From a reference to a concept, input maps (`image_to_3dlab/concept/maps.py`,
+  `scripts/blender_concept_views.py`): a lit colour picture and a depth map of a GLB per
+  view (front, side, back), rendered by Blender on the CPU; depth stretched onto black;
+  lineart of a picture; an OpenPose map from a rig named like the UE mannequin or SOMA,
+  or from a joint-to-bone table for numbered bones.
 - Material labels in Studio's review panel: for the version under review, say whether
   light is painted into the colours, whether the materials look right, and click points
   on the model with the material they show. Saved in `output/material-labels.jsonl`;
