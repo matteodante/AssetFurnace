@@ -37,6 +37,7 @@ import review_api
 import material_labels_api
 import concept_api
 import creature_family_api
+import slot_parts_api
 import unreal_export_api
 from image_to_3dlab import processes
 from image_to_3dlab.blender import find_blender, missing_help as blender_missing_help
@@ -2087,7 +2088,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if unreal_export_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
-        if batch_api.handle(self, OUTPUT_ROOT, mutation=True):
+        if batch_api.handle(self, OUTPUT_ROOT, mutation=True) or slot_parts_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
         parts = self._path_parts()
         if parts == ["api", "chains"]:
@@ -2335,7 +2336,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if unreal_export_api.handle(self, OUTPUT_ROOT):
             return
-        if batch_api.handle(self, OUTPUT_ROOT):
+        if batch_api.handle(self, OUTPUT_ROOT) or slot_parts_api.handle(self, OUTPUT_ROOT):
             return
         if urlparse(self.path).path in ("", "/", "/viewer", "/viewer/"):
             self.send_response(HTTPStatus.FOUND)  # the front door is the studio
