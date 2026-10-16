@@ -162,3 +162,54 @@ def test_run_fit_writes_the_job_and_runs_blender_headless(tmp_path):
     assert command[:4] == ["blender.exe", "-b", "--factory-startup", "--python-exit-code"]
     assert command[-1] == str(tmp_path / "fit" / "job.json")
     assert json.loads((tmp_path / "fit" / "job.json").read_text())["body"] == "b.json"
+
+
+
+def test_b0_commands_make_the_whole_concept_once(tmp_path):
+    pixal, finish = pieces.b0_commands(tmp_path / "concept.png", tmp_path, "py", Path("scripts"))
+    assert pixal[-1].endswith("concept.glb") and finish[finish.index("--faces") + 1] == "40000"
+    assert finish[finish.index("--views") + 1].endswith("concept.svviews")
+
+
+def test_b0_slots_are_cut_from_the_whole_model(tmp_path):
+    import json as _json
+
+    path, record = _cut_record(tmp_path, routes={"boots": "B0"})
+    concept = tmp_path / "concept.png"
+    picture = np.full((100, 100, 3), 217, np.uint8)
+    picture[20:80, 40:60] = 255  # the figure, which the stand-in Pixal3D cuts out as white
+    Image.fromarray(picture).save(concept)
+    labels = np.zeros((100, 100), np.uint8)
+    Image.fromarray(labels).save(path.parent / "slots.png")
+    record.update(concept=str(concept), body=str(tmp_path / "body.json"), cuts_dir=str(path.parent))
+    path.write_text(_json.dumps(record))
+    calls = []
+    edit, run = _fakes(calls)
+
+    def run_b0(command):
+        run(command)
+        name = Path(command[1]).name if len(command) > 1 else ""
+        if name == "pixal3d_generate.py" and command[2].endswith("concept.png"):
+            views = Path(command[3]).with_suffix(".svviews")
+            views.mkdir(parents=True, exist_ok=True)
+            alpha = np.zeros((50, 50, 4), np.uint8)
+            alpha[10:40, 20:30] = 255
+            Image.fromarray(alpha).save(views / "input.png")
+            matrix = np.eye(4)
+            matrix[2, 3] = 2.8
+            (views / "transforms.json").write_text(_json.dumps({"camera_angle_x": 0.349, "frames": [
+                {"file_path": "input.png", "transform_matrix": matrix.tolist()}]}))
+        if command[-2:-1] == ["--"] and command[-1].endswith("job.json"):  # Blender: the split
+            job = _json.loads(Path(command[-1]).read_text())
+            out = Path(job["out"])
+            (out / "boots.glb").write_bytes(b"glb")
+            (out / "segment.json").write_text(_json.dumps({"files": {"boots": str(out / "boots.glb")},
+                                                          "frame": [-0.4, -0.45, 0.4, 0.45, 0.0], "faces": {}}))
+
+    result = cli.make_pieces(path, [3], run=run_b0, edit=edit)
+    boots = result["slots"]["boots"]
+    assert boots["route"] == "B0" and boots["frame"] == [-0.4, -0.45, 0.4, 0.45, 0.0]
+    assert boots["glb"].endswith("boots.glb") and len(boots["concept_box"]) == 4
+    assert result["slots"]["helmet"]["seed"] == 3  # route C slots are made as before
+    job = _json.loads((tmp_path / "set" / "pieces" / "b0" / "job.json").read_text())
+    assert job["chosen"] == ["boots"] and Path(job["slot_map"]).suffix == ".npy"
