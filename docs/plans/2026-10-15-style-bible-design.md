@@ -281,6 +281,39 @@ etichette sono **dell'utente**, non mie.
 Avvertenza: 40 etichette danno un'area ROC con un margine d'errore ampio (circa ±0,05). Basta per scegliere ed
 escludere; la misura vera si raffina con i giudizi del pilota (sezione 4.4).
 
+### 7.1 Risultato della prova (16/10/2026)
+
+Bibbia del primo progetto pilota (fuori da git): 32 immagini di riferimento originali del progetto, solo per uso
+interno, e 2 approvate. Campione: 75 concept, 25 soggetti nei 5 tipi × 3 bracci, etichettati dall'utente alla cieca
+(l'id non diceva il braccio): **41 approvati, 34 rimandati**. Rapporto e punteggi in
+`output/style-acceptance-20261016/race-r1b-*.json`.
+
+| Candidato | Area ROC (95%) | Rimandati fermati | Buoni fermati | s/concept | Entra |
+|---|---|---|---|---|---|
+| CSD, k vicini | 0,43 (0,31-0,58) | 3% | 10% | 0,50 (CPU) | no |
+| CSD, CSLS | 0,43 (0,30-0,56) | 6% | 7% | 0,50 (CPU) | no |
+| SigLIP 2, k vicini | 0,43 (0,31-0,56) | 9% | 10% | 0,14 (CPU) | no |
+| SigLIP 2, CSLS | 0,37 (0,25-0,50) | 6% | 7% | 0,14 (CPU) | no |
+| Giudice Qwen3-VL-8B | 0,66 (0,54-0,78) | 35% | 10% | 1,66 (GPU) | no |
+
+**Nessun candidato passa la regola d'ingresso.** Come detto sopra, la funzione per ora si ferma alla bibbia, ai modelli
+di prompt e ai riferimenti; `style.coherence` (PR 3) non si fa finché una misura non passa.
+
+Perché, dagli errori peggiori: i concept rimandati erano quasi tutti **nello stile giusto ma sbagliati nel contenuto**
+(punte e armature su pozioni, carri, lupi; una bancarella diventata un guerriero), per colpa di una frase della
+descrizione generale poi spostata nelle aggiunte di personaggio ed equipaggiamento. Il giudice dà 0,98-0,99 a
+oggetti ed equipaggiamenti rimandati, perché alle domande sullo stile la risposta giusta è "sì". Gli embedding stanno
+sotto il caso: i rimandati, pieni di armature, somigliano ai riferimenti più degli approvati. Sulle sole creature (1
+approvata su 15) separano, ma è un'immagine sola.
+
+Stile all'origine (punto 5), quota approvata per braccio: solo prompt 13/25, +1 riferimento 15/25, +3 riferimenti
+13/25; per tipo (solo prompt/+1/+3) personaggi 4/4/2, creature 1/0/0, equipaggiamento 3/3/3, oggetti di mappa
+1/4/4, oggetti 4/4/4. Un riferimento aiuta soprattutto gli oggetti di mappa; tre non aggiungono altro.
+
+Prossimo passo: un secondo campione con la descrizione corretta, così che i rimandati lo siano per lo stile e non per
+le punte. Poi si rifà la gara con gli stessi tre candidati. Le domande del giudice possono aggiungere il contenuto
+("la forma è quella del soggetto chiesto, senza armature dove non servono?"), ma solo se la nuova prova lo giustifica.
+
 ## 8. Le PR
 
 1. **Bibbia e prompt** (nessun modello): `style/bible.py`, `style/prompts.py`, `style/refs.py`, i tre tipi nuovi nelle

@@ -19,7 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scripts/style_race.py` scores the user's labelled concepts with each judge and reports ROC
   area, the share of bad concepts caught and of good ones stopped. `scripts/bootstrap_style.py`
   downloads the weights and llama.cpp after asking. A bible can also hold `references`: style
-  pictures that are not ours, kept for internal use only.
+  pictures that are not ours, kept for internal use only. On the first labelled sample
+  (75 concepts) no judge passes the admission rule (best: Qwen3-VL, ROC area 0.66), so there is
+  no style check yet; the numbers are in the style bible design.
 - Asset checks (`image_to_3dlab/checks`): one JSON contract for every check, profiles of
   thresholds per asset type, and the generic checks (flipped faces, holes, floating specks,
   non-manifold edges, UV overlap, triangle/material/texture budgets, texel density, size
