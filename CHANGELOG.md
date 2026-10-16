@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Creature clip library, third part: every looping library clip also comes as a take twice as
+  long made of its own pieces in a new order (`<family>-idle-long`, `-walk-long`, ...), by a
+  numpy port of GenMM's patch synthesis (`image_to_3dlab/motion_variation.py`).
 - Creature clip library, second part: `scripts/chain_retarget.py` carries the library's idle,
   walk, attack, hit, death, fly and glide clips onto auto-rigged creatures chain by chain, and
   `creature_clips.py` writes them before the procedural clips, each with its CC0 source in
