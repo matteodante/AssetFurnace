@@ -286,8 +286,9 @@ escludere; la misura vera si raffina con i giudizi del pilota (sezione 4.4).
 **Avvertenza, scoperta dopo la gara:** il campione r1b è stato generato con la ricetta sbagliata: il modello base di
 Qwen-Image 2.1 con i parametri del Turbo (8 passi, cfg 1,0). Molte immagini sono velate, con forme "fantasma". I numeri
 qui sotto sono quindi falsati due volte, dalla qualità delle immagini oltre che dalle punte. La ricetta giusta è il
-Turbo Q8 (`--sigmas qwen-image-2.1-turbo`, cfg 1,0, euler, 1536 px). Il secondo campione (r1c) usa quella, con gli
-stessi soggetti, semi e riferimenti, così il confronto regge.
+Turbo Q8 (`--sigmas qwen-image-2.1-turbo`, cfg 1,0, euler). Il secondo campione (r1c) usa quella, a 1024 px come
+r1b (a 1536 il Turbo aggiunge cose non richieste attorno al soggetto), con gli stessi soggetti, semi e riferimenti,
+così il confronto regge.
 
 Bibbia del primo progetto pilota (fuori da git): 32 immagini di riferimento originali del progetto, solo per uso
 interno, e 2 approvate. Campione: 75 concept, 25 soggetti nei 5 tipi × 3 bracci, etichettati dall'utente alla cieca
