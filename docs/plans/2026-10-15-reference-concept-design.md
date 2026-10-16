@@ -1,7 +1,8 @@
 # Funzione 2: dal riferimento al concept (progetto)
 
-Data: 15 ottobre 2026. Stato: **prova fatta e decisa (sezione 10), rifatta con la ricetta Turbo; in costruzione**
-(pacchetto PR #23, mappe d'ingresso PR #24). File della visione scaricato dal catalogo (PR #9).
+Data: 15 ottobre 2026. Stato: **costruita** (sezione 6): pacchetto PR #23, mappe d'ingresso PR #24, API e
+`generate` PR #33, pannello dello studio PR #36. Prova decisa e rifatta con la ricetta Turbo (sezione 10). File della
+visione scaricato dal catalogo (PR #9).
 Piano delle funzioni: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 2. La
 funzione è generica: vale per qualunque riferimento e qualunque progetto.
 
@@ -126,18 +127,45 @@ nomina in quell'ordine ("the first image…", "the style of the other images…"
 riferimenti di stile" la conduce e la misura la funzione 3 con il suo giudice, sugli stessi soggetti e semi. Il file
 della visione serve anche al suo giudice: un solo `WeightSet`, lo aggiungo io.
 
-## 6. Cosa si costruisce dopo la prova (se i casi passano)
+## 6. Cosa è stato costruito (16/10/2026)
 
-- `image_to_3dlab/concept/`: ingressi (riferimento, mappa di profondità da un GLB, mappa di posa da un rig, lineart),
-  comando di `sd-cli` per la modifica come funzione pura, sidecar `<immagine>.concept.json` con i riferimenti (nome e
-  SHA-256), gli ingressi usati, i modelli con licenza e l'IoU.
-- `viewer/image_api.py`: poche righe d'aggancio (`extra_args` ed `extra_provenance` facoltativi nel lavoro) per riusare
-  coda e avanzamento, e `--llm_vision` quando ci sono riferimenti.
-- `scripts/reference_concept.py` (elencato in `scripts/README.md`).
-- Studio, `viewer/studio/reference-concept.js`: nel foglio "Make a picture", carica uno o più riferimenti, sceglie
-  l'ingresso (riferimento così com'è, profondità, posa, lineart), vede riferimento e risultato affiancati con l'IoU, e
-  dà il giudizio che finisce nel registro di revisione della funzione 7. Nessuna "forza": la modifica non ha una
-  manopola, e non la inventiamo.
+| Parte | File | PR |
+|---|---|---|
+| Parole dei quattro modi, argomenti di modifica, registro `<immagine>.concept.json` | `image_to_3dlab/concept/{prompts,edit,sidecar}.py` | #23 |
+| Mappe d'ingresso: colore e profondità di un GLB per vista (Blender su CPU), lineart, mappa di posa | `image_to_3dlab/concept/maps.py`, `scripts/blender_concept_views.py` | #24 |
+| Aggancio al lavoro immagine (`extra_args`, `extra_provenance`, `name`), API, `generate`, riga di comando | `viewer/image_api.py`, `viewer/concept_api.py`, `scripts/reference_concept.py` | #33 |
+| Pannello "Draw from a reference" nel foglio Create, giudizio Keep/Discard | `viewer/studio/reference-concept.{js,css}` | #36 |
+
+**Come si usa** ([guida](../reference-concept.md)). Nello studio: **+ Create**, poi **Draw from a reference**.
+1. Si sceglie il modo.
+2. Si sceglie un modello o un'immagine della Libreria, oppure se ne carica una.
+3. Si scrivono le parole (per il ridisegno: cosa è e i suoi colori).
+4. Si scelgono 1-4 tentativi (2 per un'altra vista).
+
+Il pannello prepara la mappa e manda ogni tentativo nella coda delle immagini. Accanto a ogni risultato mostra
+l'immagine di forma e l'IoU della sagoma. **Keep / Discard** è il giudizio a occhio: finisce nel registro del concept e
+in `output/concept/judgements.jsonl`. Il registro di revisione della funzione 7 lavora sui GLB, non sulle immagini.
+
+Da riga di comando:
+- `python scripts/reference_concept.py prepare <glb o immagine> <depth|colour|pose|lineart|picture> [--view]`
+- `python scripts/reference_concept.py make <modo> --shape ... [--attempts N]`
+
+Per le altre funzioni: `viewer/concept_api.generate(prompt, references, seed) -> Path`. Fa la stessa modifica in una
+chiamata. I riferimenti vanno in ordine (forma, poi stile) e finiscono nella provenienza con nome e SHA-256.
+
+Cosa fa ogni modo, come deciso nella prova:
+- **Ridisegno**: da un modello, la sua profondità; da un'immagine, la sua lineart. I colori si scrivono, perché con
+  l'immagine originale il modello copia.
+- **Vestire**: sul render del corpo base, oppure sulla sua mappa di posa. La mappa di posa richiede un rig con ossa UE o
+  SOMA; con ossa numerate serve una tabella giunto→osso, per esempio i ruoli delle ossa della funzione 4.
+- **Pezzo**: sul render del corpo.
+- **Altra vista**: dall'immagine frontale, più il modello per la profondità di quel lato. È consigliato, perché senza,
+  da dietro, 1 tentativo su 2 ridisegnava il davanti.
+
+Nessuna "forza": la modifica non ha una manopola, e non la inventiamo.
+
+Verificato nel viewer vero, con il lock della GPU: GLB del lupo → profondità in 18 s su CPU → ridisegno Turbo → registro
+e IoU 0,99 → Keep salvato.
 
 ## 7. Rischi
 
@@ -240,3 +268,13 @@ Dalla review di Codex della PR #9 (secondo giro, P2 rimandati: non sono errori v
   quantizzazioni): parte alto e sovrastima il totale. Era già così prima della PR, per il codificatore.
 - `sd-cli` riempie la VRAM (15,6 GB su 16) e cade se un altro programma ne prende durante la corsa. Per lo studio:
   passare un margine con `--max-vram` in `image_api.py`, misurando quanto rallenta.
+
+Dalla costruzione (16/10/2026).
+- Senza parole di stile il ridisegno ha un aspetto da render 3D. Quando la bibbia dello stile (funzione 3) avrà
+  un'API, il pannello potrà proporne la descrizione e le immagini di stile invece del campo libero.
+- Mappa di posa dai rig con ossa numerate (SkinTokens): `maps.pose_points` accetta una tabella giunto→osso. Va collegata
+  ai ruoli delle ossa della funzione 4 quando saranno su `main`.
+- Il server dello studio non usa il file di blocco della GPU che usano le sessioni di sviluppo: è una convenzione di
+  queste sessioni, non del prodotto.
+- Su Windows un percorso d'uscita oltre 260 caratteri fa fallire `sd-cli` ("0/1 images saved"). Con `output/` normale
+  i percorsi sono di circa 150 caratteri; un `output` spostato molto in profondità potrebbe superarli.

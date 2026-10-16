@@ -63,10 +63,13 @@ COMMANDS: dict[str, list[str]] = {
     # Setup & Status dialog; asking again on a stdin nobody is attached to would hang.
     "qwen-image": [sys.executable, str(REPO / "scripts" / "bootstrap_qwen_image.py"),
                    "--yes"],
+    "flux2-klein": [sys.executable, str(REPO / "scripts" / "bootstrap_flux2_klein.py"),
+                    "--yes"],
     "matte": [sys.executable, str(REPO / "scripts" / "bootstrap_matte.py"), "--yes"],
     "autorig": [sys.executable, str(REPO / "scripts" / "bootstrap_autorig.py"), "--yes"],
     "materials-light": [sys.executable, str(REPO / "scripts" / "bootstrap_materials.py"),
                         "--only", "env,marigold-lighting", "--yes"],
+    "clip-library": [sys.executable, str(REPO / "scripts" / "bootstrap_clip_library.py"), "--yes"],
     # NVIDIA-only: Tencent's own Hunyuan3D-2.1, built for CUDA. The catalogue marks it
     # unsupported everywhere else, so start() refuses before this runs on a Mac.
     "hunyuan-cuda": [sys.executable, str(REPO / "scripts" / "bootstrap_hunyuan_cuda.py"),
