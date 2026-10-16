@@ -82,3 +82,10 @@ def test_a_strip_on_itself_neither_clips_nor_leaves_holes(tmp_path):
     assert [p["pose"] for p in measured["poses"]][:2] == ["rest", "bend@0.00"]
     assert len(measured["poses"]) == 4
     assert all(p["clipping"] == pytest.approx(0.0) for p in measured["poses"])
+
+
+def test_a_held_weapon_has_no_holes_to_measure(tmp_path):
+    glb = write_skinned_glb(tmp_path / "weapon.glb")
+    body = write_skinned_glb(tmp_path / "body.glb")
+    report = run_checks(Asset(glb=glb, body=body), profile="equipment_part", only=["fit.holes"])
+    assert not report["results"] and "held in the hand" in report["skipped"][0]["reason"]

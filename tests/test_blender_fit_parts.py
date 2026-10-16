@@ -65,3 +65,9 @@ def test_rigid_pieces_follow_the_first_head_bone_or_the_right_hand():
     assert bf.rigid_bone(ROLES, "torso") is None
     no_head = {b: r for b, r in ROLES.items() if r[0] != "head"}
     assert bf.rigid_bone(no_head, "helmet") == "b2"
+
+
+def test_the_head_bone_carrying_most_of_the_head_holds_the_helmet():
+    split = dict(ROLES, b12=("head", 2, ""))
+    assert bf.rigid_bone(split, "helmet") == "b3"
+    assert bf.rigid_bone(split, "helmet", carried={"b3": 181, "b12": 4089}) == "b12"

@@ -100,7 +100,7 @@ def test_a_whole_set_on_a_stick_figure(tmp_path):
     parts = json.loads(path.read_text())
     assert path == tmp_path / "sets" / "red" / "stick" / "red.parts.json"
     assert parts["mode"] == "body_and_equipment" and parts["concept"]["seed"] == 3
-    assert "Dress the character" in parts["concept"]["prompt"]
+    assert parts["concept"]["prompt"].startswith("Add red plate armour to the character in image 1")
     assert set(parts["pieces"]) == {"helmet", "torso", "boots", "weapon"}
     assert parts["pieces"]["weapon"]["held"] is True and "a longsword" in parts["pieces"]["weapon"]["prompt"]
     job = jobs[0]
@@ -108,7 +108,7 @@ def test_a_whole_set_on_a_stick_figure(tmp_path):
     assert "concept_box" not in held
     assert all("concept_box" in p for p in job["pieces"] if p["slot"] != "weapon")
     concept_record = tmp_path / "sets" / "red" / "stick" / "concept" / "s3.png.concept.json"
-    assert json.loads(concept_record.read_text())["mode"] == "dress"
+    assert json.loads(concept_record.read_text())["mode"] == "add_piece"
 
 
 def test_a_given_concept_is_mode_two_and_needs_no_outfit(tmp_path):

@@ -8,8 +8,8 @@ bone by name, at rest and at evenly spaced times of each clip.
 * **fit.clipping**: the share of the piece's outer skin (vertices facing the same way as
   the body under them) that sinks into skin the mask leaves visible. Buried inner faces of
   a solid piece and skin hidden under armour do not count. The worst pose is the value.
-* **fit.holes**: of the body this piece covers at rest (the outward ray from the skin meets
-  the piece within `gap`), the share that a pose leaves bare (the ray misses the piece
+* **fit.holes**: of the body this piece covers at rest and the mask hides (the outward ray
+  from hidden skin meets the piece within `gap`), the share that a pose leaves bare (the ray misses the piece
   within `reach`). The worst pose is the value.
 
 Geometry only, measured by rays and nearest points: no pixels.
@@ -123,7 +123,8 @@ def measure(asset, config: dict) -> dict:
     rest_body = _mesh(body_rig.mesh.vertices, body_rig.mesh.faces)
     rest_piece = _mesh(piece_rig.mesh.vertices, piece_rig.mesh.faces)
     origins = rest_body.vertices + rest_body.vertex_normals * 1e-4
-    region = np.nonzero(rays_hit(origins, rest_body.vertex_normals, rest_piece, gap))[0]
+    # only skin the mask hides can show through: a held weapon hides none, so it has no holes
+    region = np.nonzero(rays_hit(origins, rest_body.vertex_normals, rest_piece, gap) & (alpha < 0.5))[0]
     if len(region) > config.get("region_sample", 3000):
         region = rng.choice(region, config.get("region_sample", 3000), replace=False)
 
@@ -153,7 +154,7 @@ def clipping(asset, config):
                   {"poses": [{"pose": p["pose"], "percent": round(100 * p["clipping"], 2)} for p in measured["poses"]]})
 
 
-@register("fit.holes", needs=("body",))
+@register("fit.holes", needs=("body", "worn"))
 def holes(asset, config):
     measured = measure(asset, config)
     worst = max(measured["poses"], key=lambda p: p["holes"])

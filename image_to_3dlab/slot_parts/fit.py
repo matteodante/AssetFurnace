@@ -109,6 +109,37 @@ def held_placement(points: np.ndarray, slot: str, bone_head: np.ndarray, body_he
     return m, {"scale": float(k), "held_at": [round(float(v), 4) for v in bone_head]}
 
 
+def enclose(points: np.ndarray, region: np.ndarray, margin: float = 0.15) -> tuple[np.ndarray, float]:
+    """4x4 growing a rigid piece (a helmet) until it holds the body region under it with a margin.
+
+    A front picture gives a helmet's outline, not the room inside it: placed to the outline,
+    a solid helmet came out the size of the head and the face showed through its visor. The
+    piece is scaled up uniformly, never down, and centred on the region.
+    """
+    p, r = np.asarray(points, float), np.asarray(region, float)
+    need = (r.max(0) - r.min(0)) * (1 + margin)
+    have = np.maximum(p.max(0) - p.min(0), 1e-9)
+    k = max(1.0, float((need / have).max()))
+    m = np.diag([k, k, k, 1.0])
+    m[:3, 3] = (r.min(0) + r.max(0)) / 2 - k * (p.min(0) + p.max(0)) / 2
+    return m, k
+
+
+def region_transfer(source: tuple, target: tuple) -> np.ndarray:
+    """4x4 moving a piece fitted on one body onto another: the source region's box (lo, hi) onto
+    the target region's, centre onto centre and each axis scaled by the ratio of the sizes.
+
+    The regions are the body vertices the slot's bones carry, so a longer forearm or broader
+    shoulders stretch the piece along with them; the cage fit that follows does the rest.
+    """
+    (slo, shi), (tlo, thi) = (np.asarray(source[0], float), np.asarray(source[1], float)), \
+        (np.asarray(target[0], float), np.asarray(target[1], float))
+    scale = (thi - tlo) / np.maximum(shi - slo, 1e-9)
+    m = np.diag([*scale, 1.0])
+    m[:3, 3] = (tlo + thi) / 2 - scale * (slo + shi) / 2
+    return m
+
+
 def rotation_between(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """The 3x3 rotation turning unit vector a onto unit vector b (Rodrigues)."""
     a, b = np.asarray(a, float), np.asarray(b, float)

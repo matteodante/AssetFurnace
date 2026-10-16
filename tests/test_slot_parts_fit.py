@@ -139,3 +139,14 @@ def test_a_shield_is_held_by_its_middle():
     m, _ = fit.held_placement(shield, "shield", arm, body_height=2.0)
     moved = shield @ m[:3, :3].T + m[:3, 3]
     assert moved.mean(0) == pytest.approx(arm) and float(np.ptp(moved[:, 2])) == pytest.approx(0.6)
+
+
+def test_a_helmet_the_size_of_the_head_grows_to_hold_it():
+    head = _cube(size=(0.1, 0.1, 0.12), centre=(0.0, 0.0, 1.6))
+    helmet = _cube(size=(0.1, 0.1, 0.12), centre=(0.0, 0.0, 1.62))
+    m, k = fit.enclose(helmet, head, margin=0.15)
+    moved = helmet @ m[:3, :3].T + m[:3, 3]
+    assert k == pytest.approx(1.15)
+    assert moved.mean(0) == pytest.approx(head.mean(0))
+    big = _cube(size=(0.3, 0.3, 0.3), centre=(0.0, 0.0, 1.6))
+    assert fit.enclose(big, head)[1] == 1.0  # never shrunk

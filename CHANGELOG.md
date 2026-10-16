@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces on more bodies and in Unreal: `slot_parts.py refit` carries a fitted
+  set over to another base body (each piece moved from its slot's region on the first body
+  to the same region on the second, then the same cage fit, weights and mask; no new images
+  or 3D), and `slot_parts.py unreal` exports a fitted set for Unreal 5.8 with
+  `export_unreal.py`, the body and every piece on one Skeleton, with
+  `<body>.unreal-set.json` (Leader Pose, the body's opacity mask from its vertex alpha).
+  The Unreal exporter keeps a `covered` vertex colour. In mode 3 the outfit is now added to
+  the bodysuit (`add_piece`) instead of dressing the whole body, so slots left out stay bare.
+  A helmet keeps its shape, grows to hold the head and follows the head bone carrying most of
+  it; weapons and shields stay out of the body mask and skip `fit.holes`. `kimodo_retarget.py`
+  takes legs hanging from a pelvis chain under the root.
 - Tint zones by material, not yet admitted (`image_to_3dlab/material_zones.py`,
   `scripts/game_materials.py --zones`, `scripts/zones_trial.py`): Qwen3.5-4B names up to six
   materials from the words the user labels with, SAM 3 (gated) or SAM 2.1 regions named by
