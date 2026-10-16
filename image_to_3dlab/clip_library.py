@@ -85,3 +85,127 @@ def write_source(folder: Path) -> Path:
     path = folder / SOURCE_FILE
     path.write_text(json.dumps(source_record(), indent=2) + "\n", encoding="utf-8")
     return path
+
+
+# -- what each library creature is, chain by chain ---------------------------------------
+#
+# Mesh2Motion's creatures stand Y up and face +Z with their left on +X. Chains run from the
+# body outwards (a serpent's from its head), by bone name, joint to joint: the same roles
+# `creature_family.classify` gives a SkinTokens rig, so `scripts/chain_retarget.py` can pair
+# them. A clip is (name in the GLB, whether it loops).
+
+FRAME = {"up": [0.0, 1.0, 0.0], "forward": [0.0, 0.0, 1.0], "left": [1.0, 0.0, 0.0]}
+
+
+def _legs(rows: dict[str, list[str]]) -> list[dict]:
+    """{"front L": bones, ...} -> role dicts."""
+    return [{"bones": bones, "side": key.split()[1], "end": key.split()[0]} for key, bones in rows.items()]
+
+
+def _sided(fmt: list[str], sides=("L", "R"), case=str) -> list[dict]:
+    return [{"bones": [b.format(s=case(side)) for b in fmt], "side": side} for side in sides]
+
+
+FOX = {
+    "file": "fox-animations.glb",
+    "roles": {
+        "legs": _legs({
+            **{f"front {s}": [f"Front_Leg_{b}_{s}" for b in ("Upper", "Lower", "Ankle", "Foot", "Tip")] for s in "LR"},
+            **{f"back {s}": [f"Back_Leg_{b}_{s}" for b in ("Upper", "Lower", "Ankle", "Foot", "Foot_1", "Tip")]
+               for s in "LR"}}),
+        "arms": [], "wings": [],
+        "spine": ["Hips", "Spine_1", "Spine_2", "Spine_2.001", "Spine_3"], "neck": ["Spine_4", "Head", "Nose"],
+        "tail": ["Tail_Base", "Tail_Mid", "Tail_Mid.001", "Tail_End", "Tail_Tip"], "body": [],
+    },
+    "clips": {"idle": ("Idle", True), "walk": ("Walk", True), "run": ("Run", True),
+              "attack": ("Bite", False), "death": ("Death", False)},
+}
+KAIJU = {
+    "file": "kaiju-animations.glb",
+    "roles": {
+        "legs": _legs({f"back {s}": [f"Back_Leg_{b}_{s}" for b in ("Upper", "Lower", "Ankle", "Foot", "Foot_1",
+                                                                     "Foot_2", "Tip")] for s in "LR"}),
+        "arms": _sided(["Front_Leg_Shoulder_{s}", "Front_Leg_Upper_{s}", "Front_Leg_Lower_{s}", "Hand_{s}",
+                        "Finger_Index_{s}", "Finger_Index_Tip_{s}"]),
+        "wings": [],
+        "spine": ["Hips", "Spine_1", "Spine_2", "Spine_2.001", "Spine_3"], "neck": ["Spine_4", "Head", "Nose"],
+        "tail": ["Tail_Base", "Tail_Mid", "Tail_Mid.001", "Tail_Mid.002", "Tail_Mid.003", "Tail_Tip"], "body": [],
+    },
+    "clips": {"idle": ("Idle", True), "walk": ("Walk", True), "attack": ("Attack", False),
+              "hit": ("Hit", False), "death": ("Death", False)},
+}
+SPIDER = {
+    "file": "spider-animations.glb",
+    "roles": {
+        "legs": _legs({f"{end} {s}": [f"leg_{row}_{k}_{s.lower()}" for k in ("1", "2", "3", "tip")]
+                       for s in "LR" for row, end in zip("abcd", ("front", "mid", "mid", "back"))}),
+        "arms": [], "wings": [],
+        "spine": ["hips", "spine_1", "spine_2"], "neck": ["head", "head_tip"],
+        "tail": ["tail_1", "tail_2", "tail_3", "tail_tip"], "body": [],
+    },
+    "clips": {"idle": ("Idle", True), "walk": ("Walk", True), "attack": ("Attack", False),
+              "hit": ("Hit", False), "death": ("Death", False)},
+}
+SNAKE = {
+    "file": "snake-animations.glb",
+    "roles": {
+        "legs": [], "arms": [], "wings": [], "spine": [], "neck": [], "tail": [],
+        "body": ["head", "neck", *[f"tail{k:02d}" for k in range(1, 21)], "tail_tip"],
+    },
+    "clips": {"idle": ("Idle", True), "slither": ("Side winding", True), "attack": ("Bite", False),
+              "hit": ("Hit", False), "death": ("Death", False)},
+}
+DRAGON = {
+    "file": "dragon-animations.glb",
+    "roles": {
+        "legs": _legs({
+            **{f"front {s}": [f"front_{b}_{s.lower()}" for b in ("leg", "ankle", "foot", "toes", "toes_tip")]
+               for s in "LR"},
+            **{f"back {s}": [f"back_{b}_{s.lower()}" for b in ("leg", "ankle", "foot", "toes", "toes_tip")]
+               for s in "LR"}}),
+        "arms": [],
+        # the shoulder swings the whole wing: on no chain, its turn would be lost
+        "wings": _sided(["shoulder_{s}"] + [f"wing_{k}_{{s}}" for k in range(1, 6)] + ["wing_tip_{s}"], case=str.lower),
+        "spine": ["hips", "spine_0", "spine_1", "spine_2", "spine_3"], "neck": ["spine_4", "head"],
+        "tail": ["tail_1", "tail_2", "tail_3", "tail_4", "tail_5", "tail_6", "tail_tip"], "body": [],
+    },
+    "clips": {"idle": ("Idle", True), "walk": ("Walk", True), "fly": ("Fly Flap", True),
+              "glide": ("Fly Glide", True)},
+}
+BIRD = {
+    "file": "bird-animations.glb",
+    "roles": {
+        "legs": _legs({f"back {s}": [f"{b}_{s}" for b in ("UpperLeg", "LowerLeg", "AnkleLeg", "Foot", "Toes",
+                                                           "Toes_tip")] for s in "LR"}),
+        "arms": [],
+        "wings": _sided([f"wing_{k}_{{s}}" for k in range(1, 6)] + ["wing_tip_{s}"]),
+        "spine": ["hips", "spine_0", "spine_1", "spine_2"], "neck": ["spine_3", "head"],
+        "tail": ["tail_1", "tail_2", "tail_3", "tail_tip"], "body": [],
+    },
+    "clips": {"idle": ("Idle", True), "walk": ("Walk", True), "fly": ("Flap", True), "glide": ("Glide", True)},
+}
+SOURCES = {"fox": FOX, "kaiju": KAIJU, "spider": SPIDER, "snake": SNAKE, "dragon": DRAGON, "bird": BIRD}
+
+
+def source_for(family: str, legs: int = 0) -> str | None:
+    """Which library creature drives a family: a winged creature on four legs is a dragon,
+    on two or none a bird. Plants and humanoids have none."""
+    if family == "winged":
+        return "dragon" if legs >= 3 else "bird"
+    return {"quadruped": "fox", "digitigrade": "kaiju", "multileg": "spider", "serpent": "snake"}.get(family)
+
+
+def source_roles(name: str) -> dict:
+    """A library creature's roles, with its frame, ready for `chain_retarget.Source`."""
+    return {"family": None, **SOURCES[name]["roles"], "frame": FRAME}
+
+
+def motion_record(name: str, motion: str) -> dict:
+    """What a clip's provenance says about where its motion came from."""
+    src = SOURCES[name]
+    clip, _ = src["clips"][motion]
+    sha, _ = MESH2MOTION["files"][f"static/animations/{src['file']}"]
+    return {"made_with": f"chain retarget of a {MESH2MOTION['name']} clip", "source_clip": clip,
+            "source_file": src["file"], "source_sha256": sha, "repo": MESH2MOTION["repo"],
+            "commit": MESH2MOTION["commit"],
+            "license": {"name": MESH2MOTION["license"], "url": MESH2MOTION["license_url"]}}

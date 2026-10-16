@@ -52,7 +52,8 @@ def record_clips(rigged: Path, rig_record: dict[str, Any]) -> list[Path]:
     for clip in clip_files(rigged):
         name = clip.stem.removeprefix(rigged.stem.removesuffix("_rigged") + "_")
         record = creature_family.clip_record(rig_record, name, found.get("family"),
-                                             tool="viewer Animate tab: scripts/creature_clips.py", output=clip)
+                                             tool="viewer Animate tab: scripts/creature_clips.py", output=clip,
+                                             made=(found.get("clip_sources") or {}).get(name))
         path = clip.with_suffix(".provenance.json")
         path.write_text(json.dumps(record, indent=2), encoding="utf-8")
         written.append(path)

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Creature clip library, second part: `scripts/chain_retarget.py` carries the library's idle,
+  walk, attack, hit, death, fly and glide clips onto auto-rigged creatures chain by chain, and
+  `creature_clips.py` writes them before the procedural clips, each with its CC0 source in
+  the provenance.
 - Creature clip library, first part: six CC0 animated creatures from Mesh2Motion, pinned to one
   commit and checked against their SHA-256 (`scripts/bootstrap_clip_library.py`, listed in
   Setup & Status), ready to be carried onto auto-rigged creatures.

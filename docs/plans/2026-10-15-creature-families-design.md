@@ -444,3 +444,67 @@ scheletri sintetici.
    (lupo, ragno, serpente, draghetto), con la tabella delle deformazioni.
 3. Le varianti con GenMM: per esempio attese diverse e camminate più lunghe senza ripetizioni.
 4. Quaternius, se c'è un modo verificabile per scaricarlo.
+
+## 15. Com'è andata la PR 2 della libreria: retarget a catene (16/10/2026)
+
+`scripts/chain_retarget.py` porta una clip della libreria sul rig, in numpy, e restituisce i fotogrammi
+`(turn, root)` di `creature_motion`. `creature_clips.py` scrive prima le clip della libreria e poi le procedurali che
+la libreria non sostituisce. Le catene delle sorgenti sono scritte a mano in `image_to_3dlab/clip_library.py`; un
+test le confronta con i GLB installati e riporta ogni clip sul suo stesso scheletro (errore sotto il 2%
+della taglia).
+
+Le prove sui rig veri hanno cambiato tre scelte del progetto della sezione 14:
+
+- **Gli arti girano come il corpo, non prendono la forma della sorgente.** Imporre la forma della zampa del
+  kaiju al lupo stirava la pelle già al primo fotogramma, all'1–5% dei lati. Ora ogni segmento riceve la rotazione
+  dal riposo del segmento della sorgente alla stessa frazione, presa attorno alla direzione della catena (l'imbardata):
+  così una zampa che punta di lato si solleva come una che punta in avanti, invece di spazzare.
+- **La scala è la lunghezza delle zampe, non l'altezza dell'anca.** Il ragno sorgente è piatto, con l'anca a 0,11 e
+  zampe da un metro e mezzo: scalato sull'anca, un rig tozzo faceva passi tre volte più lunghi delle sue zampe. In
+  attesa, il ragno è sceso dal 3,07% allo 0,31% di lati stirati.
+- **Piede a terra o sollevato.** Se il piede della sorgente è a terra, la punta del bersaglio fa lo stesso spostamento
+  della sorgente, scalato, quindi non scivola. Se è sollevato, va dove la porta la rotazione trasferita. Fra il 2% e
+  l'8% della lunghezza della zampa le due regole si mescolano.
+- Le zampe sono ordinate dal piede, non dall'attacco (le zampe di un ragno partono tutte dallo stesso punto). Due
+  catene nella stessa zampa della mesh (le "gemelle" delle clip procedurali) copiano le stesse rotazioni.
+
+Misure su 24 fotogrammi per clip, con le soglie di `rig.deformation` (avviso 0,5%, errore 1,5% per i lati stirati;
+avviso 0,5%, errore 1,0% per i triangoli rovesciati). In fondo, la stessa clip misurata sul modello della sorgente:
+
+| Creatura | Clip | Lati stirati | Triangoli rovesciati | Sorgente sul suo modello |
+|---|---|---|---|---|
+| Lupo (kaiju) | idle | 0,08% | 0,05% | 0,23% / 0,73% |
+| | walk | 0,07% | 0,08% | 0,23% / 0,65% |
+| | attack | 0,69% | 1,43% | 0,52% / 0,86% |
+| | hit | 1,41% | 0,41% | 0,31% / 0,78% |
+| | death | 2,51% | 1,70% | 1,17% / 2,11% |
+| Ragno (ragno) | idle | 0,32% | 0,30% | 0% / 0% |
+| | walk | 1,58% | 1,17% | 0,08% / 0,25% |
+| | attack | 2,11% | 1,45% | 0% / 0% |
+| | hit | 2,14% | 1,72% | 0,16% / 0% |
+| | death | 3,08% | 2,04% | 0,28% / 0,56% |
+| Serpente (serpente) | idle | 0,49% | 0,44% | 0,39% / 0% |
+| | slither | 0,30% | 0,21% | 0,48% / 0,35% |
+| | attack | 0,31% | 0,33% | 0,29% / 0% |
+| | hit | 0,53% | 0,73% | 0,24% / 0,71% |
+| | death | 0,35% | 0,34% | 0,19% / 0% |
+| Draghetto (drago) | idle | 0,97% | 2,00% | 0,50% / 1,52% |
+| | walk | 1,25% | 2,02% | 0,75% / 1,69% |
+| | fly | 1,16% | 1,72% | 0,32% / 0,63% |
+| | glide | 0,56% | 0,44% | 0,02% / 0% |
+
+Lettura:
+- Le clip di movimento di lupo e serpente sono pulite come o più delle sorgenti. Le procedurali restano accanto per
+  le mosse che la libreria non ha (il draghetto tiene `hover` e `attack`).
+- Attacco, colpo e morte del lupo e il drago sono vicini a ciò che fanno le sorgenti sul loro modello. Le pose sono
+  estreme già lì: la morte del kaiju rovescia il 2,1% dei triangoli del suo modello.
+- **Il ragno resta il caso difficile, e il motivo è il rig, non il retarget.** Ha catene a cui il riconoscimento non
+  ha dato un ruolo: una zampa intera a destra (`bone_60`–`bone_66`) e un moncone fra due zampe a sinistra. Restano
+  rigide mentre le vicine si muovono, e la pelle in mezzo si strappa. Farle seguire la zampa più vicina ha
+  peggiorato le cose: prendeva anche testa e cheliceri, quindi l'ho tolto.
+
+**Seguiti della PR 2 della libreria**
+- Riconoscere tutte le zampe del ragno, comprese quelle che oggi restano senza ruolo; poi rimisurare.
+- Le clip con pose estreme (attacco, colpo, morte) superano le soglie anche sulle sorgenti: valutare soglie per tipo
+  di clip, o un controllo che confronti con la sorgente invece che con un numero fisso.
+- Il collo del bersaglio: oggi la testa gira solo con l'ultimo segmento del collo.
