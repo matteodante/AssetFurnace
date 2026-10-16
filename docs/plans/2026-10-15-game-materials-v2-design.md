@@ -1,7 +1,7 @@
 # Funzione 8, materiali pronti per il gioco: progetto v2
 
 Data: 15 ottobre 2026 (aggiornato lo stesso giorno: SAM 3.1, lavori del 2026, video, Qwen3.5, togliere la luce, date).
-Stato: **approvato**. PR 1 e 2 unite (#11, #12); PR 4 (luce tolta) in #26; PR 6 (rugosità e metallo) e PR 5 (controllo della luce cotta) non passano la prova; PR 3 (zone) è pronta e aspetta SAM 3. Vedi la sezione 10.
+Stato: **chiusa il 17/10/2026**. Cosa è acceso, cosa è spento e perché: sezione 11; il lavoro rimasto: Seguiti.
 Sostituisce il metodo di [`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md) (v1), di cui
 tiene l'infrastruttura. La PR [#3](https://github.com/matteodante/AssetFurnace/pull/3) è in bozza e in pausa.
 
@@ -409,7 +409,7 @@ Download confermati dall'utente il 16/10/2026 ("permesso per tutto"): Qwen3.5-4B
   - Qwen3.5-4B: Apache-2.0. Per Qwen l'ambiente dei materiali ha anche `torchvision` 0.29.1 (lo vuole il processore
     di immagini).
 
-### PR 3, zone per materiale (17/10/2026): **pronta, in attesa di SAM 3 e delle etichette**
+### PR 3, zone per materiale (17/10/2026): **su richiesta, con SAM 2.1**
 
 - **Cosa c'è** (`image_to_3dlab/material_zones.py`, `scripts/game_materials.py --zones`, `scripts/zones_trial.py`):
   1. **Il vocabolario**:
@@ -457,8 +457,69 @@ Download confermati dall'utente il 16/10/2026 ("permesso per tutto"): Qwen3.5-4B
   Per un gioco con armi di fantasia il testo non nomina i videogiochi: decide l'utente. Il riassunto sta nella scheda
   della pagina di installazione.
 
+## 11. Stato finale (17/10/2026)
+
+Decisione dell'utente del 17/10/2026: niente altro lavoro per lui. SAM 3 non si aspetta, e non c'è l'ora di etichette.
+Quindi:
+- ogni passo che non ha superato la sua prova resta **spento**;
+- quelli che si possono giudicare senza etichette li ho giudicati io, con render prima e dopo e con le misure.
+
+| Parte | PR | Stato | Perché |
+|---|---|---|---|
+| Pezzo comune (viste, riporto sulle UV), ORM dalle mappe dell'asset, GLB modificato in place | #11 | **acceso** (`game_materials.py`) | Nessun modello; testato |
+| Etichette nello studio | #12 | pronto, non usato | Nessuna etichetta raccolta |
+| Luce tolta (Marigold-IID Lighting) | #26 | **spento**, su richiesta (`delight_materials.py`) | Giudizio mio sotto: non è un miglioramento netto |
+| Rugosità e metallo stimati (Marigold-IID Appearance) | #28 | **spento**, fuori dalla pagina di installazione | Bocciato su Poly Haven |
+| Controllo imparato della luce cotta | #43 | **spento**, nessun controllo | I tre candidati falliscono anche sul sintetico |
+| Zone per materiale (Qwen3.5 + SAM 2.1; SAM 3 pronto) | #45, #47 | **su richiesta** (`game_materials.py --zones`) | Giudizio mio sotto: utili da rivedere, non da accendere per default |
+| Rugosità e metallo per materiale, dalle zone | #45 | **spento** | Bocciato su Poly Haven |
+
+**Il mio giudizio** su tre asset veri di `output/compare-20261015` (cavaliere, lupo mannaro, forziere):
+- **luce tolta**, render prima e dopo sotto una luce laterale fissa nel mondo:
+  - sul cavaliere si attenuano il riflesso dipinto sul pettorale e le luci di contorno: è un miglioramento;
+  - sul lupo mannaro (guadagni da ×0,64 a ×1,55) il pelo diventa più contrastato e a macchie, senza che si veda luce
+    tolta;
+  - sul forziere (guadagni fino a ×0,36) prima e dopo sono quasi identici.
+
+  Uno su tre non basta per accenderla.
+- **zone**, dipinte sulle viste:
+  - cavaliere: metallo 68 %, cuoio 22 %. Davanti è giusto; dietro la corazza scura diventa cuoio;
+  - forziere: legno 93 %, metallo 6 %. Si separa il lucchetto, ma le fasce di metallo restano nel legno;
+  - lupo mannaro: pelliccia 88 %, corno 7 %, pelle 3 %. Pelle e pelo non si distinguono; macchie sparse sulla coda.
+
+  Le zone sono un punto di partenza da correggere a mano, non un risultato da usare così. Con il profilo `creature`
+  il lupo mannaro sarebbe rimandato indietro (meno di 2 zone vere), ed è giusto.
+- Tempi con la GPU condivisa:
+  - luce tolta: 93-112 s per asset con 18 viste;
+  - zone: 150-210 s con 8 + 2 viste, quasi tutti per i nomi delle regioni.
+
+**SAM 2.1 è il segmentatore predefinito** delle zone (`find_zones(segmenter="sam2")`, `game_materials.py --zones`).
+SAM 3 si usa con `--zones sam3` non appena l'account ha l'accesso: il codice e la scheda d'installazione sono pronti.
+
 ## Seguiti
 
-I punti rimandati della v1 restano nella sezione "Seguiti" di
-[`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md); quelli legati ai metodi buttati cadono
-con loro.
+- **SAM 3 quando ci sarà l'accesso.**
+  1. Il proprietario dell'account compila il modulo su https://huggingface.co/facebook/sam3.
+  2. Si scaricano i pesi con `python scripts/bootstrap_materials.py --only sam3` (3,21 GB).
+  3. Si prova `game_materials.py --zones sam3`. `segment_sam3` non è mai girato con i pesi veri: va verificato per
+     primo.
+  4. Lo si confronta con SAM 2.1 con `zones_trial.py pbr --segmenter sam3` e, se ci sono etichette, `human`.
+- **Prove che hanno bisogno delle etichette dell'utente**, tutte pronte e mai lanciate. I passi restano spenti finché
+  non passano:
+  - la luce tolta (#26);
+  - le zone (`zones_trial.py human`, almeno il 75 % dei punti);
+  - il controllo della luce cotta (`baked_light_trial.py human`).
+
+  Servono i 60 asset generati (20 umanoidi, 20 creature, 20 oggetti) e la coda
+  `scripts/material_label_set.py queue`.
+- **Rugosità e metallo**: nessuno stimatore passa (Marigold Appearance, valori per materiale). Per un modello nuovo
+  basta `pbr_trial.py`, con i 30 asset già in `output/pbr-trial/`.
+- **Zone, nomi incoerenti fra le viste**: oggi ogni regione di SAM 2.1 prende il nome vista per vista. Due strade da
+  provare:
+  - dare il nome una volta per parte 3D, unendo le regioni che si sovrappongono sulle UV prima di chiedere a Qwen;
+  - la segmentazione come video (`Sam3VideoModel`, sezione 2).
+- **Luce tolta**: aiuta dove la luce dipinta è forte (cavaliere), sporca dove non c'è (lupo mannaro). Si potrebbe
+  applicarla solo quando Marigold trova molta ombreggiatura, ma è proprio il controllo che non ha passato la prova.
+- I punti rimandati della v1 restano nella sezione "Seguiti" di
+  [`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md); quelli legati ai metodi buttati cadono
+  con loro.

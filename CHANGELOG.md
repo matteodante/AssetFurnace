@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Tint zones use SAM 2.1 by default (`game_materials.py --zones`); `--zones sam3` once its gated
+  access is granted. Game materials v2 is closed: what is on, what stays off and why is in design
+  section 11.
 - Characters in pieces on more bodies and in Unreal: `slot_parts.py refit` carries a fitted
   set over to another base body (each piece moved from its slot's region on the first body
   to the same region on the second, then the same cage fit, weights and mask; no new images
