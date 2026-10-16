@@ -32,6 +32,7 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from image_to_3dlab import clip_library as _clips
 from image_to_3dlab import host as _host
 from image_to_3dlab import matte as _matte
 from image_to_3dlab.host import AMD, APPLE, NVIDIA
@@ -631,6 +632,27 @@ CATALOG: tuple[Backend, ...] = (
                       HF_HUB_DIR / "models--VAST-AI--SkinTokens",
                       note="Pinned to the revision we tested. Setup also fetches "
                            "Qwen3-0.6B's config and tokenizer (~16 MB, no weights)."),
+        ),
+    ),
+    Backend(
+        id="clip-library",
+        label="Creature clip library (Mesh2Motion)",
+        kind="tool",
+        best_for=("Hand-made walk, attack, idle and death clips for four-legged, "
+                  "many-legged, serpent, winged and digitigrade creatures, carried onto "
+                  "the auto-rig's skeleton."),
+        tradeoff="Optional. Without it, creatures get the procedural test clips only.",
+        license_name=_clips.MESH2MOTION["license"],
+        license_url=_clips.MESH2MOTION["license_url"],
+        install="scripts/bootstrap_clip_library.py",
+        runs_on=(APPLE, NVIDIA, AMD),
+        setup_minutes=1,
+        upstream=("Mesh2Motion", _clips.MESH2MOTION["repo"]),
+        weights=(
+            WeightSet("Mesh2Motion creature animations",
+                      f"{_clips.MESH2MOTION['repo']}/tree/{_clips.MESH2MOTION['commit']}/static/animations",
+                      _clips.TOTAL_BYTES, _clips.pack_dir(),
+                      note="Six GLB files from one pinned commit, each checked against its SHA-256."),
         ),
     ),
 )
