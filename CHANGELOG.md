@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after it; `refs.pick` chooses 1-3 approved pictures as style references for generation.
   `scripts/style_bible.py` makes, registers and edits bibles and prints prompts and references.
 - Prompt recipes for three more asset kinds: creature, piece of equipment and map object.
+- Style judges and the style race: CSD and SigLIP 2 embeddings (kNN and CSLS against the
+  bible) and a Qwen3-VL-8B judge run by llama.cpp that reads yes/no answers as probabilities.
+  `scripts/style_race.py` scores the user's labelled concepts with each judge and reports ROC
+  area, the share of bad concepts caught and of good ones stopped. `scripts/bootstrap_style.py`
+  downloads the weights and llama.cpp after asking. A bible can also hold `references`: style
+  pictures that are not ours, kept for internal use only.
 - Asset checks (`image_to_3dlab/checks`): one JSON contract for every check, profiles of
   thresholds per asset type, and the generic checks (flipped faces, holes, floating specks,
   non-manifold edges, UV overlap, triangle/material/texture budgets, texel density, size
