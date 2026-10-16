@@ -1,5 +1,7 @@
 # Funzione 6: famiglie di creature (progetto)
 
+**Ricerca sugli approcci più recenti (16/10/2026)**: [`2026-10-16-creature-families-research.md`](2026-10-16-creature-families-research.md).
+
 Data: 15 ottobre 2026. Stato: **approvato; PR 1 implementata** (riconoscimento, controllo, bipede digitigrado e
 quadrupede, studio). Le differenze rispetto al progetto sono nella sezione 11.
 Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 6.
