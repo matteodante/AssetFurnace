@@ -92,6 +92,23 @@ def cage_sizes(base: float) -> list[float]:
     return [round(base * k, 6) for k in (1.0, 1.1, 0.9, 1.3, 0.75, 1.6)]
 
 
+# How big a piece made on its own is, as a share of the body's height, and where it is held:
+# a weapon by its grip (a fifth of its height up from the bottom), a shield by its middle.
+HELD = {"weapon": (0.42, 0.2), "shield": (0.30, 0.5)}
+
+
+def held_placement(points: np.ndarray, slot: str, bone_head: np.ndarray, body_height: float) -> tuple[np.ndarray, dict]:
+    """4x4 putting a weapon or shield (upright, as generated) in the hand or on the forearm."""
+    share, grip_at = HELD[slot]
+    p = np.asarray(points, float)
+    lo, hi = p.min(0), p.max(0)
+    k = share * body_height / max(float((hi - lo).max()), 1e-9)
+    grip = np.array([(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2] + grip_at * (hi[2] - lo[2])])
+    m = np.diag([k, k, k, 1.0])
+    m[:3, 3] = np.asarray(bone_head, float) - k * grip
+    return m, {"scale": float(k), "held_at": [round(float(v), 4) for v in bone_head]}
+
+
 def rotation_between(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     """The 3x3 rotation turning unit vector a onto unit vector b (Rodrigues)."""
     a, b = np.asarray(a, float), np.asarray(b, float)

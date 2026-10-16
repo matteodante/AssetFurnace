@@ -45,13 +45,16 @@ class Asset:
     reference_numbers: dict | None = None      # {"height": m, "width": m, "depth": m}
     provenance: Path | None = None             # explicit sidecar; otherwise found beside the GLB
     output_root: Path | None = None            # where generated runs live, for lineage
+    body: Path | None = None                   # an armour piece's masked base body (fit step)
+    body_clips: tuple = ()                     # that body's own animated clips, to pose both with
     validator: Path | None = field(default=None, compare=False)
 
     def __post_init__(self):
-        for name in ("glb", "reference", "provenance", "output_root", "validator"):
+        for name in ("glb", "reference", "provenance", "output_root", "validator", "body"):
             value = getattr(self, name)
             if value is not None and not isinstance(value, Path):
                 object.__setattr__(self, name, Path(value))
+        object.__setattr__(self, "body_clips", tuple(Path(c) for c in self.body_clips))
         for axis, value in (self.reference_numbers or {}).items():
             # A negative height made every size check pass: refuse it where it comes in.
             if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
@@ -145,6 +148,9 @@ class Asset:
                 (self.reference_numbers or {}).get(k) for k in ("width", "depth")))
             else "no reference model, width or depth given",
             "rig": lambda: None if self.document.get("skins") else "the model has no rig",
+            "body": lambda: ("no base body given (only armour pieces fitted to one have it)" if self.body is None
+                             else f"{self.body} does not exist" if not self.body.is_file()
+                             else None if self.document.get("skins") else "the piece is not skinned to the body"),
             "animation": lambda: None if rig_checks.has_clips(self.glb) else "the rig has no animation to play",
             "texture": lambda: None if self.has_texture else "the model has no texture",
             "gltf_validator": lambda: None if self.validator_path else
