@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces, first part (`image_to_3dlab/slot_parts/`, `scripts/slot_parts.py`):
+  register a rigged humanoid as a base body (picture, Pixal3D camera, bone roles from the
+  skeleton's shape), choose the armour slots, map a concept drawn on that body to slots by
+  projecting its bones, and cut one piece per slot, flattened on grey with the way back to
+  the concept recorded, ready for the "complete this piece" edit of route C.
 - Export for Unreal turns a creature that is not a humanoid to face forward from its family file
   (a drake generated facing between two axes no longer arrives turned), and records the
   family in the export job; its library, procedural and `-long` clips go along as
@@ -149,6 +154,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
 
 ### Fixed
+- The studio reads and writes its JSON and text files as UTF-8 on every machine, and the
+  test suite passes on Windows without `PYTHONUTF8=1`: with the locale's cp1252, an em dash
+  or a middle dot written as UTF-8 failed to decode. `tests/test_text_encoding.py` keeps new
+  reads and writes in the studio from leaving the encoding out.
 - A skinned model is sized for Unreal after it is turned to face forward: a creature facing
   half-way between two axes was sized on its wider box and arrived 20% too long. A creature
   that is not a humanoid is checked for facing in Unreal from its hips and head (named in
