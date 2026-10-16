@@ -104,3 +104,10 @@ def test_the_environment_gets_torch_from_its_own_index_first(tmp_path):
 def test_an_unknown_part_is_refused():
     with pytest.raises(SystemExit, match="unknown part"):
         boot.parts("marigold")
+
+
+
+def test_a_step_that_failed_its_trial_is_not_offered_in_setup():
+    # Marigold-IID Appearance failed the Poly Haven trial (design section 10): no card for it.
+    assert "materials-pbr" not in bc.BY_ID
+    assert download_api.command_for("materials-pbr", host=bc.NVIDIA) is None

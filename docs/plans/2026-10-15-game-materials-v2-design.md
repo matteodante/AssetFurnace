@@ -1,7 +1,7 @@
 # Funzione 8, materiali pronti per il gioco: progetto v2
 
 Data: 15 ottobre 2026 (aggiornato lo stesso giorno: SAM 3.1, lavori del 2026, video, Qwen3.5, togliere la luce, date).
-Stato: **approvato**. PR 1 e 2 unite (#11, #12); la PR 4 (luce tolta) è la prossima, vedi la sezione 10.
+Stato: **approvato**. PR 1 e 2 unite (#11, #12); PR 4 (luce tolta) in #26; PR 6 (rugosità e metallo) non passa la prova, vedi la sezione 10.
 Sostituisce il metodo di [`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md) (v1), di cui
 tiene l'infrastruttura. La PR [#3](https://github.com/matteodante/AssetFurnace/pull/3) è in bozza e in pausa.
 
@@ -329,6 +329,45 @@ Download confermati dall'utente il 16/10/2026 ("permesso per tutto"): Qwen3.5-4B
 - **Non ammesso**: il passo si usa solo se chiesto (`scripts/delight_materials.py`), e il file accanto al GLB lo
   dichiara (`admitted: false`). Entra quando supera la prova della sezione 6 (ombre dipinte sotto luce laterale),
   che richiede l'insieme etichettato.
+
+### PR 6, rugosità e metallo stimati (16/10/2026): **non passa**
+
+- **Cosa c'è**:
+  - `image_to_3dlab/pbr_estimate.py` e `scripts/estimate_pbr.py`: Marigold-IID Appearance v1.1 sulle viste in orbita,
+    con rugosità e metallo riportati sull'atlante come mappa glTF (G rugosità, B metallo). La mappa propria di un
+    materiale (quella di Pixal3D) resta, salvo `--force`.
+  - `image_to_3dlab/pbr_trial.py` e `scripts/pbr_trial.py`: la prova della sezione 6. Prende 30 modelli Poly Haven
+    (CC0, licenza verificata su polyhaven.com/license): metà con il tag del metallo, senza piante né rocce, sempre gli
+    stessi. Li impacchetta in GLB, toglie la mappa vera, la stima di nuovo e confronta sui texel coperti.
+  - La costante di confronto per un asset è la rugosità media degli *altri* asset. Si riporta anche il miglior F1 del
+    metallo con la soglia scelta a posteriori: è un limite ottimistico, non un criterio.
+- **Viste illuminate**: sulle viste senza luce Appearance diceva "metallo" a metà su un bersaglio di sughero (2 asset:
+  rugosità peggio della costante del 96 %, metallo sbagliato sul 75 % dell'area). Il modello legge i materiali dalle
+  ombre, quindi le viste ora possono avere anche un'immagine sotto una luce da studio neutra: colore di base e normal
+  map su un dielettrico con rugosità 0,5, luce dalla camera in alto a sinistra, cielo grigio tenue. Neutra, così
+  nessun riflesso è inventato da noi (`render_views(..., lit=True)`).
+- **Esito con le viste illuminate, 16 asset su 30**:
+
+  | Criterio | Soglia | Risultato |
+  |---|---|---|
+  | Rugosità, RMSE | ≤ 0,15 | 0,247 |
+  | Rugosità, meglio della costante | ≥ 20 % | −4 % (costante 0,238) |
+  | Metallo, F1 a 0,5 | ≥ 0,8 | 0,37 (0,44 con la soglia migliore a posteriori, 0,32) |
+  | Metallo sbagliato | < 5 % dell'area | 58 % |
+
+  Il modello chiama metallo legno, plastica e sughero (ciotola, sedia, cartello) e manca più di metà del metallo del martello da guerra.
+- **Prova fermata a 16 su 30**, perché l'esito era già deciso: anche con i 14 rimasti perfetti, alla fine il metallo
+  resterebbe sbagliato su almeno il 27,7 % dell'area e la rugosità avrebbe RMSE di almeno 0,171. Proseguire avrebbe
+  tenuto la GPU condivisa per un'ora e mezza senza cambiare la risposta.
+- **Conseguenze**:
+  - la rugosità e il metallo restano quelli di Pixal3D;
+  - dove mancano, il ripiego della sezione 4 sono i valori di partenza per materiale, presi dalle zone (PR 3);
+  - lo strumento non compare nella pagina di installazione;
+  - i pesi di Appearance sono stati cancellati (liberati 1,7 GB; encoder del testo e VAE sono condivisi con Lighting);
+  - i 30 asset impacchettati e il rapporto restano in `output/pbr-trial/`, per misurare un modello migliore allo
+    stesso modo.
+- **Limite della prova**: Poly Haven sono scansioni realistiche, il campo più vicino a quello di Marigold. Non passare
+  qui dice già abbastanza per l'arte stilizzata.
 
 ## Seguiti
 
