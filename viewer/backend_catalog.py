@@ -693,15 +693,16 @@ CATALOG: tuple[Backend, ...] = (
     ),
     Backend(
         id="materials-zones",
-        label="Tint zones by material (Qwen3.5 + SAM 3)",
+        label="Tint zones by material (Qwen3.5 + SAM 3, or SAM 2.1)",
         kind="tool",
         best_for=("Splits an asset's colour into its materials (leather, metal, cloth...) so a "
                   "game can recolour each one; the three largest become the tint mask."),
         tradeoff=("Optional, and off until it passes the test against your own labels. SAM 3 "
-                  "is gated: request access on its Hugging Face page first."),
-        license_name="Apache-2.0 (Qwen3.5-4B); SAM License (SAM 3)",
+                  "is gated: request access on its Hugging Face page first; until then SAM 2.1 "
+                  "regions named by Qwen3.5 stand in."),
+        license_name="Apache-2.0 (Qwen3.5-4B, SAM 2.1); SAM License (SAM 3)",
         license_url=_material_models.SAM3.license_url,
-        install="scripts/bootstrap_materials.py --only env,qwen35,sam3",
+        install="scripts/bootstrap_materials.py --only env,qwen35,sam21,sam3",
         runs_on=(NVIDIA,),
         setup_minutes=20,
         caveat=("SAM 3 needs Meta's approval: its Hugging Face page asks for your name, date of "
@@ -719,6 +720,9 @@ CATALOG: tuple[Backend, ...] = (
             WeightSet(_material_models.SAM3.label, _material_models.SAM3.repo, _material_models.SAM3.size,
                       HF_HUB_DIR / "models--facebook--sam3",
                       note="Gated. The transformers files only, at a pinned revision."),
+            WeightSet(_material_models.SAM21.label, _material_models.SAM21.repo, _material_models.SAM21.size,
+                      HF_HUB_DIR / "models--facebook--sam2.1-hiera-large",
+                      note="Apache-2.0, not gated: the fallback until SAM 3 is granted."),
         ),
     ),
     Backend(

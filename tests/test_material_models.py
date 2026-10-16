@@ -111,3 +111,11 @@ def test_a_step_that_failed_its_trial_is_not_offered_in_setup():
     # Marigold-IID Appearance failed the Poly Haven trial (design section 10): no card for it.
     assert "materials-pbr" not in bc.BY_ID
     assert download_api.command_for("materials-pbr", host=bc.NVIDIA) is None
+
+
+def test_tint_zones_install_qwen_both_segmenters_and_warn_about_sam3_access():
+    backend = bc.BY_ID["materials-zones"]
+    assert [w.source for w in backend.weights] == [mm.QWEN35.repo, mm.SAM3.repo, mm.SAM21.repo]
+    assert backend.gated_repo == mm.SAM3.repo and "1.b.v" in backend.caveat
+    command = download_api.command_for("materials-zones", host=bc.NVIDIA)
+    assert command[-3:] == ["--only", "env,qwen35,sam21,sam3", "--yes"]
