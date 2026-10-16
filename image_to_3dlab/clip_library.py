@@ -201,12 +201,32 @@ def source_roles(name: str) -> dict:
     return {"family": None, **SOURCES[name]["roles"], "frame": FRAME}
 
 
+# A looping clip also comes as a take twice as long, made of its own pieces in a new order
+# (`motion_variation`, after GenMM), so a creature does not idle in a two-second loop.
+LONGER = "-long"
+LONGER_FACTOR = 2.0
+LONGER_SEED = 0
+
+
+def variations(name: str) -> list[str]:
+    """The varied motions of a library creature: one longer take of each looping clip."""
+    return [motion + LONGER for motion, (_, loop) in SOURCES[name]["clips"].items() if loop]
+
+
+def base_motion(motion: str) -> str:
+    return motion.removesuffix(LONGER)
+
+
 def motion_record(name: str, motion: str) -> dict:
     """What a clip's provenance says about where its motion came from."""
     src = SOURCES[name]
-    clip, _ = src["clips"][motion]
+    clip, _ = src["clips"][base_motion(motion)]
     sha, _ = MESH2MOTION["files"][f"static/animations/{src['file']}"]
-    return {"made_with": f"chain retarget of a {MESH2MOTION['name']} clip", "source_clip": clip,
-            "source_file": src["file"], "source_sha256": sha, "repo": MESH2MOTION["repo"],
-            "commit": MESH2MOTION["commit"],
-            "license": {"name": MESH2MOTION["license"], "url": MESH2MOTION["license_url"]}}
+    record = {"made_with": f"chain retarget of a {MESH2MOTION['name']} clip", "source_clip": clip,
+              "source_file": src["file"], "source_sha256": sha, "repo": MESH2MOTION["repo"],
+              "commit": MESH2MOTION["commit"],
+              "license": {"name": MESH2MOTION["license"], "url": MESH2MOTION["license_url"]}}
+    if motion != base_motion(motion):
+        record["varied_with"] = (f"GenMM patch synthesis (AssetFurnace's numpy port, Apache-2.0), "
+                                 f"{LONGER_FACTOR:g}x as long, seed {LONGER_SEED}")
+    return record
