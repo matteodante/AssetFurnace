@@ -3,6 +3,8 @@
   "checks": {
     "budget.faces": {"max": 8000},
     "budget.materials": {"warn": 1, "fail": 2},
-    "mesh.holes": {"warn": 2.0, "fail": 5.0}
+    "mesh.holes": {"warn": 2.0, "fail": 5.0},
+    "fit.clipping": {"warn": 3.0, "fail": 10.0, "frames": 8},
+    "fit.holes": {"warn": 2.0, "fail": 5.0, "frames": 8}
   }
 }
