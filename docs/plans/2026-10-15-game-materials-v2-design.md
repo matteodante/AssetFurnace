@@ -1,7 +1,7 @@
 # Funzione 8, materiali pronti per il gioco: progetto v2
 
 Data: 15 ottobre 2026 (aggiornato lo stesso giorno: SAM 3.1, lavori del 2026, video, Qwen3.5, togliere la luce, date).
-Stato: **proposta, in attesa di approvazione**. Niente di nuovo è implementato.
+Stato: **approvato**. PR 1 e 2 unite (#11, #12); PR 4 (luce tolta) in #26; PR 6 (rugosità e metallo) non passa la prova, vedi la sezione 10.
 Sostituisce il metodo di [`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md) (v1), di cui
 tiene l'infrastruttura. La PR [#3](https://github.com/matteodante/AssetFurnace/pull/3) è in bozza e in pausa.
 
@@ -282,7 +282,92 @@ di qualsiasi lavoro lungo). Tutto passa dal lucchetto della GPU condivisa.
 5. **Controllo imparato** della luce cotta: dati sintetici, addestramento, prova contro l'insieme umano.
 6. **Rugosità e metallo stimati** dove mancano: prova su Poly Haven.
 
-Ogni PR passa la review di Codex con le regole correnti (P1 sempre; P2 solo se è un errore visibile; al massimo 2 giri).
+Ogni PR può avere un giro di review di Codex, facoltativo; si correggono solo i P1 veri (regola di `AGENTS.md`).
+
+**Ordine aggiornato il 16/10/2026.** SAM 3 resta bloccato finché l'utente non compila il modulo di accesso su Hugging
+Face (dati personali: lo fa lui). Quindi le PR che non ne dipendono vengono prima: **4 → 6 → 5 → 3**. La PR 3 arriva
+con un'interfaccia del segmentatore pronta a ricevere SAM 3 e il ripiego SAM 2.1 dietro la stessa interfaccia.
+
+## 10. Stato del lavoro
+
+### PR 4, luce tolta (16/10/2026)
+
+Download confermati dall'utente il 16/10/2026 ("permesso per tutto"): Qwen3.5-4B, Marigold-IID v1.1, SigLIP 2.
+
+- **Registro dei modelli** (`image_to_3dlab/material_models.py`): Marigold-IID Lighting e Appearance, Qwen3.5-4B e
+  SAM 3, ognuno con revisione fissata, elenco dei file, dimensione e licenza. Di Marigold si scaricano solo i file
+  fp16 (2,40 GB a modello invece di 9,6). Installazione con `scripts/bootstrap_materials.py`, che annuncia e chiede;
+  SAM 3 viene saltato finché l'account non ha l'accesso.
+- **Ambiente separato** (`vendor/materials/.venv`, 3,1 GB): `diffusers` richiede `huggingface-hub` sotto la 2, e
+  l'ambiente del visore è alla 2.2. Scaricarlo lì avrebbe cambiato le dipendenze di tutti. Marigold gira quindi in un
+  processo a parte (`scripts/materials_worker.py`), come SkinTokens. Dentro ci sono anche `transformers` 5.20 per
+  Qwen3.5 e SAM 3.
+- **Licenza**: i pesi sono CreativeML Open RAIL++-M (il codice di Marigold è Apache-2.0). Le restrizioni d'uso
+  (allegato A) e l'obbligo di passarle a chi riceve i pesi finiscono nella provenienza di ogni risultato; sulle uscite
+  il licenziante non rivendica diritti. Attenzione per la PR 5: un modello addestrato a imitare le uscite di Marigold
+  sarebbe un suo "derivato" con le stesse restrizioni; usare le sue uscite come caratteristiche no.
+- **Metodo**: Marigold risponde a 768 pixel, l'atlante è a 2K, quindi non si sostituisce la texture con il suo albedo.
+  Ogni pixel dice di quanto il suo albedo è più chiaro o più scuro del colore mostrato (un guadagno di luminanza). I
+  guadagni si lisciano **nella vista** (2 % del lato), dove la superficie è continua: Marigold legge anche il dettaglio
+  dipinto fine (profili, incisioni) come ombreggiatura, e deve andare via solo la luce larga. Poi si riportano sulle UV
+  con il pezzo comune, si lisciano poco dentro ogni isola, si prendono rispetto alla mediana (la luminosità complessiva
+  del modello non è affidabile su arte stilizzata) e si limitano a 3 volte. La texture a piena risoluzione si
+  moltiplica per il guadagno: tinta e dettaglio dipinto restano. Stesso metodo sul concept, prima del 3D
+  (`delight_image`).
+- **Prova vera** (cavaliere di `output/compare-20261015`, 18 viste a 768 px): Marigold 42,8 s sulla 5070 Ti, il render
+  in Blender pochi secondi. Il riflesso dipinto sul pettorale e le luci di contorno su spalle e ginocchia si attenuano,
+  profili e incisioni restano. Senza il liscio nella vista i guadagni toccavano i limiti (×1/3 e ×3) e appiattivano il
+  dettaglio; con il liscio il 95° percentile scende a ×1,78. Il 5° resta a ×1/3: le zone più chiare dipinte vengono
+  scurite molto, ed è proprio ciò che la prova della sezione 6 deve giudicare.
+- **Correzione al pezzo comune** (PR 1): le camere delle viste ad anello ruotavano attorno al proprio asse
+  (`to_track_quat("-Z", "Z")`, il "su" era l'asse stesso di mira), e il cavaliere compariva sdraiato in metà delle viste.
+  Per il riporto sulle UV non contava; per un modello 2D sì. Ora la base della camera è costruita a mano con il "su" del
+  mondo, e l'inquadratura segue il contorno del modello visto da ogni camera (il cavaliere passa dal 65 % a circa il
+  95 % dell'altezza).
+- **Lucchetto della GPU** in codice (`image_to_3dlab/gpu_lock.py`): preso solo attorno al processo di Marigold, non
+  durante il render in Blender (CPU) né le installazioni.
+- **Non ammesso**: il passo si usa solo se chiesto (`scripts/delight_materials.py`), e il file accanto al GLB lo
+  dichiara (`admitted: false`). Entra quando supera la prova della sezione 6 (ombre dipinte sotto luce laterale),
+  che richiede l'insieme etichettato.
+
+### PR 6, rugosità e metallo stimati (16/10/2026): **non passa**
+
+- **Cosa c'è**:
+  - `image_to_3dlab/pbr_estimate.py` e `scripts/estimate_pbr.py`: Marigold-IID Appearance v1.1 sulle viste in orbita,
+    con rugosità e metallo riportati sull'atlante come mappa glTF (G rugosità, B metallo). La mappa propria di un
+    materiale (quella di Pixal3D) resta, salvo `--force`.
+  - `image_to_3dlab/pbr_trial.py` e `scripts/pbr_trial.py`: la prova della sezione 6. Prende 30 modelli Poly Haven
+    (CC0, licenza verificata su polyhaven.com/license): metà con il tag del metallo, senza piante né rocce, sempre gli
+    stessi. Li impacchetta in GLB, toglie la mappa vera, la stima di nuovo e confronta sui texel coperti.
+  - La costante di confronto per un asset è la rugosità media degli *altri* asset. Si riporta anche il miglior F1 del
+    metallo con la soglia scelta a posteriori: è un limite ottimistico, non un criterio.
+- **Viste illuminate**: sulle viste senza luce Appearance diceva "metallo" a metà su un bersaglio di sughero (2 asset:
+  rugosità peggio della costante del 96 %, metallo sbagliato sul 75 % dell'area). Il modello legge i materiali dalle
+  ombre, quindi le viste ora possono avere anche un'immagine sotto una luce da studio neutra: colore di base e normal
+  map su un dielettrico con rugosità 0,5, luce dalla camera in alto a sinistra, cielo grigio tenue. Neutra, così
+  nessun riflesso è inventato da noi (`render_views(..., lit=True)`).
+- **Esito con le viste illuminate, 16 asset su 30**:
+
+  | Criterio | Soglia | Risultato |
+  |---|---|---|
+  | Rugosità, RMSE | ≤ 0,15 | 0,247 |
+  | Rugosità, meglio della costante | ≥ 20 % | −4 % (costante 0,238) |
+  | Metallo, F1 a 0,5 | ≥ 0,8 | 0,37 (0,44 con la soglia migliore a posteriori, 0,32) |
+  | Metallo sbagliato | < 5 % dell'area | 58 % |
+
+  Il modello chiama metallo legno, plastica e sughero (ciotola, sedia, cartello) e manca più di metà del metallo del martello da guerra.
+- **Prova fermata a 16 su 30**, perché l'esito era già deciso: anche con i 14 rimasti perfetti, alla fine il metallo
+  resterebbe sbagliato su almeno il 27,7 % dell'area e la rugosità avrebbe RMSE di almeno 0,171. Proseguire avrebbe
+  tenuto la GPU condivisa per un'ora e mezza senza cambiare la risposta.
+- **Conseguenze**:
+  - la rugosità e il metallo restano quelli di Pixal3D;
+  - dove mancano, il ripiego della sezione 4 sono i valori di partenza per materiale, presi dalle zone (PR 3);
+  - lo strumento non compare nella pagina di installazione;
+  - i pesi di Appearance sono stati cancellati (liberati 1,7 GB; encoder del testo e VAE sono condivisi con Lighting);
+  - i 30 asset impacchettati e il rapporto restano in `output/pbr-trial/`, per misurare un modello migliore allo
+    stesso modo.
+- **Limite della prova**: Poly Haven sono scansioni realistiche, il campo più vicino a quello di Marigold. Non passare
+  qui dice già abbastanza per l'arte stilizzata.
 
 ## Seguiti
 

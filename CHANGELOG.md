@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Roughness and metallic estimated where an asset has none, not yet admitted
+  (`image_to_3dlab/pbr_estimate.py`, `scripts/estimate_pbr.py`): Marigold-IID Appearance v1.1
+  on the orbit of unlit views, carried back to the atlas as a glTF metallic-roughness map; an
+  asset's own map is kept. `scripts/pbr_trial.py` scores it against the true maps of Poly
+  Haven CC0 models. It failed (roughness no better than a constant, metal wrong on 58% of the
+  area), so Setup does not offer it.
+- Baked-light removal, not yet admitted (`image_to_3dlab/delight.py`,
+  `scripts/delight_materials.py`): Marigold-IID Lighting v1.1 (Open RAIL++-M) takes the light
+  painted into a GLB's base colour back out, through the orbit of unlit views, or out of a
+  concept before the 3D. Only luminance moves, relative to its median, at most 3x; the
+  provenance names the model and its use restrictions. Off unless asked for until it passes
+  the test against the user's labels.
+- Game-material models (`image_to_3dlab/material_models.py`, `scripts/bootstrap_materials.py`):
+  Marigold-IID Lighting and Appearance, Qwen3.5-4B and SAM 3 pinned with licence and size,
+  installed into their own environment (`vendor/materials/.venv`) only after a yes; SAM 3 is
+  skipped until its owner has been granted access. Setup lists baked-light removal as a tool.
+- Shared GPU lock in code (`image_to_3dlab/gpu_lock.py`): held only while a job computes,
+  released on error, a dead holder's lock taken over.
+- From a reference to a concept, first part (`image_to_3dlab/concept/`): the words for the
+  four ways of drawing from a reference (redraw from a structure map with the colours in
+  words, dress the base body, add a piece to it, another view of the same creature), the
+  sd-cli edit arguments of Qwen-Image 2.1 (vision file and reference pictures), and the
+  `<image>.concept.json` record of which pictures shaped a concept.
+- From a reference to a concept, input maps (`image_to_3dlab/concept/maps.py`,
+  `scripts/blender_concept_views.py`): a lit colour picture and a depth map of a GLB per
+  view (front, side, back), rendered by Blender on the CPU; depth stretched onto black;
+  lineart of a picture; an OpenPose map from a rig named like the UE mannequin or SOMA,
+  or from a joint-to-bone table for numbered bones.
 - Creature clip library, second part: `scripts/chain_retarget.py` carries the library's idle,
   walk, attack, hit, death, fly and glide clips onto auto-rigged creatures chain by chain, and
   `creature_clips.py` writes them before the procedural clips, each with its CC0 source in
@@ -110,6 +138,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
 
 ### Fixed
+- Pictures are sharp again: text to image now runs the Qwen-Image 2.1 Turbo checkpoint with
+  its own schedule (`--sigmas qwen-image-2.1-turbo`, cfg 1.0) at 1024 px. It used to run
+  the base checkpoint with the Turbo's numbers (8 steps, cfg 1.0), which stopped the
+  sampler half way: soft pictures with frayed edges and ghost shapes, worst with reference
+  pictures. Setup now fetches the Turbo weights (7.6 GB) instead of the base ones.
 - A character is faced across its hips, not along its feet: a werewolf whose feet turned out
   unevenly was exported to Unreal turned 17 degrees off its body. The Unreal check also
   records the feet's and knees' sideways gap over the retargeted walk (and Manny's), and fails
