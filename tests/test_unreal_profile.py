@@ -719,3 +719,9 @@ def test_the_walk_check_says_when_the_feet_cross():
     check = {r["check"]: r for r in crossing}
     assert check["walk_feet"]["ok"] is False and "cross" in check["walk_feet"]["detail"]
     assert {r["check"]: r for r in apart}["walk_feet"]["ok"] is True
+
+
+def test_a_gltf_direction_becomes_a_blender_one():
+    assert up.gltf_to_blender([0, 0, 1]) == pytest.approx([0, -1, 0])  # glTF's front is Blender's -Y
+    assert up.gltf_to_blender([0, 1, 0]) == pytest.approx([0, 0, 1])
+    assert up.gltf_to_blender([1, 0, 0]) == pytest.approx([1, 0, 0])

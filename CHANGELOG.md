@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Export for Unreal turns a creature that is not a humanoid to face forward from its family file
+  (a drake generated facing between two axes no longer arrives turned), and records the
+  family in the export job; its library, procedural and `-long` clips go along as
+  `AS_<Name>_<Family><Move>`.
 - FLUX.2 klein 4B in Setup & Status: an Apache-2.0 image editor for the sd-cli already
   installed, three files (12.3 GB), fetched only on request by
   `scripts/bootstrap_flux2_klein.py`. The VAE is BFL's Apache-2.0 small decoder, not

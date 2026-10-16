@@ -255,6 +255,12 @@ def ground_offset(box_min: Iterable[float], box_max: Iterable[float],
     return (-float(cx), -float(cy), -float(lo[2]))
 
 
+def gltf_to_blender(direction: Iterable[float]) -> list[float]:
+    """A direction in glTF space (Y up, +Z front) as Blender imports it (Z up, -Y front)."""
+    x, y, z = (float(v) for v in direction)
+    return [x, -z, y]
+
+
 def yaw_to_face_front(forward: Iterable[float]) -> float:
     """Radians about Z that turn `forward` to Blender's -Y, which Unreal imports as +Y."""
     x, y = list(forward)[:2]

@@ -462,3 +462,28 @@ def test_real_blender_writes_one_clean_convex_hull(tmp_path):
     # A closed convex shell made of triangles has exactly 2V - 4 of them; an old surface
     # left inside it would add more.
     assert triangles == 2 * corners - 4
+
+
+def test_a_creature_faces_the_way_its_family_file_says(files):
+    """A drake facing between +X and +Z in glTF: without its family's forward, Unreal would
+    get it turned by half a right angle. glTF (x, y, z) is Blender (x, -z, y)."""
+    from image_to_3dlab import creature_family as cf
+
+    rig = files["rig"] / "Wolf_9k_rigged.glb"
+    cf.write_family(rig, {"family": "winged", "frame": {"up": [0, 1, 0], "forward": [-0.6, 0, 0.8],
+                                                         "left": [0.8, 0, 0.6]}})
+    p = ex.plan(rig, kind="creature", size_cm=120)
+    assert p["job"]["forward"] == pytest.approx([-0.6, -0.8, 0.0])
+    assert p["job"]["family"] == "winged"
+    told = ex.plan(rig, kind="creature", size_cm=120, forward=(1.0, 0.0, 0.0))
+    assert told["job"]["forward"] == [1.0, 0.0, 0.0]  # a forward given by hand wins
+
+
+def test_a_creature_without_a_family_file_keeps_the_default_facing(files):
+    p = ex.plan(files["rig"] / "Wolf_9k_rigged.glb", kind="creature", size_cm=120)
+    assert p["job"]["forward"] == [0.0, -1.0, 0.0] and p["job"]["family"] is None
+
+
+def test_an_objects_facing_ignores_any_family_file(files):
+    p = ex.plan(files["props"] / "prop_01_LOD0.glb", kind="prop", size_cm=60, measure="longest")
+    assert p["job"]["forward"] == [0.0, -1.0, 0.0]
