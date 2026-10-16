@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces on more bodies and in Unreal: `slot_parts.py refit` carries a fitted
+  set over to another base body (each piece moved from its slot's region on the first body
+  to the same region on the second, then the same cage fit, weights and mask; no new images
+  or 3D), and `slot_parts.py unreal` exports a fitted set for Unreal 5.8 with
+  `export_unreal.py`, the body and every piece on one Skeleton, with
+  `<body>.unreal-set.json` (Leader Pose, the body's opacity mask from its vertex alpha).
+  The Unreal exporter keeps a `covered` vertex colour. In mode 3 the outfit is now added to
+  the bodysuit (`add_piece`) instead of dressing the whole body, so slots left out stay bare.
 - Characters in pieces in the studio: a **Pieces** page with the three ways to make a
   character (one piece through + Create; a dressed character split into pieces; a bare base
   body with sets of equipment), base bodies registered from rigged humanoids in the Library,
