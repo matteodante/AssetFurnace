@@ -107,7 +107,7 @@ def test_a_bigger_creature_facing_elsewhere_moves_the_same_way():
             assert np.allclose(turn90 @ (2.0 * a[bone]), b["t_" + bone], atol=1e-5), bone
 
 
-def test_a_planted_foot_stays_planted_on_a_leg_of_other_proportions():
+def test_a_planted_foot_stays_on_the_ground_on_a_leg_of_other_proportions():
     src_rig, src_roles = _quadruped()
     frames = []
     for k in range(5):  # the body sinks and rises over planted feet: only the knees bend
@@ -130,7 +130,12 @@ def test_a_planted_foot_stays_planted_on_a_leg_of_other_proportions():
         posed = _posed(rig, got)
         for leg in roles["legs"]:
             tip = leg["bones"][-1]
-            assert np.allclose(posed[tip], rig.heads[tip], atol=2e-3), tip
+            length = sum(np.linalg.norm(rig.heads[b] - rig.heads[a]) for a, b in zip(leg["bones"], leg["bones"][1:]))
+            assert abs(posed[tip][1] - rig.heads[tip][1]) < 0.005 * length, tip  # on the ground
+            # and held where it touched down, though the turned leg alone would drift: within the
+            # little lag of a foot that moves by at most `STEP` per frame (this body sinks by 5%
+            # of a leg every frame, far faster than any real clip)
+            assert np.linalg.norm((posed[tip] - rig.heads[tip])[[0, 2]]) < 0.02 * length, tip
             for a, b in zip(leg["bones"], leg["bones"][1:]):
                 assert np.isclose(np.linalg.norm(posed[b] - posed[a]), np.linalg.norm(rig.heads[b] - rig.heads[a]))
 
@@ -275,3 +280,39 @@ def test_the_library_spider_has_all_eight_legs():
 
     legs = cl.SOURCES["spider"]["roles"]["legs"]
     assert len(legs) == 8 and len({leg["bones"][0] for leg in legs}) == 8
+
+
+def test_a_source_foot_far_below_its_rest_is_not_on_the_ground():
+    """A drake's feet hang below their standing height in flight; taken for planted, they
+    were pulled down and its legs folded across each other."""
+    assert cr.contact(0.0, 1.0) == 1.0 and cr.contact(0.2, 1.0) == 0.0
+    assert cr.contact(-0.2, 1.0) == 0.0
+
+
+def test_a_foot_goes_through_the_ground_only_where_the_source_foot_does():
+    assert np.isclose(cr.above_ground(np.array([0.3, -0.1, 0.5]), 0.0, 0.02, UP)[1], 0.0)
+    assert np.isclose(cr.above_ground(np.array([0.3, 0.1, 0.5]), 0.0, 0.3, UP)[1], 0.1)  # lifted: left alone
+    assert np.isclose(cr.above_ground(np.array([0.3, -0.1, 0.5]), 0.0, -0.2, UP)[1], -0.1)
+
+
+def test_a_foot_offset_never_leaps():
+    """Holding a planted foot and letting it go are two targets that can be 60% of a leg
+    apart; the foot moves between them a little each frame, never in one jump."""
+    start, far = np.zeros(3), np.array([0.6, 0.0, 0.0])
+    assert np.allclose(cr.approach(start, far, 0.03), [0.03, 0, 0])
+    assert np.allclose(cr.approach(start, np.array([0.01, 0, 0]), 0.03), [0.01, 0, 0])
+
+
+def test_feet_stay_on_their_own_side_of_the_body():
+    """A drake tucks its front legs in flight; on a rig whose feet stand closer together the
+    same turn crossed them through each other."""
+    src_rig, src_roles = _quadruped()
+    frames = [({"frontL0": cm.axis_angle(FORWARD, -40.0 * k / 5), "frontR0": cm.axis_angle(FORWARD, 40.0 * k / 5)},
+               src_rig.heads["hips"] + UP * 0.5) for k in range(6)]  # up in the air, legs swinging inwards
+    rig, roles = _quadruped(prefix="t_")
+    for leg in roles["legs"]:  # the rig's feet stand nearer the middle
+        for b in leg["bones"][1:]:
+            rig.heads[b] = rig.heads[b] * np.array([0.3, 1, 1])
+    for turn, root in cr.retarget(rig, roles, _source(src_rig, src_roles, frames)):
+        posed = _posed(rig, (turn, root))
+        assert posed["t_frontL3"][0] > 0 > posed["t_frontR3"][0]

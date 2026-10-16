@@ -12,8 +12,9 @@ same list of frames `(turn, root)` as `creature_motion`, which `creature_clips.p
   posture and only moves the way the source moves.
 * **Limbs** (legs, arms, wings) turn the same way, so they keep their own rest shape: forcing
   the source's shape onto them stretched the skin before the clip even moved (1-5% of the
-  edges on a werewolf and a spider). A leg is then solved so its tip goes where the
-  source's tip goes, scaled like the body: a planted foot stays put.
+  edges on a werewolf and a spider). A leg is then solved so its foot stands at the
+  source's height above the ground, scaled like the body, wherever its turned leg puts it
+  along the ground.
 * **The root** moves like the source's matching point, scaled by leg length (or body
   length when there are no legs). Bones on no chain follow their parents.
 
@@ -36,6 +37,10 @@ BODY_CHAINS = ("spine", "neck", "tail", "body")
 # A source foot this far above its rest height, as a fraction of its leg, is on the ground
 # (first) or lifted (second); in between the two rules blend.
 CONTACT = (0.02, 0.08)
+# Each frame a lifted foot keeps this much of the offset that held it in place.
+RELEASE = 0.8
+# and the offset moves by at most this fraction of the leg's length per frame.
+STEP = 0.03
 
 
 @dataclass
@@ -196,6 +201,7 @@ def retarget(rig: Rig, roles: dict, source: Source) -> list[tuple[dict, np.ndarr
     anchor = _anchor(rig, pairs, src_rest)
 
     frames = []
+    locks: dict[str, tuple] = {}  # per leg: its foot's offset, and where it touched down
     for pose in source.poses:
         delta = {b: _rot(m) @ src_rest_rot[b].T for b, m in pose.items() if b in src_rest_rot}
         posed = {b: m[:3, 3] for b, m in pose.items()}
@@ -220,8 +226,10 @@ def retarget(rig: Rig, roles: dict, source: Source) -> list[tuple[dict, np.ndarr
             heads[b] = root if p is None else heads[p] + total[p] @ (rig.heads[b] - rig.heads[p])
             if b in limbs:
                 kind, mine, theirs = limbs[b]
+                rest_left = np.asarray(roles["frame"]["left"], float)
+                midline = (heads[rig.order[0]], total[rig.order[0]] @ rest_left, rest_left)
                 total.update(_limb(rig, kind, mine, theirs, heads[b], inherited, source, src_rest, posed, delta,
-                                   convert, scale, s_up))
+                                   convert, scale, s_up, locks, midline))
             if b not in total:
                 total[b] = inherited
                 inherits.add(b)
@@ -311,9 +319,49 @@ def _heading(src: np.ndarray, tgt: np.ndarray, up: np.ndarray) -> np.ndarray:
     return np.eye(3) + math.sin(angle) * k + (1 - math.cos(angle)) * k @ k
 
 
-def _limb(rig, kind, mine, theirs, start, inherited, source, src_rest, posed, delta, convert, scale, s_up):
-    """A limb turns like a body chain, so it keeps its own shape; a leg is then solved so its
-    tip goes where the source's tip goes, scaled like the body: a planted foot stays put.
+def above_ground(foot: np.ndarray, rest_height: float, lift: float, up: np.ndarray) -> np.ndarray:
+    """`foot`, lifted to the ground if it went through it. A source foot below its rest height
+    (a body lying down, a creature on a slope) lets it go as low."""
+    up = _unit(np.asarray(up, float))
+    own = float(foot @ up)
+    return foot + max(0.0, rest_height + min(lift, 0.0) - own) * up
+
+
+def approach(current: np.ndarray, wanted: np.ndarray, step: float) -> np.ndarray:
+    """`current` moved towards `wanted` by at most `step`."""
+    gap = wanted - current
+    n = float(np.linalg.norm(gap))
+    return wanted if n <= step else current + gap * (step / n)
+
+
+def own_side(foot: np.ndarray, rest_offset: np.ndarray, centre: np.ndarray, left: np.ndarray,
+             rest_left: np.ndarray) -> np.ndarray:
+    """`foot` kept on its own side of the body, at least a third as far out as at rest. The
+    same tuck that keeps a drake's front feet apart crossed them on a rig whose feet stand
+    closer together."""
+    out = float(rest_offset @ rest_left)
+    if abs(out) < 1e-9:
+        return foot
+    margin = np.sign(out) * abs(out) / 3
+    lateral = float((foot - centre) @ left)
+    if np.sign(out) * (lateral - margin) >= 0:
+        return foot
+    return foot + (margin - lateral) * left
+
+
+def contact(lift: float, length: float) -> float:
+    """How much a source foot `lift` above its rest height is on the ground: 1 near it, 0
+    clear of it, above or below (a flying creature's feet hang below their standing height)."""
+    lifted = abs(lift) / max(length, 1e-9)
+    return float(np.clip((CONTACT[1] - lifted) / (CONTACT[1] - CONTACT[0]), 0.0, 1.0))
+
+
+def _limb(rig, kind, mine, theirs, start, inherited, source, src_rest, posed, delta, convert, scale, s_up,
+          locks, midline):
+    """A limb turns like a body chain, so it keeps its own shape. A leg is then solved so its
+    foot stands at the source's height; while the source's foot is on the ground it is held
+    where it touched down (a turned leg of other proportions would let it drift), and as it
+    lifts off it goes back to where the turned leg puts it.
 
     Only the limb's own motion, relative to the body it hangs from, is turned to its
     heading; the body's turn (`inherited`) is then put back on top unchanged. Turning the
@@ -330,12 +378,32 @@ def _limb(rig, kind, mine, theirs, start, inherited, source, src_rest, posed, de
     pts = [np.asarray(start, float)]
     for a, b in pairwise(mine):
         pts.append(pts[-1] + out[_owner(rig.parents, a, b)] @ (rig.heads[b] - rig.heads[a]))
-    # A foot the source keeps on the ground moves like the source's, scaled like the body,
-    # so it does not slide; a lifted one goes where its turned leg puts it.
-    moved = posed[theirs[-1]] - src_rest[theirs[-1]]
-    lifted = float(moved @ s_up) / max(_chain_length(src_rest, theirs), 1e-9)
-    w = float(np.clip((CONTACT[1] - lifted) / (CONTACT[1] - CONTACT[0]), 0.0, 1.0))
-    tip = w * (rig.heads[mine[-1]] + scale * (convert @ moved)) + (1 - w) * pts[-1]
+    # A foot the source keeps on the ground stands at the source's height, scaled like the
+    # body; a lifted one goes where its turned leg puts it, but never lower.
+    lift = float((posed[theirs[-1]] - src_rest[theirs[-1]]) @ s_up)
+    w = contact(lift, _chain_length(src_rest, theirs))
+    t_up = _unit(convert @ s_up)
+    # The foot sits at an offset from where the turned leg puts it. On the ground the offset
+    # aims to hold it where it touched down (moving only as the source's foot moves since)
+    # at the source's scaled height; lifted, it dies away. Either way it moves by at most a
+    # little each frame: snapping between the two made feet leap as they lifted off or
+    # touched down (by 12-17% of a werewolf's height in one frame).
+    turned = pts[-1]
+    offset, lock = locks.get(mine[0], (np.zeros(3), None))
+    height = float(rig.heads[mine[-1]] @ t_up)
+    if w > 0:
+        if lock is None:
+            lock = (turned + offset, posed[theirs[-1]].copy())
+        held, then = lock
+        target = held + scale * (convert @ (posed[theirs[-1]] - then))
+        target = target + (height + scale * lift - float(target @ t_up)) * t_up
+        wanted = w * (target - turned) + (1 - w) * offset * RELEASE
+    else:
+        lock, wanted = None, offset * RELEASE
+    offset = approach(offset, wanted, STEP * _chain_length(rig.heads, mine))
+    locks[mine[0]] = (offset, lock)
+    tip = own_side(turned + offset, rig.heads[mine[-1]] - rig.heads[rig.order[0]], *midline)
+    tip = above_ground(tip, height, scale * lift, t_up)
     solved = fabrik(pts, tip)
     for j, (a, b) in enumerate(pairwise(mine)):
         have, want = pts[j + 1] - pts[j], solved[j + 1] - solved[j]
