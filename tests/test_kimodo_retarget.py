@@ -432,3 +432,19 @@ def test_feet_turned_out_unevenly_do_not_turn_the_character():
     hips = [heads[roles["Lleg"]], heads[roles["Rleg"]]]
     frame = kr.character_frame(heads, [roles["Ltoe"], roles["Rtoe"]], [roles["Lfoot"], roles["Rfoot"]], hips=hips)
     assert np.allclose(frame[:, 2], [0, 1, 0], atol=1e-9)
+
+
+def test_legs_under_one_pelvis_bone_are_still_legs():
+    """SkinTokens rigged a woman with one pelvis bone under the root and both legs below it."""
+    parents, heads, roles = _humanoid()
+    pelvis = "pelvis_hub"
+    parents["pelvis_top"] = roles["hips"]  # two levels down, as on the real rig
+    heads["pelvis_top"] = np.array([0.0, 0.0, 0.98])
+    parents[pelvis] = "pelvis_top"
+    heads[pelvis] = np.array([0.0, 0.0, 0.97])
+    for lr in ("L", "R"):
+        parents[roles[f"{lr}leg"]] = pelvis
+    m, _ = kr.map_skintokens_to_soma(parents, heads)
+    plain, _ = kr.map_skintokens_to_soma(*_humanoid()[:2])
+    assert m[roles["Lleg"]] == plain[roles["Lleg"]] and m[roles["Rtoe"]] == "RightToeBase"
+    assert m[pelvis] == "Hips"

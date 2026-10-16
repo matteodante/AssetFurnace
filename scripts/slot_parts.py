@@ -9,6 +9,10 @@
         --seeds 3,7,11 [--images-only | --models-only --pick helmet=7,boots=3]
     python scripts/slot_parts.py fit --pieces output/sets/red-knight/knight/pieces/pieces.json \
         --body output/bodies/knight/body.json [--out output/sets/red-knight/knight/fit]
+    python scripts/slot_parts.py refit --fit output/sets/red-knight/knight/fit \
+        --from output/bodies/knight/body.json --body output/bodies/elf-female/body.json
+    python scripts/slot_parts.py unreal --fit output/sets/red-knight/knight/fit \
+        --body output/bodies/knight/body.json [--size-cm 180]
     python scripts/slot_parts.py run --body output/bodies/knight/body.json --set red-knight \
         --outfit "crimson and gold plate armour" --slots helmet,torso,shoulders:split,gloves,boots \
         [--weapon "a longsword"] [--shield "a kite shield"] [--concept concept.png]
@@ -43,6 +47,15 @@ the concept on the body (Qwen edit with the body picture, `--outfit` words) unle
 (`--weapon`, `--shield`), the fit, the checks (`fit.clipping`, `fit.holes` and the rest of
 the `equipment_part` profile; every piece goes to the review queue) and
 `<set>.parts.json`. Everything lands in `output/sets/<set>/<body>/`.
+
+`refit` carries a fitted set over to another registered body: each piece moves from its
+slot's region on the first body to the same region on the second (box onto box), then the
+same cage fit, weights and mask run on the new body; output in `<set>/<new body>/fit/`.
+Images and 3D are not made again.
+
+`unreal` exports a fitted set for Unreal 5.8 with `export_unreal.py`: the masked body as a
+creature, every piece as equipment on the body's Skeleton, and `<body>.unreal-set.json` with
+how to assemble them (Leader Pose, the body's opacity mask from its vertex alpha).
 
 `fit` writes a Blender job and runs `blender_fit_parts.py` headless: each piece placed on
 the body from its box, paired pieces per side, a cage fit, skin weights from the body (one
@@ -278,13 +291,14 @@ def make_concept(body_json: Path, outfit: str, folder: Path, seeds: list[int], s
     from image_to_3dlab.concept import prompts, sidecar
 
     record = body_mod.load(body_json)
-    prompt = prompts.dress(outfit, guide="body", style=style)
+    # add, not dress: the chosen pieces drawn on the bodysuit, the rest of the body left as it is
+    prompt = prompts.add_piece(outfit, style=style)
     folder.mkdir(parents=True, exist_ok=True)
     for seed in seeds:
         picture = folder / f"s{seed}.png"
         command = edit(prompt, Path(record["image"]), picture, seed)
         run(command)
-        sidecar.write(picture, mode="dress", prompt=prompt, seed=seed, command=command,
+        sidecar.write(picture, mode="add_piece", prompt=prompt, seed=seed, command=command,
                       references=[(Path(record["image"]), "shape")], inputs={"body": record["name"]})
     return folder / f"s{seeds[0]}.png", {"prompt": prompt, "seed": seeds[0], "seeds": list(seeds)}
 
@@ -334,6 +348,60 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
                                  concept_info=concept_info, chosen=chosen, pieces=made, fit=fit_report, checks=checks,
                                  matte=cut.get("subject_from"))
     return sidecar.write(folder, set_name, parts)
+
+
+def refit_job(fit_dir: Path, source_body: Path, body_json: Path, out: Path) -> dict:
+    """The job that moves a fitted set onto another body: every fitted piece, carried over."""
+    report = json.loads((Path(fit_dir) / "fit.json").read_text())
+    pieces_out = []
+    for name in report["files"]:
+        if name in ("set.glb", "preview.glb", "body_masked.glb", "body_trimmed.glb"):
+            continue
+        stem = Path(name).stem
+        slot = stem.removesuffix("_L").removesuffix("_R")
+        pieces_out.append({"slot": slot, "glb": str((Path(fit_dir) / name).resolve()), "transfer": True})
+    if not pieces_out:
+        raise ValueError(f"{fit_dir} holds no fitted pieces")
+    return {"body": str(Path(body_json).resolve()), "source_body": str(Path(source_body).resolve()),
+            "concept_size": [1, 1], "out": str(Path(out).resolve()), "pieces": pieces_out}
+
+
+def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0, exporter=None) -> Path:
+    """The body and every piece of a fitted set for Unreal 5.8, sharing one Skeleton, and a
+    `<body>.unreal-set.json` saying how to put them together."""
+    if exporter is None:
+        sys.path.insert(0, str(REPO / "scripts"))
+        from export_unreal import export_unreal as exporter
+    record = body_mod.load(body_json)
+    report = json.loads((Path(fit_dir) / "fit.json").read_text())
+    base = "".join(part.capitalize() for part in record["name"].replace("_", "-").split("-"))
+    body_glb = Path(fit_dir) / "body_masked.glb"
+    exported = {"body": exporter(body_glb, kind="creature", size_cm=size_cm, name=base, out_dir=Path(out) / base)}
+    pieces_out = {}
+    for name in report["files"]:
+        if name in ("set.glb", "preview.glb", "body_masked.glb", "body_trimmed.glb"):
+            continue
+        piece = "".join(part.capitalize() for part in Path(name).stem.split("_"))
+        pieces_out[Path(name).stem] = exporter(Path(fit_dir) / name, kind="equipment", size_cm=size_cm,
+                                               name=f"{base}{piece}", body=body_glb, body_name=base,
+                                               out_dir=Path(out) / f"{base}{piece}")
+    summary = {
+        "body": record["name"], "size_cm": size_cm, "skeleton": f"SK_{base}_Skeleton",
+        "meshes": {"body": exported["body"]["glb"], **{k: v["glb"] for k, v in pieces_out.items()}},
+        "problems": {k: v.get("problems", []) for k, v in {"body": exported["body"], **pieces_out}.items()},
+        "how": [
+            "Import the body first, then each piece on the body's Skeleton (each .unreal.json says so).",
+            ("Put every piece on a Skeletal Mesh Component under the body's and call SetLeaderPoseComponent(body) "
+             "on it, so the pieces follow the body's animation with no cost of their own."),
+            ("The body carries a vertex colour: alpha 0 where a piece covers the skin. In the body's material, "
+             "plug Vertex Color alpha into Opacity Mask (blend mode Masked) to hide the body under the armour."),
+            "The weapon and shield are skinned to one bone (the hand, the forearm) at 100%: no socket needed.",
+        ],
+    }
+    path = Path(out) / f"{record['name']}.unreal-set.json"
+    Path(out).mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(summary, indent=1) + "\n")
+    return path
 
 
 def fit_job(pieces_json: Path, body_json: Path, out: Path, options: dict | None = None) -> dict:
@@ -417,9 +485,28 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--seeds", default="3")
     r.add_argument("--style", default="")
     r.add_argument("--root", type=Path, default=Path("output/sets"))
+    rf = sub.add_parser("refit", help="carry a fitted set over to another base body")
+    rf.add_argument("--fit", type=Path, required=True, help="the fit/ folder of the set on its first body")
+    rf.add_argument("--from", type=Path, required=True, dest="source", help="body.json of that first body")
+    rf.add_argument("--body", type=Path, required=True, help="body.json of the body to carry it to")
+    rf.add_argument("--out", type=Path, help="default: <set>/<new body>/fit")
+    rf.add_argument("--blender", type=Path)
+    un = sub.add_parser("unreal", help="export a fitted set for Unreal 5.8, one Skeleton for all")
+    un.add_argument("--fit", type=Path, required=True)
+    un.add_argument("--body", type=Path, required=True)
+    un.add_argument("--size-cm", type=float, default=180.0, help="the body's real height")
+    un.add_argument("--out", type=Path, help="default: unreal/ beside fit/")
     args = p.parse_args(argv)
     try:
-        if args.command == "run":
+        if args.command == "refit":
+            name = body_mod.load(args.body)["name"]
+            out = args.out or args.fit.parent.parent / name / "fit"
+            report = run_fit(refit_job(args.fit, args.source, args.body, out), args.blender)
+            print(f"carried {', '.join(report['pieces'])} over to {name}; body covered {report['covered_share']:.0%}")
+        elif args.command == "unreal":
+            path = unreal_set(args.fit, args.body, args.out or args.fit.parent / "unreal", args.size_cm)
+            print(f"wrote {path}")
+        elif args.command == "run":
             slot_text = json.loads(args.slots_json.read_text()) if args.slots_json else args.slots
             path = run_set(args.body, args.set_name, slot_text, args.outfit, args.concept, args.weapon, args.shield,
                            [int(s) for s in args.concept_seeds.split(",") if s.strip()],

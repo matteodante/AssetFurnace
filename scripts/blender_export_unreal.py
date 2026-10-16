@@ -418,11 +418,21 @@ def run(job):
     out = Path(job["out"])
     out.parent.mkdir(parents=True, exist_ok=True)
     exported_animations = bool(skinned and report["animations"])
+    # A base body fitted with armour carries a `covered` vertex colour (alpha 0 under the
+    # pieces) that the game's material reads as an opacity mask; Blender exports colours only
+    # when a material uses them, so it is asked for by name here and for nothing else.
+    colours = {}
+    if any(o.type == "MESH" and o.data.color_attributes.get("covered") for o in bpy.context.scene.objects):
+        for o in bpy.context.scene.objects:
+            if o.type == "MESH" and o.data.color_attributes.get("covered"):
+                o.data.color_attributes.active_color = o.data.color_attributes["covered"]
+        colours = {"export_vertex_color": "ACTIVE"}
+        report["vertex_colour"] = "covered"
     bpy.ops.export_scene.gltf(
         filepath=str(out), export_format="GLB", export_yup=True,
         export_animations=exported_animations,
         **({"export_animation_mode": "NLA_TRACKS"} if exported_animations else {}),
-        export_skins=skinned, export_cameras=False, export_lights=False, export_extras=False)
+        export_skins=skinned, export_cameras=False, export_lights=False, export_extras=False, **colours)
     report["blender"] = bpy.app.version_string
     return report
 

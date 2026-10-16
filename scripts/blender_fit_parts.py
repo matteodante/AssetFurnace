@@ -2,7 +2,9 @@
 
     blender -b --factory-startup --python scripts/blender_fit_parts.py -- job.json
 
-`job.json` (written by `scripts/slot_parts.py fit`):
+`job.json` (written by `scripts/slot_parts.py fit`, or `refit` to move a fitted set onto
+another body: then `source_body` names the first body's body.json and every piece has
+`"transfer": true` and is that body's fitted piece GLB):
 
     {"body": "output/bodies/knight/body.json", "concept_size": [1024, 1024], "out": "fit/",
      "pieces": [{"slot": "helmet", "glb": ".../helmet_finished.glb", "concept_box": [x0, y0, x1, y1]},
@@ -17,7 +19,8 @@ model's extent (Blender x0, z0, x1, z1 and depth centre) and places it. Per piec
 pieces fitted per side; gauntlets turned onto the forearm; a low-poly cage shrinkwrapped
 just outside the body drives the piece by Surface Deform (Mesh Deform when that will not
 bind); cage spikes put back; any vertex still under the skin pushed out to it; skin weights copied from the body (at most 4 per vertex), or
-one bone at 100% for the helmet. The body gets a `covered` vertex colour: white everywhere
+one bone at 100% for the helmet, which keeps its shape (no cage: it only follows the head).
+The body gets a `covered` vertex colour: white everywhere
 (viewers multiply the base colour by it), with alpha 0 where a piece lies over the skin, which
 the game's material uses as an opacity mask to hide the body there.
 
@@ -58,8 +61,10 @@ def load_job(path: Path) -> dict:
     for piece in job["pieces"]:
         if piece.get("slot") not in slots.CATALOGUE:
             raise ValueError(f"unknown slot {piece.get('slot')!r}")
-        if "concept_box" not in piece and piece["slot"] not in fit.HELD:
+        if "concept_box" not in piece and piece["slot"] not in fit.HELD and not piece.get("transfer"):
             raise ValueError(f"{piece['slot']}: give concept_box")
+        if piece.get("transfer") and "source_body" not in job:
+            raise ValueError("a transferred piece needs the job's source_body")
     return job
 
 
@@ -69,9 +74,11 @@ def slot_bones(roles: dict, slot: str, side: str | None) -> list[str]:
     return [b for b, (role, _, s) in roles.items() if role in wanted and (side is None or s in (side, ""))]
 
 
-def rigid_bone(roles: dict, slot: str, side: str | None = None) -> str | None:
-    """The one bone a rigid piece follows: the helmet the first head bone, the weapon the right
-    hand, the shield the left forearm, unless `side` says otherwise."""
+def rigid_bone(roles: dict, slot: str, side: str | None = None, carried: dict | None = None) -> str | None:
+    """The one bone a rigid piece follows: the helmet a head bone, the weapon the right hand, the
+    shield the left forearm, unless `side` says otherwise. With `carried` (body vertices each bone
+    carries most), the bone carrying most wins: a rig can split the head over two bones, and a
+    helmet on the small one turned apart from the head (31% holes on a second body)."""
     role = slots.CATALOGUE[slot].rigid
     side = side or ("L" if slot == "shield" else "R")
     if role is None:
@@ -79,7 +86,11 @@ def rigid_bone(roles: dict, slot: str, side: str | None = None) -> str | None:
     found = [(i, b) for b, (r, i, s) in roles.items() if r == role and (role == "head" or s in (side, ""))]
     if not found and role == "head":
         found = [(i, b) for b, (r, i, _) in roles.items() if r == "neck"]
-    return min(found)[1] if found else None
+    if not found:
+        return None
+    if carried:
+        return max(found, key=lambda f: (carried.get(f[1], 0), -f[0]))[1]
+    return min(found)[1]
 
 
 # ------------------------------------------------------------------ Blender from here
@@ -122,15 +133,25 @@ def main() -> None:  # pragma: no cover - runs inside Blender
         return [o for o in bpy.data.objects if o not in before]
 
     def join(objs, name):
-        meshes = [o for o in objs if o.type == "MESH" and len(o.data.polygons)]
+        for o in objs:  # a fitted piece arrives skinned to its first body: keep its rest shape only
+            if o.type == "MESH":
+                for mod in list(o.modifiers):
+                    if mod.type == "ARMATURE":
+                        o.modifiers.remove(mod)
+                o.vertex_groups.clear()
+        # importing a skinned GLB, Blender adds an icosphere for the bones' display, kept in the
+        # importer's own glTF_not_exported collection: it is not part of the piece
+        meshes = [o for o in objs if o.type == "MESH" and len(o.data.polygons)
+                  and not any(c.name.startswith("glTF_not_exported") for c in o.users_collection)]
+        bpy.context.view_layer.update()
+        worlds = {o.name: o.matrix_world.copy() for o in meshes}  # before any parent goes away
+        for o in meshes:
+            o.parent = None
+            o.matrix_world = Matrix.Identity(4)
+            o.data.transform(worlds[o.name])
         for o in objs:
             if o not in meshes:
                 bpy.data.objects.remove(o, do_unlink=True)
-        for o in meshes:
-            mw = o.matrix_world.copy()
-            o.parent = None
-            o.matrix_world = Matrix.Identity(4)
-            o.data.transform(mw)
         if len(meshes) > 1:
             with bpy.context.temp_override(active_object=meshes[0], selected_editable_objects=meshes,
                                            object=meshes[0], selected_objects=meshes):
@@ -308,15 +329,99 @@ def main() -> None:  # pragma: no cover - runs inside Blender
         sel = np.isin(weights.argmax(1), idx) & (weights.max(1) > 0)
         return body_co[sel] if sel.any() else body_co
 
+    source = None
+    if job.get("source_body"):  # refit: the first body's regions, to carry its fitted pieces over
+        first = body_mod.load(job["source_body"])
+        src_objs = import_glb(first["rigged"])
+        src_arm = next(o for o in src_objs if o.type == "ARMATURE")
+        src_body = max((o for o in src_objs if o.type == "MESH"), key=lambda o: len(o.data.vertices))
+        src_arm.data.pose_position = "REST"
+        bpy.context.view_layer.update()
+        src_mw = np.array(src_body.matrix_world)
+        src_co = coords(src_body) @ src_mw[:3, :3].T + src_mw[:3, 3]
+        src_groups = {g.name: g.index for g in src_body.vertex_groups}
+        src_w = np.zeros((len(src_co), max(len(src_groups), 1)))
+        for v in src_body.data.vertices:
+            for g in v.groups:
+                src_w[v.index, g.group] = g.weight
+        source = {"roles": {b: tuple(r) for b, r in first["roles"].items()}, "co": src_co, "w": src_w,
+                  "groups": src_groups}
+        for o in src_objs:
+            bpy.data.objects.remove(o, do_unlink=True)
+
+    def source_region(bones):
+        idx = [source["groups"][b] for b in bones if b in source["groups"]]
+        sel = np.isin(source["w"].argmax(1), idx) & (source["w"].max(1) > 0)
+        return source["co"][sel] if sel.any() else source["co"]
+
     report = {"pieces": {}, "body": record["name"]}
     fitted = []
+
+    dominant = weights.argmax(1)
+    names_by_index = {i: n for n, i in groups.items()}
+    carried = {names_by_index[i]: int(c) for i, c in zip(*np.unique(dominant[weights.max(1) > 0], return_counts=True))
+               if i in names_by_index}
+
+    def shape_and_skin(o, slot, info):
+        """Cage fit (not for a rigid piece: a helmet keeps its shape and only follows the head),
+        spikes put back, sunken vertices pushed out, then skinned."""
+        bone = rigid_bone(roles, slot, carried=carried)
+        if slot == "helmet":  # room for the head inside, whatever the outline gave
+            head = region([b for b, (r, _, _) in roles.items() if r == "head"])
+            m, grown = fit.enclose(coords(o), head)
+            apply(o, m)
+            info["enclose_scale"] = round(grown, 3)
+        if bone is None:
+            before = coords(o)
+            info.setdefault("deform", {})[o.name] = cage_fit(o, body_obj)
+            after = coords(o)
+            edges = np.array([e.vertices[:] for e in o.data.edges])
+            bad = (fit.spikes(before, after, edges) | fit.stretched(before, after, edges)) if len(edges) \
+                else np.zeros(len(after), bool)
+            if bad.any():
+                set_coords(o, fit.smooth_spikes(after, edges, bad))
+            info.setdefault("spikes_fixed", {})[o.name] = int(bad.sum())
+        else:
+            info.setdefault("deform", {})[o.name] = "rigid"
+        # last pass on the piece itself: only vertices still under the skin come out to it
+        push = o.modifiers.new("push", "SHRINKWRAP")
+        push.target, push.wrap_method, push.wrap_mode = body_obj, "NEAREST_SURFACEPOINT", "OUTSIDE"
+        push.offset = job.get("offset", 0.002)
+        with ctx(o):
+            bpy.ops.object.modifier_apply(modifier="push")
+        if bone is not None:
+            one_bone(o, bone, arm)
+            info["rigid_bone"] = bone
+        else:
+            copy_weights(o, body_obj, arm)
+        fitted.append(o)
     for piece in job["pieces"]:
         slot = piece["slot"]
         obj = join(import_glb(piece["glb"]), slot)
         info = {"faces": len(obj.data.polygons)}
         paired = slots.CATALOGUE[slot].paired
+        if piece.get("transfer") and slot not in fit.HELD:  # refit: carried over region to region
+            side = None
+            stem = Path(piece["glb"]).stem
+            if slots.CATALOGUE[slot].paired:
+                side = "L" if stem.endswith("_L") else "R"
+                obj.name = f"{slot}_{side}"
+            src = source_region(slot_bones(source["roles"], slot, side))
+            dst = region(slot_bones(roles, slot, side))
+            apply(obj, fit.region_transfer((src.min(0), src.max(0)), (dst.min(0), dst.max(0))))
+            info["placement"] = {obj.name: "transferred"}
+            group = [(obj, side)]
+            for o, _ in group:
+                shape_and_skin(o, slot, info)
+            merged = report["pieces"].setdefault(slot, {})
+            for key, value in info.items():  # the two sides of a pair arrive one at a time
+                if isinstance(value, dict):
+                    merged.setdefault(key, {}).update(value)
+                else:
+                    merged[key] = value
+            continue
         if slot in fit.HELD and "concept_box" not in piece:  # made on its own: held, rigid, no cage
-            bone = rigid_bone(roles, slot)
+            bone = rigid_bone(roles, slot, carried=carried)
             if bone is None:
                 raise SystemExit(f"no bone to hold the {slot} on")
             m, place = fit.held_placement(coords(obj), slot, heads[bone], float(np.ptp(body_co[:, 2])))
@@ -357,32 +462,13 @@ def main() -> None:  # pragma: no cover - runs inside Blender
                 shift = fit.centre_across(coords(o).mean(0), region(bones).mean(0),
                                           axis if slot != "shoulders" else None)
                 apply(o, np.array([[1, 0, 0, shift[0]], [0, 1, 0, shift[1]], [0, 0, 1, shift[2]], [0, 0, 0, 1.0]]))
-            before = coords(o)
-            info.setdefault("deform", {})[o.name] = cage_fit(o, body_obj)
-            after = coords(o)
-            edges = np.array([e.vertices[:] for e in o.data.edges])
-            bad = (fit.spikes(before, after, edges) | fit.stretched(before, after, edges)) if len(edges) \
-                else np.zeros(len(after), bool)
-            if bad.any():
-                set_coords(o, fit.smooth_spikes(after, edges, bad))
-            info.setdefault("spikes_fixed", {})[o.name] = int(bad.sum())
-            # last pass on the piece itself: only vertices still under the skin come out to it
-            push = o.modifiers.new("push", "SHRINKWRAP")
-            push.target, push.wrap_method, push.wrap_mode = body_obj, "NEAREST_SURFACEPOINT", "OUTSIDE"
-            push.offset = job.get("offset", 0.002)
-            with ctx(o):
-                bpy.ops.object.modifier_apply(modifier="push")
-            bone = rigid_bone(roles, slot)
-            if bone is not None:
-                one_bone(o, bone, arm)
-                info["rigid_bone"] = bone
-            else:
-                copy_weights(o, body_obj, arm)
-            fitted.append(o)
+            shape_and_skin(o, slot, info)
         report["pieces"][slot] = info
 
-    # the covered mask: a body vertex is covered when its outward ray meets a piece close by
-    bvh = bvh_of(fitted)
+    # the covered mask: a body vertex is covered when its outward ray meets a worn piece close by;
+    # a weapon or shield is held, and the hand under its grip must stay visible
+    worn = [o for o in fitted if o.name.split("_")[0] not in fit.HELD] or fitted
+    bvh = bvh_of(worn)
     normals = np.empty(len(body_co) * 3)
     body_obj.data.vertices.foreach_get("normal", normals)
     normals = normals.reshape(-1, 3) @ mw[:3, :3].T

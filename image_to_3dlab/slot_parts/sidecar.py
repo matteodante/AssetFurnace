@@ -74,13 +74,14 @@ def fit_provenance(out: Path, job: dict, report: dict) -> list[Path]:
 
     out = Path(out)
     sources = {p["slot"]: p["glb"] for p in job["pieces"]}
+    sources.update({Path(p["glb"]).stem: p["glb"] for p in job["pieces"]})  # a refit names pieces by side
     written = []
     for name in report.get("files", []):
         glb = out / name
         if not glb.is_file():
             continue
         slot = Path(name).stem.removesuffix("_L").removesuffix("_R")
-        source = job["body"] if name in BODY_FILES else sources.get(slot)
+        source = job["body"] if name in BODY_FILES else sources.get(Path(name).stem, sources.get(slot))
         record = {
             "schema": "slot_parts.fit/1",
             "output": {"path": name, "sha256": _sha(glb)},

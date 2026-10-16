@@ -1,7 +1,7 @@
 # Funzione 4: personaggi in pezzi e equipaggiamento su un corpo base (progetto)
 
 Data: 16 ottobre 2026, aggiornato la sera dello stesso giorno con i tre modi e l'esito della seconda prova della strada C.
-Stato: **progetto approvato (PR #20); questa revisione aspetta il via libera**.
+Stato: **implementato** (PR #31, #35, #38, #40, #41, #42 e la PR 8); accettazione nella sezione 12.
 Piano: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 4.
 Prove che lo precedono: [`2026-10-15-slot-parts-spike.md`](2026-10-15-slot-parts-spike.md), con l'appendice sulla strada C.
 
@@ -254,7 +254,76 @@ Fatta il 16/10/2026: dettagli nell'[appendice del rapporto](2026-10-15-slot-part
 6. Tutti i pezzi nella coda di revisione per il giudizio dell'utente.
 7. `PYTHONPATH=. pytest -q` e `ruff check` verdi sui file toccati; i test Blender con `--factory-startup`.
 
+## 12. Com'è andata (PR 2–8, 16–17/10/2026)
+
+Le otto PR sono fatte: #31 (slot, maschera, ritagli), #35 (pezzi della strada C), #38 (adattamento), #40 (controlli e
+`run`), #41 (riserva B0), #42 (pagina **Pieces** nello studio) e la PR 8 (riadattamento a un altro corpo, uscita per
+Unreal, accettazione). Rispetto al progetto:
+
+- **I passi in più che servivano**, trovati provando sul materiale vero:
+  - le cuciture UV del glTF vanno saldate prima della gabbia, altrimenti isole di vertici volano via (la "punta" vicino
+    alla spalla, che c'era già nella prova);
+  - Surface Deform si lega o no per piccoli dettagli della gabbia: si provano più grane prima di Mesh Deform;
+  - un ultimo passaggio porta fuori dalla pelle i vertici rimasti dentro;
+  - l'elmo è rigido e non passa dalla gabbia: si ingrandisce, se serve, fino a contenere la testa con un margine del 15%,
+    e segue l'osso della testa che porta più vertici;
+  - arma e scudo restano fuori dalla maschera del corpo (la mano sotto l'impugnatura deve vedersi) e non hanno
+    `fit.holes`, che per un pezzo tenuto in mano non ha senso.
+- **Nel modo 3** il vestito si aggiunge alla calzamaglia (`add_piece`), invece di vestire tutto il corpo: gli slot non
+  scelti restano nudi.
+- **Il colore dei vertici** del corpo è bianco ovunque, con alfa 0 sotto i pezzi: i visori glTF, che moltiplicano il
+  colore per COLOR_0, non lo scuriscono, e in Unreal l'alfa va nell'Opacity Mask.
+- **`kimodo_retarget.py`** ora accetta gambe che pendono da una catena del bacino sotto la radice: SkinTokens ha rigato
+  così il secondo corpo.
+
+### Accettazione
+
+- **Due corpi base**: il corpo della prova (uomo, 180 cm) e una donna fatta con la stessa ricetta (Turbo, Pixal3D,
+  SkinTokens; 170 cm), ognuno con camminata e fendente di Kimodo.
+- **Modo 3, dall'inizio alla fine** (`slot_parts.py run`, vestito a parole sul primo corpo, elmo, guanti e una spada fatta
+  a sé): 17 minuti di macchina, più 9 di attesa della GPU condivisa. Ogni pezzo è finito nella coda di revisione e c'è
+  `blue-knight.parts.json` con le licenze.
+- **Set completo**: i 6 pezzi Turbo della seconda prova più la spada, adattati al primo corpo in 9 secondi, poi portati sulla
+  donna con `refit` in circa 2 minuti, senza nuove immagini né nuovo 3D. Corpo coperto: 74% e 72%.
+
+| Pezzo | Primo corpo: compenetrazioni / buchi | Secondo corpo: compenetrazioni / buchi |
+|---|---|---|
+| Elmo | 0% / 3,4% | 1,1% / 5,6% |
+| Busto | 0,4% / 1,1% | 0,3% / 2,6% |
+| Spallaccio destro | 5,9% / **5,9%** | 2,9% / **6,7%** |
+| Spallaccio sinistro | 5,3% / 3,9% | 4,3% / **9,8%** |
+| Guanto destro | 0,3% / 0,8% | 1,5% / **5,5%** |
+| Guanto sinistro | 0,3% / 0,9% | 3,2% / 4,2% |
+| Gambe | 0% / 1,2% | 0,3% / 1,3% |
+| Stivali | 0% / ≤ 0,3% | 0% / ≤ 1,0% |
+| Spada | 0% / – | 0,3% / – |
+
+Misure su riposo più 8 istanti di camminata e 8 di fendente. Le compenetrazioni restano sotto il 6% ovunque (soglia di
+fail 10%). I buchi superano il 5% sugli spallacci (entrambi i corpi) e su elmo e guanto destro del secondo corpo: lo
+spallaccio è il pezzo più difficile, come diceva la prova, e il riadattamento a un corpo con le braccia più basse lo
+peggiora. Questi pezzi sono in revisione come fail, non nascosti.
+
+- **In Unreal 5.8.3** (`unreal_import_check.py`, il controllo della funzione 5): su entrambi i corpi i 22 file passano.
+  - Misura giusta (180 e 170 cm), base a terra, un solo scheletro per corpo, nessuno nuovo creato dai pezzi.
+  - L'IK Rig riconosce lo scheletro; l'idle e la camminata di Manny si ritargettano, con i piedi che non si incrociano.
+  - I pezzi seguono il corpo con Leader Pose e la spada sta in mano.
+
+![In Unreal 5.8, a metà passo: il set sul primo corpo e lo stesso set riadattato al secondo](img/slot-parts/1-unreal-walk-two-bodies.jpg)
+
+![Il set riadattato al secondo corpo, davanti e dietro, con il corpo rifilato sotto i pezzi](img/slot-parts/2-refit-second-body.jpg)
+
+![Modo 3 dall'inizio alla fine: il vestito disegnato sul corpo, la mappa degli slot scelti, i pezzi adattati con la spada](img/slot-parts/3-run-start-to-finish.jpg)
+
+- **Test**: suite completa senza `PYTHONUTF8` verde sul ramo della #42 (3831 passati, 46 saltati). Per la PR 8, i test
+  della funzione 4, dei controlli, dell'uscita Unreal e di Kimodo.
+
 ## Seguiti
 
 - Mantello: prova a parte, con la vista di schiena (funzione 2, caso 4) e la stoffa in Unreal.
+- Spallacci: buchi oltre il 5% in posa su entrambi i corpi. Da provare una gabbia più fine sulla spalla, o lo
+  spallaccio rigido sulla clavicola come l'elmo sulla testa.
+- Riadattamento a corpi con proporzioni molto diverse: oggi box su box per slot; i pezzi su arti più lunghi o più
+  bassi (le braccia della donna) bucano di più. Un riadattamento lungo l'asse dell'osso aiuterebbe.
+- Materiale del corpo in Unreal: il controllo d'importazione non collega ancora l'alfa dei vertici all'Opacity Mask;
+  lo dice `<corpo>.unreal-set.json`, va fatto a mano o da uno script d'importazione.
 - Pesi di HoloPart: cancellati dal coordinatore il 16/10 insieme alla cartella della prova in WSL.
