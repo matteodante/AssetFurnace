@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces, first part (`image_to_3dlab/slot_parts/`, `scripts/slot_parts.py`):
+  register a rigged humanoid as a base body (picture, Pixal3D camera, bone roles from the
+  skeleton's shape), choose the armour slots, map a concept drawn on that body to slots by
+  projecting its bones, and cut one piece per slot, flattened on grey with the way back to
+  the concept recorded, ready for the "complete this piece" edit of route C.
 - Roughness and metallic estimated where an asset has none, not yet admitted
   (`image_to_3dlab/pbr_estimate.py`, `scripts/estimate_pbr.py`): Marigold-IID Appearance v1.1
   on the orbit of unlit views, carried back to the atlas as a glTF metallic-roughness map; an
