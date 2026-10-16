@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Tint zones by material, not yet admitted (`image_to_3dlab/material_zones.py`,
+  `scripts/game_materials.py --zones`, `scripts/zones_trial.py`): Qwen3.5-4B names up to six
+  materials from the words the user labels with, SAM 3 (gated) or SAM 2.1 regions named by
+  Qwen find them in every view, and a vote on the UVs makes the three largest the R, G and B of
+  `T_<name>_Tint.png`, named in the sidecar and in the GLB's extras. Setup lists it as a tool;
+  SAM 3's licence terms are summarised on its card.
 - A learned check for light painted into the albedo, and its trial (`image_to_3dlab/baked_light.py`,
   `scripts/baked_light_trial.py`): synthetic pairs from 100 Poly Haven CC0 models baked under
   suns fixed in the world, a logistic head on SigLIP 2, Marigold's shading and a Qwen3.5 yes/no
