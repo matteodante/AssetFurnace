@@ -32,7 +32,9 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from image_to_3dlab import clip_library as _clips
 from image_to_3dlab import host as _host
+from image_to_3dlab import material_models as _material_models
 from image_to_3dlab import matte as _matte
 from image_to_3dlab.host import AMD, APPLE, NVIDIA
 from image_to_3dlab.provenance import QWEN_OUTPUT_RIGHTS
@@ -660,6 +662,54 @@ CATALOG: tuple[Backend, ...] = (
                       HF_HUB_DIR / "models--VAST-AI--SkinTokens",
                       note="Pinned to the revision we tested. Setup also fetches "
                            "Qwen3-0.6B's config and tokenizer (~16 MB, no weights)."),
+        ),
+    ),
+    Backend(
+        id="materials-light",
+        label="Baked-light removal (Marigold-IID Lighting)",
+        kind="tool",
+        best_for=("Takes the light painted into a texture back out, so a model lit in the "
+                  "engine is not lit twice."),
+        tradeoff=("Optional, and off until it passes the test against your own labels. "
+                  "Trained on interiors and photos; untried on stylised art."),
+        license_name="CreativeML Open RAIL++-M (weights); Apache-2.0 (code)",
+        license_url=_material_models.OPENRAIL_URL,
+        install="scripts/bootstrap_materials.py --only env,marigold-lighting",
+        runs_on=(NVIDIA,),
+        setup_minutes=10,
+        caveat=("The weights come with use restrictions (no medical advice, no law "
+                "enforcement, no harassment...), and anyone you pass them on to is bound "
+                "by them too. Your results are yours."),
+        build_probes=(_material_models.env_python(),),
+        upstream=("prs-eth Marigold", "https://github.com/prs-eth/Marigold"),
+        weights=(
+            WeightSet(_material_models.MARIGOLD_LIGHTING.label,
+                      _material_models.MARIGOLD_LIGHTING.repo,
+                      _material_models.MARIGOLD_LIGHTING.size,
+                      HF_HUB_DIR / "models--prs-eth--marigold-iid-lighting-v1-1",
+                      note="fp16 files only, at a pinned revision. Setup also makes its own "
+                           "Python environment (~3 GB, mostly PyTorch)."),
+        ),
+    ),
+    Backend(
+        id="clip-library",
+        label="Creature clip library (Mesh2Motion)",
+        kind="tool",
+        best_for=("Hand-made walk, attack, idle and death clips for four-legged, "
+                  "many-legged, serpent, winged and digitigrade creatures, carried onto "
+                  "the auto-rig's skeleton."),
+        tradeoff="Optional. Without it, creatures get the procedural test clips only.",
+        license_name=_clips.MESH2MOTION["license"],
+        license_url=_clips.MESH2MOTION["license_url"],
+        install="scripts/bootstrap_clip_library.py",
+        runs_on=(APPLE, NVIDIA, AMD),
+        setup_minutes=1,
+        upstream=("Mesh2Motion", _clips.MESH2MOTION["repo"]),
+        weights=(
+            WeightSet("Mesh2Motion creature animations",
+                      f"{_clips.MESH2MOTION['repo']}/tree/{_clips.MESH2MOTION['commit']}/static/animations",
+                      _clips.TOTAL_BYTES, _clips.pack_dir(),
+                      note="Six GLB files from one pinned commit, each checked against its SHA-256."),
         ),
     ),
 )

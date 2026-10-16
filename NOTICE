@@ -17,6 +17,11 @@ This project builds on other people's work, each under its own licence:
   licensed by NVIDIA Corporation under the NVIDIA Open Model License; NVIDIA claims
   no ownership of its outputs.
 - The auto-rig uses VAST-AI SkinTokens (MIT), cloned at setup, not shipped here.
+- image_to_3dlab/motion_variation.py is a numpy port of GenMM's patch synthesis
+  (https://github.com/wyysf-98/GenMM, Apache-2.0, Copyright Weiyu Li et al.), which
+  itself borrows from Efficient-GPNN (Apache-2.0). Changes are listed in its docstring.
+- The creature clip library's animations come from Mesh2Motion (CC0), fetched at
+  setup, not shipped here.
 - Model weights are never shipped here. Each backend's weights keep their own
   licence (Tencent Hunyuan Community, Stability AI Community, DINOv3, Qwen
   Research and others), and those terms apply no matter what this licence says.

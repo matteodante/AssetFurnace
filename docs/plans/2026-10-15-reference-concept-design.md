@@ -1,7 +1,7 @@
 # Funzione 2: dal riferimento al concept (progetto)
 
-Data: 15 ottobre 2026. Stato: **prova dei quattro casi fatta (sezione 10), in attesa del giudizio dell'utente**. File
-della visione scaricato dal catalogo (PR #9).
+Data: 15 ottobre 2026. Stato: **prova fatta e decisa (sezione 10), rifatta con la ricetta Turbo; in costruzione**
+(pacchetto PR #23, mappe d'ingresso PR #24). File della visione scaricato dal catalogo (PR #9).
 Piano delle funzioni: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 2. La
 funzione è generica: vale per qualunque riferimento e qualunque progetto.
 
@@ -163,7 +163,7 @@ errori veri visibili; massimo 3 giri). Non unisco io.
 
 Si può scaricare `mmproj-Qwen3VL-8B-Instruct-F16.gguf` (1.159.029.824 byte, Apache-2.0) dal catalogo?
 
-## 10. Esito della prova (16/10/2026, da giudicare dall'utente)
+## 10. Esito della prova (16/10/2026)
 
 50 immagini, tutte riuscite (2 al secondo tentativo, sotto). Qwen-Image 2.1 Q8_0, 8 passi, cfg 1.0, 1024 × 1024,
 `sd-cli` commit `60423ab`, RTX 5070 Ti. I fogli e gli script stanno in `journal/reference-concept/` (locale).
@@ -195,6 +195,39 @@ tutto il personaggio.
 **Caso 4, altre viste della stessa creatura**: riesce a metà. Di lato, con la profondità di quel lato (b) la sagoma è
 giusta; con la sola vista frontale (a) il corpo viene più magro. Da dietro, 1 immagine su 4 (a, seme 11) ridisegna il
 davanti. I colori restano della stessa creatura, con l'arancio più acceso.
+
+### 10.1 Decisioni dell'utente (16/10/2026)
+
+- Caso 1: la **variante c** (solo la mappa di struttura, colori scritti nel prompt) è il modo standard di ridisegnare.
+  Le varianti a e b non si offrono: copiano.
+- Caso 4: si fa con **2-4 tentativi** e l'utente sceglie nello studio.
+
+### 10.2 Prima e dopo: la ricetta Turbo (16/10/2026, sera)
+
+La prova sopra usava il modello base a 8 passi e cfg 1.0: la ricetta del Turbo su un altro checkpoint, che lascia
+immagini velate (PR #21). Rifatta con la ricetta ora predefinita: **Qwen-Image 2.1 Turbo Q8_0, `--sigmas
+qwen-image-2.1-turbo`, cfg 1.0, euler, 1024 × 1024**. Stessi ingressi, prompt e semi; il caso 1 solo nella variante c, il
+caso 4 dal nuovo davanti (caso 1 c, seme 11). 30 immagini, tutte riuscite al primo tentativo, lock della GPU a ogni
+immagine. Fogli `journal/reference-concept/sheets/turbo_case1..4.jpg` (locali), ogni risultato prima e dopo affiancato.
+
+| | Base, 8 passi (prima) | Turbo (dopo) |
+|---|---|---|
+| Generazione, mediana | caso 1 c 25 s, caso 2 29 s, caso 3 35 s, caso 4 35 s | caso 1 c 24 s, caso 2 24 s, caso 3 20 s, caso 4 25 s (30 s con la profondità) |
+| Tutte, mediana (min–max) | 32 s (24–57) | **24 s (20–33)** |
+| Picco di VRAM della scheda | 15,6 GB (max 15,9) | 15,4 GB (max 15,4) |
+| Caso 1 c, IoU col riferimento | 0,91–1,00 | 0,90–1,00 |
+| Caso 2 a, corpo come riferimento | 0,90–0,92 | 0,89–0,92 |
+| Caso 2 b, mappa di posa | 0,86–0,88 | 0,85–0,86 |
+
+Cosa vedo (il giudizio resta dell'utente):
+- **Nitidezza**: in tutti i casi il Turbo è più pulito: bordi netti, metallo e pelliccia definiti, nessuna velatura.
+  Il forziere guadagna venature e borchie; il lupo resta grigio come chiesto (prima tendeva al blu).
+- **Sagome e pose**: invariate. Il Turbo segue la mappa come prima (caso 1 c) e tiene la T-pose del corpo (caso 2).
+- **Caso 3**: uguale a prima, corpo, posa e contorno intatti; il pezzo aggiunto ha riflessi più puliti.
+- **Caso 4**: con la profondità del lato (b) 4 immagini su 4 sono giuste, di lato e da dietro, e la criniera marrone
+  del nuovo davanti si ritrova dietro. Con il solo davanti (a), di lato il corpo resta più magro e da dietro 1
+  immagine su 2 ridisegna il davanti (seme 11), come nella prima prova. Nello studio la vista da dietro va quindi
+  offerta con la profondità quando c'è un modello; senza, servono i 2-4 tentativi decisi dall'utente.
 
 ## 11. Seguiti
 

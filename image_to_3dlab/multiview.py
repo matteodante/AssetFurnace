@@ -80,24 +80,29 @@ def material_id(name: str) -> int | None:
 
 
 def render_plan(asset: Path, folder: Path, size: int = 512, around: int = 16,
-                elevation: float = 20.0) -> dict:
+                elevation: float = 20.0, lit: bool = False) -> dict:
     """Write the tagged copy and ``plan.json`` that the Blender script reads."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     (folder / "tagged.glb").write_bytes(tag_materials(Path(asset).read_bytes()))
     plan = {"glb": "tagged.glb", "size": int(size),
             "directions": orbit_directions(around, elevation).round(6).tolist()}
+    if lit:
+        plan["lit"] = True
     (folder / "plan.json").write_text(json.dumps(plan, indent=2), encoding="utf-8")
     return plan
 
 
-def render_views(asset: Path, folder: Path, *, size: int = 512, around: int = 16,
+def render_views(asset: Path, folder: Path, *, size: int = 512, around: int = 16, lit: bool = False,
                  blender: Path | None = None, run: Callable = subprocess.run) -> list[View]:
-    """Render the orbit with Blender, headless and on the CPU, and read the views back."""
+    """Render the orbit with Blender, headless and on the CPU, and read the views back.
+
+    `lit` adds a picture of each view under a neutral studio light (``View.lit``).
+    """
     from image_to_3dlab.blender import find_blender
 
     folder = Path(folder).resolve()     # Blender runs from the repo, not from the caller's folder
-    render_plan(asset, folder, size, around)
+    render_plan(asset, folder, size, around, lit=lit)
     binary = blender or find_blender()
     if binary is None:
         raise RuntimeError("Blender was not found; install it or set I2L_BLENDER")
@@ -116,6 +121,7 @@ class View:
     material: np.ndarray         # HxW glTF material index, -1 for background
     normal: np.ndarray           # HxWx3 world normal, Blender axes
     color: np.ndarray | None     # HxWx3 uint8: the albedo as shown, unlit
+    lit: np.ndarray | None = None  # HxWx3 uint8: under a neutral studio light, when asked for
 
 
 def load_views(folder: Path) -> list[View]:
@@ -134,9 +140,11 @@ def load_views(folder: Path) -> list[View]:
             raise ValueError(f"view {entry['index']} is missing its UV or normal pass in {folder}") from exc
         colour_path = Path(str(stem) + "_color.png")
         colour = np.asarray(Image.open(colour_path).convert("RGB")) if colour_path.is_file() else None
+        lit_path = Path(str(stem) + "_lit.png")
+        lit = np.asarray(Image.open(lit_path).convert("RGB")) if lit_path.is_file() else None
         views.append(View(entry["index"], np.asarray(entry["direction"], dtype=np.float64),
                           uv[..., :2].astype(np.float64), np.rint(uv[..., 2]).astype(np.int64) - 1,
-                          normal[..., :3].astype(np.float64), colour))
+                          normal[..., :3].astype(np.float64), colour, lit))
     return views
 
 

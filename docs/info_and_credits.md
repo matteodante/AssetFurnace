@@ -20,6 +20,10 @@ This lab builds on other people's models and ports. Thank you.
   studio's auto-rig, which gives a humanoid its skeleton and skin weights.
 - [NVIDIA Kimodo](https://github.com/nv-tlabs/kimodo): the studio's preset moves were
   made with it. Code Apache-2.0; model under the NVIDIA Open Model License.
+- [Mesh2Motion](https://github.com/Mesh2Motion/mesh2motion-app): the creature clip
+  library's animations (CC0), fetched at setup, not shipped here.
+- [GenMM](https://github.com/wyysf-98/GenMM) (Apache-2.0): the longer takes of looping
+  creature clips use a numpy port of its patch synthesis (`image_to_3dlab/motion_variation.py`).
 - [Apple MLX](https://github.com/ml-explore/mlx), [rembg](https://github.com/danielgatis/rembg),
   [TinyCLIP](https://huggingface.co/wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M) and
   [three.js](https://threejs.org), all MIT.
