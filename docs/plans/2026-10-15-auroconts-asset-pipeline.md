@@ -1,7 +1,7 @@
 # Pipeline di produzione per un gioco intero (primo utente: Auroconts)
 
 Data: 15 ottobre 2026, aggiornato il 16 ottobre 2026. Stato: **in sviluppo**. Le funzioni 1, 5 e 7 sono su `main`; 2, 3,
-6 e 8 in parte; la 4 è in prova. Lo stato di ogni funzione è nella tabella qui sotto e in [README](README.md).
+6 e 8 in parte; la 4 ha il progetto. Lo stato di ogni funzione è nella tabella qui sotto e in [README](README.md).
 
 Auroconts è un MMORPG su Unreal Engine 5.8 che rifà un gioco del 2012 con asset nuovi: stile stilizzato, sagome
 riconoscibili rispetto all'originale, budget da PC medi. Il suo censimento conta 592 modelli di mostri, 866 di PNG, 427
@@ -22,7 +22,7 @@ originali, tabella di corrispondenza, import in Unreal) resta nella repo di Auro
 | 1 | Lotti e accesso per agenti | [batch-mcp](2026-10-15-batch-mcp-design.md) | **Su `main`** (PR #2): lotti, ripresa, server MCP, pagina Batches |
 | 2 | Dal riferimento al concept | [reference-concept](2026-10-15-reference-concept-design.md) | Strada decisa: Qwen-Image 2.1 in modifica dentro `sd-cli`. File della visione su `main` (PR #9); prova dei 4 casi in corso, giudicata a occhio dall'utente |
 | 3 | Bibbia dello stile | [style-bible](2026-10-15-style-bible-design.md) | PR 1 su `main` (PR #10: bibbia, prompt, riferimenti). PR 2 (gara fra giudici imparati) in corso. Lo stile si ricava dai riferimenti originali del progetto (vedi sotto) |
-| 4 | Parti per slot | [rapporto della prova](2026-10-15-slot-parts-spike.md) | Prova fatta: strada B senza HoloPart consigliata; OmniPart escluso (PartField non commerciale) |
+| 4 | Parti per slot | [progetto](2026-10-16-slot-parts-design.md), [rapporto della prova](2026-10-15-slot-parts-spike.md) | Strada B0 approvata il 16/10/2026, con scelta dei pezzi e strada C per armi e scudi; progetto in attesa di via libera |
 | 5 | Profilo Unreal | [unreal-profile](2026-10-15-unreal-profile-design.md) | **Su `main`** (PR #6, #7), accettazione superata su UE 5.8.3 |
 | 6 | Famiglie di creature | [creature-families](2026-10-15-creature-families-design.md) | PR 1 su `main` (PR #8: riconoscimento, `rig.deformation`, digitigradi e quadrupedi). PR #13 (molte zampe, serpenti) in attesa della ricerca sugli approcci più recenti per l'animazione |
 | 7 | Controlli e revisione | [checks-review](2026-10-15-checks-review-design.md) | **Su `main`** (PR #4) |
