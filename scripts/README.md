@@ -47,6 +47,7 @@ game-ready LODs), start with [the prop sheet guide](../docs/prop-sheets.md).
 | `bootstrap_blender.py` | Install Blender 4.2 LTS for Finish on Linux, from blender.org. |
 | `bootstrap_gltfpack.py` | Install gltfpack for split props, from meshoptimizer's GitHub release. |
 | `bootstrap_gltf_validator.py` | Install Khronos' glTF-Validator for the asset checks, from its GitHub release. |
+| `bootstrap_style.py` | Install the style judges' models and llama.cpp, after saying what, how big and under which licence. |
 | `bootstrap_hunyuan_xiong.py` | Set up Hunyuan3D-MLX (Xiong, full pipeline): both Python environments, then the weights. |
 | `bootstrap_matte.py` | Install BiRefNet-lite, the background remover every backend uses once it is present. |
 | `bootstrap_qwen_image.py` | Install the text-to-image route: a stable-diffusion.cpp binary and Qwen-Image weights. |
@@ -131,6 +132,7 @@ Numbers and renders to decide whether a change helped. Read `docs/` before trust
 | `check_asset.py` | Run the automatic checks on a GLB, write `<name>.checks.json` and put it in the review queue. |
 | `review_queue.py` | See the review queue, and approve an asset or send it back with a note. |
 | `style_bible.py` | Keep a project's style bible: approved and rejected pictures with notes, prompts and style references. |
+| `style_race.py` | Race the style judges on concepts the user has labelled, and say which ones may be used. |
 | `ribbon_metric.py` | Measure how torn a generated mesh is, and gate post-processing on it. |
 | `tear_provenance.py` | Ask of every large tear: could the input view see it?. |
 | `glb_forensics.py` | Dump what a GLB actually contains, so a reference asset can be diffed against ours. |

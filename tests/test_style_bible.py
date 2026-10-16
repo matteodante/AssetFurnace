@@ -144,7 +144,7 @@ def test_load_refuses_a_broken_or_unsafe_bible_json(tmp_path, root):
 
 def test_writes_are_atomic_and_leave_no_temporary_files(tmp_path, root):
     sb.add(root, picture(tmp_path / "a.png"), "a")
-    assert sorted(p.name for p in root.iterdir()) == ["bible.json", "images", "rejected"]
+    assert sorted(p.name for p in root.iterdir()) == ["bible.json", "images", "references", "rejected"]
 
 
 def test_an_entry_cannot_climb_from_its_folder_into_the_other_one(tmp_path, root):
@@ -223,3 +223,21 @@ def test_a_removal_finishes_before_the_next_edit_starts(tmp_path, root, monkeypa
     sb.remove(root, entry["sha256"])
     picture_name = entry["file"].split("/")[-1]
     assert (picture_name, True) in seen  # the picture was deleted while the lock was held
+
+
+def test_a_style_reference_is_kept_apart_and_marked_internal(tmp_path, root):
+    """Pictures that define the style but are not ours (an original game's art) never go out."""
+    entry = sb.add(root, picture(tmp_path / "orig.png"), "the original armour", kind="character", reference=True)
+    assert entry["file"].startswith("references/") and entry["distribution"] == "internal"
+    data = sb.load(root)
+    assert data["references"] == [entry] and data["images"] == [] and data["rejected"] == []
+    with pytest.raises(sb.BibleError, match="both"):
+        sb.add(root, picture(tmp_path / "x.png", (9, 9, 9)), "x", rejected=True, reference=True)
+
+
+def test_a_bible_written_before_references_existed_still_loads(root):
+    path = root / "bible.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    del data["references"]
+    path.write_text(json.dumps(data), encoding="utf-8")
+    assert sb.load(root)["references"] == []

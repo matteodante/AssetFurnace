@@ -68,3 +68,14 @@ def test_a_picture_changed_since_it_was_approved_is_not_a_reference(root):
     troll = root / data["images"][1]["file"]
     Image.new("RGB", (8, 8), (9, 9, 9)).save(troll)
     assert names(refs.pick(root, "creature", k=2)) == ["wolf.png", "any.png"]
+
+
+def test_references_can_be_the_pool_for_generation(root, tmp_path):
+    path = tmp_path / "src" / "orig.png"
+    Image.new("RGB", (8, 8), (7, 7, 7)).save(path)
+    sb.add(root, path, "original", kind="creature", reference=True)
+    assert names(refs.pick(root, "creature", k=1, pool=("references",))) == ["orig.png"]
+    # By default the originals come first, then the approved pictures.
+    assert names(refs.pick(root, "creature", k=2)) == ["orig.png", "troll.png"]
+    with pytest.raises(ValueError, match="pool"):
+        refs.pick(root, "creature", pool=("rejected",))

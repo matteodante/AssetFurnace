@@ -107,3 +107,13 @@ def test_the_reference_sentence_needs_references_that_exist(tmp_path, capsys):
     capsys.readouterr()
     assert run("--output", output, "prompt", "g", "prop", "a cup", "--references", "2") == 0
     assert "reference pictures" not in capsys.readouterr().out
+
+
+def test_a_style_reference_from_the_terminal(tmp_path, capsys):
+    output = tmp_path / "output"
+    run("--output", output, "new", "g")
+    assert run("--output", output, "reference", "g", picture(tmp_path / "o.png"), "--note", "original") == 0
+    capsys.readouterr()
+    run("--output", output, "list", "g", "--json")
+    listed = json.loads(capsys.readouterr().out)
+    assert [e["distribution"] for e in listed["references"]] == ["internal"]

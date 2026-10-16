@@ -5,6 +5,9 @@
       images/<sha8>-<name>.png       approved, each with its .provenance.json when it had one
                                      (its hash is recorded, so a lost licence record is reported)
       rejected/<sha8>-<name>.png     sent back: what the style is NOT
+      references/<sha8>-<name>.png   style references that are not ours (an original game's
+                                     art): they define the style, are marked "internal" and
+                                     must never be distributed or shipped
       .cache/                        regenerable (embeddings, judgements); ignore it in git
 
 The folder is the unit: copy it, keep it in the game's repository, open it on another
@@ -33,7 +36,8 @@ from PIL import Image, UnidentifiedImageError
 SCHEMA_VERSION = 1
 FILE = "bible.json"
 KINDS = ("character", "creature", "prop", "equipment_part", "map_object")
-LISTS = {"images": "images", "rejected": "rejected"}  # list in bible.json -> folder
+LISTS = {"images": "images", "rejected": "rejected", "references": "references"}  # list -> folder
+OPTIONAL_LISTS = {"references"}  # added after schema 1 shipped; absent means empty
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 NAME = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -134,6 +138,7 @@ def create(root: Path, name: str, description: str = "", wording: str = "") -> P
         "kinds": {},
         "images": [],
         "rejected": [],
+        "references": [],
         "score": {"method": None, "warn": None, "fail": None},
     })
     return root
@@ -173,6 +178,8 @@ def load(root: Path) -> dict[str, Any]:
             raise BibleError(f"{path}: unknown kind {kind!r} in 'kinds'; choose from {', '.join(KINDS)}")
         if not isinstance(value, dict) or not isinstance(value.get("wording", ""), str):
             raise BibleError(f"{path}: 'kinds.{kind}' must be an object with a 'wording' text")
+    for key in OPTIONAL_LISTS:
+        data.setdefault(key, [])
     for key, folder in LISTS.items():
         entries = data.get(key)
         if not isinstance(entries, list):
@@ -234,12 +241,15 @@ def _check_picture(image: Path) -> None:
 
 
 def add(root: Path, image: Path, note: str, kind: str | None = None, rejected: bool = False,
-        source_label: str | None = None) -> dict[str, Any]:
+        source_label: str | None = None, reference: bool = False) -> dict[str, Any]:
     """Copy `image` (and its `.provenance.json`) into the bible with a note; return the entry.
 
-    `rejected=True` files it under what the style is not. The same picture cannot be in
-    the bible twice, in either list.
+    `rejected=True` files it under what the style is not; `reference=True` under style
+    references that are not ours, marked `"distribution": "internal"`. The same picture
+    cannot be in the bible twice, in any list.
     """
+    if rejected and reference:
+        raise BibleError("a picture is either rejected or a style reference, not both")
     root, image = Path(root), Path(image)
     note = (note or "").strip()
     if not note:
@@ -248,7 +258,7 @@ def add(root: Path, image: Path, note: str, kind: str | None = None, rejected: b
         raise BibleError(f"unknown kind {kind!r}; choose one of {', '.join(KINDS)}")
     _check_picture(image)
     digest = sha256_file(image)
-    key = "rejected" if rejected else "images"
+    key = "rejected" if rejected else "references" if reference else "images"
     with _locked(root):
         data = load(root)
         for other in LISTS:
@@ -268,6 +278,8 @@ def add(root: Path, image: Path, note: str, kind: str | None = None, rejected: b
             entry["provenance_sha256"] = sha256_file(copied)
         if source_label:
             entry["source"] = source_label
+        if reference:
+            entry["distribution"] = "internal"
         data[key].append(entry)
         _write(root, data)
     return entry
