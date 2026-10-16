@@ -9,7 +9,9 @@
                 {"slot": "torso", "glb": ".../torso.glb", "concept_box": [...], "frame": [x0, z0, x1, z1, yc]}],
      "offset": 0.002, "cage_voxel": 0.007, "cage_faces": 5000}
 
-`concept_box` is where the piece sits on the concept (route C), or the whole subject's box
+A weapon or shield made on its own has no `concept_box`: it goes in the right hand or on the
+left forearm, sized from the body's height. `concept_box` is where any other piece sits on
+the concept (route C), or the whole subject's box
 when the piece was cut from a whole-character model (route B0); then `frame` is that
 model's extent (Blender x0, z0, x1, z1 and depth centre) and places it. Per piece: placement through the body's camera (`slot_parts.fit`); paired
 pieces fitted per side; gauntlets turned onto the forearm; a low-poly cage shrinkwrapped
@@ -56,7 +58,7 @@ def load_job(path: Path) -> dict:
     for piece in job["pieces"]:
         if piece.get("slot") not in slots.CATALOGUE:
             raise ValueError(f"unknown slot {piece.get('slot')!r}")
-        if "concept_box" not in piece:
+        if "concept_box" not in piece and piece["slot"] not in fit.HELD:
             raise ValueError(f"{piece['slot']}: give concept_box")
     return job
 
@@ -139,8 +141,14 @@ def main() -> None:  # pragma: no cover - runs inside Blender
         bm = bmesh.new()
         bm.from_mesh(meshes[0].data)
         bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+        for face in bm.faces:
+            face.smooth = True
         bm.to_mesh(meshes[0].data)
         bm.free()
+        # flat or custom normals make the exporter split every corner: three vertices a face
+        if meshes[0].data.has_custom_normals:
+            with ctx(meshes[0]):
+                bpy.ops.mesh.customdata_custom_splitnormals_clear()
         return meshes[0]
 
     def mirror_copy(obj, name):
@@ -287,6 +295,17 @@ def main() -> None:  # pragma: no cover - runs inside Blender
         obj = join(import_glb(piece["glb"]), slot)
         info = {"faces": len(obj.data.polygons)}
         paired = slots.CATALOGUE[slot].paired
+        if slot in fit.HELD and "concept_box" not in piece:  # made on its own: held, rigid, no cage
+            bone = rigid_bone(roles, slot)
+            if bone is None:
+                raise SystemExit(f"no bone to hold the {slot} on")
+            m, place = fit.held_placement(coords(obj), slot, heads[bone], float(np.ptp(body_co[:, 2])))
+            apply(obj, m)
+            one_bone(obj, bone, arm)
+            report["pieces"][slot] = {**info, "placement": {obj.name: place}, "deform": {obj.name: "rigid"},
+                                      "rigid_bone": bone}
+            fitted.append(obj)
+            continue
         box = fit.concept_to_body(piece["concept_box"], job["concept_size"], body_size)
         if "frame" in piece:  # route B0: placed by the whole-character model's extent
             m, place = fit.placement(coords(obj), box, cam, float((body_co[:, 1].min() + body_co[:, 1].max()) / 2),

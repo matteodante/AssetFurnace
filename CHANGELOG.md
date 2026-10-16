@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces, checks and the whole run: `fit.clipping` (the share of a piece's
+  outer skin sinking into skin the mask leaves visible) and `fit.holes` (the body a piece
+  covers at rest that a pose leaves bare), posed in numpy with the body's own clips at rest
+  and through each clip, in the `equipment_part` profile (`Asset.body`, `Asset.body_clips`).
+  `slot_parts.py run` makes one set on one body start to finish: the outfit drawn on the
+  body, cuts, pieces, a weapon or shield made on its own and held in the hand or on the
+  forearm, the fit, the checks with every piece in the review queue, and `<set>.parts.json`
+  with the licence of every model; each fitted file gets its `.provenance.json`.
+  `slot_parts.py body --clip` records the body's clips. Fitted pieces keep their seams
+  welded and smooth, so the exporter no longer splits every corner.
 - Characters in pieces, fitting (`slot_parts/fit.py`, `scripts/blender_fit_parts.py`,
   `slot_parts.py fit`): each piece is placed on the base body from its box through the body's
   camera, paired pieces per side (the left from the mirrored box, not a mirrored copy of the

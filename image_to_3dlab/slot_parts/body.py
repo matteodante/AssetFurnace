@@ -22,7 +22,8 @@ NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
 def record(name: str, *, image: Path, image_size: tuple[int, int], rigged: Path, views: Path,
-           cam: camera_mod.Camera, parents: dict, heads: dict, found: dict, labels: dict | None = None) -> dict:
+           cam: camera_mod.Camera, parents: dict, heads: dict, found: dict, labels: dict | None = None,
+           clips: dict | None = None) -> dict:
     roles = skeleton.bone_roles(found)  # refuses anything but a humanoid
     return {
         "schema_version": SCHEMA_VERSION, "name": name,
@@ -32,11 +33,14 @@ def record(name: str, *, image: Path, image_size: tuple[int, int], rigged: Path,
         "skeleton": {"parents": dict(parents), "heads": {b: np.asarray(h, float).round(6).tolist() for b, h in heads.items()}},
         "roles": {b: list(r) for b, r in roles.items()},
         "labels": dict(labels or {}),
+        # the body's own animated clips (Kimodo, retargeted onto this rig): fit.clipping and
+        # fit.holes pose the pieces with them
+        "clips": {name: str(Path(path).resolve()) for name, path in (clips or {}).items()},
     }
 
 
 def register(name: str, image: Path, rigged: Path, views: Path | None = None, matte: Path | None = None,
-             labels: dict | None = None, root: Path = Path("output/bodies")) -> Path:
+             labels: dict | None = None, root: Path = Path("output/bodies"), clips: dict | None = None) -> Path:
     """Read a rigged body and its Pixal3D run, check it is a humanoid, write body.json.
 
     `views` is the `<model>.svviews` folder of the Pixal3D run the body came from (asked for:
@@ -67,7 +71,7 @@ def register(name: str, image: Path, rigged: Path, views: Path | None = None, ma
         raise ValueError(f"{views} is not a Pixal3D camera folder (no transforms.json)")
     cam = camera_mod.from_views(views, alpha)
     return write(record(name, image=image, image_size=size, rigged=rigged, views=views, cam=cam,
-                        parents=parents, heads=heads, found=found, labels=labels), root)
+                        parents=parents, heads=heads, found=found, labels=labels, clips=clips), root)
 
 
 def write(data: dict, root: Path) -> Path:
