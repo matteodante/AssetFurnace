@@ -225,6 +225,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   picture beside each result with its outline IoU. Keep or Discard is saved in the
   concept record and `output/concept/judgements.jsonl`.
 
+### Changed
+- Style bibles: new concepts take their style from the prompt alone. Style references stay
+  off unless asked for, because an image edit also copies their content, and the automatic
+  style judge is postponed; the second labelled sample and the reasons are in the style
+  bible design.
+
 ### Fixed
 - The studio reads and writes its JSON and text files as UTF-8 on every machine, and the
   test suite passes on Windows without `PYTHONUTF8=1`: with the locale's cp1252, an em dash

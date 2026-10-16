@@ -8,7 +8,7 @@
     python scripts/style_bible.py reject - wolf.png --note "Grey and photographic."
     python scripts/style_bible.py reference - original.png --note "The original game's armour."
     python scripts/style_bible.py list -
-    python scripts/style_bible.py prompt - creature "a forest troll" --references 2
+    python scripts/style_bible.py prompt - creature "a forest troll"
     python scripts/style_bible.py refs - creature --k 2
 
 A bible is named by its registered name, by a folder, or by `-` for the active one.
@@ -74,7 +74,8 @@ def build_parser() -> argparse.ArgumentParser:
     prompt.add_argument("bible")
     prompt.add_argument("kind", choices=sb.KINDS)
     prompt.add_argument("subject")
-    prompt.add_argument("--references", type=int, default=0, help="how many style pictures go with it")
+    prompt.add_argument("--references", type=int, default=0,
+                        help="how many style pictures go with it (default 0: they also pass on their content)")
 
     pick = commands.add_parser("refs", help="print the style references for a kind")
     pick.add_argument("bible")

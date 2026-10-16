@@ -1,8 +1,11 @@
 # Funzione 3: bibbia dello stile (progetto)
 
-Data: 15 ottobre 2026. Stato: **approvato dall'utente il 15/10/2026** (commit 559d749). In corso: PR 1, bibbia e prompt.
+Data: 15 ottobre 2026. Stato: **approvato dall'utente il 15/10/2026** (commit 559d749). **Concluso il 17/10/2026**:
+bibbia, modelli di prompt e giudici restano su main; il giudice automatico è **rimandato**, come il LoRA, e i
+riferimenti di stile non entrano nei concept nuovi (sezione 7.2).
 Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 3.
-Il LoRA dello stile è **fuori** da questo lavoro (rimandato dall'utente il 15/10/2026).
+Il LoRA dello stile è **fuori** da questo lavoro (rimandato dall'utente il 15/10/2026). Anche il giudice automatico
+(sezione 4) è rimandato, dal 17/10/2026.
 
 **AssetFurnace è una repo a sé**: la bibbia è un formato generico, ogni progetto ha la sua e la tiene nella propria
 repo. Dentro AssetFurnace non entrano immagini, nomi o stile di un progetto; gli esempi qui sotto sono inventati.
@@ -122,6 +125,11 @@ il valore di base di AssetFurnace, il prompt negativo non ha effetto: lo stile v
 - Conseguenza: i riferimenti alzano la probabilità di stare nello stile, **il giudice (sezione 4) dice quando non ci
   si è riusciti**. Insieme fanno il "migliore di N": si generano 2-4 tentativi e si tiene il migliore che passa la
   soglia. Se nessuno passa, la riga del lotto si ferma con il motivo.
+
+**Esito (17/10/2026, sezione 7.2): niente riferimenti per i concept nuovi.** La modifica copia anche il contenuto dei
+riferimenti (ogni creatura prendeva la testa della prima), e il braccio senza riferimenti è stato il più approvato.
+`compose()` e `style_bible.py prompt` li lasciano spenti se non chiesti; restano per la funzione 2, che ridisegna un
+oggetto preciso.
 
 ### Cosa costruisco io e cosa fa la funzione 2
 
@@ -317,9 +325,40 @@ Stile all'origine (punto 5), quota approvata per braccio: solo prompt 13/25, +1 
 13/25; per tipo (solo prompt/+1/+3) personaggi 4/4/2, creature 1/0/0, equipaggiamento 3/3/3, oggetti di mappa
 1/4/4, oggetti 4/4/4. Un riferimento aiuta soprattutto gli oggetti di mappa; tre non aggiungono altro.
 
-Prossimo passo: un secondo campione (r1c) con la descrizione corretta e la ricetta Turbo, così che i rimandati lo
-siano per lo stile e non per le punte o per il velo. Poi si rifà la gara con gli stessi tre candidati. Le domande del giudice possono aggiungere il contenuto
-("la forma è quella del soggetto chiesto, senza armature dove non servono?"), ma solo se la nuova prova lo giustifica.
+### 7.2 Secondo campione (r1c) ed esito della funzione (16-17/10/2026)
+
+Stessi 25 soggetti, semi e riferimenti di r1b, con la ricetta Turbo di main (1024 px) e l'armatura tolta dalla
+descrizione generale. 75 concept etichettati alla cieca dall'utente: **61 approvati**.
+
+| Braccio | Approvati | Personaggi | Creature | Oggetti | Equipaggiamento | Oggetti di mappa |
+|---|---|---|---|---|---|---|
+| Solo prompt | 22/25 | 4/5 | 4/5 | 5/5 | 4/5 | 5/5 |
+| +1 riferimento | 21/25 | 4/5 | 2/5 | 5/5 | 5/5 | 5/5 |
+| +3 riferimenti | 18/25 | 3/5 | 0/5 | 5/5 | 5/5 | 5/5 |
+
+Osservazioni dell'utente: gemme su quasi tutte le immagini, un lupo "modificato male", un drago simile al lupo,
+immagini troppo simili fra loro. Le cause, verificate:
+
+- **I riferimenti passano anche il contenuto.** Tutte le creature ricevono gli stessi 3 riferimenti (`refs.pick` per
+  tipo), e la modifica di Qwen-Image ne copia la testa e il guscio: lupo, ragno, cinghiale e drago diventano varianti
+  della stessa bestia. I personaggi con 3 riferimenti ne prendono cappuccio e viso. Più riferimenti, meno approvati.
+- **Parole che diventano oggetti.** Ogni prompt conteneva colori scritti come materiali ("emerald accents") e i
+  personaggi anche "gemstone inlays" e "spikes": il modello le disegna come gemme e punte su tutto.
+
+Decisioni dell'utente (17/10/2026):
+
+1. **Niente riferimenti** nei concept nuovi: lo stile lo porta il prompt. I riferimenti restano per la funzione 2.
+2. **Descrizione riscritta**: fantasy colorato e solare da MMORPG classico, colori accesi e saturi, luce calda e piena
+   (senza ombre portate, per la funzione 8), forme massicce e stilizzate con proporzioni un po' esagerate, pittura a
+   mano con pennellata visibile. Nessun marchio. Nella parte generale i colori sono scritti come colori, senza parole
+   che diventano oggetti (niente gemme, smeraldi, punte): compaiono solo se li chiede il soggetto. Armature solo nelle
+   parti di personaggio ed equipaggiamento.
+3. **Il giudice automatico è rimandato**, come il LoRA. Il codice della gara e dei tre giudici resta su main, spento:
+   nessun controllo `style.coherence`, nessun nuovo giro di etichette. Il motivo: con una descrizione giusta e senza
+   riferimenti 22 concept su 25 escono buoni, e gli scarti dipendono dal contenuto (cosa è disegnato), che i giudici di
+   stile non vedono; nessuno dei tre passava la regola su r1b, e un giudice sul contenuto sarebbe un altro progetto.
+4. Prova di controllo: i 25 soggetti rigenerati solo con il prompt e la descrizione nuova (stessi semi), messi accanto a
+   quelli di r1c in un foglio prima/dopo, senza voti.
 
 ## 8. Le PR
 
@@ -327,10 +366,10 @@ siano per lo stile e non per le punte o per il velo. Poi si rifà la gara con gl
    ricette, CLI `scripts/style_bible.py new|register|use|add|reject|remove|note|list|prompt|refs` (uno script,
    come `check_asset.py`, invece di un sottocomando di `pipeline.py`: `cli.py` resta della funzione 1), test.
 2. **Gara**: `scripts/bootstrap_style.py` con il catalogo, i tre candidati, la prova con i numeri nel documento.
-3. **Il vincitore come controllo**: `style.coherence`, registrazione, `style_bible.py judge`.
-4. **Pagina Stile** nello studio.
-5. Dopo il merge della funzione 1: l'adattatore `batch_steps/style.py` con il migliore di N. Poi il classificatore
-   della 4.4.
+3. ~~Il vincitore come controllo~~: rimandato con il giudice (sezione 7.2).
+4. ~~Pagina Stile nello studio~~: rimandata; la bibbia si gestisce con `style_bible.py`.
+5. ~~`batch_steps/style.py` con il migliore di N, classificatore della 4.4~~: rimandati con il giudice.
+6. **Chiusura**: descrizione nuova nella bibbia del progetto, riferimenti spenti per i concept nuovi, esito in 7.2.
 
 ## 9. Rischi
 
