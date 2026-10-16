@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skeleton's shape), choose the armour slots, map a concept drawn on that body to slots by
   projecting its bones, and cut one piece per slot, flattened on grey with the way back to
   the concept recorded, ready for the "complete this piece" edit of route C.
+- FLUX.2 klein 4B in Setup & Status: an Apache-2.0 image editor for the sd-cli already
+  installed, three files (12.3 GB), fetched only on request by
+  `scripts/bootstrap_flux2_klein.py`. The VAE is BFL's Apache-2.0 small decoder, not
+  the non-commercial one inside FLUX.2-dev.
 - Roughness and metallic estimated where an asset has none, not yet admitted
   (`image_to_3dlab/pbr_estimate.py`, `scripts/estimate_pbr.py`): Marigold-IID Appearance v1.1
   on the orbit of unlit views, carried back to the atlas as a glTF metallic-roughness map; an
@@ -41,6 +45,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   view (front, side, back), rendered by Blender on the CPU; depth stretched onto black;
   lineart of a picture; an OpenPose map from a rig named like the UE mannequin or SOMA,
   or from a joint-to-bone table for numbered bones.
+- Creature clip library, third part: every looping library clip also comes as a take twice as
+  long made of its own pieces in a new order (`<family>-idle-long`, `-walk-long`, ...), by a
+  numpy port of GenMM's patch synthesis (`image_to_3dlab/motion_variation.py`).
+- Creature clip library, second part: `scripts/chain_retarget.py` carries the library's idle,
+  walk, attack, hit, death, fly and glide clips onto auto-rigged creatures chain by chain, and
+  `creature_clips.py` writes them before the procedural clips, each with its CC0 source in
+  the provenance.
+- Creature clip library, first part: six CC0 animated creatures from Mesh2Motion, pinned to one
+  commit and checked against their SHA-256 (`scripts/bootstrap_clip_library.py`, listed in
+  Setup & Status), ready to be carried onto auto-rigged creatures.
 - Material labels in Studio's review panel: for the version under review, say whether
   light is painted into the colours, whether the materials look right, and click points
   on the model with the material they show. Saved in `output/material-labels.jsonl`;

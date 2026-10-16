@@ -364,3 +364,216 @@ senza strappi; è il primo punto da guardare se si vuole un battito più ampio.
 - `creature_clips.py` rilanciato su un rig già animato lascia le clip della famiglia precedente; nello studio non
   succede (ogni rig ha la sua cartella), da riga di comando sì.
 
+
+## 14. Libreria di clip CC0 (approvata il 16/10/2026)
+
+L'utente ha approvato la proposta della ricerca (`2026-10-16-creature-families-research.md`): clip fatte a mano e
+CC0, adattate allo scheletro di SkinTokens con un retarget a catene, più GenMM (Apache-2.0) per le varianti. Le clip
+procedurali restano: provano il rig e coprono le famiglie che la libreria non ha (le piante).
+
+### Sorgenti
+
+- **Mesh2Motion**, commit `653a969`: `LICENSE-CC0.MD` copre "tutti i modelli 3D, i rig e le animazioni", il codice è
+  MIT ma non lo usiamo. Si scaricano solo i sei `static/animations/<creatura>-animations.glb` che servono, cioè
+  uccello, drago, volpe, kaiju, serpente e ragno (3,9 MB in tutto). Ogni file ha il suo SHA-256 fissato. Restano fuori
+  cavallo e squalo (per ora inutili), la cartella `CarnegieMellonAnimations` (licenza non CC0) e `models-variation`
+  (licenza indicata file per file).
+- **Quaternius**: CC0 dichiarato, ma senza un indirizzo stabile da cui scaricare (Google Drive, itch.io). Lo valuto in
+  una PR a parte, eventualmente da uno zip che l'utente scarica a mano, controllato con lo SHA-256.
+- **GenMM**: solo codice Apache-2.0, **senza pesi** (lavora per vicini più prossimi sulla clip stessa). Va in
+  `vendor/GenMM` a un commit fissato, gira su CPU.
+
+Il pacchetto è registrato nel catalogo (`viewer/backend_catalog.py`, una voce `kind="tool"`) e si installa con
+`scripts/bootstrap_clip_library.py`, che dice cosa scarica e quanto pesa, chiede conferma e controlla ogni SHA-256
+prima di tenere un file. Il pacchetto finisce in `vendor/clip-library/mesh2motion/`, insieme a un `SOURCE.json` con
+URL, commit, licenza e hash.
+
+### Licenze (registrate il 16/10/2026)
+
+Rilette per ogni componente, pesi compresi, e con i file che vengono scaricati in automatico.
+
+| Componente | Codice | Pesi e dati |
+|---|---|---|
+| Mesh2Motion (animazioni) | MIT, non usato | Animazioni CC0 (`LICENSE-CC0.MD` al commit `653a969`) |
+| Quaternius | – | CC0 dichiarato, da registrare pacchetto per pacchetto al download |
+| GenMM | Apache-2.0 (commit `aee9bec`) | Nessun peso e nessun download: lavora per vicini più prossimi sulla clip stessa |
+| SkinTokens | MIT | Pesi MIT (`VAST-AI/SkinTokens` alla revisione fissata `79736ca`); di Qwen3-0.6B solo configurazione e tokenizer, Apache-2.0 |
+| Kimodo (mosse preimpostate) | Apache-2.0 | `nvidia/Kimodo-SOMA-RP-v1.1`, NVIDIA Open Model License; encoder del testo LLM2Vec (MIT) su Meta-Llama-3-8B-Instruct (Llama 3 Community License), non eseguito: le mosse sono già generate |
+
+Di GenMM si usano solo `GenMM.py`, `nearest_neighbor/` (che riprende Efficient-GPNN, Apache-2.0) e le trasformazioni.
+L'add-on per Blender (`__init__.py`) è GPL-3 e non viene copiato. Le utilità BVH (`dataset/bvh/`) non dichiarano una
+licenza e non servono: le clip le leggiamo noi dai GLB.
+
+### Quale clip per quale famiglia
+
+| Famiglia | Sorgente | Clip |
+|---|---|---|
+| quadruped | volpe | idle, walk, run, attack (morso), death |
+| digitigrade | kaiju (bipede con coda, gambe digitigrade, braccia) | idle, walk, attack, hit, death |
+| multileg | ragno (8 zampe; con 6 si salta una riga) | idle, walk, attack, hit, death |
+| serpent | serpente | idle, slither (side winding), attack (morso), hit, death |
+| winged | drago con 4 zampe, uccello con 2 o nessuna | idle, walk, fly, glide |
+| plant, humanoid | nessuna | restano le procedurali e i preset |
+
+Le clip si chiamano `<famiglia>-<movimento>`, come le procedurali; quando il nome è lo stesso vince la clip della
+libreria. Ciascuna ha la sua provenienza: CC0 con sorgente, commit e hash, più le licenze del rig.
+
+### Retarget a catene, in numpy
+
+Il retarget è una funzione pura, senza Blender: restituisce gli stessi fotogrammi `(turn, root)` di
+`creature_motion`, che `creature_clips.py` sa già scrivere. La parte in `bpy` non cambia. Si può provare con
+scheletri sintetici.
+
+1. **Ruoli**: per la sorgente, una mappa scritta a mano nel manifesto (catene per nome: zampe con lato e posizione,
+   ali, coda, colonna, collo); per il bersaglio, quella che dà già `creature_family.classify`.
+2. **Abbinamento delle catene**: per lato e per posizione, dall'anteriore alla posteriore. Se il numero di zampe è
+   diverso, vale l'indice normalizzato: con 6 zampe sul ragno da 8 se ne salta una.
+3. **Rotazioni**: per ogni osso della sorgente si calcola la rotazione rispetto al riposo, nel sistema del personaggio
+   (sinistra, su, avanti). Ogni osso del bersaglio prende la rotazione del tratto di sorgente che sta alla stessa
+   frazione di lunghezza della catena, convertita nel sistema del bersaglio. Le ossa senza catena seguono il padre.
+4. **Bacino e piedi**: lo spostamento del bacino è scalato sul rapporto fra le lunghezze delle gambe. Poi ogni piede
+   va dove lo porta la sorgente, scalato, e la gamba è risolta con la FABRIK che `creature_motion` usa già. Il piede
+   che nella sorgente poggia a terra resta a terra.
+5. **Controllo**: `rig.deformation` sulle clip vere, con le stesse soglie delle procedurali.
+
+### PR
+
+1. Questo progetto, il manifesto e il bootstrap con il catalogo, la correzione dell'F841 in
+   `tests/test_kimodo_retarget.py`.
+2. Il retarget a catene e il suo aggancio in `creature_clips.py`, provati sulle creature vere della funzione 6
+   (lupo, ragno, serpente, draghetto), con la tabella delle deformazioni.
+3. Le varianti con GenMM: per esempio attese diverse e camminate più lunghe senza ripetizioni.
+4. Quaternius, se c'è un modo verificabile per scaricarlo.
+
+## 15. Com'è andata la PR 2 della libreria: retarget a catene (16/10/2026)
+
+`scripts/chain_retarget.py` porta una clip della libreria sul rig, in numpy, e restituisce i fotogrammi
+`(turn, root)` di `creature_motion`. `creature_clips.py` scrive prima le clip della libreria e poi le procedurali che
+la libreria non sostituisce. Le catene delle sorgenti sono scritte a mano in `image_to_3dlab/clip_library.py`; un
+test le confronta con i GLB installati e riporta ogni clip sul suo stesso scheletro (errore sotto il 2%
+della taglia).
+
+Le prove sui rig veri hanno cambiato tre scelte del progetto della sezione 14:
+
+- **Gli arti girano come il corpo, non prendono la forma della sorgente.** Imporre la forma della zampa del
+  kaiju al lupo stirava la pelle già al primo fotogramma, all'1–5% dei lati. Ora ogni segmento riceve la rotazione
+  dal riposo del segmento della sorgente alla stessa frazione, presa attorno alla direzione della catena (l'imbardata):
+  così una zampa che punta di lato si solleva come una che punta in avanti, invece di spazzare.
+- **La scala è la lunghezza delle zampe, non l'altezza dell'anca.** Il ragno sorgente è piatto, con l'anca a 0,11 e
+  zampe da un metro e mezzo: scalato sull'anca, un rig tozzo faceva passi tre volte più lunghi delle sue zampe. In
+  attesa, il ragno è sceso dal 3,07% allo 0,31% di lati stirati.
+- **I piedi non saltano.** Il primo modo di trattarli (in appoggio la posizione della sorgente scalata, sollevati
+  quella della gamba girata) faceva saltare il piede del lupo del 12% della sua altezza in un fotogramma: sul lupo le
+  due posizioni distavano fino al 60% della gamba. Ora:
+  - in appoggio il piede resta dove ha toccato terra e si muove solo quanto il piede della sorgente;
+  - lo scarto dalla gamba girata insegue il suo obiettivo, ma si sposta al massimo del 3% della gamba per
+    fotogramma;
+  - al distacco lo scarto si riassorbe a poco a poco;
+  - un piede è a terra solo se quello della sorgente è vicino alla sua altezza di riposo, sopra o sotto: in volo i
+    piedi pendono più in basso e venivano presi per piantati;
+  - ogni piede resta dalla sua parte del corpo, almeno a un terzo della distanza di riposo. Lo stesso raccoglimento
+    in volo incrociava le zampe anteriori del draghetto, che stanno più vicine di quelle del drago.
+- **Solo il moto proprio dell'arto è girato sulla sua direzione** (dalla review di Codex). La rotazione del corpo
+  da cui pende viene rimessa sopra così com'è, altrimenti un semplice rollio del corpo piegava un'ala che punta
+  altrove. La base è il primo antenato sul corpo, così le ancore delle zampe del ragno si muovono con le zampe.
+  Codex ha trovato anche due file del ragno sorgente che si sovrascrivevano (6 zampe invece di 8).
+- Le zampe sono ordinate dal piede, non dall'attacco (le zampe di un ragno partono tutte dallo stesso punto). Due
+  catene nella stessa zampa della mesh (le "gemelle" delle clip procedurali) copiano le stesse rotazioni.
+
+Misure su 24 fotogrammi per clip, con le soglie di `rig.deformation` (avviso 0,5%, errore 1,5% per i lati stirati;
+avviso 0,5%, errore 1,0% per i triangoli rovesciati). In fondo, la stessa clip misurata sul modello della sorgente:
+
+| Creatura | Clip | Lati stirati | Triangoli rovesciati | Sorgente sul suo modello |
+|---|---|---|---|---|
+| Lupo (kaiju) | idle | 0,11% | 0,06% | 0,23% / 0,73% |
+| | walk | 0,08% | 0,10% | 0,23% / 0,65% |
+| | attack | 0,55% | 1,11% | 0,52% / 0,86% |
+| | hit | 1,32% | 0,47% | 0,31% / 0,78% |
+| | death | 2,04% | 1,09% | 1,17% / 2,11% |
+| Ragno (ragno) | idle | 0,58% | 0,49% | 0% / 0% |
+| | walk | 1,47% | 1,06% | 0,08% / 0,25% |
+| | attack | 2,10% | 1,45% | 0% / 0% |
+| | hit | 1,57% | 1,08% | 0,16% / 0% |
+| | death | 3,16% | 2,07% | 0,28% / 0,56% |
+| Serpente (serpente) | idle | 0,49% | 0,39% | 0,39% / 0% |
+| | slither | 0,30% | 0,21% | 0,48% / 0,35% |
+| | attack | 0,27% | 0,30% | 0,29% / 0% |
+| | hit | 0,50% | 0,79% | 0,24% / 0,71% |
+| | death | 0,33% | 0,31% | 0,19% / 0% |
+| Draghetto (drago) | idle | 0,97% | 2,02% | 0,50% / 1,52% |
+| | walk | 1,38% | 1,80% | 0,75% / 1,69% |
+| | fly | 0,83% | 1,77% | 0,32% / 0,63% |
+| | glide | 0,30% | 0,51% | 0,02% / 0% |
+
+Nessuna clip incrocia i piedi. Lo scatto più grande di un'articolazione fra due fotogrammi, in percentuale della
+taglia della creatura, è nella stessa misura della sorgente sul suo scheletro:
+
+| Clip | Retarget | Sorgente |
+|---|---|---|
+| Lupo, walk | 4,3% (era 12,2%) | 1,2% |
+| Ragno, walk | 5,4% | 7,3% |
+| Draghetto, walk | 3,5% | 2,2% |
+| Serpente, slither | 14,3% | 11,4% |
+
+Lettura:
+- Le clip di movimento di lupo e serpente sono pulite come o più delle sorgenti. Le procedurali restano accanto per
+  le mosse che la libreria non ha (il draghetto tiene `hover` e `attack`).
+- Attacco, colpo e morte del lupo e il drago sono vicini a ciò che fanno le sorgenti sul loro modello. Le pose sono
+  estreme già lì: la morte del kaiju rovescia il 2,1% dei triangoli del suo modello.
+- **Il ragno resta il caso difficile, e il motivo è il rig, non il retarget.** Ha catene a cui il riconoscimento non
+  ha dato un ruolo: una zampa intera a destra (`bone_60`–`bone_66`) e un moncone fra due zampe a sinistra. Restano
+  rigide mentre le vicine si muovono, e la pelle in mezzo si strappa. Farle seguire la zampa più vicina ha
+  peggiorato le cose: prendeva anche testa e cheliceri, quindi l'ho tolto.
+
+**Seguiti della PR 2 della libreria**
+- Riconoscere tutte le zampe del ragno, comprese quelle che oggi restano senza ruolo; poi rimisurare.
+- Le clip con pose estreme (attacco, colpo, morte) superano le soglie anche sulle sorgenti: valutare soglie per tipo
+  di clip, o un controllo che confronti con la sorgente invece che con un numero fisso.
+- Il collo del bersaglio: oggi la testa gira solo con l'ultimo segmento del collo.
+
+## 16. Com'è andata la PR 3 della libreria: varianti con GenMM (16/10/2026)
+
+Ogni clip della libreria che si ripete (idle, walk, run, fly, glide, slither) ha anche una versione lunga il
+doppio, `<famiglia>-<movimento>-long`. È fatta dei pezzi della clip in un ordine nuovo e si ripete anch'essa.
+Così una creatura non sta ferma in un giro di due secondi.
+
+**GenMM è portato in numpy, non messo in `vendor/`** (`image_to_3dlab/motion_variation.py`, circa 200 righe):
+- il `main` di GenMM non gira più: dal commit `b2b1539` usa `GenMM.KEYFRAME_INDICES`, che non è mai definito;
+- servirebbero torch e unfoldNd, da aggiungere alla `.venv` di SkinTokens;
+- nella stessa cartella c'è l'add-on GPL-3.
+
+Il porting segue `GenMM.py`, `nearest_neighbor/` e `configs/default.yaml` al commit `fae65cd`, l'ultimo funzionante
+dopo la licenza. Ha i valori predefiniti di GenMM: toppe di 11 fotogrammi, alpha 0,01, 3 passi per livello, piramide
+0,75. Le differenze sono numpy al posto di torch, una sola clip d'esempio e le due piramidi allineate, in modo che
+la lunghezza esca esatta. Nessun download e nessun peso. Il NOTICE e i crediti lo dichiarano. Applicato alle pose,
+lavora sulla rotazione di ogni osso rispetto al padre (6D) e, per le radici, sull'altezza e sul passo lungo il
+terreno; le ossa mantengono la lunghezza di riposo.
+
+La variante si fa sulla clip sorgente, prima del retarget. Nella provenienza `varied_with` dice come è stata fatta
+(fattore 2, seme 0), accanto alla clip CC0 di partenza.
+
+Misure sui quattro rig. Le deformazioni sono quelle della clip di base. Lo scatto più grande di un'articolazione fra
+due fotogrammi cresce un poco nelle giunzioni fra pezzi:
+
+| Clip | Lati stirati / rovesciati, base → lunga | Scatto massimo, base → lunga |
+|---|---|---|
+| Lupo, idle | 0,11 / 0,06 → 0,11 / 0,06 | 0,38% → 0,56% |
+| Lupo, walk | 0,08 / 0,10 → 0,06 / 0,10 | 4,35% → 5,62% |
+| Ragno, idle | 0,58 / 0,49 → 0,54 / 0,44 | 0,40% → 0,85% |
+| Ragno, walk | 1,47 / 1,06 → 1,50 / 1,05 | 5,44% → 6,83% |
+| Serpente, idle | 0,49 / 0,39 → 0,49 / 0,39 | 2,25% → 4,60% |
+| Serpente, slither | 0,30 / 0,21 → 0,23 / 0,18 | 14,28% → 16,47% |
+| Draghetto, idle | 0,97 / 2,02 → 0,97 / 1,94 | 0,48% → 0,64% |
+| Draghetto, walk | 1,38 / 1,80 → 1,27 / 1,79 | 3,52% → 3,81% |
+| Draghetto, fly | 0,83 / 1,77 → 0,83 / 1,33 | 23,01% → 20,43% |
+| Draghetto, glide | 0,30 / 0,51 → 0,30 / 0,51 | 0,23% → 0,40% |
+
+Lungo la strada, misurare gli scatti ha fatto emergere un difetto della PR 2: i piedi saltavano al distacco. È
+stato corretto sul suo ramo (sezione 15).
+
+**Seguiti della PR 3**
+- Le giunzioni fra pezzi raddoppiano lo scatto massimo dell'attesa del serpente (dal 2,3% al 4,6%): toppe più lunghe
+  o un passo di levigatura sulle giunzioni, se si vede.
+- Le varianti di attacco e di colpo (pezzi diversi, non più lunghi) richiedono una sintesi guidata da fotogrammi
+  chiave, che GenMM aveva iniziato a introdurre nel commit che lo ha rotto.
+
