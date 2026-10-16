@@ -25,11 +25,17 @@ export function familyPicker() {
 /** A line for the Animate step about the rig's family and its test clips, or ''. */
 export function familyNote(asset) {
   if (!asset.family || asset.family === 'humanoid') return '';
-  const tests = (asset.clips || []).filter((c) => c.name.startsWith(`${asset.family}-`)).map((c) => c.name);
+  const library = new Set(asset.library_clips || []);
+  const own = (asset.clips || []).filter((c) => c.name.startsWith(`${asset.family}-`)).map((c) => c.name);
+  const fromLibrary = own.filter((name) => library.has(name));
+  const tests = own.filter((name) => !library.has(name));
   const label = esc(asset.family_label || asset.family);
   const how = asset.family_chosen ? 'as you chose' : 'recognised from its skeleton';
-  if (tests.length) {
-    return `<p class="hint">Rigged as <b>${label}</b> (${how}). Test clips to check the rig: ${tests.map(esc).join(', ')}. Pick one under the model to play it.</p>`;
+  if (own.length) {
+    const parts = [];
+    if (fromLibrary.length) parts.push(`Clips from the CC0 creature library: ${fromLibrary.map(esc).join(', ')}.`);
+    if (tests.length) parts.push(`Test clips to check the rig: ${tests.map(esc).join(', ')}.`);
+    return `<p class="hint">Rigged as <b>${label}</b> (${how}). ${parts.join(' ')} Pick one under the model to play it.</p>`;
   }
   const why = asset.clips_error ? ` The test clips failed: ${esc(asset.clips_error)}` : ' This family has no test clips yet.';
   return `<p class="hint">Rigged as <b>${label}</b> (${how}).${why}</p>`;

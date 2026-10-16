@@ -14,6 +14,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<image>.concept.json` record and the silhouette IoU against the shape picture.
   `generate(prompt, references, seed)` is the same edit as one call for other steps.
   Image jobs take extra arguments, extra provenance and a name (`viewer/image_api.py`).
+- Characters in pieces, fitting (`slot_parts/fit.py`, `scripts/blender_fit_parts.py`,
+  `slot_parts.py fit`): each piece is placed on the base body from its box through the body's
+  camera, paired pieces per side (the left from the mirrored box, not a mirrored copy of the
+  fitted right), gauntlets turned onto the forearm, then a voxel cage shrinkwrapped outside
+  the body drives it by Surface Deform (several cage sizes tried before Mesh Deform), seams
+  welded first, cage spikes put back, sunken vertices pushed out, skin weights copied (at most
+  4) or one bone for the helmet. The body gets a `covered` vertex colour (alpha 0 under a
+  piece) and a trimmed copy; `set.glb`, `preview.glb`, one GLB per piece and `fit.json`.
+- Characters in pieces, route C pieces (`slot_parts/pieces.py`, `slot_parts.py pieces`): each
+  slot's flattened cut is completed by a Qwen-Image edit into one clean picture per seed
+  (new `complete_piece` wording in `concept.prompts`, with its `.concept.json` record), and
+  the picked picture becomes a 3D piece through Pixal3D, the finish step at the slot's face
+  budget and `fix_winding.py`; `pieces.json` records where each piece sits on the concept.
+- Characters in pieces, first part (`image_to_3dlab/slot_parts/`, `scripts/slot_parts.py`):
+  register a rigged humanoid as a base body (picture, Pixal3D camera, bone roles from the
+  skeleton's shape), choose the armour slots, map a concept drawn on that body to slots by
+  projecting its bones, and cut one piece per slot, flattened on grey with the way back to
+  the concept recorded, ready for the "complete this piece" edit of route C.
+- Creature families, documented: `docs/creature-families.md` (families, clips and where they
+  come from, the studio, Unreal, known limits), a line in the README, and the Animate step
+  says which clips come from the CC0 library and which are procedural tests.
+- Export for Unreal turns a creature that is not a humanoid to face forward from its family file
+  (a drake generated facing between two axes no longer arrives turned), and records the
+  family in the export job; its library, procedural and `-long` clips go along as
+  `AS_<Name>_<Family><Move>`.
 - FLUX.2 klein 4B in Setup & Status: an Apache-2.0 image editor for the sd-cli already
   installed, three files (12.3 GB), fetched only on request by
   `scripts/bootstrap_flux2_klein.py`. The VAE is BFL's Apache-2.0 small decoder, not
@@ -151,6 +176,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
 
 ### Fixed
+- The studio reads and writes its JSON and text files as UTF-8 on every machine, and the
+  test suite passes on Windows without `PYTHONUTF8=1`: with the locale's cp1252, an em dash
+  or a middle dot written as UTF-8 failed to decode. `tests/test_text_encoding.py` keeps new
+  reads and writes in the studio from leaving the encoding out.
+- A skinned model is sized for Unreal after it is turned to face forward: a creature facing
+  half-way between two axes was sized on its wider box and arrived 20% too long. A creature
+  that is not a humanoid is checked for facing in Unreal from its hips and head (named in
+  the sidecar's `facing_bones`) instead of failing for want of Manny's feet.
 - Pictures are sharp again: text to image now runs the Qwen-Image 2.1 Turbo checkpoint with
   its own schedule (`--sigmas qwen-image-2.1-turbo`, cfg 1.0) at 1024 px. It used to run
   the base checkpoint with the Turbo's numbers (8 steps, cfg 1.0), which stopped the

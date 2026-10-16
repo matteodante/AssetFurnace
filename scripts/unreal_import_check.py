@@ -425,7 +425,7 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
                 got["root_error"] = repr(exc)
             if side["expect"].get("facing"):
                 try:
-                    got["forward"] = facing(skeleton)
+                    got["forward"] = facing(skeleton, side["expect"].get("facing_bones"))
                 except Exception as exc:
                     got["forward_error"] = repr(exc)
             if side["expect"].get("manny_compatible") and job["manny"]:
@@ -555,10 +555,17 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
         hands = (bone_z(pose, "hand_l") + bone_z(pose, "hand_r")) / 2
         return (shoulders - hands) / max(bone_z(pose, "head"), 1e-3)
 
-    def facing(skeleton):
+    def facing(skeleton, bones=None):
         """The way the toes point in the reference pose: both feet to their balls, averaged,
-        so the natural outward turn of each foot cancels out."""
+        so the natural outward turn of each foot cancels out. A creature that is no humanoid
+        names two bones instead (hips to head), and faces from the first to the second."""
         pose = unreal.AnimPoseExtensions.get_reference_pose(skeleton)
+        if bones:
+            back, front = (unreal.AnimPoseExtensions.get_bone_pose(pose, b, unreal.AnimPoseSpaces.WORLD).translation
+                           for b in bones)
+            x, y = front.x - back.x, front.y - back.y
+            length = max((x * x + y * y) ** 0.5, 1e-6)
+            return [x / length, y / length, 0.0]
         x = y = 0.0
         for side in ("l", "r"):
             foot = unreal.AnimPoseExtensions.get_bone_pose(pose, f"foot_{side}", unreal.AnimPoseSpaces.WORLD).translation

@@ -20,7 +20,7 @@ originali, tabella di corrispondenza, import in Unreal) resta nella repo di Auro
 | # | Funzione | Progetto | Stato |
 |---|---|---|---|
 | 1 | Lotti e accesso per agenti | [batch-mcp](2026-10-15-batch-mcp-design.md) | **Su `main`** (PR #2): lotti, ripresa, server MCP, pagina Batches |
-| 2 | Dal riferimento al concept | [reference-concept](2026-10-15-reference-concept-design.md) | Strada decisa: Qwen-Image 2.1 in modifica dentro `sd-cli`. File della visione su `main` (PR #9); prova dei 4 casi in corso, giudicata a occhio dall'utente |
+| 2 | Dal riferimento al concept | [reference-concept](2026-10-15-reference-concept-design.md) | Costruita: Qwen-Image 2.1 Turbo in modifica dentro `sd-cli`; pannello "Draw from a reference" nello studio, `generate` per le altre funzioni (PR #23, #24, #33, #36) |
 | 3 | Bibbia dello stile | [style-bible](2026-10-15-style-bible-design.md) | PR 1 su `main` (PR #10: bibbia, prompt, riferimenti). PR 2 (gara fra giudici imparati) in corso. Lo stile si ricava dai riferimenti originali del progetto (vedi sotto) |
 | 4 | Parti per slot | [progetto](2026-10-16-slot-parts-design.md), [rapporto della prova](2026-10-15-slot-parts-spike.md) | Tre modi (un pezzo solo, vestito diviso in pezzi, corpo nudo più equipaggiamento); pezzi dalla strada C con Qwen Turbo dopo la seconda prova del 16/10, B0 di riserva |
 | 5 | Profilo Unreal | [unreal-profile](2026-10-15-unreal-profile-design.md) | **Su `main`** (PR #6, #7), accettazione superata su UE 5.8.3 |

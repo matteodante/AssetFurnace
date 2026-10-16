@@ -189,6 +189,10 @@ def build(output: Path, request: dict[str, Any]) -> dict[str, Any]:
     elif mode == "add_piece":
         piece = _text(request, "piece")
         prompt, name, against, fit = prompts.add_piece(piece, style=style), piece, shape[0], False
+    elif mode == "complete_piece":
+        # A cut-out piece on grey (function 4): no outline of its own to measure against.
+        piece = _text(request, "piece")
+        prompt, name, against, fit = prompts.complete_piece(piece, style=style), piece, None, False
     else:
         view = request.get("view")
         prompt = prompts.other_view(view, depth=depth, style=style)

@@ -143,6 +143,14 @@ def test_a_redraw_request_becomes_the_prompt_the_pictures_and_what_the_iou_is_me
     assert plan["iou_against"] == depth.resolve() and plan["fit"] is True
 
 
+def test_completing_a_cut_out_piece_uses_its_own_words_and_measures_nothing(output):
+    picture(output / "slots" / "pauldron_cut.png")
+    plan = concept_api.build(output, {"mode": "complete_piece", "piece": "a single shoulder pauldron",
+                                      "shape": ["slots/pauldron_cut.png"]})
+    assert plan["prompt"] == prompts.complete_piece("a single shoulder pauldron")
+    assert plan["iou_against"] is None and plan["name"] == "concept complete piece a single shoulder pauldron"
+
+
 def test_a_request_with_the_wrong_number_of_shape_pictures_is_refused(output):
     front = picture(output / "images" / "front.png")
     with pytest.raises(ValueError, match="2 shape pictures"):
