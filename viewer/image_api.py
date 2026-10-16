@@ -2,18 +2,24 @@
 
 Every other tool here starts from a picture. This one makes the picture, for people who
 do not have one yet. It drives `stable-diffusion.cpp` (a prebuilt Metal binary in
-`vendor/sdcpp/`) against Qwen-Image 2.1 in GGUF form.
+`vendor/sdcpp/`) against Qwen-Image 2.1 Turbo in GGUF form.
 
 Two things are deliberate:
 
-**The defaults are the measured fast ones, not the upstream ones.** The model's own recipe
-says `--cfg-scale 6.0`, which makes it do two passes per step for nothing, because
-Qwen-Image 2.1 does not use guidance. Measured on one Mac on 2026-09-22: cfg 6.0 at 1024px
-took 17 minutes, cfg 1.0 took 11, and 768px at 10 steps took 4m22s for the same picture.
-So the defaults here are cfg 1.0, 768px and 8 steps: 8 was then tested by eye against 10
-and lost nothing visible (2026-10). **Those timings are one machine.** A
-faster chip does better and an NVIDIA card is in a different league; nothing here should
-be read as "this is how long it takes".
+**The model is the Turbo, run with its own schedule.** Qwen-Image 2.1 comes in two
+checkpoints. The base one is meant for about 40 steps with guidance (`--cfg-scale 6.0` in
+the sd.cpp guide); the Turbo is distilled for 8 steps at cfg 1.0 with its own sigmas
+(`--sigmas qwen-image-2.1-turbo`). Until 2026-10-16 this file ran the base checkpoint with
+the Turbo's numbers (8 steps, cfg 1.0, the default schedule): the sampler stopped half
+way, and pictures came out soft, with frayed edges and faint "ghost" shapes, worst when
+reference pictures were given. Compared on six subjects with the same prompts and seeds
+(knight, knight with three references, a helmet on its own, wolf, well, sword; RTX 5070
+Ti): base at 8 steps was blurred every time; base at 40 steps and cfg 6 was clean but took
+80 s, and 8 minutes with three references; the Turbo was as clean or cleaner in 15 s, 48 s
+with three references. At 1536 px the Turbo added things nobody asked for around the
+subject (pauldrons around a sword, a mask for a helmet), so the default is 1024 px; the
+3D generators downstream read about 518 px anyway. The step count is the length of the
+sigma list, so `steps` is recorded but not taken from the form.
 
 **The licence travels with the image.** The pictures Qwen-Image makes are yours, per Qwen's
 own statement. Every run writes a sidecar saying so, with the licence, because
@@ -51,23 +57,27 @@ BINARY = executable(REPO / "vendor" / "sdcpp", "sd-cli")
 # folder name did not, and sorting by it only made the pictures harder to find.
 OUTPUT_ROOT = REPO / "output" / "images"
 
-MODEL_ID = "qwen-image-2.1"
+MODEL_ID = "qwen-image-2.1-turbo"
 LICENSE_NAME = "Qwen Research License"
-LICENSE_URL = "https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE"
+LICENSE_URL = "https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE"
 ATTRIBUTION = "Built with Qwen"
 OUTPUT_RIGHTS = QWEN_OUTPUT_RIGHTS
 
 # Each weight file, as (hugging face cache directory, filename glob).
 WEIGHT_FILES = {
-    "diffusion_model": ("models--leejet--Qwen-Image-2.1-GGUF", "qwen_image_2.1-Q8_0.gguf"),
+    "diffusion_model": ("models--unsloth--Qwen-Image-2.1-Turbo-GGUF", "qwen-image-2.1-turbo-Q8_0.gguf"),
     "llm": ("models--Qwen--Qwen3-VL-8B-Instruct-GGUF", "Qwen3VL-8B-Instruct-Q4_K_M.gguf"),
     "vae": ("models--Comfy-Org--Qwen-Image-2.1", "qwen_image_2.1_vae_bf16.safetensors"),
 }
 
+# The Turbo's own schedule (sd.cpp preset): eight sigmas, so eight steps.
+TURBO_SIGMAS = "qwen-image-2.1-turbo"
+TURBO_STEPS = 8
+
 DEFAULTS: dict[str, Any] = {
-    "width": 768,
-    "height": 768,
-    "steps": 8,
+    "width": 1024,
+    "height": 1024,
+    "steps": TURBO_STEPS,
     "cfg_scale": 1.0,
     "sampler": "euler",
     "seed": 42,
@@ -79,7 +89,6 @@ SAMPLERS = ("euler", "euler_a", "heun", "dpm2", "dpmpp2m", "lcm")
 # run rather than at the door.
 SIZE_STEP = 32
 MIN_SIZE, MAX_SIZE = 256, 1536
-MAX_STEPS = 50
 MAX_PROMPT = 2000
 
 # "  |=====>    | 7/10 - 13.38s/it"
@@ -149,10 +158,9 @@ def clean_settings(raw: dict[str, Any]) -> dict[str, Any]:
             number = DEFAULTS[key]
         number = max(MIN_SIZE, min(MAX_SIZE, number))
         settings[key] = max(SIZE_STEP, round(number / SIZE_STEP) * SIZE_STEP)
-    try:
-        settings["steps"] = max(1, min(MAX_STEPS, int(raw.get("steps", DEFAULTS["steps"]))))
-    except (TypeError, ValueError):
-        settings["steps"] = DEFAULTS["steps"]
+    # The Turbo's schedule fixes the step count; a number from the form would only be a
+    # label that does not match what ran.
+    settings["steps"] = TURBO_STEPS
     try:
         settings["cfg_scale"] = max(0.0, min(20.0, float(raw.get("cfg_scale", DEFAULTS["cfg_scale"]))))
     except (TypeError, ValueError):
@@ -183,7 +191,7 @@ def build_command(prompt: str, settings: dict[str, Any], output_path: Path,
         "-p", prompt,
         "--cfg-scale", str(settings["cfg_scale"]),
         "--sampling-method", settings["sampler"],
-        "--steps", str(settings["steps"]),
+        "--sigmas", TURBO_SIGMAS,
         "-W", str(settings["width"]),
         "-H", str(settings["height"]),
         "--seed", str(settings["seed"]),
