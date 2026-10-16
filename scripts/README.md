@@ -122,6 +122,8 @@ The asset's surface, as opposed to its shape.
 | `game_materials.py` | Pack a generated GLB's own maps as a game-ready ORM, with its sidecar and licence record. |
 | `bootstrap_materials.py` | Install the game-material models and their environment, after saying what, how big and under which licence. |
 | `delight_materials.py` | Take the light painted into an asset's texture, or into a concept, back out. |
+| `estimate_pbr.py` | Estimate roughness and metallic for an asset's materials that have none. |
+| `pbr_trial.py` | Run the Poly Haven trial for estimated roughness and metallic. |
 | `materials_worker.py` | Run a material model on images, inside the materials environment. |
 
 ## Measure and judge

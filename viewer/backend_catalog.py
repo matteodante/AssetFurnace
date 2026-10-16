@@ -664,6 +664,33 @@ CATALOG: tuple[Backend, ...] = (
                            "Python environment (~3 GB, mostly PyTorch)."),
         ),
     ),
+    Backend(
+        id="materials-pbr",
+        label="Roughness and metallic estimation (Marigold-IID Appearance)",
+        kind="tool",
+        best_for=("Gives an asset without its own metallic-roughness map one, read from how "
+                  "its surfaces look. An asset's own map is always kept."),
+        tradeoff=("Optional, and off until it passes the Poly Haven trial and your blind "
+                  "comparison. Trained on interiors and photos; untried on stylised art."),
+        license_name="CreativeML Open RAIL++-M (weights); Apache-2.0 (code)",
+        license_url=_material_models.OPENRAIL_URL,
+        install="scripts/bootstrap_materials.py --only env,marigold-appearance",
+        runs_on=(NVIDIA,),
+        setup_minutes=10,
+        caveat=("The weights come with use restrictions (no medical advice, no law "
+                "enforcement, no harassment...), and anyone you pass them on to is bound "
+                "by them too. Your results are yours."),
+        build_probes=(_material_models.env_python(),),
+        upstream=("prs-eth Marigold", "https://github.com/prs-eth/Marigold"),
+        weights=(
+            WeightSet(_material_models.MARIGOLD_APPEARANCE.label,
+                      _material_models.MARIGOLD_APPEARANCE.repo,
+                      _material_models.MARIGOLD_APPEARANCE.size,
+                      HF_HUB_DIR / "models--prs-eth--marigold-iid-appearance-v1-1",
+                      note="fp16 files only, at a pinned revision. Shares its Python "
+                           "environment with baked-light removal."),
+        ),
+    ),
 )
 
 BY_ID = {backend.id: backend for backend in CATALOG}

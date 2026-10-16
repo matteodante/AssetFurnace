@@ -104,3 +104,10 @@ def test_the_environment_gets_torch_from_its_own_index_first(tmp_path):
 def test_an_unknown_part_is_refused():
     with pytest.raises(SystemExit, match="unknown part"):
         boot.parts("marigold")
+
+
+def test_roughness_and_metallic_estimation_is_its_own_tool_with_its_own_weights():
+    backend = bc.BY_ID["materials-pbr"]
+    assert backend.kind == "tool" and [w.source for w in backend.weights] == [mm.MARIGOLD_APPEARANCE.repo]
+    command = download_api.command_for("materials-pbr", host=bc.NVIDIA)
+    assert command[-3:] == ["--only", "env,marigold-appearance", "--yes"]
