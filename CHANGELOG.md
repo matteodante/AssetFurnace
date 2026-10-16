@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- FLUX.2 klein 4B in Setup & Status: an Apache-2.0 image editor for the sd-cli already
+  installed, three files (12.3 GB), fetched only on request by
+  `scripts/bootstrap_flux2_klein.py`. The VAE is BFL's Apache-2.0 small decoder, not
+  the non-commercial one inside FLUX.2-dev.
 - Roughness and metallic estimated where an asset has none, not yet admitted
   (`image_to_3dlab/pbr_estimate.py`, `scripts/estimate_pbr.py`): Marigold-IID Appearance v1.1
   on the orbit of unlit views, carried back to the atlas as a glTF metallic-roughness map; an
