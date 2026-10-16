@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces, route C pieces (`slot_parts/pieces.py`, `slot_parts.py pieces`): each
+  slot's flattened cut is completed by a Qwen-Image edit into one clean picture per seed
+  (new `complete_piece` wording in `concept.prompts`, with its `.concept.json` record), and
+  the picked picture becomes a 3D piece through Pixal3D, the finish step at the slot's face
+  budget and `fix_winding.py`; `pieces.json` records where each piece sits on the concept.
 - Characters in pieces, first part (`image_to_3dlab/slot_parts/`, `scripts/slot_parts.py`):
   register a rigged humanoid as a base body (picture, Pixal3D camera, bone roles from the
   skeleton's shape), choose the armour slots, map a concept drawn on that body to slots by

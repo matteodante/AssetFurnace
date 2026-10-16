@@ -5,6 +5,8 @@
         --views body.svviews [--label race=human --label sex=male]
     python scripts/slot_parts.py cuts --body output/bodies/knight/body.json --concept concept.png \
         --slots helmet,torso,shoulders:split,gloves,boots --out output/sets/red-knight/knight/cuts
+    python scripts/slot_parts.py pieces --cuts output/sets/red-knight/knight/cuts/cuts.json \
+        --seeds 3,7,11 [--images-only | --models-only --pick helmet=7,boots=3]
 
 `body` writes `output/bodies/<name>/body.json`: picture, rigged GLB, Pixal3D camera and bone
 roles. The body must be a humanoid made from one front picture with Pixal3D (its camera
@@ -17,6 +19,13 @@ outline) and writes, per chosen slot: `cut_<slot>.png` (the piece, transparent a
 `slots.png` (the slot map), `overlay.png` (the map over the concept, to check by eye) and
 `cuts.json` (boxes and the way back from each canvas to the concept). The concept's
 subject comes from its alpha when it is matted, from `--matte`, or from BiRefNet.
+
+`pieces` is route C: each flattened cut goes to a Qwen-Image edit ("complete this piece")
+once per seed (`pieces/<slot>/s<seed>.png`, with a `.concept.json` record), then the picked
+picture (`--pick slot=seed`, else the first seed) goes through Pixal3D, the finish step and
+`fix_winding.py`. `pieces.json` says, per slot, which picture, which GLB and where the piece
+sits on the concept. `--images-only` stops before 3D so a person can pick; `--models-only`
+reuses the pictures already made.
 
 Exit code 0 when written, 1 when refused (the reason is printed).
 """
@@ -34,7 +43,9 @@ import numpy as np
 from PIL import Image
 
 from image_to_3dlab.slot_parts import body as body_mod
-from image_to_3dlab.slot_parts import cuts, masks, slots
+from image_to_3dlab.slot_parts import cuts, masks, pieces, slots
+
+REPO = Path(__file__).resolve().parents[1]
 
 
 def parse_slots(text: str) -> dict[str, dict]:
@@ -99,6 +110,68 @@ def make_cuts(body_json: Path, concept: Path, chosen: dict[str, dict], out: Path
     return result
 
 
+def edit_command(prompt: str, canvas: Path, picture: Path, seed: int) -> list[str]:
+    """sd-cli's edit of the day: the studio's text-to-image recipe plus the vision file and `-r`."""
+    from image_to_3dlab.concept.edit import find_vision, with_references
+    from viewer import image_api
+
+    settings = image_api.clean_settings({"seed": seed})
+    command = image_api.build_command(prompt, settings, picture, image_api.resolve_weights())
+    vision = find_vision(image_api.HF_HUB)
+    if vision is None:
+        raise ValueError("Qwen3-VL's vision file is missing: download Qwen-Image in Setup & Status")
+    return with_references(command, [canvas], vision)
+
+
+def _run(command: list[str]) -> None:
+    import subprocess
+
+    done = subprocess.run(command, capture_output=True, text=True, errors="replace", check=False)
+    if done.returncode != 0:
+        tool = Path(command[1] if len(command) > 1 and command[1].endswith(".py") else command[0]).name
+        raise ValueError(f"{tool} failed ({done.returncode}): {(done.stdout + done.stderr)[-600:]}")
+
+
+def make_pieces(cuts_json: Path, seeds: list[int], picks: dict[str, int] | None = None, images: bool = True,
+                models: bool = True, style: str = "", run=_run, edit=edit_command) -> dict:
+    """Route C for every slot of a cuts.json: pictures, then the picked ones in 3D."""
+    from image_to_3dlab.concept import sidecar
+
+    cuts_json = Path(cuts_json)
+    record = json.loads(cuts_json.read_text())
+    folder = cuts_json.parent.parent / "pieces"
+    jobs = pieces.picture_jobs(record, cuts_json.parent, folder, seeds, style)
+    picks = dict(picks or {})
+    unknown = sorted(set(picks) - {job.slot for job in jobs})
+    if unknown:
+        raise ValueError(f"picked slot(s) not among the cut route C slots: {', '.join(unknown)}")
+    if images:
+        for job in jobs:
+            job.picture.parent.mkdir(parents=True, exist_ok=True)
+            command = edit(job.prompt, job.canvas, job.picture, job.seed)
+            run(command)
+            sidecar.write(job.picture, mode="complete_piece", prompt=job.prompt, seed=job.seed, command=command,
+                          references=[(job.canvas, "shape")], inputs={"slot": job.slot})
+    result = {"cuts": str(cuts_json.resolve()), "seeds": list(seeds), "slots": {}}
+    if models:
+        for slot in dict.fromkeys(job.slot for job in jobs):
+            seed = picks.get(slot, seeds[0])
+            picture = pieces.picture_path(folder, slot, seed)
+            if not picture.is_file():
+                raise ValueError(f"{slot}: no picture for seed {seed} at {picture}; run without --models-only")
+            for command in pieces.model_commands(picture, folder, slot, sys.executable, REPO / "scripts"):
+                run(command)
+            matte = picture.with_name(f"{picture.stem}__matted.png")
+            alpha = np.asarray(Image.open(matte).convert("RGBA"))[..., 3] > 127
+            place = cuts.Placement.from_dict(record["slots"][slot]["placement"])
+            result["slots"][slot] = {
+                "seed": seed, "picture": str(picture), "glb": str(pieces.finished_path(folder, slot)),
+                "views": str(pieces.model_path(folder, slot).with_suffix(".svviews")),
+                "concept_box": pieces.concept_box(alpha, place)}
+        pieces.write_record(folder / "pieces.json", result)
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="command", required=True)
@@ -118,9 +191,22 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--out", type=Path, required=True)
     c.add_argument("--size", type=int, default=1024, help="canvas side of each flattened piece")
     c.add_argument("--matte", type=Path, help="cut-out of the concept, when it is not matted itself")
+    q = sub.add_parser("pieces", help="route C: one clean picture per piece, then the piece in 3D")
+    q.add_argument("--cuts", type=Path, required=True, help="cuts.json from the cuts command")
+    q.add_argument("--seeds", default="3", help="comma list of seeds, one picture each per slot")
+    q.add_argument("--pick", default="", help="slot=seed for the picture to make in 3D (default the first seed)")
+    q.add_argument("--style", default="", help="style words added to every piece's prompt")
+    stage = q.add_mutually_exclusive_group()
+    stage.add_argument("--images-only", action="store_true", help="stop after the pictures")
+    stage.add_argument("--models-only", action="store_true", help="reuse the pictures, make the 3D")
     args = p.parse_args(argv)
     try:
-        if args.command == "body":
+        if args.command == "pieces":
+            seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
+            result = make_pieces(args.cuts, seeds, pieces.parse_picks(args.pick), images=not args.models_only,
+                                 models=not args.images_only, style=args.style)
+            print(f"pieces: {', '.join(result['slots']) or 'pictures only'}")
+        elif args.command == "body":
             labels = dict(item.split("=", 1) for item in args.label)
             path = body_mod.register(args.name, args.image, args.rigged, args.views, args.matte, labels, args.root)
             print(f"wrote {path}")
