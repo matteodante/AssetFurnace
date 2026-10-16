@@ -364,3 +364,83 @@ senza strappi; è il primo punto da guardare se si vuole un battito più ampio.
 - `creature_clips.py` rilanciato su un rig già animato lascia le clip della famiglia precedente; nello studio non
   succede (ogni rig ha la sua cartella), da riga di comando sì.
 
+
+## 14. Libreria di clip CC0 (approvata il 16/10/2026)
+
+L'utente ha approvato la proposta della ricerca (`2026-10-16-creature-families-research.md`): clip fatte a mano e
+CC0, adattate allo scheletro di SkinTokens con un retarget a catene, più GenMM (Apache-2.0) per le varianti. Le clip
+procedurali restano: provano il rig e coprono le famiglie che la libreria non ha (le piante).
+
+### Sorgenti
+
+- **Mesh2Motion**, commit `653a969`: `LICENSE-CC0.MD` copre "tutti i modelli 3D, i rig e le animazioni", il codice è
+  MIT ma non lo usiamo. Si scaricano solo i sei `static/animations/<creatura>-animations.glb` che servono, cioè
+  uccello, drago, volpe, kaiju, serpente e ragno (3,9 MB in tutto). Ogni file ha il suo SHA-256 fissato. Restano fuori
+  cavallo e squalo (per ora inutili), la cartella `CarnegieMellonAnimations` (licenza non CC0) e `models-variation`
+  (licenza indicata file per file).
+- **Quaternius**: CC0 dichiarato, ma senza un indirizzo stabile da cui scaricare (Google Drive, itch.io). Lo valuto in
+  una PR a parte, eventualmente da uno zip che l'utente scarica a mano, controllato con lo SHA-256.
+- **GenMM**: solo codice Apache-2.0, **senza pesi** (lavora per vicini più prossimi sulla clip stessa). Va in
+  `vendor/GenMM` a un commit fissato, gira su CPU.
+
+Il pacchetto è registrato nel catalogo (`viewer/backend_catalog.py`, una voce `kind="tool"`) e si installa con
+`scripts/bootstrap_clip_library.py`, che dice cosa scarica e quanto pesa, chiede conferma e controlla ogni SHA-256
+prima di tenere un file. Il pacchetto finisce in `vendor/clip-library/mesh2motion/`, insieme a un `SOURCE.json` con
+URL, commit, licenza e hash.
+
+### Licenze (registrate il 16/10/2026)
+
+Rilette per ogni componente, pesi compresi, e con i file che vengono scaricati in automatico.
+
+| Componente | Codice | Pesi e dati |
+|---|---|---|
+| Mesh2Motion (animazioni) | MIT, non usato | Animazioni CC0 (`LICENSE-CC0.MD` al commit `653a969`) |
+| Quaternius | – | CC0 dichiarato, da registrare pacchetto per pacchetto al download |
+| GenMM | Apache-2.0 (commit `aee9bec`) | Nessun peso e nessun download: lavora per vicini più prossimi sulla clip stessa |
+| SkinTokens | MIT | Pesi MIT (`VAST-AI/SkinTokens` alla revisione fissata `79736ca`); di Qwen3-0.6B solo configurazione e tokenizer, Apache-2.0 |
+| Kimodo (mosse preimpostate) | Apache-2.0 | `nvidia/Kimodo-SOMA-RP-v1.1`, NVIDIA Open Model License; encoder del testo LLM2Vec (MIT) su Meta-Llama-3-8B-Instruct (Llama 3 Community License), non eseguito: le mosse sono già generate |
+
+Di GenMM si usano solo `GenMM.py`, `nearest_neighbor/` (che riprende Efficient-GPNN, Apache-2.0) e le trasformazioni.
+L'add-on per Blender (`__init__.py`) è GPL-3 e non viene copiato. Le utilità BVH (`dataset/bvh/`) non dichiarano una
+licenza e non servono: le clip le leggiamo noi dai GLB.
+
+### Quale clip per quale famiglia
+
+| Famiglia | Sorgente | Clip |
+|---|---|---|
+| quadruped | volpe | idle, walk, run, attack (morso), death |
+| digitigrade | kaiju (bipede con coda, gambe digitigrade, braccia) | idle, walk, attack, hit, death |
+| multileg | ragno (8 zampe; con 6 si salta una riga) | idle, walk, attack, hit, death |
+| serpent | serpente | idle, slither (side winding), attack (morso), hit, death |
+| winged | drago con 4 zampe, uccello con 2 o nessuna | idle, walk, fly, glide |
+| plant, humanoid | nessuna | restano le procedurali e i preset |
+
+Le clip si chiamano `<famiglia>-<movimento>`, come le procedurali; quando il nome è lo stesso vince la clip della
+libreria. Ciascuna ha la sua provenienza: CC0 con sorgente, commit e hash, più le licenze del rig.
+
+### Retarget a catene, in numpy
+
+Il retarget è una funzione pura, senza Blender: restituisce gli stessi fotogrammi `(turn, root)` di
+`creature_motion`, che `creature_clips.py` sa già scrivere. La parte in `bpy` non cambia. Si può provare con
+scheletri sintetici.
+
+1. **Ruoli**: per la sorgente, una mappa scritta a mano nel manifesto (catene per nome: zampe con lato e posizione,
+   ali, coda, colonna, collo); per il bersaglio, quella che dà già `creature_family.classify`.
+2. **Abbinamento delle catene**: per lato e per posizione, dall'anteriore alla posteriore. Se il numero di zampe è
+   diverso, vale l'indice normalizzato: con 6 zampe sul ragno da 8 se ne salta una.
+3. **Rotazioni**: per ogni osso della sorgente si calcola la rotazione rispetto al riposo, nel sistema del personaggio
+   (sinistra, su, avanti). Ogni osso del bersaglio prende la rotazione del tratto di sorgente che sta alla stessa
+   frazione di lunghezza della catena, convertita nel sistema del bersaglio. Le ossa senza catena seguono il padre.
+4. **Bacino e piedi**: lo spostamento del bacino è scalato sul rapporto fra le lunghezze delle gambe. Poi ogni piede
+   va dove lo porta la sorgente, scalato, e la gamba è risolta con la FABRIK che `creature_motion` usa già. Il piede
+   che nella sorgente poggia a terra resta a terra.
+5. **Controllo**: `rig.deformation` sulle clip vere, con le stesse soglie delle procedurali.
+
+### PR
+
+1. Questo progetto, il manifesto e il bootstrap con il catalogo, la correzione dell'F841 in
+   `tests/test_kimodo_retarget.py`.
+2. Il retarget a catene e il suo aggancio in `creature_clips.py`, provati sulle creature vere della funzione 6
+   (lupo, ragno, serpente, draghetto), con la tabella delle deformazioni.
+3. Le varianti con GenMM: per esempio attese diverse e camminate più lunghe senza ripetizioni.
+4. Quaternius, se c'è un modo verificabile per scaricarlo.
