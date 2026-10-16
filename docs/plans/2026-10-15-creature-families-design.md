@@ -388,6 +388,36 @@ Il pacchetto è registrato nel catalogo (`viewer/backend_catalog.py`, una voce `
 prima di tenere un file. Il pacchetto finisce in `vendor/clip-library/mesh2motion/`, insieme a un `SOURCE.json` con
 URL, commit, licenza e hash.
 
+### Licenze per un uso commerciale (verificate il 16/10/2026)
+
+L'utente ha deciso che il gioco potrà essere commerciale. Ho riletto ogni licenza, dei pesi oltre che del codice,
+compresi i file scaricati in automatico.
+
+| Componente | Codice | Pesi e dati | Uso commerciale |
+|---|---|---|---|
+| Mesh2Motion (animazioni) | MIT, non usato | Animazioni **CC0** (`LICENSE-CC0.MD` al commit `653a969`) | Sì |
+| Quaternius | – | CC0 dichiarato, da riverificare pacchetto per pacchetto al download | Sì |
+| GenMM | Apache-2.0 (commit `aee9bec`) | **Nessun peso** e nessun download: è un metodo per vicini più prossimi sulla clip stessa | Sì, con un'esclusione (sotto) |
+| SkinTokens | MIT | Pesi **MIT** (scheda di `VAST-AI/SkinTokens` alla revisione fissata `79736ca`); di Qwen3-0.6B solo configurazione e tokenizer, Apache-2.0 | Sì |
+| Kimodo (le mosse preimpostate) | Apache-2.0 | `nvidia/Kimodo-SOMA-RP-v1.1`: **NVIDIA Open Model License**, "pronto per l'uso commerciale", NVIDIA non rivendica gli output; addestrato su Bones Rigplay, dati con licenza e provenienza dichiarata. Scheletro SOMA Apache-2.0 | Sì |
+
+Cosa resta fuori, o va tenuto d'occhio:
+
+- **GenMM, `__init__.py`**: è l'add-on per Blender ed è **GPL-3**, a differenza del resto del repository. Non va
+  copiato né importato: AssetFurnace usa solo `GenMM.py`, `nearest_neighbor/` (che riprende Efficient-GPNN,
+  Apache-2.0) e le trasformazioni, con le clip passate come array. Le utilità BVH di Daniel Holden
+  (`dataset/bvh/`) non dichiarano una licenza e non servono, perché le clip le leggiamo noi dai GLB.
+- **Kimodo, encoder del testo**: LLM2Vec (adattatori MIT) sopra **Meta-Llama-3-8B-Instruct**, che ha la Llama 3
+  Community License: uso commerciale ammesso sotto i 700 milioni di utenti al mese, con l'attribuzione "Built with
+  Meta Llama 3" se si distribuisce il modello. Oggi le mosse sono già generate e né Kimodo né Llama vengono eseguiti o
+  distribuiti, quindi non serve nulla. Se un giorno Kimodo girasse in locale, va aggiunta l'attribuzione.
+- **Kimodo-SMPLX-RP** ha la licenza NVIDIA R&D, non commerciale: non va usato. Le varianti SOMA vanno bene.
+- **SkinTokens, dati di addestramento**: Articulation-XL (oggetti di Objaverse-XL, con licenza per oggetto) e, per la
+  scheda, dati che "verranno pubblicati in seguito". La licenza dei pesi permette l'uso commerciale. Il rischio
+  residuo sui dati è lo stesso di ogni rigger attuale: UniRig usa gli stessi dati, e RigAnything, Anymate e AniGen
+  sono non commerciali (vedi la ricerca). Non c'è un'alternativa più pulita di qualità paragonabile. Se servisse
+  azzerarlo: rig da modelli Rigify o di Mesh2Motion (CC0) adattati a mano, più lenti ma senza modelli addestrati.
+
 ### Quale clip per quale famiglia
 
 | Famiglia | Sorgente | Clip |
