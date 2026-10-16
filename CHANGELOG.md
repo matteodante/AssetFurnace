@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Studio: "Draw from a reference" in the Create sheet (`viewer/studio/reference-concept.js`).
+  Pick a way, a model or picture from the Library (or upload one), the words and 1-4 tries;
+  the sheet prepares the map, runs each try through the image queue and shows the shape
+  picture beside each result with its outline IoU. Keep or Discard is saved in the
+  concept record and `output/concept/judgements.jsonl`.
 - From a reference to a concept in the viewer (`viewer/concept_api.py`,
   `scripts/reference_concept.py`): upload a reference, prepare a map from a model or a
   picture, and run one of the four ways as an ordinary image job, with the

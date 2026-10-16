@@ -11,6 +11,7 @@ stream and provenance; this module adds the inputs, the request, and the
     POST /api/concept/upload?name=..     a reference picture (the raw bytes), kept as PNG
     POST /api/concept/prepare            {source, kind, view}: a map from a model or a picture
     POST /api/concept/jobs               {mode, ..., shape: [...], style_refs: [...], seed}
+    POST /api/concept/judge              {picture, verdict: keep | discard, note}: the user's judgement
 
 Every path is relative to the output folder, and nothing outside it is read. The job's
 progress, status and picture come from `/api/image/<job id>/...`, like any picture.
@@ -26,6 +27,7 @@ import io
 import json
 import random
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
@@ -304,6 +306,31 @@ def record(output: Path, picture: str) -> dict[str, Any]:
     return {"record": sidecar.read(inside(output, picture)), "measuring": picture in MEASURING}
 
 
+VERDICTS = ("keep", "discard")
+
+
+def judge(output: Path, request: dict[str, Any]) -> dict[str, Any]:
+    """The user's judgement by eye, kept in the concept's record and in concept/judgements.jsonl."""
+    picture = str(request.get("picture") or "")
+    verdict = request.get("verdict")
+    if verdict not in VERDICTS:
+        raise ValueError(f"the verdict is one of {', '.join(VERDICTS)}")
+    path = inside(output, picture)
+    data = sidecar.read(path)
+    if data is None:
+        raise ValueError(f"{picture} has no concept record")
+    judgement = {"verdict": verdict, "note": str(request.get("note") or "")[:1000],
+                 "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    data["judgement"] = judgement
+    sidecar.path_for(path).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    log = Path(output) / FOLDER / "judgements.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"picture": picture, "mode": data.get("mode"), "image_sha256": data["image"]["sha256"],
+                                 "iou": data.get("iou"), **judgement}) + "\n")
+    return {"picture": picture, "judgement": judgement}
+
+
 def generate(prompt: str, references: list[Path], seed: int, name: str | None = None) -> Path:
     """One edit, run to the end: the picture's path, or RuntimeError with sd-cli's reason.
 
@@ -346,11 +373,13 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
             handler._send_json(200, record(output, (query.get("picture") or [""])[0]))
         elif mutation and parts == ["api", "concept", "upload"]:
             handler._send_json(200, save_upload(output, _body(handler, MAX_UPLOAD), (query.get("name") or [""])[0]))
-        elif mutation and parts[2:] in (["prepare"], ["jobs"]):
+        elif mutation and parts[2:] in (["prepare"], ["jobs"], ["judge"]):
             body = json.loads(_body(handler, MAX_BODY) or b"null")
             if not isinstance(body, dict):
                 raise ValueError("send a JSON object")
-            if parts[2] == "prepare":
+            if parts[2] == "judge":
+                handler._send_json(200, judge(output, body))
+            elif parts[2] == "prepare":
                 handler._send_json(200, prepare(output, body.get("source", ""), body.get("kind", ""),
                                                 body.get("view") or "front"))
             else:
