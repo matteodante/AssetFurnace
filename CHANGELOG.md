@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces, fitting (`slot_parts/fit.py`, `scripts/blender_fit_parts.py`,
+  `slot_parts.py fit`): each piece is placed on the base body from its box through the body's
+  camera, paired pieces per side (the left from the mirrored box, not a mirrored copy of the
+  fitted right), gauntlets turned onto the forearm, then a voxel cage shrinkwrapped outside
+  the body drives it by Surface Deform (several cage sizes tried before Mesh Deform), seams
+  welded first, cage spikes put back, sunken vertices pushed out, skin weights copied (at most
+  4) or one bone for the helmet. The body gets a `covered` vertex colour (alpha 0 under a
+  piece) and a trimmed copy; `set.glb`, `preview.glb`, one GLB per piece and `fit.json`.
 - Characters in pieces, route C pieces (`slot_parts/pieces.py`, `slot_parts.py pieces`): each
   slot's flattened cut is completed by a Qwen-Image edit into one clean picture per seed
   (new `complete_piece` wording in `concept.prompts`, with its `.concept.json` record), and
