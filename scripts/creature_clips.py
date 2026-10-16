@@ -7,8 +7,11 @@ Runs after the auto-rig, in the same Python that runs SkinTokens (it has the `bp
 
 Writes `wolf_rigged.family.json` (the family and the role of every chain, in glTF space)
 and, for a family that has them, `wolf_<family>-<motion>.glb` beside the rig: the names
-the studio already lists as clips of `wolf_rigged.glb`. The maths is in
-`creature_motion.py`; this file only reads the armature and keys it.
+the studio already lists as clips of `wolf_rigged.glb`. With the CC0 clip library
+installed (`scripts/bootstrap_clip_library.py`) a family first gets its library clips,
+carried onto the rig by `chain_retarget.py`; the procedural clips of `creature_motion.py`
+fill in the motions the library does not have. This file only reads the armature and
+keys it.
 
 A test clip is a bonus on top of a rig, so a family or clip that cannot be made does not
 undo the rig: the reason goes into the family file and the exit code stays 0. Each clip
@@ -29,6 +32,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from image_to_3dlab import clip_library as cl  # noqa: E402
 from image_to_3dlab import creature_family as cf  # noqa: E402
 
 AUTO = "auto"
@@ -53,7 +57,7 @@ def recognise(rigged: Path, chosen: str | None) -> dict:
     return found
 
 
-def write_provenance(rigged: Path, clip: Path, name: str, family: str | None) -> Path:
+def write_provenance(rigged: Path, clip: Path, name: str, family: str | None, made: dict | None = None) -> Path:
     """`<clip>.provenance.json`, from the rig's own sidecar when it has one."""
     import json
 
@@ -61,7 +65,7 @@ def write_provenance(rigged: Path, clip: Path, name: str, family: str | None) ->
         rig_record = json.loads(rigged.with_suffix(".provenance.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         rig_record = None
-    record = cf.clip_record(rig_record, name, family, tool="scripts/creature_clips.py", output=clip)
+    record = cf.clip_record(rig_record, name, family, tool="scripts/creature_clips.py", output=clip, made=made)
     path = clip.with_suffix(".provenance.json")
     path.write_text(json.dumps(record, indent=2), encoding="utf-8")
     return path
@@ -77,6 +81,20 @@ def wanted_motions(family: str, chosen: bool) -> tuple[str, ...]:
     return creature_motion.clips_for(family)
 
 
+def plan(family: str, chosen: bool, legs: int, installed: bool | None = None) -> list[tuple[str, str | None]]:
+    """(motion, library creature or None for a procedural clip), library clips first. A
+    library motion replaces the procedural one of the same name."""
+    import creature_motion
+
+    if family not in creature_motion.DEFAULT_CLIPS and not chosen:
+        return []
+    installed = cl.installed() if installed is None else installed
+    source = cl.source_for(family, legs) if installed else None
+    library = [(motion, source) for motion in [*cl.SOURCES[source]["clips"], *cl.variations(source)]]         if source else []
+    have = {motion for motion, _ in library}
+    return library + [(motion, None) for motion in wanted_motions(family, chosen) if motion not in have]
+
+
 def main() -> None:  # pragma: no cover - needs bpy
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--rig", required=True, type=Path, help="rigged GLB (SkinTokens output)")
@@ -90,21 +108,28 @@ def main() -> None:  # pragma: no cover - needs bpy
         cf.family_path(args.rig).write_text(json.dumps(found, indent=2) + "\n", encoding="utf-8")
         print(found["clips_error"])
         return
-    motions = wanted_motions(found["family"], chosen is not None)
-    try:
-        for motion in motions:
-            name = _write_clip(args.rig, found["family"], motion, args.blend)
-            write_provenance(args.rig, clip_path(args.rig, name), name, found["family"])
-            found["clips"].append(name)
-            print(f"wrote test clip {name}")
-    except Exception as exc:  # noqa: BLE001 - a missing clip must not cost the rig
-        traceback.print_exc()
-        found["clips_error"] = f"{type(exc).__name__}: {exc}"
+    errors = []
+    found["clip_sources"] = {}
+    for motion, source in plan(found["family"], chosen is not None, len(found.get("legs") or [])):
+        try:
+            name = _write_clip(args.rig, found["family"], motion, args.blend, source)
+        except Exception as exc:  # noqa: BLE001 - a missing clip must not cost the rig, or the other clips
+            traceback.print_exc()
+            errors.append(f"{motion}: {type(exc).__name__}: {exc}")
+            continue
+        made = cl.motion_record(source, motion) if source else None
+        write_provenance(args.rig, clip_path(args.rig, name), name, found["family"], made)
+        found["clips"].append(name)
+        if made:
+            found["clip_sources"][name] = made
+        print(f"wrote {'library' if source else 'test'} clip {name}")
+    found["clips_error"] = "; ".join(errors) or None
     cf.write_family(args.rig, found)
     print(f"family: {found['family']} ({found['confidence']} confidence; {found['detail']})")
 
 
-def _write_clip(rigged: Path, family: str, motion: str, blend: Path | None) -> str:  # pragma: no cover
+def _write_clip(rigged: Path, family: str, motion: str, blend: Path | None,  # pragma: no cover
+                source: str | None = None) -> str:
     import bpy
     from mathutils import Matrix
 
@@ -135,7 +160,17 @@ def _write_clip(rigged: Path, family: str, motion: str, blend: Path | None) -> s
     up, front = arm_rot.T @ np.array([0.0, 0.0, 1.0]), arm_rot.T @ np.array([0.0, -1.0, 0.0])  # glTF +Z is Blender -Y
     roles = cf.classify(parents, heads, up=up, front=front, family=family, points=np.array(points))
     rig = cm.Rig(parents, order, heads)
-    frames = cm.make(motion, rig, roles)
+    if source:
+        import chain_retarget as cr
+
+        clip, loop = cl.SOURCES[source]["clips"][cl.base_motion(motion)]
+        clip_source = cr.load_source(cl.pack_dir() / cl.SOURCES[source]["file"], cl.source_roles(source), clip,
+                                     loop=loop)
+        if motion != cl.base_motion(motion):
+            clip_source = cr.longer(clip_source, cl.LONGER_FACTOR, cl.LONGER_SEED, loop)
+        frames = cr.retarget(rig, roles, clip_source)
+    else:
+        frames = cm.make(motion, rig, roles)
 
     scene = bpy.context.scene
     scene.render.fps = cm.FPS

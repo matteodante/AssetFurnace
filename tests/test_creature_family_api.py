@@ -54,3 +54,23 @@ def test_facts_and_the_closing_message(tmp_path):
     assert "No test clips" in api.done_message({}, rigged)
     family_file(rigged, family="humanoid", clips=())
     assert api.done_message({"humanoid": True}, rigged) is None  # the usual message stands
+
+
+def test_the_studio_keeps_a_library_clips_motion_source(tmp_path):
+    import json
+
+    from image_to_3dlab import clip_library as cl
+    from image_to_3dlab import creature_family
+
+    rig = tmp_path / "wolf_rigged.glb"
+    rig.write_bytes(b"glTF")
+    (tmp_path / "wolf_digitigrade-walk.glb").write_bytes(b"glTF")
+    (tmp_path / "wolf_digitigrade-trot.glb").write_bytes(b"glTF")
+    creature_family.write_family(rig, {"family": "digitigrade", "clips": ["digitigrade-walk", "digitigrade-trot"],
+                                       "clip_sources": {"digitigrade-walk": cl.motion_record("kaiju", "walk")}})
+    import creature_family_api as api
+
+    paths = api.record_clips(rig, {"license": {"name": "MIT"}})
+    motions = {p.name: json.loads(p.read_text(encoding="utf-8"))["motion"] for p in paths}
+    assert motions["wolf_digitigrade-walk.provenance.json"]["license"]["name"] == "CC0-1.0"
+    assert motions["wolf_digitigrade-trot.provenance.json"]["made_with"] == "procedural test clip"

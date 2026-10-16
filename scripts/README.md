@@ -50,6 +50,8 @@ game-ready LODs), start with [the prop sheet guide](../docs/prop-sheets.md).
 | `bootstrap_style.py` | Install the style judges' models and llama.cpp, after saying what, how big and under which licence. |
 | `bootstrap_hunyuan_xiong.py` | Set up Hunyuan3D-MLX (Xiong, full pipeline): both Python environments, then the weights. |
 | `bootstrap_matte.py` | Install BiRefNet-lite, the background remover every backend uses once it is present. |
+| `bootstrap_flux2_klein.py` | Fetch FLUX.2 klein 4B, an Apache-2.0 image editor, for the sd-cli that is already here. |
+| `bootstrap_clip_library.py` | Install the CC0 creature clip library. |
 | `bootstrap_qwen_image.py` | Install the text-to-image route: a stable-diffusion.cpp binary and Qwen-Image weights. |
 | `pixal3d_generate.py` | End-to-end Pixal3D generation: image -> textured GLB, on a Mac, NVIDIA or AMD. |
 | `trellis_space_generate.py` | Full image -> GLB generation through the CLEAN `trellis-space-mac` port on Apple Silicon. |
@@ -212,12 +214,21 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 | `rig_check.py` | Say whether a rigged GLB fits the preset moves (a humanoid), read without Blender. |
 | `creature_motion.py` | Test clips for a creature family, as pure functions: a walk or trot and an attack. |
 | `creature_clips.py` | Recognise a rigged creature's family and write its test clips, one animated GLB each. |
+| `chain_retarget.py` | Carry a clip made for one creature onto another skeleton, chain by chain. |
 | `attack_pose.py` | Pose curves for a quadruped slam attack, as pure functions. |
 | `rigify_walk_pose.py` | Pose curves for a quadruped trot on a Rigify-generated rig, as pure functions. |
 | `blender_walk_cycle.py` | Author a looping quadruped gait cycle on the rigged fox in the live Blender scene. |
 | `blender_rigify_walk_cycle.py` | Author a trot cycle on the Rigify-generated 'rig' armature in the live Blender scene. |
 | `blender_idle_cycle.py` | Author a looping idle for the rigged fox. |
 | `blender_attack_cycle.py` | Author a slam-attack clip on a rigged quadruped in the live Blender scene. |
+
+## Characters in pieces
+
+Feature 4: armour slots worn on a rigged base body. The logic is in `image_to_3dlab/slot_parts/`.
+
+| Script | What it does |
+|---|---|
+| `slot_parts.py` | Characters in pieces (feature 4): register a base body, then cut a concept into slots. |
 
 ## Export for Unreal
 
