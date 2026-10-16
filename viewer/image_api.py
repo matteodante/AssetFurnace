@@ -37,7 +37,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -303,6 +303,10 @@ class ImageJob:
     output_path: Path
     prompt: str
     settings: dict[str, Any]
+    # For steps built on this one (image_to_3dlab/concept): arguments put right after the
+    # binary, and fields added to the sidecar (never over its own, such as the licence).
+    extra_args: list[str] = field(default_factory=list)
+    extra_provenance: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.status = "queued"
@@ -353,18 +357,19 @@ class ImageJobManager:
         self.lock = threading.Lock()
         self.active: str | None = None
 
-    def create(self, prompt: str, settings: dict[str, Any]) -> ImageJob:
+    def create(self, prompt: str, settings: dict[str, Any], extra_args: list[str] | None = None,
+               extra_provenance: dict[str, Any] | None = None, name: str | None = None) -> ImageJob:
         with self.lock:
             if self.active is not None:
                 running = self.jobs.get(self.active)
                 if running and running.status in {"queued", "running", "cancelling"}:
                     raise RuntimeError("an image is already being generated")
             stamp = time.strftime("%Y%m%d-%H%M%S")
-            name = f"{slug(prompt)}__{stamp}"
+            name = f"{slug(name or prompt)}__{stamp}"
             directory = self.output_root / name
             directory.mkdir(parents=True, exist_ok=True)
             job = ImageJob(uuid.uuid4().hex, directory, directory / f"{name}.png",
-                           prompt, settings)
+                           prompt, settings, list(extra_args or []), dict(extra_provenance or {}))
             self.jobs[job.id] = job
             self.active = job.id
             return job
@@ -391,6 +396,8 @@ def run_job(job: ImageJob, manager: ImageJobManager,
     try:
         weights = weights or resolve_weights()
         command = build_command(job.prompt, job.settings, job.output_path, weights)
+        if job.extra_args:
+            command = command[:1] + job.extra_args + command[1:]
         job.set_status("running", total_steps=job.settings["steps"])
         started = time.monotonic()
         job.process = subprocess.Popen(
@@ -442,8 +449,8 @@ def run_job(job: ImageJob, manager: ImageJobManager,
                            log="\n".join(list(job.log_lines)[-12:]))
         else:
             sidecar = job.output_path.with_suffix(".provenance.json")
-            sidecar.write_text(json.dumps(
-                provenance(job.prompt, job.settings, elapsed, job.output_path), indent=2), encoding="utf-8")
+            record = provenance(job.prompt, job.settings, elapsed, job.output_path)
+            sidecar.write_text(json.dumps({**job.extra_provenance, **record}, indent=2), encoding="utf-8")
             job.set_status("done", result_url=f"/api/image/{job.id}/result.png",
                            elapsed_seconds=round(elapsed, 1))
     except MissingWeights as exc:

@@ -27,6 +27,11 @@ def find_vision(hub: Path) -> Path | None:
 
 def with_references(command: list[str], references: list[Path], vision: Path) -> list[str]:
     """`command` with the vision file and the pictures, in order, right after the binary."""
+    return command[:1] + edit_args(references, vision) + command[1:]
+
+
+def edit_args(references: list[Path], vision: Path) -> list[str]:
+    """The vision file and one `-r` per picture, checked, in the order given."""
     if not references:
         raise ValueError("an edit needs at least one reference picture")
     if len(references) > MAX_REFERENCES:
@@ -42,4 +47,4 @@ def with_references(command: list[str], references: list[Path], vision: Path) ->
         except (UnidentifiedImageError, OSError) as error:
             raise ValueError(f"{path.name} is not a picture sd-cli can read") from error
         extra += ["-r", str(path.resolve())]
-    return command[:1] + extra + command[1:]
+    return extra
