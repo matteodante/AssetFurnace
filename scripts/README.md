@@ -207,6 +207,7 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 | `rig_check.py` | Say whether a rigged GLB fits the preset moves (a humanoid), read without Blender. |
 | `creature_motion.py` | Test clips for a creature family, as pure functions: a walk or trot and an attack. |
 | `creature_clips.py` | Recognise a rigged creature's family and write its test clips, one animated GLB each. |
+| `chain_retarget.py` | Carry a clip made for one creature onto another skeleton, chain by chain. |
 | `attack_pose.py` | Pose curves for a quadruped slam attack, as pure functions. |
 | `rigify_walk_pose.py` | Pose curves for a quadruped trot on a Rigify-generated rig, as pure functions. |
 | `blender_walk_cycle.py` | Author a looping quadruped gait cycle on the rigged fox in the live Blender scene. |

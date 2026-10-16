@@ -244,3 +244,34 @@ def test_steps_are_scaled_by_leg_length_not_hip_height():
     source = _source(src_rig, src_roles, [({}, src_rig.heads["hips"] + FORWARD * 0.1)])
     _, root = cr.retarget(rig, roles, source)[0]
     assert np.allclose(root - rig.heads["t_hips"], FORWARD * 0.1, atol=1e-6)
+
+
+def test_a_body_roll_does_not_bend_a_limb_that_points_elsewhere():
+    """Only the body rolls; the source's arm hangs on unbent. The rig's arm points another
+    way at rest, and the heading turn must not make the roll into an arm-to-body bend."""
+    def creature(prefix, heading):
+        rows = [(f"{prefix}body", None, (0, 1.0, 0)), (f"{prefix}chest", f"{prefix}body", (0, 1.0, 0.4))]
+        arms = []
+        for side, x in (("L", 1.0), ("R", -1.0)):
+            d = np.array([x * heading[0], 0, heading[1]])
+            names = [f"{prefix}arm{side}{k}" for k in range(3)]
+            for k, n in enumerate(names):
+                rows.append((n, names[k - 1] if k else f"{prefix}chest", tuple(np.array([0, 1.0, 0.4]) + 0.3 * k * d)))
+            arms.append({"bones": names, "side": side})
+        roles = {"family": "x", "legs": [], "arms": arms, "wings": [], "spine": [f"{prefix}body", f"{prefix}chest"],
+                 "neck": [], "tail": [], "body": [], "frame": FRAME, "ground": 0.0}
+        return _rig(rows), roles
+
+    src, src_roles = creature("", (1.0, 0.0))  # arms straight out
+    tgt, roles = creature("t_", (0.3, 0.95))  # arms reaching forward
+    roll = [({"body": cm.axis_angle(FORWARD, 30.0)}, src.heads["body"])]
+    turn, _ = cr.retarget(tgt, roles, _source(src, src_roles, roll))[0]
+    for k in range(3):
+        assert np.allclose(turn.get(f"t_armL{k}", np.eye(3)), np.eye(3), atol=1e-9)
+
+
+def test_the_library_spider_has_all_eight_legs():
+    from image_to_3dlab import clip_library as cl
+
+    legs = cl.SOURCES["spider"]["roles"]["legs"]
+    assert len(legs) == 8 and len({leg["bones"][0] for leg in legs}) == 8

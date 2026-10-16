@@ -220,8 +220,8 @@ def retarget(rig: Rig, roles: dict, source: Source) -> list[tuple[dict, np.ndarr
             heads[b] = root if p is None else heads[p] + total[p] @ (rig.heads[b] - rig.heads[p])
             if b in limbs:
                 kind, mine, theirs = limbs[b]
-                total.update(_limb(rig, kind, mine, theirs, heads[b], source, src_rest, posed, delta, convert,
-                                   scale, s_up))
+                total.update(_limb(rig, kind, mine, theirs, heads[b], inherited, source, src_rest, posed, delta,
+                                   convert, scale, s_up))
             if b not in total:
                 total[b] = inherited
                 inherits.add(b)
@@ -269,13 +269,14 @@ def _anchor(rig: Rig, pairs, src_rest) -> tuple[list[str], float] | None:
     return None
 
 
-def _body(rig, mine, source, theirs, src_rest, delta, convert) -> dict[str, np.ndarray]:
+def _body(rig, mine, source, theirs, src_rest, delta, convert, heading: bool = False) -> dict[str, np.ndarray]:
     """Each target segment turns like the source's at the same fraction along the chain,
-    blended between source segments so a long chain bends smoothly. The turns are taken
-    about the chain's own heading: a leg reaching out sideways lifts the way a source leg
-    reaching forward lifts, instead of sweeping."""
-    convert = _heading(convert @ (src_rest[theirs[-1]] - src_rest[theirs[0]]),
-                       rig.heads[mine[-1]] - rig.heads[mine[0]], convert @ _up(source)) @ convert
+    blended between source segments so a long chain bends smoothly. With `heading` the
+    turns are taken about the chain's own heading: a leg reaching out sideways lifts the
+    way a source leg reaching forward lifts, instead of sweeping."""
+    if heading:
+        convert = _heading(convert @ (src_rest[theirs[-1]] - src_rest[theirs[0]]),
+                           rig.heads[mine[-1]] - rig.heads[mine[0]], convert @ _up(source)) @ convert
     s_fr = _fractions([src_rest[b] for b in theirs])
     s_mid = (s_fr[:-1] + s_fr[1:]) / 2
     s_rot = [delta.get(_owner(source.parents, a, b), np.eye(3)) for a, b in pairwise(theirs)]
@@ -310,10 +311,20 @@ def _heading(src: np.ndarray, tgt: np.ndarray, up: np.ndarray) -> np.ndarray:
     return np.eye(3) + math.sin(angle) * k + (1 - math.cos(angle)) * k @ k
 
 
-def _limb(rig, kind, mine, theirs, start, source, src_rest, posed, delta, convert, scale, s_up):
+def _limb(rig, kind, mine, theirs, start, inherited, source, src_rest, posed, delta, convert, scale, s_up):
     """A limb turns like a body chain, so it keeps its own shape; a leg is then solved so its
-    tip goes where the source's tip goes, scaled like the body: a planted foot stays put."""
-    out = _body(rig, mine, source, theirs, src_rest, delta, convert)
+    tip goes where the source's tip goes, scaled like the body: a planted foot stays put.
+
+    Only the limb's own motion, relative to the body it hangs from, is turned to its
+    heading; the body's turn (`inherited`) is then put back on top unchanged. Turning the
+    whole of it would make a plain body roll bend a limb that points another way."""
+    on_body = {x for k in BODY_CHAINS for x in source.roles.get(k) or []}
+    hub = source.parents.get(theirs[0])
+    while hub is not None and hub not in on_body:  # a limb's anchor swings with the limb, not the body
+        hub = source.parents.get(hub)
+    base = delta.get(hub, np.eye(3)).T
+    own = {b: d @ base for b, d in delta.items()}
+    out = {b: r @ inherited for b, r in _body(rig, mine, source, theirs, src_rest, own, convert, True).items()}
     if kind != "leg":
         return out
     pts = [np.asarray(start, float)]

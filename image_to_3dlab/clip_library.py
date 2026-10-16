@@ -137,8 +137,9 @@ KAIJU = {
 SPIDER = {
     "file": "spider-animations.glb",
     "roles": {
-        "legs": _legs({f"{end} {s}": [f"leg_{row}_{k}_{s.lower()}" for k in ("1", "2", "3", "tip")]
-                       for s in "LR" for row, end in zip("abcd", ("front", "mid", "mid", "back"))}),
+        # a list, not `_legs`: two rows are "mid", and as dictionary keys one would replace the other
+        "legs": [{"bones": [f"leg_{row}_{k}_{s.lower()}" for k in ("1", "2", "3", "tip")], "side": s, "end": end}
+                 for s in "LR" for row, end in zip("abcd", ("front", "mid", "mid", "back"))],
         "arms": [], "wings": [],
         "spine": ["hips", "spine_1", "spine_2"], "neck": ["head", "head_tip"],
         "tail": ["tail_1", "tail_2", "tail_3", "tail_tip"], "body": [],
