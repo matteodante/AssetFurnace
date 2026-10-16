@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import itertools
 import json
 import re
 
@@ -89,3 +90,58 @@ def test_the_library_is_in_the_catalogue_with_its_licence_and_size():
     assert entry.weights[0].path == cl.pack_dir()
     command = dl.COMMANDS["clip-library"]
     assert command[1].endswith("bootstrap_clip_library.py") and "--yes" in command
+
+
+needs_pack = pytest.mark.skipif(not cl.installed(), reason="clip library not installed")
+
+
+@needs_pack
+@pytest.mark.parametrize("name", sorted(cl.SOURCES))
+def test_every_library_chain_and_clip_is_in_its_file(name):
+    from image_to_3dlab.glb_skin import SkinnedGLB
+
+    src = cl.SOURCES[name]
+    skin = SkinnedGLB(cl.pack_dir() / src["file"])
+    parents, heads = skin.skeleton()
+    roles = cl.source_roles(name)
+    chains = [roles[k] for k in ("spine", "neck", "tail", "body") if roles[k]]
+    chains += [c["bones"] for k in ("legs", "arms", "wings") for c in roles[k]]
+    for bones in chains:
+        for a, b in itertools.pairwise(bones):
+            assert parents[b] == a, (a, b)  # joint to joint, along the tree
+    for k in ("legs", "arms", "wings"):
+        for c in roles[k]:
+            x = heads[c["bones"][-1]] @ cl.FRAME["left"]
+            assert (x > 0) == (c["side"] == "L"), c["bones"][-1]
+    names = {n for n, _ in skin.animations()}
+    assert {clip for clip, _ in src["clips"].values()} <= names
+
+
+@needs_pack
+@pytest.mark.parametrize("name", sorted(cl.SOURCES))
+def test_a_library_clip_carried_onto_its_own_skeleton_comes_back(name):
+    """The whole path on real data: the chains named here, sampled and retargeted onto the
+    same skeleton, put every chain joint back where the clip has it."""
+    import chain_retarget as cr
+    import creature_motion as cm
+    import numpy as np
+
+    from image_to_3dlab.glb_skin import SkinnedGLB
+
+    src = cl.SOURCES[name]
+    path = cl.pack_dir() / src["file"]
+    parents, heads = SkinnedGLB(path).skeleton()
+    order = [b for b, p in parents.items() if p is None]
+    for b in order:
+        order += [c for c, p in parents.items() if p == b and c not in order]
+    rig = cm.Rig(parents, order, heads)
+    roles = cl.source_roles(name)
+    target = {**roles, "family": "serpent" if name == "snake" else name, "ground": 0.0}
+    clip, loop = next(iter(src["clips"].values()))
+    source = cr.load_source(path, roles, clip, loop=loop)
+    chain = {b for k in ("spine", "neck", "tail", "body") for b in roles[k]}
+    chain |= {b for k in ("legs", "arms", "wings") for c in roles[k] for b in c["bones"]}
+    size = float(np.ptp(np.array(list(heads.values())), axis=0).max())
+    for pose, (turn, root) in zip(source.poses, cr.retarget(rig, target, source)):
+        got = cm.posed_heads(rig, cm.accumulate(rig, turn), root)
+        assert max(float(np.linalg.norm(got[b] - pose[b][:3, 3])) for b in chain) < 0.02 * size

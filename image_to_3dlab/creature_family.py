@@ -478,10 +478,11 @@ PROCEDURAL_LICENSE = {
 
 
 def clip_record(rig_record: dict | None, clip: str, family: str | None, tool: str,
-                output: Path | None = None) -> dict:
+                output: Path | None = None, made: dict | None = None) -> dict:
     """Provenance for a test clip: the rig's record (its licences), plus how the motion was
     made, and `output` (the clip file) in place of the rig's own file and hash. Without a
-    rig record the licence stays unknown rather than invented."""
+    rig record the licence stays unknown rather than invented. `made` says where a library
+    clip's motion came from (`clip_library.motion_record`); without it the clip is ours."""
     import time
 
     record = dict(rig_record or {"license": None})
@@ -493,8 +494,8 @@ def clip_record(rig_record: dict | None, clip: str, family: str | None, tool: st
     record.update({
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "tool": tool,
-        "motion": {"clip": clip, "family": family, "made_with": "procedural test clip",
-                   "license": PROCEDURAL_LICENSE},
+        "motion": {"clip": clip, "family": family,
+                   **(made or {"made_with": "procedural test clip", "license": PROCEDURAL_LICENSE})},
     })
     return record
 
