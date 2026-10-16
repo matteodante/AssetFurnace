@@ -45,11 +45,13 @@ def flat_view(index: int, colour: np.ndarray) -> mv.View:
 
 
 def fake_render(texture: np.ndarray, count: int = 2):
-    def render(asset, folder, *, size, around):
+    def render(asset, folder, *, size, around, lit=False):
         Path(folder).mkdir(parents=True, exist_ok=True)
         views = []
         for index in range(count):
             Image.fromarray(texture).save(Path(folder) / f"view_{index:02d}_color.png")
+            if lit:
+                Image.fromarray(texture).save(Path(folder) / f"view_{index:02d}_lit.png")
             views.append(flat_view(index, texture))
         return views
     return render
