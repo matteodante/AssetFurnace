@@ -56,6 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skeleton's shape), choose the armour slots, map a concept drawn on that body to slots by
   projecting its bones, and cut one piece per slot, flattened on grey with the way back to
   the concept recorded, ready for the "complete this piece" edit of route C.
+- Creature families, documented: `docs/creature-families.md` (families, clips and where they
+  come from, the studio, Unreal, known limits), a line in the README, and the Animate step
+  says which clips come from the CC0 library and which are procedural tests.
+- Export for Unreal turns a creature that is not a humanoid to face forward from its family file
+  (a drake generated facing between two axes no longer arrives turned), and records the
+  family in the export job; its library, procedural and `-long` clips go along as
+  `AS_<Name>_<Family><Move>`.
+- FLUX.2 klein 4B in Setup & Status: an Apache-2.0 image editor for the sd-cli already
+  installed, three files (12.3 GB), fetched only on request by
+  `scripts/bootstrap_flux2_klein.py`. The VAE is BFL's Apache-2.0 small decoder, not
+  the non-commercial one inside FLUX.2-dev.
 - Roughness and metallic estimated where an asset has none, not yet admitted
   (`image_to_3dlab/pbr_estimate.py`, `scripts/estimate_pbr.py`): Marigold-IID Appearance v1.1
   on the orbit of unlit views, carried back to the atlas as a glTF metallic-roughness map; an
@@ -84,6 +95,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   view (front, side, back), rendered by Blender on the CPU; depth stretched onto black;
   lineart of a picture; an OpenPose map from a rig named like the UE mannequin or SOMA,
   or from a joint-to-bone table for numbered bones.
+- Creature clip library, third part: every looping library clip also comes as a take twice as
+  long made of its own pieces in a new order (`<family>-idle-long`, `-walk-long`, ...), by a
+  numpy port of GenMM's patch synthesis (`image_to_3dlab/motion_variation.py`).
+- Creature clip library, second part: `scripts/chain_retarget.py` carries the library's idle,
+  walk, attack, hit, death, fly and glide clips onto auto-rigged creatures chain by chain, and
+  `creature_clips.py` writes them before the procedural clips, each with its CC0 source in
+  the provenance.
+- Creature clip library, first part: six CC0 animated creatures from Mesh2Motion, pinned to one
+  commit and checked against their SHA-256 (`scripts/bootstrap_clip_library.py`, listed in
+  Setup & Status), ready to be carried onto auto-rigged creatures.
 - Material labels in Studio's review panel: for the version under review, say whether
   light is painted into the colours, whether the materials look right, and click points
   on the model with the material they show. Saved in `output/material-labels.jsonl`;
@@ -177,8 +198,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Experimental canonical editing snapshots and a Blender no-op bridge, preserving
   untouched GLB data and reporting geometry, UV and weight round-trip checks.
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
+- From a reference to a concept in the viewer (`viewer/concept_api.py`,
+  `scripts/reference_concept.py`): upload a reference, prepare a map from a model or a
+  picture, and run one of the four ways as an ordinary image job, with the
+  `<image>.concept.json` record and the silhouette IoU against the shape picture.
+  `generate(prompt, references, seed)` is the same edit as one call for other steps.
+  Image jobs take extra arguments, extra provenance and a name (`viewer/image_api.py`).
+- Studio: "Draw from a reference" in the Create sheet (`viewer/studio/reference-concept.js`).
+  Pick a way, a model or picture from the Library (or upload one), the words and 1-4 tries;
+  the sheet prepares the map, runs each try through the image queue and shows the shape
+  picture beside each result with its outline IoU. Keep or Discard is saved in the
+  concept record and `output/concept/judgements.jsonl`.
 
 ### Fixed
+- The studio reads and writes its JSON and text files as UTF-8 on every machine, and the
+  test suite passes on Windows without `PYTHONUTF8=1`: with the locale's cp1252, an em dash
+  or a middle dot written as UTF-8 failed to decode. `tests/test_text_encoding.py` keeps new
+  reads and writes in the studio from leaving the encoding out.
+- A skinned model is sized for Unreal after it is turned to face forward: a creature facing
+  half-way between two axes was sized on its wider box and arrived 20% too long. A creature
+  that is not a humanoid is checked for facing in Unreal from its hips and head (named in
+  the sidecar's `facing_bones`) instead of failing for want of Manny's feet.
 - Pictures are sharp again: text to image now runs the Qwen-Image 2.1 Turbo checkpoint with
   its own schedule (`--sigmas qwen-image-2.1-turbo`, cfg 1.0) at 1024 px. It used to run
   the base checkpoint with the Turbo's numbers (8 steps, cfg 1.0), which stopped the

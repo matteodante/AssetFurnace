@@ -47,3 +47,13 @@ def test_the_rig_step_asks_for_the_family_and_animate_names_the_test_clips():
     assert "digitigrade-walk" in out["wolf"] and 'data-preset="walk"' in out["wolf"]  # test clips and preset moves
     assert "no test clips yet" in out["plant"] and "Preset moves" not in out["plant"]
     assert "Rigged as" not in out["human"]
+
+
+@needs_node
+def test_animate_says_which_clips_come_from_the_library_and_which_are_tests():
+    wolf = {**WOLF, "clips": [{"name": "digitigrade-walk"}, {"name": "digitigrade-walk-long"},
+                              {"name": "digitigrade-trot"}, {"name": "walk"}],
+            "library_clips": ["digitigrade-walk", "digitigrade-walk-long"]}
+    out = _run("creature-family.js", f"console.log(JSON.stringify(m.familyNote({json.dumps(wolf)})));")
+    assert "CC0 creature library: digitigrade-walk, digitigrade-walk-long" in out
+    assert "Test clips to check the rig: digitigrade-trot" in out

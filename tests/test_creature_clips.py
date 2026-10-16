@@ -38,3 +38,59 @@ def test_a_rig_that_cannot_be_read_is_reported_not_failed(tmp_path):
     rig.write_bytes(b"not a glb")
     found = creature_clips.recognise(rig, None)
     assert found["family"] is None and "could not" in found["clips_error"]
+
+
+def test_library_clips_come_first_and_replace_procedural_ones_of_the_same_name():
+    plan = creature_clips.plan("digitigrade", chosen=False, legs=2, installed=True)
+    assert plan[:5] == [("idle", "kaiju"), ("walk", "kaiju"), ("attack", "kaiju"), ("hit", "kaiju"),
+                        ("death", "kaiju")]
+    assert all(source == "kaiju" for _, source in plan)  # walk and attack are the library's now
+    quadruped = creature_clips.plan("quadruped", chosen=False, legs=4, installed=True)
+    assert ("trot", None) in quadruped and ("attack", "fox") in quadruped and ("attack", None) not in quadruped
+
+
+def test_without_the_library_the_procedural_clips_are_made_as_before():
+    assert creature_clips.plan("digitigrade", chosen=False, legs=2, installed=False) == [("walk", None),
+                                                                                         ("attack", None)]
+
+
+def test_a_winged_creature_takes_the_dragon_on_four_legs_and_the_bird_on_two():
+    assert ("fly", "dragon") in creature_clips.plan("winged", chosen=False, legs=4, installed=True)
+    assert ("fly", "bird") in creature_clips.plan("winged", chosen=False, legs=2, installed=True)
+
+
+def test_plants_and_humanoids_get_no_library_clips():
+    assert all(src is None for _, src in creature_clips.plan("plant", chosen=False, legs=0, installed=True))
+    assert creature_clips.plan("humanoid", chosen=False, legs=2, installed=True) == []
+
+
+def test_a_library_clip_records_where_its_motion_came_from(tmp_path):
+    import json
+
+    from image_to_3dlab import clip_library as cl
+
+    rig = tmp_path / "wolf_rigged.glb"
+    rig.write_bytes(b"glTF")
+    clip = creature_clips.clip_path(rig, "digitigrade-walk")
+    clip.write_bytes(b"glTF")
+    made = cl.motion_record("kaiju", "walk")
+    path = creature_clips.write_provenance(rig, clip, "digitigrade-walk", "digitigrade", made=made)
+    motion = json.loads(path.read_text(encoding="utf-8"))["motion"]
+    assert motion["license"]["name"] == "CC0-1.0" and motion["source_clip"] == "Walk"
+    assert motion["source_sha256"] == cl.MESH2MOTION["files"]["static/animations/kaiju-animations.glb"][0]
+    assert motion["clip"] == "digitigrade-walk"
+
+
+def test_every_looping_library_clip_also_gets_a_longer_variation():
+    plan = creature_clips.plan("quadruped", chosen=False, legs=4, installed=True)
+    assert ("idle-long", "fox") in plan and ("walk-long", "fox") in plan and ("run-long", "fox") in plan
+    assert ("attack-long", "fox") not in plan  # an attack does not loop: nothing to vary into
+    assert creature_clips.plan("plant", chosen=False, legs=0, installed=True) == [("sway", None), ("attack", None)]
+
+
+def test_a_variation_records_how_it_was_made():
+    from image_to_3dlab import clip_library as cl
+
+    made = cl.motion_record("fox", "walk-long")
+    assert made["source_clip"] == "Walk" and made["license"]["name"] == "CC0-1.0"
+    assert "GenMM" in made["varied_with"]

@@ -66,7 +66,7 @@ def list_sets(output: Path) -> list[dict[str, Any]]:
     found = []
     for path in sorted((output / "sets").glob("*/*/*.parts.json")):
         try:
-            parts = json.loads(path.read_text())
+            parts = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         preview = path.parent / "fit" / "preview.glb"
@@ -113,7 +113,7 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     folder = output / "sets" / set_name / body_mod.load(body_json)["name"]
     folder.mkdir(parents=True, exist_ok=True)
     spec = folder / "slots.json"
-    spec.write_text(json.dumps(chosen, indent=1) + "\n")
+    spec.write_text(json.dumps(chosen, indent=1) + "\n", encoding="utf-8")
     command = [sys.executable, str(REPO / "scripts" / "slot_parts.py"), "run", "--body", str(body_json),
                "--set", set_name, "--slots-json", str(spec), "--seeds", ",".join(map(str, seeds)),
                "--concept-seeds", str(seeds[0]), "--root", str(output / "sets")]
@@ -141,7 +141,7 @@ def job_status(output: Path) -> dict[str, Any]:
     process = _JOB["process"]
     code = process.poll()
     log = Path(_JOB["log"])
-    tail = log.read_text(errors="replace").splitlines()[-12:] if log.is_file() else []
+    tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-12:] if log.is_file() else []
     parts = Path(_JOB["folder"]) / f"{_JOB['set']}.parts.json"
     return {"running": code is None, "returncode": code, "set": _JOB["set"], "body": _JOB["body"],
             "started": _JOB["started"], "log": tail,

@@ -1,0 +1,13 @@
+/* Draw from a reference (reference-concept.js): the sheet's source row and its results. */
+.reference-concept .ways { flex-wrap: wrap; }
+.rc-source { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rc-source select, .reference-concept .row select { flex: 1 1 240px; min-width: 0; background: var(--raise); color: var(--bone); border: 1px solid var(--line); border-radius: 8px; padding: 7px 8px; }
+.rc-results { display: grid; gap: 12px; }
+.rc-run { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--raise); display: grid; gap: 8px; }
+.rc-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.rc-pair img, .rc-wait { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 8px; background: #d9d9d9; }
+.rc-wait { display: grid; place-items: center; background: var(--panel); color: var(--ash); font: 400 12px/1.4 var(--f-num); }
+.rc-run figcaption { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: 400 12px/1.4 var(--f-num); color: var(--ash); }
+.rc-judge { margin-left: auto; display: flex; gap: 6px; }
+.rc-judge button { border: 1px solid var(--line); background: transparent; color: var(--ash); border-radius: 999px; padding: 4px 12px; }
+.rc-judge button[aria-pressed="true"] { border-color: var(--ember); color: var(--bone); }
