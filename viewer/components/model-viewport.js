@@ -64,7 +64,7 @@ export function disposeModelViewport(view) {
 
 function loadModel(view, onLoaded, onError) {
   const { spec } = view;
-  const loaded = (root, animations = []) => {
+  const loaded = (root, animations = [], associations = null) => {
     if (view.disposed) { disposeModelResources(root); return; }
     // Normalize to a unit box centered on the origin so differently scaled exports remain
     // directly comparable and every room can use the same camera framing contract.
@@ -95,6 +95,7 @@ function loadModel(view, onLoaded, onError) {
         view.materials.push({
           mesh: object,
           original: material,
+          index: associations?.get(material)?.materials ?? null,   // glTF material index
           flat: null,
           normal: null,
           origFlatShading: !!material.flatShading,
@@ -129,5 +130,5 @@ function loadModel(view, onLoaded, onError) {
   }
 
   const loader = spec.manager ? new GLTFLoader(spec.manager) : new GLTFLoader();
-  loader.load(spec.url, (gltf) => loaded(gltf.scene, gltf.animations || []), progress, failed);
+  loader.load(spec.url, (gltf) => loaded(gltf.scene, gltf.animations || [], gltf.parser?.associations), progress, failed);
 }

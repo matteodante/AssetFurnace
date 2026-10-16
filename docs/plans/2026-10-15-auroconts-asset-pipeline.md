@@ -1,6 +1,7 @@
 # Pipeline di produzione per un gioco intero (primo utente: Auroconts)
 
-Data: 15 ottobre 2026. Stato: **proposta**, niente è implementato.
+Data: 15 ottobre 2026, aggiornato il 16 ottobre 2026. Stato: **in sviluppo**. Le funzioni 1, 5 e 7 sono su `main`; 2, 3,
+6 e 8 in parte; la 4 è in prova. Lo stato di ogni funzione è nella tabella qui sotto e in [README](README.md).
 
 Auroconts è un MMORPG su Unreal Engine 5.8 che rifà un gioco del 2012 con asset nuovi: stile stilizzato, sagome
 riconoscibili rispetto all'originale, budget da PC medi. Il suo censimento conta 592 modelli di mostri, 866 di PNG, 427
@@ -13,6 +14,41 @@ moltiplicatori (varianti di colore, riadattamento ai corpi) riproducono la varie
 Le funzioni qui sotto sono generiche: servono a qualunque gioco. Ciò che è specifico di Auroconts (lettori dei file
 originali, tabella di corrispondenza, import in Unreal) resta nella repo di Auroconts (`docs/assets/pipeline.md`,
 `tools/`).
+
+## Stato al 16/10/2026
+
+| # | Funzione | Progetto | Stato |
+|---|---|---|---|
+| 1 | Lotti e accesso per agenti | [batch-mcp](2026-10-15-batch-mcp-design.md) | **Su `main`** (PR #2): lotti, ripresa, server MCP, pagina Batches |
+| 2 | Dal riferimento al concept | [reference-concept](2026-10-15-reference-concept-design.md) | Strada decisa: Qwen-Image 2.1 in modifica dentro `sd-cli`. File della visione su `main` (PR #9); prova dei 4 casi in corso, giudicata a occhio dall'utente |
+| 3 | Bibbia dello stile | [style-bible](2026-10-15-style-bible-design.md) | PR 1 su `main` (PR #10: bibbia, prompt, riferimenti). PR 2 (gara fra giudici imparati) in corso. Lo stile si ricava dai riferimenti originali del progetto (vedi sotto) |
+| 4 | Parti per slot | [rapporto della prova](2026-10-15-slot-parts-spike.md) | Prova fatta: strada B senza HoloPart consigliata; OmniPart escluso (PartField non commerciale) |
+| 5 | Profilo Unreal | [unreal-profile](2026-10-15-unreal-profile-design.md) | **Su `main`** (PR #6, #7), accettazione superata su UE 5.8.3 |
+| 6 | Famiglie di creature | [creature-families](2026-10-15-creature-families-design.md) | PR 1 su `main` (PR #8: riconoscimento, `rig.deformation`, digitigradi e quadrupedi). PR #13 (molte zampe, serpenti) in attesa della ricerca sugli approcci più recenti per l'animazione |
+| 7 | Controlli e revisione | [checks-review](2026-10-15-checks-review-design.md) | **Su `main`** (PR #4) |
+| 8 | Materiali pronti per il gioco | [v2](2026-10-15-game-materials-v2-design.md) (la [v1](2026-10-15-game-materials-design.md) è superata) | v2 approvata. PR 1 e 2 su `main` (PR #11 ORM e pezzo comune, PR #12 etichette). La PR #3 (v1) resta in bozza e si chiude |
+
+### Regole trasversali decise dall'utente (15-16/10/2026)
+
+- **"O fatto bene o niente"; incrementale sì, semplificato no.**
+- **Niente controlli deterministici sui pixel.** Luminosità, contorni (Canny), saturazione, distanze di palette e
+  raggruppamenti per colore "non funzionano bene" (parole dell'utente). I controlli di immagine sono modelli imparati
+  (SigLIP 2, CSD, DINOv2, giudici visione-linguaggio, segmentatori). **Un controllo entra solo se supera la prova contro
+  i giudizi dell'utente** (area ROC ≥ 0,90; almeno l'80% dei difettosi fermati; al massimo il 10% dei buoni). Se non la
+  supera, non entra, nemmeno come "informativo". Le misure geometriche sulla mesh restano (facce, buchi, UV,
+  allungamenti, compenetrazioni, IoU della sagoma su maschere ritagliate).
+- **AssetFurnace è un programma a sé.** I motori stanno in `vendor/` (per le immagini `vendor/sdcpp/sd-cli`), i pesi nel
+  catalogo con conferma esplicita. Niente ComfyUI.
+- **Prima di proporre uno strumento si verifica che sia l'approccio più recente**, con la data di uscita e la licenza di
+  codice e pesi (attenzione ai pesi non commerciali caricati in automatico, come PartField in OmniPart e Puppeteer).
+- **Stile del progetto dai suoi riferimenti originali.** Per Auroconts, immagini del gioco originale (schermate e
+  render) usate solo come riferimento interno: fuori da git, mai negli asset, con il controllo di copia. La bibbia vive
+  nella repo del progetto (`Auroconts/local/style-bible/`), non qui.
+- **GPU condivisa** (`%TEMP%\assetfurnace-gpu.lock`, con pid e nome della sessione): si prende solo mentre un lavoro
+  calcola davvero, si libera dopo ogni lavoro, e dopo un lavoro di oltre 20 minuti si passa la mano se altri aspettano.
+- **Review di Codex**: al massimo un giro per PR, ed è facoltativo. Si correggono solo i P1 veri, il resto va nei
+  "Seguiti" del progetto. Poi test verdi in una copia pulita e merge del coordinatore.
+- **LoRA dello stile rimandato.** Le immagini approvate della bibbia diventano il suo insieme di addestramento.
 
 ## Le funzioni proposte
 
@@ -30,18 +66,28 @@ originali, tabella di corrispondenza, import in Unreal) resta nella repo di Auro
 
 ### 2. Dal riferimento al concept
 
-- **Cosa**: generazione d'immagine guidata da un riferimento (sagoma, bordi o profondità di un render) con una palette
-  imposta, per ottenere un oggetto **nuovo** che si riconosce dalla forma.
-- **Accettazione**: su 5 riferimenti, la somiglianza delle sagome sta in una fascia configurabile (simile, non
-  identica) e la palette resta entro una distanza data.
-- **Rischio**: dipende dal controllo che offre il modello d'immagine locale (Qwen-Image). Prima una prova.
+- **Cosa**: generazione d'immagine guidata da un riferimento (immagine, sagoma, profondità di un render), per ottenere un
+  oggetto **nuovo** che si riconosce dalla forma. Serve anche a imporre la T-pose del corpo base, a disegnare i pezzi
+  d'armatura sopra il corpo base e a tenere coerenti le viste.
+- **Strada decisa (15/10/2026)**: **Qwen-Image 2.1 in modifica** dentro `sd-cli`, con più riferimenti (`-r`
+  ripetibile) e il file della visione di Qwen3-VL-8B. Valutate e scartate: Fun ControlNet Union (non c'è in `sd-cli`;
+  chiederebbe ComfyUI, fuori dalla struttura) e Qwen-Image-Edit-2511 (Apache-2.0, ma è un altro modello e cambierebbe lo
+  stile; resta la riserva se la licenza di ricerca della 2.1 diventa un problema).
+- **Accettazione**: quattro casi (mostro riconoscibile ma non copiato, T-pose esatta, pezzo d'armatura sopra il corpo,
+  viste coerenti) giudicati a occhio dall'utente. Il segnale di copia, se c'è, viene da un modello imparato (DINOv2).
 
 ### 3. Bibbia dello stile
 
-- **Cosa**: un insieme di immagini approvate, modelli di prompt per tipo di asset e un punteggio di coerenza (distanza
-  di un nuovo concept dall'insieme approvato), mostrato nello studio e usabile come soglia nei lotti.
+- **Cosa**: una cartella per progetto con le immagini approvate e rifiutate, ciascuna con la sua nota; modelli di prompt
+  per tipo di asset; 1-3 immagini della bibbia date come riferimento di stile quando si genera, tenendo il migliore di
+  alcuni tentativi; un giudice imparato che dice se un concept è nello stile, prima del 3D.
+- **Il giudice**: gara fra SigLIP 2, CSD (embedding di stile) e Qwen3-VL con domande sì/no scritte dall'utente. Vince
+  chi supera la prova sui giudizi dell'utente; se nessuno la supera, restano bibbia e riferimenti, senza un controllo
+  finto.
+- **Primo giro di etichette (16/10/2026)**: 2 approvati su 25. Il prompt di stile generico ("colori saturi") non
+  descriveva il gioco; ora la descrizione si ricava dalle immagini originali del progetto.
 - **Poi, dopo una prova**: un LoRA dello stile per il modello d'immagine.
-- **Accettazione**: il punteggio separa i concept che l'utente approva da quelli che rimanda, su un campione etichettato.
+- **Accettazione**: il giudice separa i concept che l'utente approva da quelli che rimanda, su un campione etichettato.
 
 **Quanto costa un LoRA dello stile** (rimandato dall'utente il 15/10/2026). Non tanto in soldi, quanto in preparazione:
 - Per Qwen-Image servono di base 24 GB di VRAM (le configurazioni di ai-toolkit sono pensate per 24 GB); la RTX 5070 Ti
@@ -49,8 +95,8 @@ originali, tabella di corrispondenza, import in Unreal) resta nella repo di Auro
 - In alternativa una GPU a noleggio da 24–48 GB per qualche ora a corsa: probabilmente pochi euro a tentativo, da
   verificare con un preventivo prima di spendere.
 - Il costo vero è il set di immagini: 20–50 concept già approvati dall'utente, più qualche giro di prova.
-- È opzionale: prima si prova senza (prompt fissi, Qwen-Image-Edit-2511 con immagini di riferimento, ControlNet). Il LoRA
-  si fa solo se il pilota mostra che lo stile deriva.
+- È opzionale: prima si prova senza (prompt fissi e immagini di riferimento in Qwen-Image 2.1). Il LoRA si fa solo se il
+  pilota mostra che lo stile deriva anche con i riferimenti.
 
 ### 4. Parti per slot e adattamento a un corpo base
 
@@ -67,8 +113,9 @@ Il "Part Composer" per il caso vincolato: corpi base fissi, slot fissi, uno sche
 4. **Riadattamento** dello stesso pezzo agli altri corpi base (per Auroconts 3 razze × 2 sessi).
 5. Oggetti rigidi (armi, elmi rigidi) pesati al 100% su un osso.
 
-- **Alternative per dividere in parti** una mesh già generata, tutte con licenza MIT: PartCrafter, OmniPart, HoloPart.
-  Da evitare Hunyuan3D-Part (licenza Tencent, esclude l'UE).
+- **Alternative per dividere in parti** una mesh già generata: PartCrafter, OmniPart, HoloPart (codice MIT). Attenzione:
+  OmniPart carica i pesi di PartField (NVIDIA, solo uso non commerciale); la prova lo usa alle condizioni scritte nel
+  suo progetto. Da evitare Hunyuan3D-Part (licenza Tencent, esclude l'UE).
 - **Accettazione**: un set completo su 6 corpi, senza ritocchi a mano, passa i controlli della funzione 7 in corsa,
   attacco e una posa estrema.
 - **Rischio**: medio. Nei video recenti anche lo strumento migliore (AssetHub Part Composer) lascia ritocchi a mano;
@@ -87,6 +134,8 @@ I tre non sono alternative uguali: fanno lavori diversi.
 Nel confronto pubblicato con CubePart (dati degli autori, non verificati da noi) OmniPart con maschere SAM3 batte
 PartCrafter e PartPacker. **Nessuno dei tre è provato su questo PC**: requisiti e Windows vanno verificati (PartCrafter ha
 una guida per Windows in un fork; OmniPart e HoloPart sono pensati per Linux con CUDA).
+
+**Esito della prova (16/10/2026)**: vince Pixal3D sul personaggio intero più divisione per slot, senza HoloPart; il `partfield_encoder.ckpt` di OmniPart è il checkpoint non commerciale di PartField. Dettagli in [`2026-10-15-slot-parts-spike.md`](2026-10-15-slot-parts-spike.md).
 
 Proposta: nella versione minima della funzione 4 si mettono a confronto, sullo stesso set di armatura, tre strade:
 1. **OmniPart** con le maschere degli slot;
@@ -118,6 +167,10 @@ Vince quella che dopo l'adattamento al corpo dà la qualità migliore con meno r
 - **Cosa**: oltre ai quadrupedi già presenti, modelli di scheletro e rig per ragni, draghi e volanti, serpenti, piante,
   con pesi e pose di riferimento come per i quadrupedi.
 - **Accettazione**: una creatura per famiglia rigata e animata con una clip di prova senza deformazioni visibili.
+- **Stato (16/10/2026)**: riconoscimento della famiglia dallo scheletro, controllo `rig.deformation` (geometrico) e clip
+  procedurali per digitigradi e quadrupedi su `main`. Le clip procedurali provano il rig e non sono animazioni da gioco:
+  per le animazioni vere dei mostri (attesa, camminata, corsa, attacco, colpo, morte) è in corso una ricerca sugli
+  approcci più recenti.
 
 ### 7. Controlli e coda di revisione
 
@@ -135,12 +188,14 @@ Vince quella che dopo l'adattamento al corpo dà la qualità migliore con meno r
 
 ### 8. Materiali pronti per il gioco
 
-- **Cosa**: per ogni asset generato:
-  - una **maschera di tinta** a 3 canali (zone ricolorabili), ricavata dalle regioni del modello;
-  - un controllo della **luce cotta** nell'albedo (luminosità e ombre troppo marcate), che rimanda indietro invece di
-    correggere;
-  - mappe normal e di rugosità ricavate dal colore dove mancano (approccio di Materialize, senza AI);
+- **Cosa** (progetto v2, approvato il 16/10/2026; la v1 per colore e luminosità è superata): per ogni asset generato:
+  - una **maschera di tinta** a 3 canali per **materiale**, non per colore: viste del modello in Blender, SAM 3 guidato
+    dai nomi dei materiali dati da Qwen3.5-4B, voto riportato sulle UV;
+  - **luce tolta all'origine** (Marigold-IID sul concept o sulle viste) e, se supera la prova, un controllo **imparato**
+    della luce cotta;
+  - normal cotte dalla geometria densa, rugosità e metallo di Pixal3D (dove mancano, stimati da un modello addestrato);
   - texture ORM impacchettate.
+- **Prova**: 60 asset etichettati dall'utente nello studio; ogni pezzo entra solo se la supera.
 - **Perché**: un gioco intero usa pochi materiali master e migliaia di istanze; senza maschere di tinta e senza albedo
   pulito, gli asset generati non si ricolorano e non reggono la luce dinamica.
 - **Accettazione**: un mostro esce con 3 zone ricolorabili che in Unreal cambiano colore da parametri, senza ombre cotte
@@ -153,12 +208,13 @@ Prima di scrivere codice si cerca chi lo fa già bene. Stato e licenze verificat
 | # | Proposta | Si riusa | Si costruisce | Note |
 |---|---|---|---|---|
 | 1 | Lotti e MCP | Manifest e CLI di AssetFurnace; SDK MCP ufficiale | Il lettore dei lotti, la ripresa e il server MCP: poco codice sopra ciò che c'è | ComfyUI (con [ComfyUI-3D-Pack](https://github.com/MrForExample/ComfyUI-3D-Pack), MIT, fermo da dicembre 2025) sarebbe un'alternativa come orchestratore, ma ci farebbe perdere provenienza e regole di AssetFurnace |
-| 2 | Dal riferimento al concept | **Qwen-Image 2.1 Fun ControlNet Union** (Alibaba PAI, settembre 2026: canny, profondità, lineart, posa e altri 4 controlli in un file) oppure [InstantX Qwen-Image ControlNet Union](https://huggingface.co/InstantX/Qwen-Image-ControlNet-Union) | L'aggancio in AssetFurnace, che usa già Qwen-Image 2.1 | Licenze dei pesi da verificare; supporto ComfyUI della 2.1 ancora in revisione a fine settembre |
-| 3 | Bibbia dello stile | [ai-toolkit](https://github.com/ostris/ai-toolkit) (MIT, molto attivo) per un LoRA dello stile; Qwen-Image-Edit-2511 per la coerenza fra immagini | Il punteggio di coerenza (distanza fra embedding) e la sua soglia nei lotti | musubi-tuner non dichiara una licenza: da evitare |
+| 2 | Dal riferimento al concept | **Qwen-Image 2.1 in modifica** dentro `sd-cli` (già in AssetFurnace), con il file della visione di Qwen3-VL-8B | La funzione `generate(prompt, references, seed)` e la prova dei 4 casi | Aggiornato il 16/10/2026: Fun ControlNet Union scartato (non c'è in `sd-cli`, chiederebbe ComfyUI); Qwen-Image-Edit-2511 (Apache-2.0) tenuto come riserva |
+| 3 | Bibbia dello stile | SigLIP 2 (Apache-2.0), CSD (CC-BY-4.0), Qwen3-VL-8B con llama.cpp (MIT); [ai-toolkit](https://github.com/ostris/ai-toolkit) (MIT) per un futuro LoRA | Bibbia, prompt, riferimenti, gara fra giudici e soglia nei lotti | Aggiornato il 16/10/2026: niente controlli sui pixel; musubi-tuner non dichiara una licenza: da evitare |
 | 4 | Parti e adattamento al corpo | **Generazione**: OmniPart, HoloPart, PartCrafter (MIT). **Segmentazione di una mesh intera**: [SAMPart3D](https://github.com/Pointcept/SAMPart3D) (MIT); PartField ha licenza da verificare. **Adattamento**: la tecnica standard con gli strumenti di Blender: gabbia low-poly con Shrinkwrap e piccolo scostamento, armatura spinta con Surface Deform o Mesh Deform, pesi copiati dal corpo (Data Transfer), massimo 4 influenze | Lo script che applica la tecnica in automatico e i suoi test | Non c'è un adattatore open source affidabile: i componenti aggiuntivi seri di Blender sono a pagamento o proprietari (RadFit, FitClick). L'Outfit Asset di Unreal è pensato per la stoffa simulata, non per gusci rigidi |
 | 5 | Profilo Unreal | **Usato**: Interchange glTF di Unreal (unica strada d'import); l'esportatore glTF di Blender 5.2; il mappatore di ossa di `kimodo_retarget.py`; i LOD già cotti da `finish_props.py`; IK Rig e Retargeter di Unreal (con `add_default_ops`) per Manny. Di Send to Unreal solo le **convenzioni** (prefissi, `LODn_`, `UBX_`/`UCX_`, osso `root`). **Non usato**: il codice di Send to Unreal (fermo al 2023, con Blender 5.2 si rompe in tre punti e il suo FBX non si apre in UE 5.8); FBX (Interchange perde texture e animazioni); compressione di gltfpack e glTF-Transform (Interchange rifiuta meshopt e WebP); gltfpack per i LOD (riduce poco dove ci sono cuciture UV) | Il profilo (`image_to_3dlab/unreal_profile.py`, `scripts/export_unreal.py`, `scripts/blender_export_unreal.py`), il controllo in Unreal (`scripts/unreal_import_check.py`) e il pannello nello studio | Fatto il 15/10/2026: accettazione superata su UE 5.8.3 |
-| 6 | Famiglie di creature | **SkinTokens**, già in AssetFurnace, è il successore di [UniRig](https://github.com/VAST-AI-Research/UniRig) (MIT), che rigga scheletri diversi, animali compresi; [Puppeteer](https://github.com/Seed3D/Puppeteer) (Apache-2.0) rigga e anima forme qualsiasi | Prima si provano su ragno, drago e pianta; i modelli Rigify per famiglia solo dove falliscono | — |
-| 7 | Controlli e revisione | [glTF-Validator](https://github.com/KhronosGroup/glTF-Validator) (Apache-2.0); analisi delle mesh di Blender; statistiche di meshoptimizer; Data Validation di Unreal | I controlli specifici (sagoma, misure, compenetrazioni) e la coda nello studio | — |
+| 6 | Famiglie di creature | **SkinTokens**, già in AssetFurnace, è il successore di [UniRig](https://github.com/VAST-AI-Research/UniRig) (MIT), che rigga scheletri diversi, animali compresi; [Puppeteer](https://github.com/Seed3D/Puppeteer) (Apache-2.0) rigga e anima forme qualsiasi | Prima si provano su ragno, drago e pianta; i modelli Rigify per famiglia solo dove falliscono | Puppeteer: lo scheletro è pulito, ma pelle e animazione caricano pesi non commerciali (PartField, CC-BY-NC): esclusi |
+| 7 | Controlli e revisione | [glTF-Validator](https://github.com/KhronosGroup/glTF-Validator) (Apache-2.0); analisi delle mesh di Blender; statistiche di meshoptimizer; Data Validation di Unreal | I controlli specifici (sagoma, misure, compenetrazioni) e la coda nello studio | Su `main` |
+| 8 | Materiali | SAM 3 (SAM License, accettata dall'utente), Qwen3.5-4B (Apache-2.0), Marigold-IID v1.1 (OpenRAIL++-M), SigLIP 2; l'idea della tabella materiale → rugosità/metallo di MaterialSeg3D++ | Il pezzo comune (viste e riporto sulle UV), le etichette nello studio, il voto per materiale, il controllo imparato | Lavori del 2026 (MaterialSeg3D++, Material Magic Wand, MatWeaver) senza codice o pesi usabili; ripiego tutto Apache: SAM 2.1 + Qwen3.5-4B |
 
 ### Lato Unreal (non in AssetFurnace)
 
@@ -177,7 +233,7 @@ sul forum di Epic (una risposta esperta, non una verifica ufficiale).
 
 ## Ordine
 
-**Decisione dell'utente del 15/10/2026**: prima si sviluppano in AssetFurnace le funzioni di base (1, 5, 7, 8), poi si prova. Il **LoRA dello stile è rimandato**: si lavora con prompt fissi, immagini di riferimento e ControlNet.
+**Decisione dell'utente del 15/10/2026**: prima si sviluppano in AssetFurnace le funzioni di base (1, 5, 7, 8), poi si prova. Il **LoRA dello stile è rimandato**: si lavora con prompt fissi e immagini di riferimento (Qwen-Image 2.1 in modifica).
 
 1. Fondamenta, sviluppate prima di qualsiasi prova: 1, 5, 7, 8.
 2. La 4 parte da una prova rapida con script usa e getta su un solo set di armatura; la funzione vera si costruisce solo sulla strada che vince.
@@ -198,10 +254,12 @@ sul forum di Epic (una risposta esperta, non una verifica ufficiale).
 | Nakama Unreal SDK, Flow Graph | Attivi, con versioni per 5.8 | — |
 | Send to Unreal | Mantenuto dalla comunità, attivo a settembre 2026 | Supporto a Blender 5 e UE 5.8 non dichiarato: da provare |
 | UniRig / SkinTokens | Attivi (giugno 2026) | SkinTokens è già in AssetFurnace |
-| Qwen-Image 2.1 Fun ControlNet Union | Molto recente (settembre 2026) | Supporto ComfyUI in revisione; licenza dei pesi da verificare |
+| Qwen-Image 2.1 in modifica (`sd-cli`) | Recente, supportata da stable-diffusion.cpp | Strada scelta per la funzione 2. Fun ControlNet Union (settembre 2026) scartato: non c'è in `sd-cli` |
+| SAM 3 (novembre 2025), SAM 3.1 (marzo 2026) | Recenti; la 3.1 migliora solo il video | Si usa SAM 3 da `transformers`; la 3.1 ha errori aperti su Windows con le RTX serie 50 |
+| Marigold-IID v1.1 (maggio 2025) | Il più recente con licenza usabile | Addestrato su foto e interni: va misurato su arte stilizzata |
 | OmniPart, HoloPart, PartCrafter, SAMPart3D, Puppeteer | **Codice di ricerca** (2025) | Funzionano, ma nessuno li mantiene come prodotto; pensati per Linux con CUDA. Vanno provati prima di dipenderne |
 | ComfyUI-3D-Pack | Fermo da dicembre 2025 | Non lo usiamo |
-| Strumenti di delighting con AI | Immaturi o con licenze restrittive | Si previene invece di correggere |
+| Strumenti di delighting con AI | Quasi tutti con licenze non commerciali (verifica del 16/10/2026) | Si previene all'origine; Marigold-IID è l'eccezione usabile |
 
 In sintesi: la base (Unreal, Blender, formati, ottimizzazione) è matura; la generazione per parti e il controllo dello
 stile sono la parte nuova e incerta. Per questo si passa dal pilota prima di produrre in grande.

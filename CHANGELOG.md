@@ -8,6 +8,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Material labels in Studio's review panel: for the version under review, say whether
+  light is painted into the colours, whether the materials look right, and click points
+  on the model with the material they show. Saved in `output/material-labels.jsonl`;
+  `scripts/material_label_set.py` queues a label set, reports progress and exports the
+  complete labels every material check is measured against.
+- Game materials, first part (`image_to_3dlab/materials.py`, `scripts/game_materials.py`):
+  a generated GLB's own roughness, metallic and occlusion packed as one ORM texture, the
+  GLB edited in place so rigs and animations survive, and the licence record carried
+  beside the result. Nothing is derived from the colour.
+- Multi-view piece for the material steps (`image_to_3dlab/multiview.py`,
+  `scripts/blender_render_views.py`): Blender renders the albedo unlit from an orbit, and
+  what a 2D model says about each view is carried back to the texels of the atlas.
+- Creature families: after rigging, the skeleton is read for legs, arms, wings, tail and
+  neck and the creature is recognised as humanoid, digitigrade biped, quadruped, many-legged,
+  winged, serpent or plant (`image_to_3dlab/creature_family.py`, `<rig>.family.json`).
+  Digitigrade bipeds and quadrupeds get two procedural test clips, a walk or trot and an
+  attack (`scripts/creature_motion.py`, `scripts/creature_clips.py`). In Studio the Rig step
+  asks what the creature is (or recognises it) and Animate names its test clips.
+- Test clips for many-legged creatures (a walk in two alternating groups, a rear-up attack
+  with the front pair) and serpents (a slither from head to tail, a strike out of a coil).
+  A generated spider whose leg bones stop short of the ground, and two chains inside one
+  mesh leg, are handled.
+- Test clips for winged creatures (hovering on the spot with a fast downstroke, and their
+  ground attack with the wings thrown open) and plants (a sway from the base up, a snap of the
+  head). Recognition handles a tail resting on the ground beside the body, a wing swept
+  forward past the head, and a plant the auto-rig rooted at its flower.
+- `rig.deformation` check: plays every clip of a rig and measures stretched edges, folded
+  triangles and feet that cross sides (warn only until calibrated).
+- Qwen-Image's setup also fetches Qwen3-VL-8B's vision file (`mmproj-Qwen3VL-8B-Instruct-F16.gguf`,
+  1.16 GB, Apache-2.0), which lets the model read reference pictures; text to image works
+  without it. The Setup page counts it on its own, beside the text encoder in the same
+  cache folder, and Remove deletes only that file.
+- **Batches**: `pipeline.py --run-batch spec.json` (or `.csv`) runs one row per asset
+  through `generate` and `finish`, with a state per row, resume from where it stopped,
+  `--retry-failed`, and a `.provenance.json` for every output. Reserved step names
+  (`materials`, `export_unreal`, `checks`) are skipped with a warning until they exist.
+  An MCP server (`python -m image_to_3dlab.mcp_server`) lets an agent in another
+  repository submit batches, follow them and collect their files, and a **Batches** page
+  in the studio does the same by hand. Finished rows join the Library and the review
+  queue (`output/review-log.jsonl`). Rows can state their real size (`size_cm`,
+  `measure`) for the Unreal export. See [Batches](docs/batches.md).
+- `--run-manifest` runs Pixal3D manifests.
 - Style bibles (`image_to_3dlab/style`): a self-contained folder per project with approved and
   rejected pictures, each with a note and its provenance, so a game keeps its look in its own
   repository. Prompt templates per asset kind put the 3D recipe first and the project's style
@@ -61,6 +103,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
 
 ### Fixed
+- A character is faced across its hips, not along its feet: a werewolf whose feet turned out
+  unevenly was exported to Unreal turned 17 degrees off its body. The Unreal check also
+  records the feet's and knees' sideways gap over the retargeted walk (and Manny's), and fails
+  when the feet cross.
 - Auto-rig setup finds the virtual environment's Python executable on Windows.
 - Blender imports reject empty active scenes and invalid skin indices, retain every
   source license sidecar, and detect damaged saved versions on retry. Corrupt edit

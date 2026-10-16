@@ -5,7 +5,7 @@ Two halves, the same way the viewer tracks every other backend. The **build** is
 prebuilt `stable-diffusion.cpp` release binary. Nothing is compiled: upstream publishes a
 Metal build for Apple Silicon, a CUDA build for Windows, a Vulkan build for Linux that
 runs on NVIDIA cards, and a ROCm build for AMD cards on Linux. The **weights** are three
-files totalling about 13.4 GB.
+files totalling about 14.6 GB.
 
 `AGENTS.md`: a download path must name the backend, name the route, state the size, and
 require an affirmative answer. This prints all of that and stops, unless `--yes` is given
@@ -44,9 +44,12 @@ RELEASES = "https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/la
 # (repo, filename, approximate gigabytes). These are the files the upstream Qwen-Image 2.1
 # guide names, at the quantisations that were measured to be worth it: Q8 for the image
 # model, Q4_K_M for the text encoder, and the VAE unquantised because it is small anyway.
+# The encoder's vision half (F16, as the guide asks for editing) lets the model look at
+# reference pictures; text to image does not need it.
 WEIGHTS = [
     ("leejet/Qwen-Image-2.1-GGUF", "qwen_image_2.1-Q8_0.gguf", 7.69),
     ("Qwen/Qwen3-VL-8B-Instruct-GGUF", "Qwen3VL-8B-Instruct-Q4_K_M.gguf", 5.03),
+    ("Qwen/Qwen3-VL-8B-Instruct-GGUF", "mmproj-Qwen3VL-8B-Instruct-F16.gguf", 1.16),
     ("Comfy-Org/Qwen-Image-2.1", "vae/qwen_image_2.1_vae_bf16.safetensors", 0.68),
 ]
 
