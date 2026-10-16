@@ -131,6 +131,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
 
 ### Fixed
+- The studio reads and writes its JSON and text files as UTF-8 on every machine, and the
+  test suite passes on Windows without `PYTHONUTF8=1`: with the locale's cp1252, an em dash
+  or a middle dot written as UTF-8 failed to decode. `tests/test_text_encoding.py` keeps new
+  reads and writes in the studio from leaving the encoding out.
 - Pictures are sharp again: text to image now runs the Qwen-Image 2.1 Turbo checkpoint with
   its own schedule (`--sigmas qwen-image-2.1-turbo`, cfg 1.0) at 1024 px. It used to run
   the base checkpoint with the Turbo's numbers (8 steps, cfg 1.0), which stopped the
