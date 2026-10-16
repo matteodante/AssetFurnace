@@ -9,6 +9,8 @@ open. Image 1 is always the shape picture; `other_view` with depth adds image 2.
 - `add_piece`: one piece of equipment on the base body, the rest untouched.
 - `other_view`: the same creature from the side or the back, from its front picture,
   optionally with the depth map of that side (without it the body came out thinner).
+- `complete_piece`: one armour piece cut out of a concept and flattened on grey, redrawn
+  whole and alone (feature 4, route C; the second trial of 16/10/2026).
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ STRUCTURES = {"depth": "depth map (lighter is nearer)", "lineart": "line drawing
 GUIDES = ("body", "pose")
 # Only the directions the trial drew; a three-quarter view was never tried.
 VIEWS = {"side": "its left side, in profile", "back": "behind"}
-MODES = ("redraw", "dress", "add_piece", "other_view")
+MODES = ("redraw", "dress", "add_piece", "other_view", "complete_piece")
 
 
 def _tail(style: str, *parts: str) -> str:
@@ -58,6 +60,17 @@ def add_piece(piece: str, style: str = "") -> str:
     """`piece` drawn onto the character of image 1, everything else kept."""
     return (f"Add {piece} to the character in image 1, fitted closely to the body. Change nothing else: "
             f"same body, bodysuit, proportions, T-pose, framing and background. " + _tail(style))
+
+
+def complete_piece(piece: str, style: str = "") -> str:
+    """The cut-out `piece` of image 1 completed: hidden and cut-off parts filled in, nothing inside.
+
+    The edit keeps the piece where and how large it found it, which is how the piece is
+    placed back on the body afterwards.
+    """
+    return (f"Complete this cut-out armour piece into {piece}: fill in every part that was hidden or cut "
+            f"off, keep its design, colours and style, no body, no person, nothing inside, front view, "
+            f"centred. " + _tail(style))
 
 
 def other_view(view: str, depth: bool = False, style: str = "") -> str:

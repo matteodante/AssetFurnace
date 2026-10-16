@@ -67,3 +67,10 @@ def test_how_many_shape_pictures_each_way_needs():
     assert prompts.shape_pictures("other_view") == 1
     with pytest.raises(ValueError):
         prompts.shape_pictures("inpaint")
+
+
+def test_complete_piece_fills_the_hidden_parts_and_leaves_nothing_inside():
+    text = prompts.complete_piece("a single shoulder pauldron", style="hand-painted")
+    assert "Complete this cut-out armour piece into a single shoulder pauldron" in text
+    assert "nothing inside" in text and "hand-painted" in text and text.endswith("lighting.")
+    assert prompts.shape_pictures("complete_piece") == 1
