@@ -184,6 +184,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Experimental canonical editing snapshots and a Blender no-op bridge, preserving
   untouched GLB data and reporting geometry, UV and weight round-trip checks.
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
+- From a reference to a concept in the viewer (`viewer/concept_api.py`,
+  `scripts/reference_concept.py`): upload a reference, prepare a map from a model or a
+  picture, and run one of the four ways as an ordinary image job, with the
+  `<image>.concept.json` record and the silhouette IoU against the shape picture.
+  `generate(prompt, references, seed)` is the same edit as one call for other steps.
+  Image jobs take extra arguments, extra provenance and a name (`viewer/image_api.py`).
 
 ### Fixed
 - The studio reads and writes its JSON and text files as UTF-8 on every machine, and the

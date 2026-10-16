@@ -92,3 +92,15 @@ def shape_pictures(mode: str, depth: bool = False) -> int:
     if mode not in MODES:
         raise ValueError(f"mode is one of {', '.join(MODES)}, got {mode!r}")
     return 2 if mode == "other_view" and depth else 1
+
+
+def style_sentence(first: int, count: int) -> str:
+    """The words for `count` style pictures that follow the shape pictures, from image `first`."""
+    if count <= 0:
+        return ""
+    if count == 1:
+        return (f" Image {first} is a style reference: paint it in the same style (same brushwork, colours "
+                f"and proportions), but do not copy its subject.")
+    which = f"{first} and {first + 1}" if count == 2 else f"{first} to {first + count - 1}"
+    return (f" Images {which} are style references: paint it in the same style (same brushwork, colours "
+            f"and proportions), but do not copy their subjects.")

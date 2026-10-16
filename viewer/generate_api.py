@@ -35,6 +35,7 @@ import blender_edit_api
 import batch_api
 import review_api
 import material_labels_api
+import concept_api
 import creature_family_api
 import unreal_export_api
 from image_to_3dlab import processes
@@ -2082,6 +2083,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if material_labels_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
+        if concept_api.handle(self, OUTPUT_ROOT, mutation=True):
+            return
         if unreal_export_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
         if batch_api.handle(self, OUTPUT_ROOT, mutation=True):
@@ -2327,6 +2330,8 @@ class Handler(SimpleHTTPRequestHandler):
         if blender_edit_api.handle(self, OUTPUT_ROOT) or review_api.handle(self, OUTPUT_ROOT):
             return
         if material_labels_api.handle(self, OUTPUT_ROOT):
+            return
+        if concept_api.handle(self, OUTPUT_ROOT):
             return
         if unreal_export_api.handle(self, OUTPUT_ROOT):
             return
