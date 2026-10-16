@@ -74,9 +74,19 @@ SAM3 = HubModel(
     size=3_445_003_826, license="SAM License (custom; Meta may change it)",
     license_url="https://huggingface.co/facebook/sam3/blob/main/LICENSE",
     note="Gated: the Hugging Face account must be granted access first, through a form only its "
-         "owner fills in. The transformers files only, not sam3.pt. Released 2025-11-20.")
+         "owner fills in. The transformers files only, not sam3.pt. Released 2025-11-20. The licence "
+         "forbids uses under ITAR or barred by trade controls (military, nuclear, espionage, developing "
+         "or using guns or illegal weapons; section 1.b.v) and Meta may change it (section 8).")
 
-MODELS = {m.key: m for m in (MARIGOLD_LIGHTING, MARIGOLD_APPEARANCE, QWEN35, SAM3)}
+SAM21 = HubModel(
+    key="sam21", label="SAM 2.1 large (automatic regions, the zones' fallback)",
+    repo="facebook/sam2.1-hiera-large", revision="665f8e2ad61cf5f53d65644ff27c8ee525124610",
+    files=("config.json", "model.safetensors", "preprocessor_config.json", "processor_config.json",
+           "video_preprocessor_config.json"),
+    size=897_904_604, license="Apache-2.0", license_url="https://huggingface.co/facebook/sam2.1-hiera-large",
+    note="The transformers files only, not the .pt. Released 2024-09-24; revision of 2025-08-15.")
+
+MODELS = {m.key: m for m in (MARIGOLD_LIGHTING, MARIGOLD_APPEARANCE, QWEN35, SAM3, SAM21)}
 GATED = {SAM3.key}
 
 
@@ -107,7 +117,7 @@ def require(model: HubModel, hub: Path | None = None) -> Path:
 # Pinned together: diffusers 0.40 is the newest that installs with this transformers, and it
 # brings huggingface-hub 1.33 into this environment only. torch comes from PyTorch's own index.
 ENV_PACKAGES = ("diffusers==0.40.0", "transformers==5.20.0", "numpy<2", "pillow", "safetensors")
-TORCH = ("torch==2.14.1",)
+TORCH = ("torch==2.14.1", "torchvision==0.29.1")      # torchvision: Qwen3.5's image processor
 PYTHON_VERSION = "3.11"
 
 

@@ -80,7 +80,7 @@ def material_id(name: str) -> int | None:
 
 
 def render_plan(asset: Path, folder: Path, size: int = 512, around: int = 16,
-                elevation: float = 20.0, lit: bool = False) -> dict:
+                elevation: float = 20.0, lit: bool = False, light=None) -> dict:
     """Write the tagged copy and ``plan.json`` that the Blender script reads."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
@@ -89,20 +89,23 @@ def render_plan(asset: Path, folder: Path, size: int = 512, around: int = 16,
             "directions": orbit_directions(around, elevation).round(6).tolist()}
     if lit:
         plan["lit"] = True
+    if light is not None:
+        plan["light"] = [round(float(v), 6) for v in light]
     (folder / "plan.json").write_text(json.dumps(plan, indent=2), encoding="utf-8")
     return plan
 
 
 def render_views(asset: Path, folder: Path, *, size: int = 512, around: int = 16, lit: bool = False,
-                 blender: Path | None = None, run: Callable = subprocess.run) -> list[View]:
+                 light=None, blender: Path | None = None, run: Callable = subprocess.run) -> list[View]:
     """Render the orbit with Blender, headless and on the CPU, and read the views back.
 
-    `lit` adds a picture of each view under a neutral studio light (``View.lit``).
+    `lit` adds a picture of each view under a neutral studio light (``View.lit``); `light`, the
+    direction it travels in Blender's world axes, fixes it in the world instead of to the camera.
     """
     from image_to_3dlab.blender import find_blender
 
     folder = Path(folder).resolve()     # Blender runs from the repo, not from the caller's folder
-    render_plan(asset, folder, size, around, lit=lit)
+    render_plan(asset, folder, size, around, lit=lit, light=light)
     binary = blender or find_blender()
     if binary is None:
         raise RuntimeError("Blender was not found; install it or set I2L_BLENDER")

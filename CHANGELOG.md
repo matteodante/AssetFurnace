@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A helmet keeps its shape, grows to hold the head and follows the head bone carrying most of
   it; weapons and shields stay out of the body mask and skip `fit.holes`. `kimodo_retarget.py`
   takes legs hanging from a pelvis chain under the root.
+- Tint zones by material, not yet admitted (`image_to_3dlab/material_zones.py`,
+  `scripts/game_materials.py --zones`, `scripts/zones_trial.py`): Qwen3.5-4B names up to six
+  materials from the words the user labels with, SAM 3 (gated) or SAM 2.1 regions named by
+  Qwen find them in every view, and a vote on the UVs makes the three largest the R, G and B of
+  `T_<name>_Tint.png`, named in the sidecar and in the GLB's extras. Setup lists it as a tool;
+  SAM 3's licence terms are summarised on its card.
+- A learned check for light painted into the albedo, and its trial (`image_to_3dlab/baked_light.py`,
+  `scripts/baked_light_trial.py`): synthetic pairs from 100 Poly Haven CC0 models baked under
+  suns fixed in the world, a logistic head on SigLIP 2, Marigold's shading and a Qwen3.5 yes/no
+  judge. None passes even the synthetic test (best ROC AUC 0.86, lower bound 0.80), so there is
+  no baked-light check; `human` scores the best head on the user's labels when they exist.
+  Views can be lit by a sun fixed in the world (`render_views(lit=True, light=...)`).
 - Characters in pieces in the studio: a **Pieces** page with the three ways to make a
   character (one piece through + Create; a dressed character split into pieces; a bare base
   body with sets of equipment), base bodies registered from rigged humanoids in the Library,

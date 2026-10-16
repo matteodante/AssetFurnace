@@ -135,3 +135,17 @@ def test_a_lit_picture_shows_shading_from_the_upper_left_and_the_data_passes_sta
     assert view.lit[upper_left].mean() > view.lit[lower_right].mean() + 20
     assert np.ptp(view.color[shown], axis=0).max() <= 2            # the unlit pass is still flat
     assert mv.render_views(asset, tmp_path / "plain", size=32, around=4, blender=BLENDER)[0].lit is None
+
+
+@needs_blender
+def test_a_world_light_lights_the_same_side_from_every_camera(tmp_path):
+    # Light painted into a texture comes from one place in the world, whichever way you look.
+    flat = np.full((SIZE, SIZE, 3), 180, np.uint8)
+    asset = make_glb(tmp_path / "ball.glb", flat)
+    views = mv.render_views(asset, tmp_path / "views", size=48, around=4, lit=True,
+                            light=(0.0, 0.0, -1.0), blender=BLENDER)          # straight down
+    for view in views[:-2]:
+        shown = view.material >= 0
+        up_facing = shown & (view.normal[..., 2] > 0.5)
+        down_facing = shown & (view.normal[..., 2] < -0.5)
+        assert view.lit[up_facing].mean() > view.lit[down_facing].mean() + 20
