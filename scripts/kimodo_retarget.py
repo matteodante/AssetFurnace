@@ -191,6 +191,17 @@ def map_skintokens_to_soma(parents: dict[str, str | None], heads: dict[str, np.n
     spine_start = max(kids[root], key=lambda c: high[c], default=None)
     legs = sorted((c for c in kids[root] if c != spine_start and low[c] < root_h - 1e-6),
                   key=lambda c: low[c])[:2]
+    hub = legs[0] if len(legs) == 1 else None
+    while hub is not None and len(kids.get(hub, [])) == 1:
+        hub = kids[hub][0]
+    if hub is not None and len(kids.get(hub, [])) >= 2:
+        # a pelvis chain under the root that forks into the two legs (a SkinTokens woman,
+        # 2026-10-17): the legs are the fork's two children reaching lowest; the chain
+        # follows the hips
+        low.update({c: _subtree_low(c, kids, heads, up) for c in kids[hub]})
+        pair = sorted((c for c in kids[hub] if low[c] < root_h - 1e-6), key=lambda c: low[c])[:2]
+        if len(pair) == 2:
+            legs = pair
     if spine_start is None or len(legs) != 2 or high[spine_start] <= root_h:
         raise ValueError(f"expected 2 legs + 1 spine under root, got legs={legs} spine={spine_start}")
     leg_chains = [_limb(c, kids, lambda x: -_subtree_low(x, kids, heads, up), 4) for c in legs]

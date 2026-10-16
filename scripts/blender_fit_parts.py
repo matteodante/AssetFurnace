@@ -74,9 +74,11 @@ def slot_bones(roles: dict, slot: str, side: str | None) -> list[str]:
     return [b for b, (role, _, s) in roles.items() if role in wanted and (side is None or s in (side, ""))]
 
 
-def rigid_bone(roles: dict, slot: str, side: str | None = None) -> str | None:
-    """The one bone a rigid piece follows: the helmet the first head bone, the weapon the right
-    hand, the shield the left forearm, unless `side` says otherwise."""
+def rigid_bone(roles: dict, slot: str, side: str | None = None, carried: dict | None = None) -> str | None:
+    """The one bone a rigid piece follows: the helmet a head bone, the weapon the right hand, the
+    shield the left forearm, unless `side` says otherwise. With `carried` (body vertices each bone
+    carries most), the bone carrying most wins: a rig can split the head over two bones, and a
+    helmet on the small one turned apart from the head (31% holes on a second body)."""
     role = slots.CATALOGUE[slot].rigid
     side = side or ("L" if slot == "shield" else "R")
     if role is None:
@@ -84,7 +86,11 @@ def rigid_bone(roles: dict, slot: str, side: str | None = None) -> str | None:
     found = [(i, b) for b, (r, i, s) in roles.items() if r == role and (role == "head" or s in (side, ""))]
     if not found and role == "head":
         found = [(i, b) for b, (r, i, _) in roles.items() if r == "neck"]
-    return min(found)[1] if found else None
+    if not found:
+        return None
+    if carried:
+        return max(found, key=lambda f: (carried.get(f[1], 0), -f[0]))[1]
+    return min(found)[1]
 
 
 # ------------------------------------------------------------------ Blender from here
@@ -133,15 +139,19 @@ def main() -> None:  # pragma: no cover - runs inside Blender
                     if mod.type == "ARMATURE":
                         o.modifiers.remove(mod)
                 o.vertex_groups.clear()
-        meshes = [o for o in objs if o.type == "MESH" and len(o.data.polygons)]
+        # importing a skinned GLB, Blender adds an icosphere for the bones' display, kept in the
+        # importer's own glTF_not_exported collection: it is not part of the piece
+        meshes = [o for o in objs if o.type == "MESH" and len(o.data.polygons)
+                  and not any(c.name.startswith("glTF_not_exported") for c in o.users_collection)]
+        bpy.context.view_layer.update()
+        worlds = {o.name: o.matrix_world.copy() for o in meshes}  # before any parent goes away
+        for o in meshes:
+            o.parent = None
+            o.matrix_world = Matrix.Identity(4)
+            o.data.transform(worlds[o.name])
         for o in objs:
             if o not in meshes:
                 bpy.data.objects.remove(o, do_unlink=True)
-        for o in meshes:
-            mw = o.matrix_world.copy()
-            o.parent = None
-            o.matrix_world = Matrix.Identity(4)
-            o.data.transform(mw)
         if len(meshes) > 1:
             with bpy.context.temp_override(active_object=meshes[0], selected_editable_objects=meshes,
                                            object=meshes[0], selected_objects=meshes):
@@ -347,10 +357,15 @@ def main() -> None:  # pragma: no cover - runs inside Blender
     report = {"pieces": {}, "body": record["name"]}
     fitted = []
 
+    dominant = weights.argmax(1)
+    names_by_index = {i: n for n, i in groups.items()}
+    carried = {names_by_index[i]: int(c) for i, c in zip(*np.unique(dominant[weights.max(1) > 0], return_counts=True))
+               if i in names_by_index}
+
     def shape_and_skin(o, slot, info):
         """Cage fit (not for a rigid piece: a helmet keeps its shape and only follows the head),
         spikes put back, sunken vertices pushed out, then skinned."""
-        bone = rigid_bone(roles, slot)
+        bone = rigid_bone(roles, slot, carried=carried)
         if slot == "helmet":  # room for the head inside, whatever the outline gave
             head = region([b for b, (r, _, _) in roles.items() if r == "head"])
             m, grown = fit.enclose(coords(o), head)
@@ -398,10 +413,15 @@ def main() -> None:  # pragma: no cover - runs inside Blender
             group = [(obj, side)]
             for o, _ in group:
                 shape_and_skin(o, slot, info)
-            report["pieces"].setdefault(slot, {}).update(info)
+            merged = report["pieces"].setdefault(slot, {})
+            for key, value in info.items():  # the two sides of a pair arrive one at a time
+                if isinstance(value, dict):
+                    merged.setdefault(key, {}).update(value)
+                else:
+                    merged[key] = value
             continue
         if slot in fit.HELD and "concept_box" not in piece:  # made on its own: held, rigid, no cage
-            bone = rigid_bone(roles, slot)
+            bone = rigid_bone(roles, slot, carried=carried)
             if bone is None:
                 raise SystemExit(f"no bone to hold the {slot} on")
             m, place = fit.held_placement(coords(obj), slot, heads[bone], float(np.ptp(body_co[:, 2])))
