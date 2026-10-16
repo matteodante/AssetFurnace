@@ -190,6 +190,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<image>.concept.json` record and the silhouette IoU against the shape picture.
   `generate(prompt, references, seed)` is the same edit as one call for other steps.
   Image jobs take extra arguments, extra provenance and a name (`viewer/image_api.py`).
+- Studio: "Draw from a reference" in the Create sheet (`viewer/studio/reference-concept.js`).
+  Pick a way, a model or picture from the Library (or upload one), the words and 1-4 tries;
+  the sheet prepares the map, runs each try through the image queue and shows the shape
+  picture beside each result with its outline IoU. Keep or Discard is saved in the
+  concept record and `output/concept/judgements.jsonl`.
 
 ### Fixed
 - The studio reads and writes its JSON and text files as UTF-8 on every machine, and the

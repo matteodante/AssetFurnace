@@ -235,3 +235,20 @@ def test_a_post_without_the_studio_header_is_refused(server, output, ready):
     status, data = request(server, "POST", "/api/concept/jobs", {"mode": "dress"},
                            headers={"X-AssetFurnace-Request": "other"})
     assert status == 403
+
+
+def test_the_users_judgement_is_kept_in_the_record_and_in_a_log(output, ready):
+    grey = picture(output / "images" / "body.png")
+    job = concept_api.start(output, {"mode": "add_piece", "piece": "a helmet", "shape": ["images/body.png"], "seed": 1})
+    concept_api.wait(job)
+    picture_path = job.picture_path()
+    saved = concept_api.judge(output, {"picture": picture_path, "verdict": "keep", "note": "the helmet fits"})
+    assert saved["judgement"]["verdict"] == "keep" and saved["judgement"]["note"] == "the helmet fits"
+    assert sidecar.read(job.output_path)["judgement"]["verdict"] == "keep"
+    log = [json.loads(line) for line in (output / "concept" / "judgements.jsonl").read_text().splitlines()]
+    assert log[-1]["picture"] == picture_path and log[-1]["mode"] == "add_piece"
+    with pytest.raises(ValueError, match="verdict"):
+        concept_api.judge(output, {"picture": picture_path, "verdict": "maybe"})
+    with pytest.raises(ValueError, match="record"):
+        concept_api.judge(output, {"picture": "images/body.png", "verdict": "keep"})
+    assert grey.is_file()

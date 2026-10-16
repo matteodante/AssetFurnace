@@ -24,7 +24,7 @@ export function freshSeed(random = Math.random) {
 }
 
 /** Show the Create sheet over the viewer. `onStart(plan)` runs it. */
-export function openCreate({ stage, recipes, engines, presets, onStart }) {
+export function openCreate({ stage, recipes, engines, presets, onStart, onReference }) {
   const sheet = document.createElement('div');
   sheet.className = 'sheet';
   stage.appendChild(sheet);
@@ -47,7 +47,7 @@ export function openCreate({ stage, recipes, engines, presets, onStart }) {
          <div class="warnings" aria-live="polite"></div>`
       : `<div class="drop" data-drop tabindex="0" role="button">${state.file ? `<b>${esc(state.file.name)}</b><br><span class="hint">${(state.file.size / 1048576).toFixed(1)} MB · click or drop another to replace</span>` : `Drop ${state.have === 'picture' ? 'a picture (PNG, JPG, WebP)' : 'a 3D model (GLB)'} here, or click to choose`}</div>`;
     sheet.innerHTML = `<form class="sheet-card" novalidate>
-      <div class="sheet-top"><h2>What should we <span>make?</span></h2><button type="button" class="ghost" data-close>Cancel</button></div>
+      <div class="sheet-top"><h2>What should we <span>make?</span></h2>${onReference ? '<button type="button" class="ghost" data-reference>Draw from a reference</button>' : ''}<button type="button" class="ghost" data-close>Cancel</button></div>
       <div class="quick">${quick.map(([w, h, t]) => `<button type="button" class="qs${w === state.want && h === state.have ? ' on' : ''}" data-w="${w}" data-h="${h}">${t}</button>`).join('')}</div>
       <div class="q"><span class="qn">1</span><b>Start from</b>${tipKey ? `<button type="button" class="tipsbtn" data-tips aria-expanded="${state.tips}">Tips for best results</button>` : ''}</div>
       ${tipKey && state.tips ? `<div class="tipsbox"><b>${esc(recipes?.goals?.[tipKey]?.label || '')}</b><ul>${(recipes?.goals?.[tipKey]?.tips || []).map((t) => `<li>${t}</li>`).join('')}</ul></div>` : ''}
@@ -89,6 +89,7 @@ export function openCreate({ stage, recipes, engines, presets, onStart }) {
   function wire(active) {
     const q = (sel) => sheet.querySelector(sel);
     q('[data-close]').onclick = close;
+    q('[data-reference]')?.addEventListener('click', () => { close(); onReference(); });
     sheet.querySelectorAll('[data-have]').forEach((b) => b.onclick = () => { state.have = b.dataset.have; state.file = null; state.stop = null; render(); });
     sheet.querySelectorAll('[data-want]').forEach((b) => b.onclick = () => { state.want = b.dataset.want; state.stop = null; render(); });
     sheet.querySelectorAll('[data-stop]').forEach((b) => b.onclick = () => { state.stop = state.stop === b.dataset.stop ? null : b.dataset.stop; render(); });

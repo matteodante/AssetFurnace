@@ -6,6 +6,7 @@ import { createStudioViewer } from './viewer.js';
 import { readyEngines, readableLog } from './jobs.js';
 import { stepBody, wireStep } from './steps.js';
 import { openCreate, runChain } from './create.js';
+import { openReferenceConcept } from './reference-concept.js';
 import { openActivity, openAbout, openGuide, closeSheet } from './pages.js';
 import { openBatches } from './batch.js';
 import { STEP_LABELS } from './plan.js';
@@ -252,7 +253,12 @@ async function loadTools() {
 // ------------------------------------------------------------------ Create
 function openCreateSheet() {
   closeSheet($('stage'));
-  openCreate({ stage: $('stage'), recipes, engines, presets, onStart: (plan) => startChain(plan) });
+  openCreate({ stage: $('stage'), recipes, engines, presets, onStart: (plan) => startChain(plan), onReference: openReferenceSheet });
+}
+
+function openReferenceSheet() {
+  closeSheet($('stage'));
+  openReferenceConcept({ stage: $('stage'), assets, base, onDone: () => refreshAssets() });
 }
 
 $('createBtn').addEventListener('click', () => {
