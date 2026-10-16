@@ -120,3 +120,22 @@ def test_coverage_report_takes_worst_and_mean():
     report = fit.coverage_report(frames)
     assert report["clipping"]["helmet"] == {"max": 0.03, "mean": pytest.approx(0.02)}
     assert report["holes"]["max"] == 0.02 and report["worst_frame"] == 1
+
+
+def test_a_weapon_is_held_by_its_grip_at_the_hand_bone():
+    sword = _cube(size=(0.1, 0.05, 1.0), centre=(3.0, 3.0, 3.5))
+    hand = np.array([0.4, 0.0, 0.6])
+    m, info = fit.held_placement(sword, "weapon", hand, body_height=1.0)
+    moved = sword @ m[:3, :3].T + m[:3, 3]
+    assert float(np.ptp(moved[:, 2])) == pytest.approx(0.42)
+    grip = [moved[:, 0].mean(), moved[:, 1].mean(), moved[:, 2].min() + 0.2 * np.ptp(moved[:, 2])]
+    assert grip == pytest.approx(hand)
+    assert info["scale"] == pytest.approx(0.42)
+
+
+def test_a_shield_is_held_by_its_middle():
+    shield = _cube(size=(0.6, 0.1, 0.8))
+    arm = np.array([0.3, 0.0, 1.0])
+    m, _ = fit.held_placement(shield, "shield", arm, body_height=2.0)
+    moved = shield @ m[:3, :3].T + m[:3, 3]
+    assert moved.mean(0) == pytest.approx(arm) and float(np.ptp(moved[:, 2])) == pytest.approx(0.6)

@@ -9,6 +9,9 @@
         --seeds 3,7,11 [--images-only | --models-only --pick helmet=7,boots=3]
     python scripts/slot_parts.py fit --pieces output/sets/red-knight/knight/pieces/pieces.json \
         --body output/bodies/knight/body.json [--out output/sets/red-knight/knight/fit]
+    python scripts/slot_parts.py run --body output/bodies/knight/body.json --set red-knight \
+        --outfit "crimson and gold plate armour" --slots helmet,torso,shoulders:split,gloves,boots \
+        [--weapon "a longsword"] [--shield "a kite shield"] [--concept concept.png]
 
 `body` writes `output/bodies/<name>/body.json`: picture, rigged GLB, Pixal3D camera and bone
 roles. The body must be a humanoid made from one front picture with Pixal3D (its camera
@@ -28,6 +31,16 @@ picture (`--pick slot=seed`, else the first seed) goes through Pixal3D, the fini
 `fix_winding.py`. `pieces.json` says, per slot, which picture, which GLB and where the piece
 sits on the concept. `--images-only` stops before 3D so a person can pick; `--models-only`
 reuses the pictures already made.
+
+`body --clip walk=body_walk.glb` records the body's own animated clips (Kimodo, retargeted
+onto that rig); the checks pose the pieces with them.
+
+`run` does it all for one set on one body, taking the first seed at every choice:
+the concept on the body (Qwen edit with the body picture, `--outfit` words) unless
+`--concept` gives one, the cuts, the pieces, the weapon and shield made on their own
+(`--weapon`, `--shield`), the fit, the checks (`fit.clipping`, `fit.holes` and the rest of
+the `equipment_part` profile; every piece goes to the review queue) and
+`<set>.parts.json`. Everything lands in `output/sets/<set>/<body>/`.
 
 `fit` writes a Blender job and runs `blender_fit_parts.py` headless: each piece placed on
 the body from its box, paired pieces per side, a cage fit, skin weights from the body (one
@@ -179,6 +192,112 @@ def make_pieces(cuts_json: Path, seeds: list[int], picks: dict[str, int] | None 
     return result
 
 
+def text_command(prompt: str, picture: Path, seed: int) -> list[str]:
+    """sd-cli's text to image of the day, for a weapon or shield made on its own."""
+    from viewer import image_api
+
+    settings = image_api.clean_settings({"seed": seed})
+    return image_api.build_command(prompt, settings, picture, image_api.resolve_weights())
+
+
+def make_held(slot: str, words: str, folder: Path, seeds: list[int], style: str = "", run=_run,
+              generate=text_command) -> dict:
+    """A weapon or shield made on its own: pictures, then the first seed's in 3D."""
+    prompt = pieces.held_prompt(slot, words, style)
+    for seed in seeds:
+        picture = pieces.picture_path(folder, slot, seed)
+        picture.parent.mkdir(parents=True, exist_ok=True)
+        run(generate(prompt, picture, seed))
+    picture = pieces.picture_path(folder, slot, seeds[0])
+    for command in pieces.model_commands(picture, folder, slot, sys.executable, REPO / "scripts"):
+        run(command)
+    return {"seed": seeds[0], "picture": str(picture), "glb": str(pieces.finished_path(folder, slot)),
+            "prompt": prompt, "held": True}
+
+
+def check_pieces(fit_dir: Path, body_json: Path, set_name: str) -> dict:
+    """The equipment_part checks on every fitted piece, each queued for review."""
+    from image_to_3dlab.checks import Asset, check_and_enqueue
+
+    record = body_mod.load(body_json)
+    report = json.loads((Path(fit_dir) / "fit.json").read_text())
+    body_glb = Path(fit_dir) / "body_masked.glb"
+    out = {}
+    for name in report["files"]:
+        if name in ("set.glb", "preview.glb", "body_masked.glb", "body_trimmed.glb"):
+            continue
+        asset = Asset(glb=Path(fit_dir) / name, key=f"{set_name}-{record['name']}-{Path(name).stem}",
+                      body=body_glb, body_clips=tuple(record.get("clips", {}).values()))
+        checked, _ = check_and_enqueue(asset, profile="equipment_part")
+        out[Path(name).stem] = {"status": checked["status"],
+                                "fit": {r["check"]: r["value"] for r in checked["results"] if r["check"].startswith("fit.")}}
+    return out
+
+
+def make_concept(body_json: Path, outfit: str, folder: Path, seeds: list[int], style: str = "", run=_run,
+                 edit=edit_command) -> tuple[Path, dict]:
+    """The outfit drawn on the base body (an edit of its picture); the first seed is taken."""
+    from image_to_3dlab.concept import prompts, sidecar
+
+    record = body_mod.load(body_json)
+    prompt = prompts.dress(outfit, guide="body", style=style)
+    folder.mkdir(parents=True, exist_ok=True)
+    for seed in seeds:
+        picture = folder / f"s{seed}.png"
+        command = edit(prompt, Path(record["image"]), picture, seed)
+        run(command)
+        sidecar.write(picture, mode="dress", prompt=prompt, seed=seed, command=command,
+                      references=[(Path(record["image"]), "shape")], inputs={"body": record["name"]})
+    return folder / f"s{seeds[0]}.png", {"prompt": prompt, "seed": seeds[0], "seeds": list(seeds)}
+
+
+def run_set(body_json: Path, set_name: str, slot_text: str, outfit: str = "", concept: Path | None = None,
+            weapon: str | None = None, shield: str | None = None, concept_seeds=(3,), seeds=(3,), style: str = "",
+            root: Path = Path("output/sets"), run=_run, edit=edit_command, generate=text_command,
+            fitter=None, checker=None) -> Path:
+    """One set on one body, start to finish; returns `<set>.parts.json`."""
+    from image_to_3dlab.slot_parts import sidecar
+
+    record = body_mod.load(body_json)
+    if not body_mod.NAME.match(set_name):
+        raise ValueError(f"set name {set_name!r}: letters, digits, '.', '_' or '-'")
+    raw = parse_slots(slot_text) if slot_text else {}
+    for slot, words in (("weapon", weapon), ("shield", shield)):
+        if words is not None:
+            raw[slot] = {"prompt": words}
+    chosen = slots.choose(raw)
+    folder = Path(root) / set_name / record["name"]
+    if concept is None:
+        if not outfit.strip():
+            raise ValueError("give the outfit in words (--outfit) or a concept drawn on the body (--concept)")
+        concept, concept_info = make_concept(body_json, outfit, folder / "concept", list(concept_seeds), style, run, edit)
+        mode = "body_and_equipment"
+    else:
+        concept_info = {"given": True}
+        mode = "dressed_split"
+    drawn = {k: v for k, v in chosen.items() if k in slots.DRAWN}
+    cut = make_cuts(body_json, Path(concept), drawn, folder / "cuts") if drawn else {"slots": {}, "subject_from": None}
+    made = make_pieces(folder / "cuts" / "cuts.json", list(seeds), style=style, run=run, edit=edit)["slots"] if drawn else {}
+    for slot in ("weapon", "shield"):
+        if slot in chosen:
+            made[slot] = make_held(slot, chosen[slot]["prompt"], folder / "pieces", list(seeds), style, run, generate)
+    (folder / "pieces").mkdir(parents=True, exist_ok=True)
+    pieces_json = folder / "pieces" / "pieces.json"
+    pieces.write_record(pieces_json, {"cuts": str(folder / "cuts" / "cuts.json"), "seeds": list(seeds), "slots": made})
+    job = fit_job(pieces_json, body_json, folder / "fit") if drawn else {
+        "body": str(Path(body_json).resolve()), "concept_size": [1, 1], "out": str((folder / "fit").resolve()),
+        "pieces": [{"slot": s, "glb": e["glb"]} for s, e in made.items()]}
+    for slot in ("weapon", "shield"):
+        if slot in made and drawn:
+            job["pieces"] = [p for p in job["pieces"] if p["slot"] != slot] + [{"slot": slot, "glb": made[slot]["glb"]}]
+    fit_report = (fitter or run_fit)(job)
+    checks = (checker or check_pieces)(folder / "fit", body_json, set_name)
+    parts = sidecar.parts_record(mode=mode, set_name=set_name, body=record, body_json=body_json, concept=Path(concept),
+                                 concept_info=concept_info, chosen=chosen, pieces=made, fit=fit_report, checks=checks,
+                                 matte=cut.get("subject_from"))
+    return sidecar.write(folder, set_name, parts)
+
+
 def fit_job(pieces_json: Path, body_json: Path, out: Path, options: dict | None = None) -> dict:
     """The job `blender_fit_parts.py` reads: the body, the concept's size and each piece's box."""
     record = json.loads(Path(pieces_json).read_text())
@@ -187,7 +306,8 @@ def fit_job(pieces_json: Path, body_json: Path, out: Path, options: dict | None 
         size = list(concept.size)
     if not record["slots"]:
         raise ValueError(f"{pieces_json} has no pieces: run the pieces command first")
-    entries = [{"slot": slot, "glb": entry["glb"], "concept_box": entry["concept_box"]}
+    entries = [{"slot": slot, "glb": entry["glb"], **({"concept_box": entry["concept_box"]}
+                                                       if "concept_box" in entry else {})}
                for slot, entry in record["slots"].items()]
     return {"body": str(Path(body_json).resolve()), "concept_size": size, "out": str(Path(out).resolve()),
             "pieces": entries, **(options or {})}
@@ -206,7 +326,11 @@ def run_fit(job: dict, blender: Path | None = None, run=None) -> dict:
         raise ValueError(missing_help())
     (run or _run)([str(blender), "-b", "--factory-startup", "--python-exit-code", "1", "--python",
                    str(REPO / "scripts" / "blender_fit_parts.py"), "--", str(path)])
-    return json.loads((out / "fit.json").read_text())
+    report = json.loads((out / "fit.json").read_text())
+    from image_to_3dlab.slot_parts.sidecar import fit_provenance
+
+    fit_provenance(out, job, report)
+    return report
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -219,6 +343,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--views", type=Path, required=True, help="the Pixal3D <model>.svviews folder")
     b.add_argument("--matte", type=Path, help="cut-out of the picture (default <picture>__matted.png)")
     b.add_argument("--label", action="append", default=[], help="key=value, e.g. race=human (repeatable)")
+    b.add_argument("--clip", action="append", default=[], help="name=animated.glb, the body's own clip (repeatable)")
     b.add_argument("--root", type=Path, default=Path("output/bodies"))
     c = sub.add_parser("cuts", help="cut a concept drawn on a body into one picture per slot")
     c.add_argument("--body", type=Path, required=True, help="body.json from the body command")
@@ -241,9 +366,26 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--body", type=Path, required=True, help="body.json of the body the concept was drawn on")
     f.add_argument("--out", type=Path, help="default: fit/ beside pieces/")
     f.add_argument("--blender", type=Path, help="Blender executable (found automatically when omitted)")
+    r = sub.add_parser("run", help="one set on one body, start to finish (first seed at every choice)")
+    r.add_argument("--body", type=Path, required=True)
+    r.add_argument("--set", required=True, dest="set_name", help="the set's name, a folder name")
+    r.add_argument("--slots", default="", help="as for cuts; empty for a weapon or shield only")
+    r.add_argument("--outfit", default="", help="the outfit in words, drawn on the body")
+    r.add_argument("--concept", type=Path, help="a concept already drawn on the body (mode 2)")
+    r.add_argument("--weapon", help="a weapon made on its own, in words")
+    r.add_argument("--shield", help="a shield made on its own, in words")
+    r.add_argument("--concept-seeds", default="3")
+    r.add_argument("--seeds", default="3")
+    r.add_argument("--style", default="")
+    r.add_argument("--root", type=Path, default=Path("output/sets"))
     args = p.parse_args(argv)
     try:
-        if args.command == "fit":
+        if args.command == "run":
+            path = run_set(args.body, args.set_name, args.slots, args.outfit, args.concept, args.weapon, args.shield,
+                           [int(s) for s in args.concept_seeds.split(",") if s.strip()],
+                           [int(s) for s in args.seeds.split(",") if s.strip()], args.style, args.root)
+            print(f"wrote {path}")
+        elif args.command == "fit":
             out = args.out or args.pieces.parent.parent / "fit"
             report = run_fit(fit_job(args.pieces, args.body, out), args.blender)
             print(f"fitted {', '.join(report['pieces'])}; body covered {report['covered_share']:.0%}; wrote {out}")
@@ -254,7 +396,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"pieces: {', '.join(result['slots']) or 'pictures only'}")
         elif args.command == "body":
             labels = dict(item.split("=", 1) for item in args.label)
-            path = body_mod.register(args.name, args.image, args.rigged, args.views, args.matte, labels, args.root)
+            clips = dict(item.split("=", 1) for item in args.clip)
+            path = body_mod.register(args.name, args.image, args.rigged, args.views, args.matte, labels, args.root,
+                                     clips)
             print(f"wrote {path}")
         else:
             result = make_cuts(args.body, args.concept, slots.choose(parse_slots(args.slots)), args.out,
