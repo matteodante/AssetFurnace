@@ -421,6 +421,17 @@ def test_sidecar_records_what_the_importer_needs():
     json.dumps(sidecar)
 
 
+def test_a_creature_with_no_bones_to_face_by_is_not_checked_for_facing():
+    """Unreal measures facing from Manny's feet; without them, or bones named instead,
+    there is nothing to measure, and a check would fail every drake and spider."""
+    common = dict(kind="creature", names=up.asset_names("creature", "Drake"), glb="SK_Drake.glb", size_cm=150,
+                  measure="longest", lods=3, collision=None, humanoid=False, skeleton_from=None,
+                  animations=[], tint=None, problems=[])
+    assert up.sidecar(**common)["expect"]["facing"] is None
+    named = up.sidecar(**common, facing_bones=["pelvis", "head"])["expect"]
+    assert named["facing"] == "+Y" and named["facing_bones"] == ["pelvis", "head"]
+
+
 def _measured(**overrides):
     measured = {"class": "StaticMesh", "bounds_cm": [15.0, 32.0, 17.5], "min_z": 0.1, "lods": 3,
                 "collision": {"box_elems": 1, "convex_elems": 0}, "names": ["SM_Barrel", "MI_Barrel", "T_Barrel_ORM"],
@@ -719,3 +730,9 @@ def test_the_walk_check_says_when_the_feet_cross():
     check = {r["check"]: r for r in crossing}
     assert check["walk_feet"]["ok"] is False and "cross" in check["walk_feet"]["detail"]
     assert {r["check"]: r for r in apart}["walk_feet"]["ok"] is True
+
+
+def test_a_gltf_direction_becomes_a_blender_one():
+    assert up.gltf_to_blender([0, 0, 1]) == pytest.approx([0, -1, 0])  # glTF's front is Blender's -Y
+    assert up.gltf_to_blender([0, 1, 0]) == pytest.approx([0, 0, 1])
+    assert up.gltf_to_blender([1, 0, 0]) == pytest.approx([1, 0, 0])
