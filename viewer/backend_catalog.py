@@ -32,6 +32,7 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from image_to_3dlab import clip_library as _clips
 from image_to_3dlab import host as _host
 from image_to_3dlab import material_models as _material_models
 from image_to_3dlab import matte as _matte
@@ -592,6 +593,32 @@ CATALOG: tuple[Backend, ...] = (
         ),
     ),
     Backend(
+        id="flux2-klein",
+        label="FLUX.2 klein 4B (image editing)",
+        kind="image",
+        best_for="Redraws a picture you give it: adds a piece, keeps the rest. Text to image too.",
+        tradeoff="Smaller and faster than Qwen-Image, and Apache-2.0 end to end.",
+        license_name="Apache-2.0",
+        license_url="https://huggingface.co/black-forest-labs/FLUX.2-klein-4B",
+        install="Same stable-diffusion.cpp binary as Qwen-Image (vendor/sdcpp/)",
+        runs_on=(APPLE, NVIDIA, AMD),
+        setup_minutes=10,
+        build_probes=(_host.executable(REPO / "vendor" / "sdcpp", "sd-cli"),),
+        # Exact bytes, as Hugging Face reports them. The VAE is BFL's own Apache-2.0
+        # decoder: the one inside FLUX.2-dev is under a non-commercial licence.
+        weights=(
+            WeightSet("FLUX.2 klein 4B image model", "black-forest-labs/FLUX.2-klein-4B",
+                      7_751_105_712, HF_HUB_DIR / "models--black-forest-labs--FLUX.2-klein-4B",
+                      filename="flux-2-klein-4b.safetensors"),
+            WeightSet("Qwen3-4B text encoder (Q8_0)", "unsloth/Qwen3-4B-GGUF", 4_280_405_792,
+                      HF_HUB_DIR / "models--unsloth--Qwen3-4B-GGUF",
+                      filename="Qwen3-4B-Q8_0.gguf"),
+            WeightSet("FLUX.2 small decoder (VAE)", "black-forest-labs/FLUX.2-small-decoder",
+                      249_519_092, HF_HUB_DIR / "models--black-forest-labs--FLUX.2-small-decoder",
+                      filename="full_encoder_small_decoder.safetensors"),
+        ),
+    ),
+    Backend(
         id="matte",
         label="Background remover (BiRefNet-lite)",
         kind="tool",
@@ -662,6 +689,27 @@ CATALOG: tuple[Backend, ...] = (
                       HF_HUB_DIR / "models--prs-eth--marigold-iid-lighting-v1-1",
                       note="fp16 files only, at a pinned revision. Setup also makes its own "
                            "Python environment (~3 GB, mostly PyTorch)."),
+        ),
+    ),
+    Backend(
+        id="clip-library",
+        label="Creature clip library (Mesh2Motion)",
+        kind="tool",
+        best_for=("Hand-made walk, attack, idle and death clips for four-legged, "
+                  "many-legged, serpent, winged and digitigrade creatures, carried onto "
+                  "the auto-rig's skeleton."),
+        tradeoff="Optional. Without it, creatures get the procedural test clips only.",
+        license_name=_clips.MESH2MOTION["license"],
+        license_url=_clips.MESH2MOTION["license_url"],
+        install="scripts/bootstrap_clip_library.py",
+        runs_on=(APPLE, NVIDIA, AMD),
+        setup_minutes=1,
+        upstream=("Mesh2Motion", _clips.MESH2MOTION["repo"]),
+        weights=(
+            WeightSet("Mesh2Motion creature animations",
+                      f"{_clips.MESH2MOTION['repo']}/tree/{_clips.MESH2MOTION['commit']}/static/animations",
+                      _clips.TOTAL_BYTES, _clips.pack_dir(),
+                      note="Six GLB files from one pinned commit, each checked against its SHA-256."),
         ),
     ),
 )

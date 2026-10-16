@@ -95,7 +95,8 @@ def _fcurves(action):
         yield from action.fcurves
 
 
-def _world_box(bpy, objects):
+def _world_box(bpy, objects, turn=None):
+    """Lowest and highest corner of the meshes in world space, after `turn` if given."""
     from mathutils import Vector
 
     depsgraph = bpy.context.evaluated_depsgraph_get()
@@ -105,7 +106,7 @@ def _world_box(bpy, objects):
             continue
         evaluated = obj.evaluated_get(depsgraph)
         mesh = evaluated.to_mesh()
-        matrix = evaluated.matrix_world
+        matrix = evaluated.matrix_world if turn is None else turn @ evaluated.matrix_world
         for vertex in mesh.vertices:
             p = matrix @ Vector(vertex.co)
             for i in range(3):
@@ -162,11 +163,9 @@ def _bone_order(arm):
 
 def _measure_skeleton(bpy, arm, meshes, job):
     """Scale, turn and ground offset for a skinned model, plus the bone renames."""
-    from mathutils import Matrix, Vector
+    from mathutils import Matrix
 
     _rest(bpy, [arm])
-    lo, hi = _world_box(bpy, meshes)
-    dims = [h - low for low, h in zip(lo, hi)]
     found = _humanoid(arm)
     order = _bone_order(arm)
     parents = {b.name: (b.parent.name if b.parent else None) for b in arm.data.bones}
@@ -177,18 +176,19 @@ def _measure_skeleton(bpy, arm, meshes, job):
     else:
         plan = up.clean_bone_names(order)
         forward = [float(v) for v in job.get("forward", (0.0, -1.0, 0.0))]
-    scale = up.scale_factor(dims, job["size_cm"], job["measure"])
     yaw = up.yaw_to_face_front(forward)
+    # Measured once turned: a creature facing half-way between two axes has a wider box
+    # before the turn, and sizing it there made a 150 cm drake arrive 180 cm long.
+    lo, hi = _world_box(bpy, meshes, Matrix.Rotation(yaw, 4, "Z"))
+    dims = [h - low for low, h in zip(lo, hi)]
+    scale = up.scale_factor(dims, job["size_cm"], job["measure"])
     turn = Matrix.Rotation(yaw, 4, "Z") @ Matrix.Diagonal((scale, scale, scale, 1.0))
     feet = [b for b, joint in (found[0].items() if found else []) if joint in ("LeftFoot", "RightFoot")]
     feet_xy = None
     if len(feet) == 2:
         points = [turn @ (arm.matrix_world @ arm.data.bones[b].head_local) for b in feet]
         feet_xy = ((points[0].x + points[1].x) / 2, (points[0].y + points[1].y) / 2)
-    corners = [turn @ Vector(c) for c in
-               [(x, y, z) for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])]]
-    box_lo = [min(c[i] for c in corners) for i in range(3)]
-    box_hi = [max(c[i] for c in corners) for i in range(3)]
+    box_lo, box_hi = [v * scale for v in lo], [v * scale for v in hi]
     offset = up.ground_offset(box_lo, box_hi, centre=feet_xy)
     return {"scale": scale, "yaw": yaw, "offset": list(offset), "plan": plan, "humanoid": bool(found),
             "dims_before_m": dims, "forward_before": forward}

@@ -18,7 +18,7 @@ def _run(module: str, body: str):
     url = (REPO / "viewer" / "studio" / module).as_uri()
     program = f"import * as m from {json.dumps(url)};\n{body}"
     result = subprocess.run([NODE, "--input-type=module", "--eval", program],
-                            check=True, capture_output=True, text=True)
+                            check=True, capture_output=True, text=True, encoding="utf-8")
     return json.loads(result.stdout)
 
 
@@ -286,7 +286,7 @@ def test_a_sheet_is_put_away_so_the_viewer_under_it_can_be_seen():
 def test_everything_the_studio_shows_in_the_viewer_puts_a_sheet_away_first():
     """Both routes into the viewer -- picking a Library asset, and watching a run -- have to
     clear the sheet. Opening a GLB already did; the other two did not."""
-    app = (REPO / "viewer" / "studio" / "app.js").read_text()
+    app = (REPO / "viewer" / "studio" / "app.js").read_text(encoding="utf-8")
 
     def body(name: str) -> str:
         start = app.index(f"function {name}(")
@@ -300,7 +300,7 @@ def test_everything_the_studio_shows_in_the_viewer_puts_a_sheet_away_first():
 
 @needs_node
 def test_the_how_to_page_covers_every_button_in_the_top_bar():
-    html = (REPO / "viewer" / "studio.html").read_text()
+    html = (REPO / "viewer" / "studio.html").read_text(encoding="utf-8")
     import re
     bar = html.split('<header class="bar">')[1].split("</header>")[0]
     labels = [re.sub(r"<[^>]+>", "", m).strip() for m in re.findall(r'class="ghost[^"]*"[^>]*>([^<]+)<', bar)]
@@ -313,23 +313,23 @@ def test_the_how_to_page_covers_every_button_in_the_top_bar():
 def test_the_classic_viewer_is_gone_and_old_links_land_in_the_studio():
     viewer = REPO / "viewer"
     assert not (viewer / "app.js").exists() and not (viewer / "modes").exists()
-    assert 'url=./studio.html' in (viewer / "index.html").read_text()
-    studio = (viewer / "studio.html").read_text()
+    assert 'url=./studio.html' in (viewer / "index.html").read_text(encoding="utf-8")
+    studio = (viewer / "studio.html").read_text(encoding="utf-8")
     assert "index.html" not in studio and "Classic" not in studio
     assert 'href="./setup.html"' in studio
 
 
 def test_setup_has_a_way_back_to_the_studio_and_every_element_its_script_needs():
     import re
-    page = (REPO / "viewer" / "setup.html").read_text()
+    page = (REPO / "viewer" / "setup.html").read_text(encoding="utf-8")
     assert page.count('href="./studio.html"') >= 2  # the logo, the Back button, the Done link
-    script = (REPO / "viewer" / "studio" / "setup.js").read_text()
+    script = (REPO / "viewer" / "studio" / "setup.js").read_text(encoding="utf-8")
     ids = set(re.findall(r"s\('([a-z-]+)'\)", script)) - {"huggingface"}  # that one is a card it builds
     missing = [i for i in ids if f'id="{i}"' not in page]
     assert ids and not missing, missing
 
 
-RECIPES = json.loads((REPO / "image_to_3dlab" / "prompt_recipes.json").read_text())
+RECIPES = json.loads((REPO / "image_to_3dlab" / "prompt_recipes.json").read_text(encoding="utf-8"))
 
 
 def test_every_goal_has_tips_and_the_3d_goals_add_wording():
@@ -416,7 +416,7 @@ def test_the_starting_camera_looks_at_the_middle_of_a_model_on_the_floor():
       const m = await import({json.dumps(url)});
       const h = m.homeView(2);
       console.log(JSON.stringify(h));"""
-    result = subprocess.run([NODE, "--input-type=module", "--eval", program], check=True, capture_output=True, text=True)
+    result = subprocess.run([NODE, "--input-type=module", "--eval", program], check=True, capture_output=True, text=True, encoding="utf-8")
     out = json.loads(result.stdout)
     assert out["target"] == [0, 1, 0]
     assert out["position"] == [1.45, 1.35, 2.45]
@@ -484,7 +484,7 @@ def test_a_character_is_turned_to_face_the_camera_whichever_way_its_feet_point()
       }});
       console.log(JSON.stringify({{ turned, none: m.facingAngle(null) }}));"""
     out = json.loads(subprocess.run([NODE, "--input-type=module", "--eval", program], check=True,
-                                    capture_output=True, text=True).stdout)
+                                    capture_output=True, text=True, encoding="utf-8").stdout)
     assert out["none"] == 0
     for x, z in out["turned"]:
         assert abs(x) < 0.01 and z > 0.99  # everyone ends up facing +Z, the camera
@@ -576,9 +576,9 @@ def test_the_face_count_reads_the_viewport_stats():
 
 def test_the_viewer_offers_clay_and_normal_views():
     """The buttons exist and are wired to the tested swap; the how-to page names them."""
-    viewer = (REPO / "viewer" / "studio" / "viewer.js").read_text()
+    viewer = (REPO / "viewer" / "studio" / "viewer.js").read_text(encoding="utf-8")
     for act in ("clay", "normal"):
         assert f'data-act="{act}"' in viewer
     assert "applyLook(meshesOf(view.materials)" in viewer
-    guide = (REPO / "viewer" / "studio" / "pages.js").read_text()
+    guide = (REPO / "viewer" / "studio" / "pages.js").read_text(encoding="utf-8")
     assert "clay" in guide and "normals" in guide and "face count" in guide

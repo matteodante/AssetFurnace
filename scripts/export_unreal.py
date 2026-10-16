@@ -93,6 +93,12 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
         tint = own if own.is_file() else None
     record = source.with_name(source.stem + ".materials.json")
     animations = [Path(p) for p in (animations or [])]
+    family = _family(source) if kind == "creature" else None
+    if forward is None and family and family.get("frame"):
+        # A creature that is not a humanoid faces where its family file says (Blender
+        # works out a humanoid's facing itself); a drake facing half-way between two axes
+        # would otherwise come into Unreal turned.
+        forward = up.gltf_to_blender(family["frame"]["forward"])
     prefix = up.model_prefix([source.stem, *(p.stem for p in animations)])
     base = up.base_name(name) if name else default_base(source, kind, animations)
     names = up.asset_names(kind, base)
@@ -112,6 +118,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
         "animations": [{"path": str(p.resolve()), "name": up.clip_name(p.stem, prefix, base)} for p in animations],
         "source_animation": up.clip_name(source.stem, prefix, base),
         "forward": list(forward) if forward else [0.0, -1.0, 0.0],
+        "family": (family or {}).get("family"),
         "out": str((work / "blender.glb").resolve()), "report": str((work / "blender.json").resolve()),
     }
     return {"names": names, "out_dir": out_dir, "work": work, "job": job,
@@ -121,6 +128,30 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
             "materials_record": record if record.is_file() else None,
             "inputs": [source, *lods, *animations, *([Path(body)] if body else [])],
             "skeleton_from": "SK_" + up.base_name(body_name or up.model_prefix([Path(body).stem])) if body else None}
+
+
+def _family(source: Path) -> dict | None:
+    """The creature family file the clip step wrote beside a rig, if any."""
+    from image_to_3dlab import creature_family
+
+    try:
+        return creature_family.read_family(source)
+    except (OSError, ValueError):
+        return None
+
+
+def facing_bones(family: dict | None, renamed: dict[str, str]) -> list[str] | None:
+    """The two bones Unreal can tell a creature's facing by, under their exported names:
+    hips to head, or a serpent's tail to its head. None when the family has neither."""
+    if not family:
+        return None
+    if family.get("spine") and family.get("neck"):
+        pair = [family["spine"][0], family["neck"][-1]]
+    elif len(family.get("body") or []) >= 2:
+        pair = [family["body"][-1], family["body"][0]]
+    else:
+        return None
+    return [renamed.get(b, b) for b in pair]
 
 
 def blender_command(blender: Path, job_path: Path) -> list[str]:
@@ -237,7 +268,9 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
                          collision=p["job"]["collision"] if kind == "prop" else None,
                          humanoid=bool(report.get("humanoid")), skeleton_from=p["skeleton_from"],
                          animations=report.get("animations", []), tint=p["tint"].name if p["tint"] else None,
-                         problems=problems, orm=any(m.get("orm") for m in textures["materials"].values()))
+                         problems=problems, orm=any(m.get("orm") for m in textures["materials"].values()),
+                         facing_bones=facing_bones(_family(Path(source)) if kind == "creature" else None,
+                                                   report.get("bones") or {}))
     if p["materials_record"]:
         record = p["out_dir"] / f"{p['names']['mesh']}.materials.json"
         shutil.copyfile(p["materials_record"], record)

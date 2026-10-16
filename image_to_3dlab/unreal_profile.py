@@ -255,6 +255,12 @@ def ground_offset(box_min: Iterable[float], box_max: Iterable[float],
     return (-float(cx), -float(cy), -float(lo[2]))
 
 
+def gltf_to_blender(direction: Iterable[float]) -> list[float]:
+    """A direction in glTF space (Y up, +Z front) as Blender imports it (Z up, -Y front)."""
+    x, y, z = (float(v) for v in direction)
+    return [x, -z, y]
+
+
 def yaw_to_face_front(forward: Iterable[float]) -> float:
     """Radians about Z that turn `forward` to Blender's -Y, which Unreal imports as +Y."""
     x, y = list(forward)[:2]
@@ -605,6 +611,7 @@ def check_document(document: Mapping[str, Any], names: Mapping[str, Any]) -> lis
 def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | None, measure: str | None,
             lods: int, collision: str | None, humanoid: bool, skeleton_from: str | None,
             animations: list[str], tint: str | None, problems: list[str],
+            facing_bones: list[str] | None = None,
             orm: bool = True) -> dict[str, Any]:
     """`<mesh>.unreal.json`: what Unreal must do with the GLB, and what to expect."""
     skinned = kind != "prop"
@@ -636,7 +643,10 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
             "size_cm": size_cm,
             "measure": measure,
             "base_z_cm": 0.0,
-            "facing": "+Y" if skinned and kind != "equipment" else None,
+            # Unreal measures a humanoid's facing from Manny's feet, anything else from the two
+            # bones named here (hips and head); with neither there is nothing to measure.
+            "facing": "+Y" if skinned and kind != "equipment" and (humanoid or facing_bones) else None,
+            "facing_bones": list(facing_bones) if facing_bones and not humanoid else None,
             "manny_compatible": humanoid and kind != "equipment",
         },
     }

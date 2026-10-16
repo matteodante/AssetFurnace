@@ -3,6 +3,10 @@
 Date: 15–16 ottobre 2026. Progetto e decisioni: `2026-10-15-slot-parts-spike-design.md`. Piano: `2026-10-15-auroconts-asset-pipeline.md`, sezione 4.
 Script usa e getta in `journal/spike-slot-parts/` (locale, non in questa PR).
 
+> **Aggiornamento del 16/10/2026, sera**: una seconda prova della strada C ribalta la scelta per la qualità dei pezzi.
+> Un'immagine pulita per pezzo, fatta con Qwen-Image 2.1 Turbo a partire dal ritaglio, dà pezzi interi e chiusi, che
+> sul corpo vanno bene quanto quelli di B0. B0 resta come riserva veloce. Dettagli nell'[appendice](#appendice-seconda-prova-della-strada-c-16102026-sera).
+
 ## In breve
 
 **Strada consigliata: B senza HoloPart ("B0").** Pixal3D sul personaggio intero, poi divisione per slot proiettando la maschera 2D e usando lo scheletro del corpo per le facce nascoste, poi l'adattamento standard in Blender.
@@ -141,7 +145,94 @@ Conclusione: nessun modello aperto del 2026 cambia la raccomandazione. Due cose 
 ## Seguiti
 
 - Licenza di Qwen-Image 2.1 per l'uso commerciale: da decidere a livello di progetto.
-- Prova di Qwen-Image-Edit-2511 o FLUX.2 klein 4B (Apache-2.0) per le tavole per slot: serve un download approvato.
+- ~~Prova di Qwen-Image-Edit-2511 o FLUX.2 klein 4B per le tavole per slot~~: fatta, vedi l'appendice.
 - Prova del set su altri corpi base e su una posa con le braccia alzate.
 - Disco WSL: `autoMemoryReclaim=disabled` e spazio libero su C: (91% pieno), se si continua a usare WSL2.
 - Pesi di HoloPart (3,8 GB, MIT) ancora in WSL: si possono cancellare, perché la strada consigliata non li usa. Quelli di OmniPart (gruppo 2) sono già stati cancellati il 16/10, come da condizione.
+
+## Appendice: seconda prova della strada C (16/10/2026, sera)
+
+Domanda: con un modello di modifica migliore, un'immagine dedicata per pezzo dà pezzi 3D migliori di quelli ritagliati
+dal personaggio intero (B0)? Stesso corpo base, stesse clip e stesso adattamento in Blender della prima prova.
+Script locali in `journal/spike-slot-parts/` (`gen_flux.py`, `gen_turbo.py`, `part_images_k.py`, `compare_1024.py`,
+`piece_quality.py`, `make_config_c2.py`).
+
+**Cosa è cambiato rispetto alla prima prova**:
+- **Concept sul corpo** con la ricetta nuova di Qwen-Image 2.1 Turbo (PR #21: sigma del Turbo, cfg 1.0, euler, 1024 px)
+  e `-r body.png`, in 25 s: pulito, con la posa e il contorno del corpo. Le maschere degli slot tornano senza ritocchi.
+  A 1536 px le mani restavano nude; a 1024 hanno i guanti.
+- **Due modelli di modifica a confronto**:
+  - FLUX.2 klein 4B (Apache-2.0, registrato come `WeightSet` nella stessa PR, 12,3 GB);
+  - Qwen-Image 2.1 Turbo (già installato).
+- **Tecnica che funziona**: si ritaglia il pezzo dal concept con la maschera dello slot, lo si mette su fondo grigio e
+  si chiede di "completarlo" con `-r ritaglio.png`. Chiedere invece "prendi solo X dal concept" funziona solo per elmo e
+  busto, anche con una seconda formulazione. Attenzione: un ritaglio trasparente passato a `-r` fa vedere al modello
+  l'immagine intera sotto la trasparenza, quindi va appiattito.
+
+![Concept sul corpo, ritagli e pezzi completati: FLUX.2 klein e Qwen Turbo, seme 3](img/slot-parts-spike/9-c-concept-cuts-flux-turbo.jpg)
+
+### Immagini per pezzo (6 slot × 3 semi, 1024 px)
+
+| Modello | Pezzi giusti | Note | Tempo a immagine |
+|---|---|---|---|
+| FLUX.2 klein 4B | **5 su 6**, su tutti i semi | Lo spallaccio diventa una corazza con gli spallacci. Il guanto esce **in verticale** (dita in su) su tutti i semi | 10–14 s |
+| Qwen-Image 2.1 Turbo | **6 su 6**, su tutti i semi | Più fedele al ritaglio, verso tenuto; spallaccio singolo pulito | 21 s |
+
+### Qualità del singolo pezzo in 3D
+
+Misure geometriche, nessuna sui pixel:
+- i controlli della funzione 7 sul pezzo (`mesh.holes`, `mesh.loose_parts`);
+- "interno visto": la quota di raggi, da 14 direzioni attorno al pezzo, che entrano nel guscio da un'apertura.
+
+| | Facce per pezzo | Facce su un bordo aperto | Interno visto | Pezzetti staccati |
+|---|---|---|---|---|
+| **B0** (ritagliato dal personaggio intero) | 970–10.800, divise fra gli slot | **3,7–18%** (elmo 18%, spallacci 16%, busto 13%) | **20–37%** | 7–23 |
+| **C con FLUX.2 klein** | 4.000–10.000, budget pieno per slot | ≤ 0,22% | ≤ 3% | 3–23 |
+| **C con Qwen Turbo** | 4.000–10.000 | ≤ 0,17% | ≤ 0,2% | 1–18 |
+
+Le facce di B0 sono 40.000 per tutto il personaggio, divise fra gli slot, mentre ogni pezzo C ha il suo budget e la
+sua texture: l'elmo ha 5.990 facce contro 972. Visti da dietro, i pezzi B0 sono a brandelli, senza retro e con pezzi
+di altri slot (un pezzo d'elmo nello spallaccio, uno spallaccio nel busto). I pezzi C sono interi.
+
+Due pezzi di Turbo, il busto e il guanto, escono da Pixal3D con **tutte le normali girate verso l'interno**: sono chiusi,
+ma vanno raddrizzati. `scripts/fix_winding.py` lo fa già.
+
+![Pezzi visti da dietro: in alto B0, in basso C con Qwen Turbo](img/slot-parts-spike/10-pieces-b0-vs-turbo.jpg)
+
+### Sul corpo (camminata / fendente)
+
+Un pezzo fatto da solo non sa dov'era sul corpo. Due modi provati:
+- **Allinearlo al pezzo B0 dello stesso slot** (assi principali più ICP con scala): **non funziona**. I gusci B0 sono
+  parziali, quindi l'ICP rimpicciolisce i pezzi e gira gli stivali.
+- **Il riquadro del pezzo nella sua immagine**, riportato al concept invertendo il ritaglio e la scala con cui era stato
+  messo sul fondo grigio: **funziona**. Il modello di modifica lascia il pezzo dove l'aveva trovato.
+
+| Strada | Compenetrazioni (peggior pezzo) | Buchi | Copertura | Note |
+|---|---|---|---|---|
+| B0, concept nuovo | ≤ 2,5% / guanto 4% | 1,4% / 1,3% | 70% | Molto meglio della prima prova (guanto 9–11%): conta la qualità del concept |
+| C con FLUX.2 klein (spallacci da B0) | ≤ 3,2% / ≤ 0,8% | 1,2% / 1,6% | 68% | I guanti verticali restano come pale sulla mano |
+| **C con Qwen Turbo** | ≤ 3,1%, spallaccio specchiato 6,1% / 4,4% | 1,2% / 1,8% | **71,5%** | Il set più completo; una punta sottile dopo l'adattamento, vicino a una spalla |
+
+![Sul corpo nella camminata: in alto B0, in basso C con Qwen Turbo](img/slot-parts-spike/11-fit-b0-vs-turbo.jpg)
+
+### Tempi di macchina per set (6 slot)
+
+- B0: concept 25 s, Pixal3D sul personaggio 142 s, finitura 21 s, divisione e adattamento su CPU: **circa 4 minuti di GPU**.
+- C con Turbo: concept 25 s, 6 immagini da 21 s, 6 Pixal3D (151–614 s misurati con la GPU condivisa con altre sessioni,
+  circa 150–250 s quando è libera), 6 finiture da 22 s: **circa 20–30 minuti di GPU**.
+
+### Esito
+
+- **Per i modi 2 e 3 della funzione** i pezzi si fanno con la strada C e Qwen Turbo: concept sul corpo, un ritaglio
+  appiattito per slot, completamento con `-r`, Pixal3D per pezzo, posizionamento dal riquadro, adattamento.
+  I pezzi sono interi e chiusi, con un budget di facce e una texture ciascuno; sul corpo misurano quanto B0.
+- **B0 resta come riserva**: costa un quinto del tempo, utile per un'anteprima veloce, o per uno slot in cui
+  l'immagine dedicata fallisce.
+- **FLUX.2 klein 4B** non serve alla strada scelta. Resta nel catalogo, scaricabile su richiesta, se serve un modello
+  Apache-2.0. I suoi pesi di prova sono stati cancellati alla fine.
+- **Da sistemare nella funzione vera**:
+  - raddrizzare le normali (`fix_winding.py`);
+  - lo spallaccio specchiato (6%), che va adattato per lato invece di essere specchiato;
+  - togliere le punte che la gabbia lascia vicino alle spalle;
+  - il tempo, perché 6 Pixal3D a set costano.
+- **Incertezze**: un solo set, un solo corpo, tre semi per immagine; le soglie dei controlli restano provvisorie.
