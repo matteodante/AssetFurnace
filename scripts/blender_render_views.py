@@ -12,10 +12,14 @@ cameras look along. For each view this writes, in the plan's folder:
 - ``view_NN_uv.npz``: R, G = the pixel's UV (Blender's, v upward), B = glTF material index + 1
   (0 is background), A = coverage; float32, top row first;
 - ``view_NN_normal.npz``: the world normal, the same way;
+- ``view_NN_lit.png``, only when the plan asks for ``"lit"``: the base colour (and its normal
+  map) on a neutral dielectric, roughness 0.5, under a key light from the camera's upper left
+  and a dim grey sky. Models that read materials from shading (Marigold-IID Appearance) need
+  light to read; it is neutral so that no reflection in the picture is one we invented;
 
 and ``views.json`` with every view's direction. The data passes are rendered to EXR and
-saved as NumPy arrays by Blender itself, so reading them needs no EXR support elsewhere. Cameras are orthographic and frame the
-whole model, so every view sees it at one scale. One sample and no pixel filter: each pixel
+saved as NumPy arrays by Blender itself, so reading them needs no EXR support elsewhere. Cameras are orthographic, keep the world's up
+up the picture, and fit the model's box as each one sees it. One sample and no pixel filter: each pixel
 is one point of the surface, never a blend of two.
 """
 
@@ -27,14 +31,44 @@ import sys
 from pathlib import Path
 
 
+def basis(direction):
+    """(right, up, forward) of a camera looking along `direction` with the world's Z kept up.
+
+    Built here rather than with ``to_track_quat``, so the roll is never left to chance: a
+    2D model shown a figure lying on its side is shown something it was not trained on.
+    Straight down or up, the picture's up is the world's +Y.
+    """
+    length = math.sqrt(sum(d * d for d in direction)) or 1.0
+    forward = [d / length for d in direction]
+    reference = (0.0, 0.0, 1.0) if abs(forward[2]) < 0.99 else (0.0, 1.0, 0.0)
+    right = _cross(forward, reference)
+    norm = math.sqrt(sum(r * r for r in right))
+    right = [r / norm for r in right]
+    return right, _cross(right, forward), forward
+
+
+def _cross(a, b):
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+
+
 def frame(corners, direction):
-    """(camera location, orthographic scale) for a camera looking along `direction` at the box."""
+    """(camera location, orthographic scale, far clip) that fit the box's outline as this camera sees it.
+
+    The box's corners are projected on the picture plane, so a tall figure seen from the
+    front fills the frame instead of sitting inside its own diagonal.
+    """
+    right, up, forward = basis(direction)
+    across = [sum(c[i] * right[i] for i in range(3)) for c in corners]
+    upward = [sum(c[i] * up[i] for i in range(3)) for c in corners]
+    depth = [sum(c[i] * forward[i] for i in range(3)) for c in corners]
     low = [min(c[i] for c in corners) for i in range(3)]
     high = [max(c[i] for c in corners) for i in range(3)]
-    centre = [(a + b) / 2 for a, b in zip(low, high)]
     diagonal = math.dist(low, high) or 1.0
-    location = [c - d * diagonal * 2.0 for c, d in zip(centre, direction)]
-    return location, diagonal * 1.05
+    mid_across, mid_up = (min(across) + max(across)) / 2, (min(upward) + max(upward)) / 2
+    centre = [mid_across * right[i] + mid_up * up[i] + min(depth) * forward[i] for i in range(3)]
+    location = [c - f * diagonal for c, f in zip(centre, forward)]
+    span = max(max(across) - min(across), max(upward) - min(upward)) or diagonal
+    return location, span * 1.05, diagonal * 3.0
 
 
 def uv_set(node, depth: int = 0) -> str | None:
@@ -65,7 +99,7 @@ def save_array(bpy, exr: Path, size: int) -> None:
 
 def main(plan_path: Path) -> int:
     import bpy
-    from mathutils import Vector
+    from mathutils import Matrix, Vector
 
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     folder = plan_path.parent
@@ -74,7 +108,8 @@ def main(plan_path: Path) -> int:
     scene = bpy.context.scene
     meshes = [o for o in scene.objects if o.type == "MESH"]
 
-    passes = {"color": [], "uv": [], "normal": []}
+    lit = bool(plan.get("lit"))
+    passes = {"color": [], "uv": [], "normal": [], "lit": []}
     for material in {s.material for o in meshes for s in o.material_slots if s.material}:
         material.use_nodes = True
         tree = material.node_tree
@@ -103,9 +138,19 @@ def main(plan_path: Path) -> int:
         geometry = nodes.new("ShaderNodeNewGeometry")
         normal = nodes.new("ShaderNodeEmission")
         links.new(geometry.outputs["Normal"], normal.inputs["Color"])
+        studio = nodes.new("ShaderNodeBsdfPrincipled")
+        studio.inputs["Roughness"].default_value = 0.5
+        studio.inputs["Metallic"].default_value = 0.0
+        if base is not None and base.links:
+            links.new(base.links[0].from_socket, studio.inputs["Base Color"])
+        elif base is not None:
+            studio.inputs["Base Color"].default_value = base.default_value
+        bump = principled.inputs.get("Normal") if principled else None
+        if bump is not None and bump.links:
+            links.new(bump.links[0].from_socket, studio.inputs["Normal"])
         alpha = principled.inputs.get("Alpha") if principled else None
-        for name, node in (("color", colour), ("uv", uv), ("normal", normal)):
-            shader = node.outputs["Emission"]
+        for name, node in (("color", colour), ("uv", uv), ("normal", normal), ("lit", studio)):
+            shader = node.outputs["BSDF"] if name == "lit" else node.outputs["Emission"]
             if alpha is not None and (alpha.links or alpha.default_value < 1.0):
                 # Keep cut-outs and blends see-through in every pass: a hair card or a leaf
                 # must not hide the surface behind it, nor claim its pixels.
@@ -129,6 +174,13 @@ def main(plan_path: Path) -> int:
     scene.render.resolution_x = scene.render.resolution_y = plan["size"]
     scene.render.resolution_percentage = 100
     scene.world = bpy.data.worlds.new("black")
+    if lit:
+        scene.world.use_nodes = True
+        scene.world.node_tree.nodes["Background"].inputs["Color"].default_value = (0.3, 0.3, 0.3, 1.0)
+        sun = bpy.data.objects.new("key", bpy.data.lights.new("key", "SUN"))
+        sun.data.energy = 3.0
+        sun.data.angle = 0.2
+        scene.collection.objects.link(sun)
 
     camera = bpy.data.objects.new("view", bpy.data.cameras.new("view"))
     camera.data.type = "ORTHO"
@@ -138,12 +190,19 @@ def main(plan_path: Path) -> int:
 
     written = []
     for index, direction in enumerate(plan["directions"]):
-        location, scale = frame(corners, direction)
+        location, scale, far = frame(corners, direction)
         camera.location = location
         camera.data.ortho_scale = scale
-        camera.data.clip_end = scale * 10
-        camera.rotation_euler = Vector(direction).to_track_quat("-Z", "Z" if abs(direction[2]) < 0.99 else "Y").to_euler()
-        for name, extension in (("color", "PNG"), ("uv", "OPEN_EXR"), ("normal", "OPEN_EXR")):
+        camera.data.clip_end = far
+        right, up, forward = basis(direction)
+        # Blender cameras look down their local -Z, with local +Y up the picture.
+        camera.rotation_euler = Matrix((right, up, [-f for f in forward])).transposed().to_euler()
+        if lit:
+            # The light travels from the camera's upper left towards the model.
+            travel = [forward[i] - 0.6 * up[i] + 0.5 * right[i] for i in range(3)]
+            sun.rotation_euler = Vector(travel).to_track_quat("-Z", "Y").to_euler()
+        names = (("color", "PNG"), ("uv", "OPEN_EXR"), ("normal", "OPEN_EXR")) + ((("lit", "PNG"),) if lit else ())
+        for name, extension in names:
             for links, shader, output in passes[name]:
                 links.new(shader, output.inputs["Surface"])
             settings = scene.render.image_settings
@@ -159,6 +218,10 @@ def main(plan_path: Path) -> int:
             suffix = "png" if extension == "PNG" else "exr"
             path = folder / f"view_{index:02d}_{name}.{suffix}"
             scene.render.filepath = str(path)
+            # Data passes: one sample, no filter, so a pixel is one point. The lit picture is a picture.
+            scene.cycles.samples = 16 if name == "lit" else 1
+            scene.cycles.use_denoising = name == "lit"
+            scene.cycles.filter_width = 1.5 if name == "lit" else 0.01
             bpy.ops.render.render(write_still=True)
             if extension == "OPEN_EXR":
                 save_array(bpy, path, plan["size"])

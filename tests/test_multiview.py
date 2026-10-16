@@ -148,3 +148,30 @@ def test_blender_gets_an_absolute_plan_path(tmp_path, monkeypatch):
 
     assert mv.render_views(asset, Path("views"), size=16, around=4, blender=Path("blender"), run=fake_run) == []
     assert seen == {"absolute": True, "exists": True}
+
+
+def _render_script():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("blender_render_views", mv.SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("direction", [d.tolist() for d in mv.orbit_directions(16)])
+def test_every_camera_keeps_a_right_handed_basis_with_no_roll(direction):
+    right, up, forward = (np.array(v) for v in _render_script().basis(direction))
+    np.testing.assert_allclose(np.cross(right, up), -forward, atol=1e-9)    # looks down its -Z
+    for axis in (right, up, forward):
+        assert np.linalg.norm(axis) == pytest.approx(1.0)
+    if abs(forward[2]) < 0.99:
+        assert right[2] == pytest.approx(0.0, abs=1e-9) and up[2] > 0     # the horizon stays level
+
+
+def test_a_tall_figure_seen_from_the_front_fills_the_frame():
+    box = [(x, y, z) for x in (-0.4, 0.4) for y in (-0.15, 0.15) for z in (0.0, 1.8)]
+    location, scale, far = _render_script().frame(box, (0.0, 1.0, 0.0))     # looking along +Y
+    assert scale == pytest.approx(1.8 * 1.05)
+    assert location[0] == pytest.approx(0.0) and location[2] == pytest.approx(0.9)
+    assert location[1] < -0.15 and far > 1.8 - location[1] - 0.15
