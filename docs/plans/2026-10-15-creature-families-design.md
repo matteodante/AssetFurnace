@@ -577,3 +577,43 @@ stato corretto sul suo ramo (sezione 15).
 - Le varianti di attacco e di colpo (pezzi diversi, non più lunghi) richiedono una sintesi guidata da fotogrammi
   chiave, che GenMM aveva iniziato a introdurre nel commit che lo ha rotto.
 
+## 17. Stato finale della funzione 6 (16/10/2026)
+
+**Consegnato**, tutto su `main` o in revisione:
+
+| PR | Cosa |
+|---|---|
+| #8 | Riconoscimento delle famiglie, `rig.deformation`, digitigradi e quadrupedi, scelta della famiglia nello studio |
+| #13 | Molte zampe e serpenti |
+| #16 | Alati e piante |
+| #14 | Il lupo in Unreal: fronte dalle anche, misura del passo |
+| #22 | Libreria di clip CC0 (Mesh2Motion), scaricata con conferma e hash |
+| #27 | Retarget a catene e piedi che non saltano né si incrociano |
+| #30 | Versioni `-long` con il porting di GenMM |
+| #32 | Testo in UTF-8 nello studio, suite verde su Windows senza `PYTHONUTF8` |
+| #34 | Uscita per Unreal: fronte dalla famiglia, dimensione dopo la rotazione, orientamento controllato sulle ossa della creatura. Il draghetto con le sue 10 clip supera il controllo in Unreal 5.8.3 (`CHECK OK`: 150 cm, verso +Y, 10 animazioni) |
+| questa | Guida per l'utente ([docs/creature-families.md](../creature-families.md)), README, lo studio che distingue le clip della libreria dalle prove |
+
+**Accettazione** (sezione 10), punto per punto:
+
+| Punto | Esito |
+|---|---|
+| 1. Cinque creature con provenienza | Sì: lupo mannaro, ragno, serpente, draghetto, fiore carnivoro, dalla catena Qwen-Image → Pixal3D → finitura |
+| 2. Famiglia giusta su tutte | Sì sugli 11 rig veri. Ruoli: le 2 ali del draghetto sì; del ragno 6 zampe su 8, perché una zampa e un moncone restano senza ruolo (vedi i Seguiti) |
+| 3. Clip con `rig.deformation` verde | Le clip di movimento di lupo e serpente sono verdi o al livello della sorgente. Attacco, colpo e morte, e il drago, sono al livello di ciò che fanno le sorgenti sul loro modello. Il ragno resta oltre la soglia per le catene senza ruolo. Tabelle nelle sezioni 15 e 16 |
+| 4. Il lupo in Unreal | Le articolazioni non si incrociano mai (PR #14). Le gambe, grosse, si compenetrano con la camminata di Manny ritargettata: serve allargare la posa nell'IK Retargeter, non ancora automatico. Con le sue clip digitigrade i piedi non si incrociano |
+| 5. Immagini e coda di revisione | Immagini a metà clip fatte durante ogni PR; ogni clip passa da `rig.deformation` nella coda di revisione. Nessun video in `output/creature-families/` |
+| 6. Test | Suite completa verde (anche su Windows senza `PYTHONUTF8` dalla #32); `ruff` pulito sui file nuovi |
+
+**Seguiti**, i più utili per primi:
+1. Riconoscere tutte le zampe del ragno, comprese le catene senza ruolo, e rimisurare.
+2. Allargare la posa del lupo nell'IK Retargeter di Unreal, in automatico.
+3. Soglie di `rig.deformation` per tipo di clip (attacco e morte sono pose estreme), oppure un confronto con la
+   sorgente sul suo modello.
+4. La coda del draghetto girata di lato, che oggi non è riconosciuta come coda.
+5. Giunzioni più morbide nelle versioni `-long` (l'attesa del serpente passa dal 2,3% al 4,6% di scatto).
+6. Quaternius come seconda sorgente, se ha un indirizzo verificabile da cui scaricare.
+7. `creature_clips.py` lanciato di nuovo da riga di comando lascia le clip della famiglia precedente.
+8. Un giudice visivo (Qwen3-VL) che voti sulla famiglia insieme alle regole, dopo un insieme etichettato di 60-100
+   rig.
+

@@ -29,6 +29,9 @@ Apple Silicon deserves more love in the 3D and Image generation community. So th
 - **Rigged, moving characters.** Describe a humanoid or drop its picture; get back a
   textured model with a skeleton and moves picked from 21 presets (walk, run, jump, dance, kicks and more), as a GLB
   for Godot, Unity, Unreal, Blender or three.js. New in 0.4.0.
+- **Creatures too.** Werewolves, wolves, spiders, dragons, serpents and plants are recognised
+  from their skeleton and get clips that suit them, carried over from a CC0 animation
+  library. [More](docs/creature-families.md)
 - **The studio.** Your Library, one 3D viewer and a Steps panel. **Create** runs every
   step for you, and you can stop after any of them. Close the tab and the run carries on.
 - **Low poly, high quality.** Pixel Match puts your picture's real pixels back on the

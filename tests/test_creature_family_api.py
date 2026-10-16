@@ -74,3 +74,13 @@ def test_the_studio_keeps_a_library_clips_motion_source(tmp_path):
     motions = {p.name: json.loads(p.read_text(encoding="utf-8"))["motion"] for p in paths}
     assert motions["wolf_digitigrade-walk.provenance.json"]["license"]["name"] == "CC0-1.0"
     assert motions["wolf_digitigrade-trot.provenance.json"]["made_with"] == "procedural test clip"
+
+
+def test_facts_name_the_library_clips(tmp_path):
+    from image_to_3dlab import clip_library as cl
+
+    rigged = tmp_path / "wolf_rigged.glb"
+    cf.write_family(rigged, {"family": "digitigrade", "clips": ["digitigrade-walk", "digitigrade-trot"],
+                             "clip_sources": {"digitigrade-walk": cl.motion_record("kaiju", "walk")}})
+    assert api.facts(rigged)["library_clips"] == ["digitigrade-walk"]
+    assert api.facts(None)["library_clips"] == []
