@@ -34,6 +34,7 @@ if str(REPO) not in sys.path:
 
 from image_to_3dlab import clip_library as _clips
 from image_to_3dlab import host as _host
+from image_to_3dlab import material_models as _material_models
 from image_to_3dlab import matte as _matte
 from image_to_3dlab.host import AMD, APPLE, NVIDIA
 from image_to_3dlab.provenance import QWEN_OUTPUT_RIGHTS
@@ -557,20 +558,23 @@ CATALOG: tuple[Backend, ...] = (
     ),
     Backend(
         id="qwen-image",
-        label="Qwen-Image 2.1 (text to image)",
+        label="Qwen-Image 2.1 Turbo (text to image)",
         kind="image",
         best_for="Makes the source image when you do not have one. Prompt in, picture out.",
         tradeoff="Runs on your machine, and the pictures you make are yours.",
         license_name="Qwen Research License",
-        license_url="https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE",
+        license_url="https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE",
         install="Prebuilt stable-diffusion.cpp binary in vendor/sdcpp/",
         runs_on=(APPLE, NVIDIA, AMD),
         setup_minutes=15,
         build_probes=(_host.executable(REPO / "vendor" / "sdcpp", "sd-cli"),),
         weights=(
-            WeightSet("Qwen-Image 2.1 diffusion model (Q8_0)",
-                      "leejet/Qwen-Image-2.1-GGUF", int(7.69 * GB),
-                      HF_HUB_DIR / "models--leejet--Qwen-Image-2.1-GGUF"),
+            # The Turbo, not the base checkpoint: it is distilled for the 8-step,
+            # cfg 1.0 recipe this route runs (viewer/image_api.py says why).
+            WeightSet("Qwen-Image 2.1 Turbo diffusion model (Q8_0)",
+                      "unsloth/Qwen-Image-2.1-Turbo-GGUF", 7_640_860_480,
+                      HF_HUB_DIR / "models--unsloth--Qwen-Image-2.1-Turbo-GGUF",
+                      filename="qwen-image-2.1-turbo-Q8_0.gguf"),
             WeightSet("Qwen3-VL-8B text encoder (Q4_K_M)",
                       "Qwen/Qwen3-VL-8B-Instruct-GGUF", int(5.03 * GB),
                       HF_HUB_DIR / "models--Qwen--Qwen3-VL-8B-Instruct-GGUF",
@@ -632,6 +636,33 @@ CATALOG: tuple[Backend, ...] = (
                       HF_HUB_DIR / "models--VAST-AI--SkinTokens",
                       note="Pinned to the revision we tested. Setup also fetches "
                            "Qwen3-0.6B's config and tokenizer (~16 MB, no weights)."),
+        ),
+    ),
+    Backend(
+        id="materials-light",
+        label="Baked-light removal (Marigold-IID Lighting)",
+        kind="tool",
+        best_for=("Takes the light painted into a texture back out, so a model lit in the "
+                  "engine is not lit twice."),
+        tradeoff=("Optional, and off until it passes the test against your own labels. "
+                  "Trained on interiors and photos; untried on stylised art."),
+        license_name="CreativeML Open RAIL++-M (weights); Apache-2.0 (code)",
+        license_url=_material_models.OPENRAIL_URL,
+        install="scripts/bootstrap_materials.py --only env,marigold-lighting",
+        runs_on=(NVIDIA,),
+        setup_minutes=10,
+        caveat=("The weights come with use restrictions (no medical advice, no law "
+                "enforcement, no harassment...), and anyone you pass them on to is bound "
+                "by them too. Your results are yours."),
+        build_probes=(_material_models.env_python(),),
+        upstream=("prs-eth Marigold", "https://github.com/prs-eth/Marigold"),
+        weights=(
+            WeightSet(_material_models.MARIGOLD_LIGHTING.label,
+                      _material_models.MARIGOLD_LIGHTING.repo,
+                      _material_models.MARIGOLD_LIGHTING.size,
+                      HF_HUB_DIR / "models--prs-eth--marigold-iid-lighting-v1-1",
+                      note="fp16 files only, at a pinned revision. Setup also makes its own "
+                           "Python environment (~3 GB, mostly PyTorch)."),
         ),
     ),
     Backend(

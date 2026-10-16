@@ -50,7 +50,7 @@ game-ready LODs), start with [the prop sheet guide](../docs/prop-sheets.md).
 | `bootstrap_style.py` | Install the style judges' models and llama.cpp, after saying what, how big and under which licence. |
 | `bootstrap_hunyuan_xiong.py` | Set up Hunyuan3D-MLX (Xiong, full pipeline): both Python environments, then the weights. |
 | `bootstrap_matte.py` | Install BiRefNet-lite, the background remover every backend uses once it is present. |
-| `bootstrap_clip_library.py` | Install the CC0 creature clip library (Mesh2Motion's animated creatures). |
+| `bootstrap_clip_library.py` | Install the CC0 creature clip library. |
 | `bootstrap_qwen_image.py` | Install the text-to-image route: a stable-diffusion.cpp binary and Qwen-Image weights. |
 | `pixal3d_generate.py` | End-to-end Pixal3D generation: image -> textured GLB, on a Mac, NVIDIA or AMD. |
 | `trellis_space_generate.py` | Full image -> GLB generation through the CLEAN `trellis-space-mac` port on Apple Silicon. |
@@ -121,6 +121,11 @@ The asset's surface, as opposed to its shape.
 | `classify_thickness.py` | Separate solid body from thin foliage by measuring local thickness. |
 | `material_label_set.py` | Queue assets for the user's material labels, follow the progress, export what is complete. |
 | `game_materials.py` | Pack a generated GLB's own maps as a game-ready ORM, with its sidecar and licence record. |
+| `bootstrap_materials.py` | Install the game-material models and their environment, after saying what, how big and under which licence. |
+| `delight_materials.py` | Take the light painted into an asset's texture, or into a concept, back out. |
+| `estimate_pbr.py` | Estimate roughness and metallic for an asset's materials that have none. |
+| `pbr_trial.py` | Run the Poly Haven trial for estimated roughness and metallic. |
+| `materials_worker.py` | Run a material model on images, inside the materials environment. |
 
 ## Measure and judge
 
@@ -156,6 +161,7 @@ These talk to a running Blender over the `execute_code` socket on port 9876 unle
 | `blender_turntable.py` | Render a seamlessly looping 360-degree turntable of a GLB via the Blender MCP scene. |
 | `blender_light_orbit.py` | Render a GLB under an orbiting key light, holding the camera still. |
 | `blender_render_views.py` | Render a GLB's albedo unlit from an orbit of views, with the UV and normal of every pixel. |
+| `blender_concept_views.py` | Render a GLB for a concept: a lit colour picture and a depth map per view, plus the bones. |
 | `blender_lineup_sweep.py` | Render a camera sweep past a line-up of assets, headless. |
 | `blender_orbit_camera.py` | Point an orbit camera at a target and (optionally) render. |
 | `blender_inspect.py` | Inspect a Blender scene or an unopened .blend file's contents. |
