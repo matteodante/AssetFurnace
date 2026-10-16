@@ -450,7 +450,7 @@ def run_job(job: ImageJob, manager: ImageJobManager,
         else:
             sidecar = job.output_path.with_suffix(".provenance.json")
             record = provenance(job.prompt, job.settings, elapsed, job.output_path)
-            sidecar.write_text(json.dumps({**job.extra_provenance, **record}, indent=2))
+            sidecar.write_text(json.dumps({**job.extra_provenance, **record}, indent=2), encoding="utf-8")
             job.set_status("done", result_url=f"/api/image/{job.id}/result.png",
                            elapsed_seconds=round(elapsed, 1))
     except MissingWeights as exc:
