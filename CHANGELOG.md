@@ -149,6 +149,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This is a feasibility tool; interactive editing and rig reconstruction are pending.
 
 ### Fixed
+- A skinned model is sized for Unreal after it is turned to face forward: a creature facing
+  half-way between two axes was sized on its wider box and arrived 20% too long. A creature
+  that is not a humanoid is checked for facing in Unreal from its hips and head (named in
+  the sidecar's `facing_bones`) instead of failing for want of Manny's feet.
 - Pictures are sharp again: text to image now runs the Qwen-Image 2.1 Turbo checkpoint with
   its own schedule (`--sigmas qwen-image-2.1-turbo`, cfg 1.0) at 1024 px. It used to run
   the base checkpoint with the Turbo's numbers (8 steps, cfg 1.0), which stopped the

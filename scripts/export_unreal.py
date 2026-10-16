@@ -140,6 +140,20 @@ def _family(source: Path) -> dict | None:
         return None
 
 
+def facing_bones(family: dict | None, renamed: dict[str, str]) -> list[str] | None:
+    """The two bones Unreal can tell a creature's facing by, under their exported names:
+    hips to head, or a serpent's tail to its head. None when the family has neither."""
+    if not family:
+        return None
+    if family.get("spine") and family.get("neck"):
+        pair = [family["spine"][0], family["neck"][-1]]
+    elif len(family.get("body") or []) >= 2:
+        pair = [family["body"][-1], family["body"][0]]
+    else:
+        return None
+    return [renamed.get(b, b) for b in pair]
+
+
 def blender_command(blender: Path, job_path: Path) -> list[str]:
     return [str(blender), "-b", "--factory-startup", "--python-exit-code", "1",
             "--python", str(BLENDER_SCRIPT), "--", str(job_path)]
@@ -254,7 +268,9 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
                          collision=p["job"]["collision"] if kind == "prop" else None,
                          humanoid=bool(report.get("humanoid")), skeleton_from=p["skeleton_from"],
                          animations=report.get("animations", []), tint=p["tint"].name if p["tint"] else None,
-                         problems=problems, orm=any(m.get("orm") for m in textures["materials"].values()))
+                         problems=problems, orm=any(m.get("orm") for m in textures["materials"].values()),
+                         facing_bones=facing_bones(_family(Path(source)) if kind == "creature" else None,
+                                                   report.get("bones") or {}))
     if p["materials_record"]:
         record = p["out_dir"] / f"{p['names']['mesh']}.materials.json"
         shutil.copyfile(p["materials_record"], record)

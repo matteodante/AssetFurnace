@@ -217,13 +217,14 @@ def test_an_ambiguous_tint_mask_is_not_guessed(files):
     assert ex.plan(files["part"], kind="prop", size_cm=50)["tint_source"] is None
 
 
-def _skinned_glb() -> bytes:
+def _skinned_glb(stretch_x: float = 1.0) -> bytes:
     """Two bones and two triangles, skinned, with the origin in the middle of the body
     the way SkinTokens leaves it: feet at y = -0.5, head at y = +0.5."""
     import numpy as np
 
     positions = np.array([[-0.2, -0.5, 0], [0.2, -0.5, 0], [0, 0.5, 0.05],
                           [-0.2, -0.5, 0.1], [0.2, -0.5, 0.1], [0, 0.5, 0.15]], "<f4")
+    positions[:, 0] *= stretch_x
     joints = np.zeros((6, 4), "u1")
     joints[[2, 5], 0] = 1
     weights = np.zeros((6, 4), "<f4")
@@ -487,3 +488,31 @@ def test_a_creature_without_a_family_file_keeps_the_default_facing(files):
 def test_an_objects_facing_ignores_any_family_file(files):
     p = ex.plan(files["props"] / "prop_01_LOD0.glb", kind="prop", size_cm=60, measure="longest")
     assert p["job"]["forward"] == [0.0, -1.0, 0.0]
+
+
+@pytest.mark.skipif(find_blender() is None, reason="needs Blender")
+def test_real_blender_sizes_a_turned_creature_after_turning_it(tmp_path):
+    """A long creature facing half-way between two axes: sized on its box before the turn,
+    it came into Unreal 180 cm long instead of 150."""
+    source = tmp_path / "drake.glb"
+    source.write_bytes(_skinned_glb(stretch_x=8.0))  # 3.2 m along x, 1 m tall
+    result = ex.export_unreal(source, kind="creature", size_cm=150, measure="longest", out_dir=tmp_path / "out",
+                              forward=(0.7071, -0.7071, 0.0), log=lambda m: None)
+    lo, hi = json.loads(Path(result["sidecar"]).read_text(encoding="utf-8"))["blender"]["box_after_m"]
+    assert max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) == pytest.approx(1.5, rel=1e-3)
+
+
+def test_a_creature_that_is_not_a_humanoid_is_checked_for_facing_by_its_own_bones(files, tmp_path):
+    """Unreal measures a humanoid's facing from Manny's feet; a drake has no `foot_l`, so its
+    family's hips and head, by the names the export gave them, say which way it faces."""
+    from image_to_3dlab import creature_family as cf
+
+    rig = files["rig"] / "Wolf_9k_rigged.glb"
+    cf.write_family(rig, {"family": "winged", "spine": ["bone_0", "bone_1"], "neck": ["bone_4", "bone_5"],
+                          "body": [], "frame": {"up": [0, 1, 0], "forward": [0, 0, 1], "left": [1, 0, 0]}})
+    bones = {"bone_0": "pelvis", "bone_1": "spine_01", "bone_4": "neck_01", "bone_5": "head"}
+    result = ex.export_unreal(rig, kind="creature", size_cm=120, out_dir=tmp_path / "out", blender=Path("blender"),
+                              run=_fake_blender({"humanoid": False, "bones": bones}), log=lambda m: None)
+    expect = json.loads(Path(result["sidecar"]).read_text(encoding="utf-8"))["expect"]
+    assert expect["facing"] == "+Y" and expect["facing_bones"] == ["pelvis", "head"]
+
