@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- FLUX.2 klein 4B in Setup & Status: an Apache-2.0 image editor for the sd-cli already
+  installed, three files (12.3 GB), fetched only on request by
+  `scripts/bootstrap_flux2_klein.py`. The VAE is BFL's Apache-2.0 small decoder, not
+  the non-commercial one inside FLUX.2-dev.
 - Material labels in Studio's review panel: for the version under review, say whether
   light is painted into the colours, whether the materials look right, and click points
   on the model with the material they show. Saved in `output/material-labels.jsonl`;
