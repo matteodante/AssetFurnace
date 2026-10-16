@@ -1,7 +1,7 @@
 # Funzione 8, materiali pronti per il gioco: progetto v2
 
 Data: 15 ottobre 2026 (aggiornato lo stesso giorno: SAM 3.1, lavori del 2026, video, Qwen3.5, togliere la luce, date).
-Stato: **approvato**. PR 1 e 2 unite (#11, #12); PR 4 (luce tolta) in #26; PR 6 (rugosità e metallo) non passa la prova, vedi la sezione 10.
+Stato: **approvato**. PR 1 e 2 unite (#11, #12); PR 4 (luce tolta) in #26; PR 6 (rugosità e metallo) e PR 5 (controllo della luce cotta) non passano la prova, vedi la sezione 10.
 Sostituisce il metodo di [`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md) (v1), di cui
 tiene l'infrastruttura. La PR [#3](https://github.com/matteodante/AssetFurnace/pull/3) è in bozza e in pausa.
 
@@ -368,6 +368,46 @@ Download confermati dall'utente il 16/10/2026 ("permesso per tutto"): Qwen3.5-4B
     stesso modo.
 - **Limite della prova**: Poly Haven sono scansioni realistiche, il campo più vicino a quello di Marigold. Non passare
   qui dice già abbastanza per l'arte stilizzata.
+
+### PR 5, controllo imparato della luce cotta (17/10/2026): **nessun candidato passa**
+
+- **Dati sintetici** (`image_to_3dlab/baked_light.py`, `scripts/baked_light_trial.py`):
+  - 100 modelli Poly Haven CC0 puliti (texture scansionate senza luce).
+  - Ognuno è reso da 8 + 2 viste a 384 px, senza luce e sotto due soli **fissi nel mondo**
+    (`render_views(lit=True, light=...)`), su un materiale neutro e con un cielo grigio.
+  - Il rapporto fra le due immagini è l'ombreggiatura che quel sole lascerebbe (ombre portate e occlusione comprese).
+    Dipinta nell'albedo con intensità a caso fra 0,35 e 1, dà il gemello "cotto".
+  - In tutto 300 campioni, 1 pulito e 2 cotti per asset. Si dividono per asset: metà addestramento, un quarto
+    taratura, un quarto prova.
+  - Tutto sulla CPU: 31 minuti.
+- **I tre candidati della sezione 3B**, sulla stessa prova (25 asset, 75 campioni; soglia scelta sulla taratura):
+
+  | Candidato | AUC | Limite inferiore al 95 % | Cotti fermati | Puliti segnalati |
+  |---|---|---|---|---|
+  | 1. Testa logistica su SigLIP 2 (albedo + normali), vista per vista | 0,855 | 0,80 | 96 % | 40 % |
+  | 1. La stessa, sulla media delle viste | 0,838 | 0,77 | 96 % | 52 % |
+  | 2. Qwen3.5-4B, "ombre o riflessi dipinti?" sì/no per vista | 0,53 | 0,47 | 80 % | 76 % |
+  | 3. Quanta ombreggiatura trova Marigold-IID Lighting, senza addestramento | 0,86 | 0,77 | 88 % | 28 % |
+  | **Soglia** | | **≥ 0,90** | **≥ 80 %** | **≤ 10 %** |
+
+  Fra le due teste la scelta l'ha fatta la taratura (AUC 0,83 contro 0,77), non la prova. Qwen non distingue: risponde
+  quasi sempre allo stesso modo.
+- **Conseguenza**, come dice la sezione 3B: **non c'è controllo della luce cotta**. Si conta sulla luce tolta
+  all'origine (PR 4, anch'essa da provare con le etichette).
+- **Resta pronto**:
+  - `baked_light_trial.py human` misura la testa migliore (`output/baked-light/head.json`) sulle etichette
+    dell'utente (`scripts/material_label_set.py export`), con divisione per asset. È l'unica prova che può ammetterla.
+  - Con questi numeri è improbabile che passi; il sintetico però misura solo luci cotte miti e uniformi.
+- **Limiti**:
+  - le luci sintetiche sono un sole e un cielo; la luce di Pixal3D e dei concept può essere diversa (rischio della
+    sezione 8);
+  - la testa vede 384 px per vista attraverso un embedding generale.
+- **Licenze**:
+  - SigLIP 2: Apache-2.0;
+  - Poly Haven: CC0;
+  - Marigold: Open RAIL++-M, usato come caratteristica, non come modello da imitare, quindi niente "derivato";
+  - Qwen3.5-4B: Apache-2.0. Per Qwen l'ambiente dei materiali ha anche `torchvision` 0.29.1 (lo vuole il processore
+    di immagini).
 
 ## Seguiti
 

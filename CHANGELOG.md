@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A learned check for light painted into the albedo, and its trial (`image_to_3dlab/baked_light.py`,
+  `scripts/baked_light_trial.py`): synthetic pairs from 100 Poly Haven CC0 models baked under
+  suns fixed in the world, a logistic head on SigLIP 2, Marigold's shading and a Qwen3.5 yes/no
+  judge. None passes even the synthetic test (best ROC AUC 0.86, lower bound 0.80), so there is
+  no baked-light check; `human` scores the best head on the user's labels when they exist.
+  Views can be lit by a sun fixed in the world (`render_views(lit=True, light=...)`).
 - FLUX.2 klein 4B in Setup & Status: an Apache-2.0 image editor for the sd-cli already
   installed, three files (12.3 GB), fetched only on request by
   `scripts/bootstrap_flux2_klein.py`. The VAE is BFL's Apache-2.0 small decoder, not
