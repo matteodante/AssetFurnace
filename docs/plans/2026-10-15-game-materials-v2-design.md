@@ -1,7 +1,7 @@
 # Funzione 8, materiali pronti per il gioco: progetto v2
 
 Data: 15 ottobre 2026 (aggiornato lo stesso giorno: SAM 3.1, lavori del 2026, video, Qwen3.5, togliere la luce, date).
-Stato: **approvato**. PR 1 e 2 unite (#11, #12); PR 4 (luce tolta) in #26; PR 6 (rugosità e metallo) e PR 5 (controllo della luce cotta) non passano la prova, vedi la sezione 10.
+Stato: **approvato**. PR 1 e 2 unite (#11, #12); PR 4 (luce tolta) in #26; PR 6 (rugosità e metallo) e PR 5 (controllo della luce cotta) non passano la prova; PR 3 (zone) è pronta e aspetta SAM 3. Vedi la sezione 10.
 Sostituisce il metodo di [`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md) (v1), di cui
 tiene l'infrastruttura. La PR [#3](https://github.com/matteodante/AssetFurnace/pull/3) è in bozza e in pausa.
 
@@ -408,6 +408,54 @@ Download confermati dall'utente il 16/10/2026 ("permesso per tutto"): Qwen3.5-4B
   - Marigold: Open RAIL++-M, usato come caratteristica, non come modello da imitare, quindi niente "derivato";
   - Qwen3.5-4B: Apache-2.0. Per Qwen l'ambiente dei materiali ha anche `torchvision` 0.29.1 (lo vuole il processore
     di immagini).
+
+### PR 3, zone per materiale (17/10/2026): **pronta, in attesa di SAM 3 e delle etichette**
+
+- **Cosa c'è** (`image_to_3dlab/material_zones.py`, `scripts/game_materials.py --zones`, `scripts/zones_trial.py`):
+  1. **Il vocabolario**:
+     - Qwen3.5-4B guarda 4 viste e sceglie fino a 6 materiali da una lista chiusa, che è la stessa del pannello delle
+       etichette (`material_labels.MATERIALS` meno "other"), così zone ed etichette parlano la stessa lingua;
+     - le risposte delle viste si uniscono per frequenza; si può anche dare la lista a mano (`--materials`).
+  2. **La segmentazione**, dietro un'interfaccia sola (`SEGMENTERS`):
+     - `sam3`: SAM 3 (`Sam3Model` in `transformers`, PyTorch puro) dà, per ogni vista e ogni materiale, il punteggio
+       di ogni pixel. Le caratteristiche dell'immagine si calcolano una volta, poi c'è un passaggio per ogni frase;
+     - `sam2`: le regioni automatiche di SAM 2.1, ognuna contornata in rosso e nominata da Qwen3.5 con un ritaglio;
+       le regioni piccole stanno sopra quelle grandi.
+  3. **Il voto sulle UV**:
+     - si fa con il pezzo comune, lisciato dentro le isole;
+     - il metallo che l'asset ha già pesa per "metal";
+     - ogni texel prende il materiale più votato.
+  4. **Le zone**:
+     - le 3 più grandi diventano R, G e B di `T_<nome>_Tint.png`;
+     - la maschera entra nel GLB come `materials[i].extras.assetfurnace.tintMask`, con i nomi in `zones`;
+     - il file accanto al GLB porta `zones[i] = {channel, material, area, mean_linear}`;
+     - resta la regola della v1 (3 passa, 2 avvisa, 1 rimanda indietro; solo per `creature` ed `equipment_part`), che
+       va tra i controlli del file;
+     - la provenienza nomina Qwen3.5 e SAM 3 o SAM 2.1.
+  5. **Valori di partenza per materiale** (`DEFAULT_PBR`, sull'esempio di MaterialSeg3D++): sono il ripiego della PR 6
+     per rugosità e metallo; `zones_trial.py pbr` li misura sugli stessi asset Poly Haven.
+- **Verificato davvero**:
+  - Qwen3.5-4B gira nell'ambiente dei materiali: 9,3 GB di VRAM, circa mezzo secondo per immagine dopo il caricamento;
+  - per avere il processore di immagini serve `torchvision`, già nella PR 5;
+  - gli strati ad attenzione lineare usano il ripiego in PyTorch puro, più lento ma senza compilare kernel;
+  - risposte su viste vere: barile "metal, plastic", sedia "cloth, wood", pallone "leather, cloth".
+- **Non ancora verificato con i pesi veri**: i compiti `segment_sam3` e `regions_sam2` del lavoratore. SAM 3 aspetta il
+  modulo di accesso; SAM 2.1 aspetta la conferma del download (0,84 GB, Apache-2.0).
+- **La prova**:
+  - `zones_trial.py human` conta quanti punti cliccati dall'utente cadono nella zona del loro materiale;
+  - entra con almeno il 75 %, lo stesso numero dell'IoU della sezione 6;
+  - il pannello raccoglie punti, non regioni corrette, quindi un IoU vero non si può calcolare: la soglia si può
+    rivedere quando ci saranno le etichette.
+- **Licenza di SAM 3, letta il 17/10/2026**:
+  - concede l'uso gratuito in tutto il mondo;
+  - vieta le attività soggette all'ITAR e gli usi finali vietati dai controlli sul commercio, cioè scopi militari o
+    bellici, nucleare, spionaggio, sviluppo o uso di armi da fuoco o armi illegali (punto 1.b.v);
+  - Meta può modificarla quando vuole (punto 8);
+  - chi pubblica ricerca deve citarla (punto 1.b.ii);
+  - un'azione legale contro Meta sui materiali fa cadere la licenza (punto 5.b).
+
+  Per un gioco con armi di fantasia il testo non nomina i videogiochi: decide l'utente. Il riassunto sta nella scheda
+  della pagina di installazione.
 
 ## Seguiti
 

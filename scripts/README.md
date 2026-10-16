@@ -128,6 +128,7 @@ The asset's surface, as opposed to its shape.
 | `estimate_pbr.py` | Estimate roughness and metallic for an asset's materials that have none. |
 | `pbr_trial.py` | Run the Poly Haven trial for estimated roughness and metallic. |
 | `baked_light_trial.py` | Build, train and test the learned baked-light check. |
+| `zones_trial.py` | Test tint zones by material, and the roughness and metallic they imply. |
 | `materials_worker.py` | Run a material model on images, inside the materials environment. |
 
 ## Measure and judge

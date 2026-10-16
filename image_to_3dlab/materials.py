@@ -428,15 +428,18 @@ def source_provenance(source: Path) -> dict:
 
 
 def write_provenance(source: Path, source_sha256: str, record: dict, output: Path,
-                     staged: Path | None = None, target: Path | None = None) -> Path:
-    """Carry the source's licence record to the result, adding no models.
+                     staged: Path | None = None, target: Path | None = None,
+                     components: list[dict] | None = None) -> Path:
+    """Carry the source's licence record to the result, adding only the models in `components`.
 
-    The step only does image maths, so the result is licensed exactly as its source.
+    Packing ORM is image maths, so without zones the result is licensed exactly as its source.
     `source_sha256` and `record` are taken when the source is read, so a file replaced
     while the step runs cannot lend the result another hash or licence.
     """
     record = copy.deepcopy(record)
     record["operation"] = OPERATION
+    if components:
+        record["components"] = [*(record.get("components") or []), *components]
     record["input"] = {"path": str(source), "sha256": source_sha256}
     # finalize_output keeps the licence classification under "output": update, never replace
     record["output"] = {**(record.get("output") or {}), "path": str(output),
@@ -619,11 +622,14 @@ def _material_names(document: dict, surfaces_: dict[int, Surface], prefix: str) 
 
 
 def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
-                        texture_prefix: str | None = None) -> MaterialsResult:
+                        texture_prefix: str | None = None, zones: dict | None = None,
+                        zone_record: dict | None = None, profile: str | None = None) -> MaterialsResult:
     """Write the asset back with its own maps packed as ORM, plus its sidecar and licence.
 
     Writes ``<out_dir>/<stem>.glb``, ``<prefix>_ORM.png`` per material beside it,
-    ``<stem>.materials.json`` and ``<stem>.provenance.json``. Raises with a reason for what
+    ``<stem>.materials.json`` and ``<stem>.provenance.json``. With `zones` (``material_zones.find_zones``)
+    each zoned material also gets ``<prefix>_Tint.png`` (R, G, B = its three largest materials),
+    declared in ``materials[i].extras.assetfurnace`` with the zones' names. Raises with a reason for what
     cannot be packed without damage (compressed geometry, unlit materials, maps on another
     UV layout, one AO bake for several atlases); writes nothing then.
     """
@@ -696,21 +702,45 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
             material.pop("occlusionTexture", None)
         # The normal map is the finish step's bake from the dense mesh, or none: never invented.
         maps["normal"] = "kept" if "normalTexture" in material else "none"
+        zone_list = []
+        zone = (zones or {}).get(surface.material)
+        if zone is not None:
+            from image_to_3dlab import material_zones as mz
+
+            tint = fill_gutter(zone.mask(), coverage)
+            written["tint"] = out_dir / f"{names[surface.material]}_Tint.png"
+            images.append((written["tint"], tint))
+            tint_tex, binary = add_texture(document, binary, _png(tint), f"{names[surface.material]}_Tint", sampler)
+            zone_list = mz.zone_records(zone, surface.image)
+            material.setdefault("extras", {}).setdefault("assetfurnace", {}).update(
+                {"tintMask": {"index": tint_tex, **info}, "zones": [z["material"] for z in zone_list]})
         per_material.append({"material": surface.material, "name": material.get("name"),
-                             "textures": {k: p.name for k, p in written.items()}, "maps": maps})
+                             "textures": {k: p.name for k, p in written.items()}, "maps": maps,
+                             "zones": zone_list})
 
     drop_unused_extensions(document)
     glb_path = out_dir / f"{stem}.glb"
     sidecar_path = out_dir / f"{stem}.materials.json"
     first = per_material[0]
+    checks, status = [], "pass"
+    if zones:
+        from image_to_3dlab import material_zones as mz
+
+        fewest = min(len(m["zones"]) for m in per_material if m["material"] in zones)
+        zone_status, message = mz.status(fewest, profile)
+        checks.append(check_record("tint_zones", zone_status, fewest, 3, message,
+                                   {"profile": profile, **{k: v for k, v in (zone_record or {}).items()
+                                                           if k != "components"}}))
+        status = worst([zone_status])
+    textures = {**first["textures"], "orm_channels": {"R": "occlusion", "G": "roughness", "B": "metallic"},
+                "srgb": {"orm": False, **({"tint": False} if "tint" in first["textures"] else {})}}
     sidecar = {"schema": SIDECAR_SCHEMA, "asset": asset.name, "source_sha256": source_sha256,
-               "status": "pass", "glb": glb_path.name, "zones": [], "checks": [],
-               "textures": {**first["textures"],
-                            "orm_channels": {"R": "occlusion", "G": "roughness", "B": "metallic"},
-                            "srgb": {"orm": False}},
+               "status": status, "glb": glb_path.name, "zones": first["zones"], "checks": checks,
+               "textures": textures,
                "maps": first["maps"], "materials": per_material,
                "untextured": untextured_materials(glb.document)}
     _publish(out_dir, images, build_glb(document, binary), glb_path, sidecar, sidecar_path,
-             lambda staged, target: write_provenance(asset, source_sha256, licence, glb_path, staged, target))
-    return MaterialsResult("pass", glb_path, sidecar_path,
-                           {"orm": out_dir / first["textures"]["orm"]}, first["maps"])
+             lambda staged, target: write_provenance(asset, source_sha256, licence, glb_path, staged, target,
+                                                     (zone_record or {}).get("components")))
+    return MaterialsResult(status, glb_path, sidecar_path,
+                           {kind: out_dir / name for kind, name in first["textures"].items()}, first["maps"])

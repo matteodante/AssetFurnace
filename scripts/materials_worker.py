@@ -11,7 +11,8 @@ and where each answer goes::
      "steps": null, "ensemble": 1, "resolution": 768, "seed": 0, "background": 0.5,
      "result": "<where to write the run record>"}
 
-``yes_no`` and ``name_materials`` ask Qwen3.5-4B a ``"question"`` about each image, reasoning
+``segment_sam3`` scores every pixel against each phrase with SAM 3; ``regions_sam2`` gives SAM
+2.1's automatic regions. ``yes_no`` and ``name_materials`` ask Qwen3.5-4B a ``"question"`` about each image, reasoning
 switched off: the first gives P(yes) from the first token's logits, the second the short free
 answer. For ``intrinsics``, each ``out`` gets one float16 HxWx3 array per target the model predicts (``albedo``,
 ``shading``, ``residual`` for Lighting), in [0, 1], in the space the model declares. A
@@ -118,7 +119,56 @@ def name_materials(job: dict) -> dict:
             "torch": torch.__version__}
 
 
-TASKS = {"intrinsics": intrinsics, "yes_no": yes_no, "name_materials": name_materials}
+def segment_sam3(job: dict) -> dict:
+    """For each image and each phrase, how likely every pixel is to be that phrase (SAM 3).
+
+    Each ``out`` gets ``scores``, P x H x W float16: the highest score of the instances that
+    cover the pixel, 0 where none does.
+    """
+    import torch
+    from transformers import Sam3Model, Sam3Processor
+
+    started = time.perf_counter()
+    processor = Sam3Processor.from_pretrained(job["model"], local_files_only=True)
+    model = Sam3Model.from_pretrained(job["model"], local_files_only=True).to("cuda").eval()
+    texts = {p: processor(text=p, return_tensors="pt").to("cuda") for p in job["phrases"]}
+    for item in job["images"]:
+        picture = composite(Image.open(item["path"]), float(job.get("background", 0.84)))
+        inputs = processor(images=picture, return_tensors="pt").to("cuda")
+        size = [(picture.height, picture.width)]
+        scores = np.zeros((len(job["phrases"]), picture.height, picture.width), np.float32)
+        with torch.inference_mode():
+            vision = model.get_vision_features(pixel_values=inputs.pixel_values)
+            for p, phrase in enumerate(job["phrases"]):
+                outputs = model(vision_embeds=vision, **texts[phrase])
+                found = processor.post_process_instance_segmentation(outputs, threshold=0.3, mask_threshold=0.5,
+                                                                     target_sizes=size)[0]
+                for mask, score in zip(found["masks"], found["scores"]):
+                    scores[p] = np.maximum(scores[p], mask.float().cpu().numpy() * float(score))
+        np.savez_compressed(item["out"], scores=scores.astype(np.float16))
+    return {"images": len(job["images"]), "phrases": job["phrases"],
+            "seconds": round(time.perf_counter() - started, 1), "torch": torch.__version__}
+
+
+def regions_sam2(job: dict) -> dict:
+    """SAM 2.1's automatic regions for each image: ``masks``, R x H x W, at most 64, largest first."""
+    import torch
+    from transformers import pipeline
+
+    started = time.perf_counter()
+    generator = pipeline("mask-generation", model=job["model"], device=0, dtype=torch.float32)
+    for item in job["images"]:
+        picture = composite(Image.open(item["path"]), float(job.get("background", 0.84)))
+        found = generator(picture, points_per_batch=64, pred_iou_thresh=0.86, stability_score_thresh=0.9)
+        masks = sorted((np.asarray(m, bool) for m in found["masks"]), key=lambda m: -int(m.sum()))[:64]
+        stack = np.stack(masks) if masks else np.zeros((0, picture.height, picture.width), bool)
+        np.savez_compressed(item["out"], masks=stack)
+    return {"images": len(job["images"]), "seconds": round(time.perf_counter() - started, 1),
+            "torch": torch.__version__}
+
+
+TASKS = {"intrinsics": intrinsics, "yes_no": yes_no, "name_materials": name_materials,
+         "segment_sam3": segment_sam3, "regions_sam2": regions_sam2}
 
 
 def main(argv: list[str]) -> int:
