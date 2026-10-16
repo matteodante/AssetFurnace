@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces in the studio: a **Pieces** page with the three ways to make a
+  character (one piece through + Create; a dressed character split into pieces; a bare base
+  body with sets of equipment), base bodies registered from rigged humanoids in the Library,
+  the slots with their route, two shoulder pieces or one, words per piece, a weapon and a
+  shield, a run followed live (`viewer/slot_parts_api.py` starts `slot_parts.py run`), and
+  the sets made so far, each shown on its trimmed body.
 - Characters in pieces, route B0 fallback (`slot_parts/segment.py`,
   `scripts/blender_segment_parts.py`): a slot set to `B0` (`--slots torso:B0`) is cut from
   the whole concept made once in 3D. Visible faces read the slot map, hidden ones the base

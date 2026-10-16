@@ -289,7 +289,7 @@ def make_concept(body_json: Path, outfit: str, folder: Path, seeds: list[int], s
     return folder / f"s{seeds[0]}.png", {"prompt": prompt, "seed": seeds[0], "seeds": list(seeds)}
 
 
-def run_set(body_json: Path, set_name: str, slot_text: str, outfit: str = "", concept: Path | None = None,
+def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str = "", concept: Path | None = None,
             weapon: str | None = None, shield: str | None = None, concept_seeds=(3,), seeds=(3,), style: str = "",
             root: Path = Path("output/sets"), run=_run, edit=edit_command, generate=text_command,
             fitter=None, checker=None) -> Path:
@@ -299,7 +299,7 @@ def run_set(body_json: Path, set_name: str, slot_text: str, outfit: str = "", co
     record = body_mod.load(body_json)
     if not body_mod.NAME.match(set_name):
         raise ValueError(f"set name {set_name!r}: letters, digits, '.', '_' or '-'")
-    raw = parse_slots(slot_text) if slot_text else {}
+    raw = dict(slot_text) if isinstance(slot_text, dict) else parse_slots(slot_text) if slot_text else {}
     for slot, words in (("weapon", weapon), ("shield", shield)):
         if words is not None:
             raw[slot] = {"prompt": words}
@@ -408,6 +408,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--body", type=Path, required=True)
     r.add_argument("--set", required=True, dest="set_name", help="the set's name, a folder name")
     r.add_argument("--slots", default="", help="as for cuts; empty for a weapon or shield only")
+    r.add_argument("--slots-json", type=Path, help="the slots as JSON, {slot: {route, split, prompt}} (the studio's way)")
     r.add_argument("--outfit", default="", help="the outfit in words, drawn on the body")
     r.add_argument("--concept", type=Path, help="a concept already drawn on the body (mode 2)")
     r.add_argument("--weapon", help="a weapon made on its own, in words")
@@ -419,7 +420,8 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     try:
         if args.command == "run":
-            path = run_set(args.body, args.set_name, args.slots, args.outfit, args.concept, args.weapon, args.shield,
+            slot_text = json.loads(args.slots_json.read_text()) if args.slots_json else args.slots
+            path = run_set(args.body, args.set_name, slot_text, args.outfit, args.concept, args.weapon, args.shield,
                            [int(s) for s in args.concept_seeds.split(",") if s.strip()],
                            [int(s) for s in args.seeds.split(",") if s.strip()], args.style, args.root)
             print(f"wrote {path}")

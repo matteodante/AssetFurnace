@@ -8,6 +8,7 @@ import { stepBody, wireStep } from './steps.js';
 import { openCreate, runChain } from './create.js';
 import { openActivity, openAbout, openGuide, closeSheet } from './pages.js';
 import { openBatches } from './batch.js';
+import { openSlotParts } from './slot-parts.js';
 import { STEP_LABELS } from './plan.js';
 import { createBlenderPanel, initialRevision, revisionFor } from './blender-edit.js';
 import { openReview, renderReviewPanel, fetchQueue, fetchItem } from './review.js';
@@ -464,6 +465,28 @@ $('batchesBtn').addEventListener('click', () => openBatches($('stage'), { open: 
   const asset = assets.find((a) => a.finished === file || a.model === file);
   if (asset) show(asset);
 } }));
+
+// a set of pieces is not a Library asset: show its preview (body trimmed under the pieces)
+function showSet(file, title) {
+  closeSheet($('stage'));
+  current = null;
+  viewingMaking = false;
+  $('progress').hidden = true;
+  renderLibrary();
+  blenderPanel.update(null);
+  unrealPanel.update(null);
+  $('hideBtn').hidden = true;
+  $('steps').innerHTML = '<li class="meta">Each piece of this set is in Review, with its checks.</li>';
+  $('sideKind').textContent = 'Set';
+  $('vTitle').textContent = title || fileName(file);
+  $('vMeta').textContent = 'Pieces on their base body';
+  setDownload(file);
+  viewer.setFacing(null);
+  viewer.setClips([]);
+  viewer.load(url(file), { label: title, turntable: true });
+}
+$('piecesBtn').addEventListener('click', () => openSlotParts($('stage'), { assets: () => assets, open: showSet,
+  create: () => openCreateSheet() }));
 
 // ------------------------------------------------------------------ Review
 function setReviewCount(payload) {
