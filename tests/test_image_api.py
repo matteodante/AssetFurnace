@@ -1,7 +1,7 @@
 """Tests for the text-to-image step in the viewer.
 
 A generation run costs minutes, so everything cheap is checked here: that the command line
-is the measured-fast one rather than the upstream default, that a prompt cannot smuggle
+is the Turbo recipe on the Turbo weights, that a prompt cannot smuggle
 arguments, that progress lines parse, and that the non-commercial licence reaches the
 sidecar. The pure functions are imported, never re-implemented.
 """
@@ -42,12 +42,26 @@ def command_for(prompt="a fox", **overrides):
                              binary=Path("/bin/sd-cli"))
 
 
-def test_defaults_are_the_measured_fast_ones():
-    """cfg 6.0 (the upstream recipe) makes the model do two passes per step for nothing:
-    17 minutes against 11 for an identical picture. 768/10 steps was 4m22s."""
+def test_defaults_are_the_turbo_recipe():
+    """The Turbo checkpoint is distilled for 8 steps at cfg 1.0. The base checkpoint at those
+    numbers gave blurred pictures with ghost shapes (compared 2026-10-16); 1536 px added
+    things nobody asked for, so 1024."""
     assert api.DEFAULTS["cfg_scale"] == 1.0
-    assert api.DEFAULTS["steps"] == 8  # tested by eye against 10: nothing visible lost
-    assert api.DEFAULTS["width"] == api.DEFAULTS["height"] == 768
+    assert api.DEFAULTS["steps"] == api.TURBO_STEPS == 8
+    assert api.DEFAULTS["width"] == api.DEFAULTS["height"] == 1024
+
+
+def test_the_image_model_is_the_turbo_checkpoint():
+    """The 8-step recipe only works on the Turbo weights; on the base ones it stops half way."""
+    directory, filename = api.WEIGHT_FILES["diffusion_model"]
+    assert "Turbo" in directory and "turbo" in filename
+
+
+def test_command_uses_the_turbo_schedule_not_a_step_count():
+    """The Turbo's sigmas set the step count; a separate --steps would fight them."""
+    command = command_for(steps=40)
+    assert command[command.index("--sigmas") + 1] == "qwen-image-2.1-turbo"
+    assert "--steps" not in command
 
 
 def test_offload_to_cpu_is_not_used():
@@ -69,8 +83,8 @@ def test_prompt_is_one_argument_not_shell_text():
     nasty = 'a fox"; rm -rf / #  --steps 500 --seed 9'
     command = command_for(nasty)
     assert command[command.index("-p") + 1] == nasty
-    assert command.count("--steps") == 1
-    assert command[command.index("--steps") + 1] == str(api.DEFAULTS["steps"])
+    assert command.count("--sigmas") == 1
+    assert "--steps" not in command
 
 
 def test_negative_prompt_only_appears_when_asked():
@@ -89,15 +103,16 @@ def test_sizes_are_snapped_to_a_multiple_of_32(given, expected):
     assert expected % api.SIZE_STEP == 0
 
 
-@pytest.mark.parametrize("field,given", [("steps", "lots"), ("cfg_scale", None),
+@pytest.mark.parametrize("field,given", [("cfg_scale", None),
                                          ("seed", "abc"), ("width", {})])
 def test_rubbish_settings_fall_back_to_defaults(field, given):
     assert api.clean_settings({field: given})[field] == api.DEFAULTS[field]
 
 
-def test_steps_are_capped():
-    assert api.clean_settings({"steps": 9999})["steps"] == api.MAX_STEPS
-    assert api.clean_settings({"steps": 0})["steps"] == 1
+def test_steps_from_the_form_are_not_taken():
+    """What runs is the Turbo's eight sigmas, so the record says 8 whatever was asked."""
+    for asked in (9999, 0, "lots", 40):
+        assert api.clean_settings({"steps": asked})["steps"] == api.TURBO_STEPS
 
 
 def test_unknown_sampler_falls_back():
@@ -177,8 +192,8 @@ def test_a_finished_job_frees_the_slot(tmp_path):
 
 
 def test_missing_weights_names_what_is_missing():
-    exc = api.MissingWeights(["qwen_image_2.1-Q8_0.gguf"])
-    assert "qwen_image_2.1-Q8_0.gguf" in str(exc)
+    exc = api.MissingWeights(["qwen-image-2.1-turbo-Q8_0.gguf"])
+    assert "qwen-image-2.1-turbo-Q8_0.gguf" in str(exc)
     assert "Setup & Status" in str(exc)
 
 
