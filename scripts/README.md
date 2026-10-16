@@ -155,6 +155,7 @@ These talk to a running Blender over the `execute_code` socket on port 9876 unle
 | `blender_turntable.py` | Render a seamlessly looping 360-degree turntable of a GLB via the Blender MCP scene. |
 | `blender_light_orbit.py` | Render a GLB under an orbiting key light, holding the camera still. |
 | `blender_render_views.py` | Render a GLB's albedo unlit from an orbit of views, with the UV and normal of every pixel. |
+| `blender_concept_views.py` | Render a GLB for a concept: a lit colour picture and a depth map per view, plus the bones. |
 | `blender_lineup_sweep.py` | Render a camera sweep past a line-up of assets, headless. |
 | `blender_orbit_camera.py` | Point an orbit camera at a target and (optionally) render. |
 | `blender_inspect.py` | Inspect a Blender scene or an unopened .blend file's contents. |
