@@ -30,7 +30,9 @@ once per seed (`pieces/<slot>/s<seed>.png`, with a `.concept.json` record), then
 picture (`--pick slot=seed`, else the first seed) goes through Pixal3D, the finish step and
 `fix_winding.py`. `pieces.json` says, per slot, which picture, which GLB and where the piece
 sits on the concept. `--images-only` stops before 3D so a person can pick; `--models-only`
-reuses the pictures already made.
+reuses the pictures already made. A slot set to `B0` in `cuts` (`--slots torso:B0`) is the
+fallback: the whole concept goes through Pixal3D once and `blender_segment_parts.py` cuts
+those slots out of it.
 
 `body --clip walk=body_walk.glb` records the body's own animated clips (Kimodo, retargeted
 onto that rig); the checks pose the pieces with them.
@@ -110,7 +112,7 @@ def make_cuts(body_json: Path, concept: Path, chosen: dict[str, dict], out: Path
     Image.fromarray(labels).save(out / "slots.png")
     Image.fromarray(masks.overlay(rgb, labels)).save(out / "overlay.png")
     result = {"body": str(Path(body_json).resolve()), "concept": str(Path(concept).resolve()),
-              "subject_from": source, "canvas": size, "slots": {}, "skipped": {}}
+              "cuts_dir": str(out.resolve()), "subject_from": source, "canvas": size, "slots": {}, "skipped": {}}
     for name, options in chosen.items():
         if name not in slots.DRAWN:
             result["skipped"][name] = "made on its own, from a prompt, not cut from the concept"
@@ -188,8 +190,44 @@ def make_pieces(cuts_json: Path, seeds: list[int], picks: dict[str, int] | None 
                 "seed": seed, "picture": str(picture), "glb": str(pieces.finished_path(folder, slot)),
                 "views": str(pieces.model_path(folder, slot).with_suffix(".svviews")),
                 "concept_box": pieces.concept_box(alpha, place)}
+        b0 = [slot for slot, entry in record["slots"].items() if entry.get("route") == "B0"]
+        if b0:
+            result["slots"].update(make_b0(record, b0, folder, run))
         pieces.write_record(folder / "pieces.json", result)
     return result
+
+
+def make_b0(cut_record: dict, chosen: list[str], folder: Path, run=_run, blender: Path | None = None) -> dict:
+    """Route B0 for the given slots: the whole concept in 3D, split by slot in Blender."""
+    from image_to_3dlab.blender import find_blender, missing_help
+    from image_to_3dlab.slot_parts import camera
+
+    concept = Path(cut_record["concept"])
+    for command in pieces.b0_commands(concept, folder, sys.executable, REPO / "scripts"):
+        run(command)
+    model = folder / "b0" / "model" / "concept_finished.glb"
+    views = model.with_name("concept.svviews")
+    matte = concept.with_name(f"{concept.stem}__matted.png")
+    alpha = np.asarray(Image.open(matte).convert("RGBA"))[..., 3] > 127
+    cam = camera.from_views(views, alpha)
+    slot_map = folder / "b0" / "slots.npy"
+    slot_map.parent.mkdir(parents=True, exist_ok=True)
+    np.save(slot_map, np.asarray(Image.open(Path(cut_record.get("cuts_dir", folder.parent / "cuts")) / "slots.png")))
+    with Image.open(concept) as picture:
+        size = list(picture.size)
+    job = {"model": str(model), "camera": cam.to_dict(), "slot_map": str(slot_map), "body": cut_record["body"],
+           "concept_size": size, "chosen": chosen, "out": str(folder / "b0")}
+    path = folder / "b0" / "job.json"
+    path.write_text(json.dumps(job, indent=1) + "\n")
+    blender = blender or find_blender()
+    if blender is None:
+        raise ValueError(missing_help())
+    run([str(blender), "-b", "--factory-startup", "--python-exit-code", "1", "--python",
+         str(REPO / "scripts" / "blender_segment_parts.py"), "--", str(path)])
+    seg = json.loads((folder / "b0" / "segment.json").read_text())
+    box = list(camera.alpha_box(alpha))
+    return {slot: {"route": "B0", "glb": seg["files"][slot], "concept_box": box, "frame": seg["frame"]}
+            for slot in chosen if slot in seg["files"]}
 
 
 def text_command(prompt: str, picture: Path, seed: int) -> list[str]:
@@ -306,8 +344,8 @@ def fit_job(pieces_json: Path, body_json: Path, out: Path, options: dict | None 
         size = list(concept.size)
     if not record["slots"]:
         raise ValueError(f"{pieces_json} has no pieces: run the pieces command first")
-    entries = [{"slot": slot, "glb": entry["glb"], **({"concept_box": entry["concept_box"]}
-                                                       if "concept_box" in entry else {})}
+    entries = [{"slot": slot, "glb": entry["glb"],
+                **{k: entry[k] for k in ("concept_box", "frame") if k in entry}}
                for slot, entry in record["slots"].items()]
     return {"body": str(Path(body_json).resolve()), "concept_size": size, "out": str(Path(out).resolve()),
             "pieces": entries, **(options or {})}

@@ -90,6 +90,16 @@ def model_commands(picture: Path, folder: Path, slot: str, python: str, scripts:
     ]
 
 
+def b0_commands(concept: Path, folder: Path, python: str, scripts: Path, faces: int = 40000) -> list[list[str]]:
+    """Route B0: the whole concept through Pixal3D and the finish step, once for every B0 slot."""
+    glb = Path(folder) / "b0" / "model" / "concept.glb"
+    return [
+        [python, str(scripts / "pixal3d_generate.py"), str(concept), str(glb)],
+        [python, str(scripts / "retopo_repaint.py"), str(glb), str(concept), str(glb.with_name("concept_finished.glb")),
+         "--faces", str(faces), "--skip-paint", "--views", str(glb.with_suffix(".svviews"))],
+    ]
+
+
 def concept_box(piece_alpha: np.ndarray, placement: cuts.Placement) -> list[float]:
     """The completed piece's box in its picture, mapped back onto the concept."""
     return [round(v, 2) for v in placement.to_concept(camera.alpha_box(piece_alpha))]

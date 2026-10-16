@@ -179,6 +179,26 @@ def main() -> None:  # pragma: no cover - runs inside Blender
             bpy.ops.object.modifier_apply(modifier="dec")
         return cage
 
+    def split_sides(obj, slot, centre_x):
+        """A paired piece cut from a whole model holds both sides: one object per side."""
+        out = []
+        for side, keep in (("R", lambda x: x < centre_x), ("L", lambda x: x >= centre_x)):
+            dup = obj.copy()
+            dup.data = obj.data.copy()
+            bpy.context.collection.objects.link(dup)
+            dup.name = f"{slot}_{side}"
+            b = bmesh.new()
+            b.from_mesh(dup.data)
+            bmesh.ops.delete(b, geom=[f for f in b.faces if not keep(f.calc_center_median().x)], context="FACES")
+            b.to_mesh(dup.data)
+            b.free()
+            if len(dup.data.polygons):
+                out.append((dup, side))
+            else:
+                bpy.data.objects.remove(dup, do_unlink=True)
+        bpy.data.objects.remove(obj, do_unlink=True)
+        return out
+
     def cage_fit(obj, body_obj):
         """Surface Deform onto a voxel cage, trying a few cage sizes: whether it binds hangs on
         small details of the cage's topology (one torso bound at 0.007 and not at 0.0065)."""
@@ -311,8 +331,8 @@ def main() -> None:  # pragma: no cover - runs inside Blender
             m, place = fit.placement(coords(obj), box, cam, float((body_co[:, 1].min() + body_co[:, 1].max()) / 2),
                                      frame=piece["frame"])
             apply(obj, m)
-            group = [(obj, None)]
             info["placement"] = {obj.name: place}
+            group = split_sides(obj, slot, float(heads[root][0])) if paired else [(obj, None)]
         else:
             group = [(obj, "R" if paired else None)]
             if paired:
