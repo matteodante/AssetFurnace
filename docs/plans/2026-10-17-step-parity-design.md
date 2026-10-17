@@ -323,10 +323,10 @@ questa lista prima del resoconto finale.
 | Set vero 6: frammenti staccati | PR #87 |
 | Set vero 7: giudice mancante senza avviso | PR #88 |
 | Decisione A: come è vestito il corpo base (tutina, abiti semplici, intimo, testo libero), scelto alla registrazione su tre strade, in `body.json` | aperto |
-| Decisione B: nello studio un set si ferma dopo le immagini, scelta automatica evidenziata, un clic per il 3D; CLI e agenti con un flag | aperto |
+| Decisione B: nello studio un set si ferma dopo le immagini, scelta automatica evidenziata, un clic per il 3D; CLI e agenti con un flag | era già così; fissato con un test: PR #89 |
 | Decisione C: arma e scudo come static mesh su un socket della mano in Unreal (`hand_r` / `hand_l`), non pezzi skinnati | aperto |
 | C, collegato: l'arma segue l'osso del dito `middle_02_r` (i diti ereditano il ruolo "hand"); test sull'osso padre | aperto |
-| Decisione D: giudice (llama.cpp + Qwen3-VL) installato nel checkout principale con il bootstrap; Setup lo mostra; il lavoro avvisa | avviso e Setup: PR #88; installazione: aperto |
+| Decisione D: giudice (llama.cpp + Qwen3-VL) installato nel checkout principale con il bootstrap; Setup lo mostra; il lavoro avvisa | installato il 17/10 (bootstrap_style.py --only llama, provato: risponde in 13 s); avviso e Setup: PR #88 |
 | Decisione E: mantello (nuovo slot con fisica della stoffa) rimandato | scritto nei seguiti del progetto dei pezzi (#80) |
 | MCP 1: annotazioni degli strumenti (readOnly, destructive, idempotent, title) | aperto |
 | MCP 2: risultati tipizzati (outputSchema, structuredContent) | aperto |
