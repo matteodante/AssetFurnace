@@ -37,7 +37,7 @@ def launched(monkeypatch, tmp_path):
 
 def test_describe_steps_is_the_catalogue_with_what_is_installed():
     steps = {step["name"]: step for step in mcp_server.describe_steps()["steps"]}
-    assert list(steps)[:3] == ["picture", "generate", "finish"]
+    assert list(steps)[:4] == ["picture", "concept", "generate", "finish"]
     assert steps["finish"]["available"] and steps["picture"]["candidates"] == "count"
     assert any(param["name"] == "faces" for param in steps["finish"]["params"])
     assert steps["materials"] == {"name": "materials", "available": False, "described": False}

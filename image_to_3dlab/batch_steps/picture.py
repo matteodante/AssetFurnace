@@ -10,23 +10,15 @@ lock held while it draws. Options (`"picture": {...}`, described in `step_catalo
 MCP tool `pick_candidate`. The candidates are kept in `rows/<id>/picture.candidates/`, a
 folder the runner never empties, so a pick (or another pick later) copies one of them and
 draws nothing again; only new words or settings draw again. A pick made through the MCP
-server holds for the candidates it was made among (`candidate_key`): new words or
-settings make the row wait for a new one. The chosen picture is
+server holds for the candidates it was made among (their key, `_candidates`): new words
+or settings make the row wait for a new one. The chosen picture is
 `picture/<id>.png` with its `.provenance.json`, and the next step (`generate`) reads it.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
-import shutil
-from pathlib import Path
-
 from image_to_3dlab import step_catalog, text_image
-from image_to_3dlab.batch_steps import StepContext, StepResult
-
-CANDIDATES = "picture.candidates"
-INDEX = "candidates.json"
+from image_to_3dlab.batch_steps import StepContext, StepResult, _candidates
 
 
 def readiness() -> list[str]:
@@ -59,60 +51,10 @@ def seeds_of(options: dict) -> list[int]:
     return [first + offset for offset in range(int(options.get("count", 1)))]
 
 
-def candidate_key(row: dict) -> str:
-    """What the candidates are drawn from (the words, the settings, the seeds), without
-    the pick: a pick made for one key means nothing for another. `row` holds the row's
-    `prompt` and the step's `options`."""
-    options = row.get("options") or {}
-    payload = {"prompt": row.get("prompt") or "", "settings": settings_of(options), "seeds": seeds_of(options)}
-    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
-
-
-def candidates(ctx: StepContext) -> tuple[str, dict[int, Path]]:
-    """The pictures for this prompt and these settings, and their key: those already drawn
-    for the same key are kept (one by one, so a run stopped after two of four draws only
-    the other two); another key clears the folder, so it never mixes two prompts."""
-    folder = ctx.row_dir / CANDIDATES
-    key = candidate_key({"prompt": ctx.row.prompt, "options": ctx.options})
-    index = folder / INDEX
-    try:
-        kept = json.loads(index.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        kept = {}
-    seeds = seeds_of(ctx.options)
-    pictures = {seed: folder / f"s{seed}.png" for seed in seeds}
-    if kept.get("key") != key:
-        if folder.exists():
-            shutil.rmtree(folder)
-        kept = {"key": key, "done": []}
-    folder.mkdir(parents=True, exist_ok=True)
-    for seed, path in pictures.items():
-        if seed in kept["done"] and path.is_file():
-            continue
-        ctx.log(f"picture: seed {seed}")
+def run(ctx: StepContext) -> StepResult:
+    def draw(seed, path):
         text_image.generate(ctx.row.prompt or "", {**settings_of(ctx.options), "seed": seed}, path,
                             log=ctx.log, session=f"batch picture {ctx.row.id}")
-        kept["done"] = sorted({*kept["done"], seed})
-        index.write_text(json.dumps(kept) + "\n", encoding="utf-8")
-    return key, pictures
 
-
-def run(ctx: StepContext) -> StepResult:
-    key, pictures = candidates(ctx)
-    seeds = list(pictures)
-    pick = ctx.options.get("pick", seeds[0] if len(seeds) == 1 else None)
-    if pick is None:
-        return StepResult(waiting={"key": key,
-                                   "candidates": [{"choice": seed, "file": pictures[seed]} for seed in seeds]})
-    if pick not in pictures:
-        return StepResult(ok=False, reason=f"pick {pick} is not one of the pictures drawn "
-                                           f"(seeds {', '.join(map(str, seeds))})")
-    ctx.step_dir.mkdir(parents=True, exist_ok=True)
-    chosen = ctx.step_dir / f"{ctx.row.id}.png"
-    shutil.copyfile(pictures[pick], chosen)
-    record = json.loads(pictures[pick].with_suffix(".provenance.json").read_text(encoding="utf-8"))
-    record["picked"] = {"seed": pick, "from": seeds}
-    sidecar = chosen.with_suffix(".provenance.json")
-    sidecar.write_text(json.dumps(record, indent=2), encoding="utf-8")
-    return StepResult(picture=chosen, files=[chosen, sidecar],
-                      record={"seed": pick, "candidates": seeds, "key": key})
+    pictures = _candidates.draw_all(ctx, "picture", seeds_of(ctx.options), draw)
+    return _candidates.choose(ctx, pictures)

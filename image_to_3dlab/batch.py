@@ -42,7 +42,7 @@ import sys
 import time
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -56,7 +56,8 @@ REPO = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = REPO / "output" / "batches"
 
 # Stable names: functions 5, 7 and 8 plug in under these. Order here is only for listing.
-STEP_NAMES = ("picture", "generate", "finish", "rig", "animate", "materials", "export_unreal", "checks")
+STEP_NAMES = ("picture", "concept", "generate", "finish", "rig", "animate", "materials", "export_unreal",
+              "checks")
 STEP_PACKAGE = "image_to_3dlab.batch_steps"
 # Steps installed by hand, over the modules: tests use this for fakes.
 STEPS: dict[str, Any] = {}
@@ -83,7 +84,7 @@ INDEX_FILE = "outputs.json"
 SPEC_COPY = "spec.json"
 PICKS_FILE = "picks.json"   # {row id: {step: {"choice", "key"}}}, written by pick_candidate
 # Steps that make the row's picture: they come before generate.
-PICTURE_STEPS = ("picture",)
+PICTURE_STEPS = ("picture", "concept")
 LOCK_FILE = ".batch.lock"   # in the batches folder, not in one batch: one GPU, one batch
 # A submitter that reserved the lock for a runner hands it the reservation's token.
 LOCK_TOKEN_ENV = "I2L_BATCH_LOCK_TOKEN"
@@ -193,6 +194,13 @@ class BatchRow:
             fingerprints[name] = previous
         return fingerprints
 
+    def candidate_key(self, step: str) -> str:
+        """What a step that makes candidates makes them from: its fingerprint without the
+        pick. The same key, the same candidates; a pick made for one key means nothing
+        for another."""
+        options = {**self.options, step: {k: v for k, v in self.options.get(step, {}).items() if k != "pick"}}
+        return replace(self, options=options).step_fingerprints()[step]
+
 
 # A step the catalogue does not describe yet depends, as far as anyone knows, on all of them.
 UNKNOWN_STEP_FIELDS = ("kind", "faces", "profile", "backend", "parameters", "size_cm", "measure")
@@ -211,6 +219,20 @@ def _file_digests(value: Any) -> Any:
         # result, a row still to run fails on it
         return {"sha256": sha256_file(Path(value))}
     return value
+
+
+def with_picks(row: BatchRow, picks: dict[str, Any]) -> BatchRow:
+    """The row with the picks made through the MCP server or the studio (`picks.json`),
+    each only while the candidates it was made among are still the ones the step would
+    make (its candidate key): new words, settings or inputs before it make it wait again.
+    A pick the spec gives itself always wins."""
+    options = dict(row.options)
+    for step, made in picks.items():
+        if (step not in row.steps or not isinstance(made, dict) or "pick" in options.get(step, {})
+                or made.get("key") != row.candidate_key(step)):
+            continue
+        options[step] = {**options.get(step, {}), "pick": made.get("choice")}
+    return row if options == row.options else replace(row, options=options)
 
 
 def recorded_sidecar(asset: Path | None) -> Path | None:
@@ -490,10 +512,11 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         row, row_problems = _parse_row(raw, defaults, base, number,
                                        staged=output_dir / name / "rows",
                                        ran_with=ran_with, staged_copies=staged_copies,
-                                       saved=saved, used=used, picks=picks)
+                                       saved=saved, used=used)
         problems += row_problems
         if row is None:
             continue
+        row = with_picks(row, picks.get(row.id) or {})
         # rows/<id>/ is a folder: on Windows and macOS `Tree` and `tree` are the same one
         if row.id.lower() in seen:
             problems.append(f"row {number}: id {row.id!r} is used twice (ids are compared "
@@ -508,7 +531,7 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         source = None if "generate" in row.steps else recorded_backend(row.asset)
         gated = ([(row.backend, row.backend)] if "generate" in row.steps else []) + (
             [(source, f"its source ({source})")] if source is not None else []) + (
-            [(PICTURE_MODEL, "the picture model")] if "picture" in row.steps else []) + (
+            [(PICTURE_MODEL, "the picture model")] if {"picture", "concept"} & set(row.steps) else []) + (
             [(REPAINT_BACKEND, "the repaint")]
             if "finish" in row.steps and row.options.get("finish", {}).get("paint") else [])
         for backend, what in gated:
@@ -603,7 +626,6 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
                staged: Path | None = None, ran_with: dict[str, set[str]] | None = None,
                staged_copies: dict[str, list[Path]] | None = None,
                saved: dict[str, Any] | None = None, used: dict[str, str] | None = None,
-               picks: dict[str, dict[str, Any]] | None = None,
                ) -> tuple[BatchRow | None, list[str]]:
     if not isinstance(raw, dict):
         return None, [f"row {number}: must be an object"]
@@ -683,8 +705,12 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
                             "prompt or images, not both")
     elif prompt is not None:
         problems.append(f"{label}: prompt is for the picture step; add \"picture\" to its steps")
+    if ("concept" in steps and not images and "picture" not in steps
+            and not (raw.get("concept") or defaults.get("concept") or {}).get("shape")):
+        problems.append(f"{label}: concept needs a picture to start from: the row's images, a "
+                        "picture step before it, or shape pictures in its settings")
     if "generate" in steps:
-        if not images and "picture" not in steps:
+        if not images and "picture" not in steps and "concept" not in steps:
             problems.append(f"{label}: generate needs an image")
         if asset is not None:
             problems.append(f"{label}: has both an asset and a generate step; pick one")
@@ -744,14 +770,6 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
             if step in step_catalog.CATALOG and step != "generate":
                 problems += [f"{label}: {problem}"
                              for problem in step_catalog.check(step, merged, files=False)]
-    for step, made in ((picks or {}).get(row_id) or {}).items():
-        # only for the candidates it was made among: new words or settings wait again
-        module = load_step(step) if step in STEP_NAMES else None
-        if (module is None or not hasattr(module, "candidate_key") or "pick" in options.get(step, {})
-                or not isinstance(made, dict)):
-            continue
-        if made.get("key") == module.candidate_key({"prompt": value.get("prompt"), "options": options.get(step, {})}):
-            options[step] = {**options.get(step, {}), "pick": made.get("choice")}
     concept = None
     if asset is not None and asset.is_file() and not images:
         concept = recorded_image(asset) or next(
@@ -1396,7 +1414,8 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
         ctx = StepContext(row=row, row_dir=row_dir, step_dir=step_dir, asset=asset,
                           sidecar=sidecar, intent=spec.intent,
                           license_policy=spec.license_policy,
-                          options=row.options.get(name, {}), log=log, picture=picture, clips=clips)
+                          options=row.options.get(name, {}), log=log, picture=picture, clips=clips,
+                          candidate_key=row.candidate_key(name))
         try:
             result = step.run(ctx)
         except KeyboardInterrupt:
@@ -1413,7 +1432,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             candidates = [{**candidate, "file": _relative(Path(candidate["file"]), directory)}
                           for candidate in result.waiting["candidates"]]
             steps[name] = {"status": "waiting", "fingerprint": fingerprints[name],
-                           "candidates": candidates, "key": result.waiting.get("key"), "finished_at": now()}
+                           "candidates": candidates, "key": ctx.candidate_key, "finished_at": now()}
             entry.update(status="waiting", finished_at=now(),
                          note=f"{name}: pick one of {len(candidates)} "
                               f"({', '.join(str(c['choice']) for c in candidates)})")
@@ -1432,6 +1451,8 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             "sidecar": _relative(result.sidecar, directory) if result.sidecar else None,
             **({"picture": _relative(result.picture, directory)} if result.picture else {}),
             **({"clips": [_relative(clip, directory) for clip in result.clips]} if result.clips else {}),
+            # a step that made candidates: the key a later pick (pick_candidate) is made for
+            **({"key": ctx.candidate_key} if (result.record or {}).get("candidates") else {}),
             **({"record": result.record} if result.record else {}),
         }
         save()

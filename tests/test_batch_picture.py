@@ -92,8 +92,8 @@ def test_a_pick_in_the_spec_goes_on_without_drawing_again(tmp_path, drawn, gener
     spec_path = _spec(tmp_path, rows)
     report = batch.run_batch(batch.load_batch(spec_path))
     assert report.exit_code == 0 and drawn == [5, 6, 7] and generator.calls == ["SM_Barrel"]
-    record = _state(spec_path)["rows"]["SM_Barrel"]["steps"]["picture"]["record"]
-    assert record["seed"] == 6 and record["candidates"] == [5, 6, 7] and record["key"]
+    step = _state(spec_path)["rows"]["SM_Barrel"]["steps"]["picture"]
+    assert step["record"] == {"seed": 6, "candidates": [5, 6, 7]} and step["key"]
     # another pick: the picture step only copies, the 3D runs again
     rows[0]["picture"]["pick"] = 7
     spec_path = _spec(tmp_path, rows)

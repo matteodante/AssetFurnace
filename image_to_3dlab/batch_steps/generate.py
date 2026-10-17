@@ -57,15 +57,17 @@ def run(ctx: StepContext) -> StepResult:
     inputs = ctx.row_dir / "input"
     inputs.mkdir(parents=True, exist_ok=True)
     images = []
-    # the row's images, or the picture a step before drew (with its licence record)
-    given = ctx.row.images or ((ctx.picture,) if ctx.picture else ())
+    # the picture a step before drew (with its licence record), the row's images after it
+    # as references; or the row's images as they are
+    drawn_first = ctx.picture is not None and (not ctx.row.images or ctx.picture != ctx.row.images[0])
+    given = ((ctx.picture, *ctx.row.images) if drawn_first else ctx.row.images)
     for image in given:
         copy = inputs / image.name
         if image.resolve() != copy.resolve():   # a resume may read the staged copy itself
             shutil.copyfile(image, copy)
         images.append(copy)
     records = []
-    drawn = ctx.picture.with_suffix(".provenance.json") if ctx.picture and not ctx.row.images else None
+    drawn = ctx.picture.with_suffix(".provenance.json") if drawn_first else None
     if drawn is not None and drawn.is_file():
         shutil.copyfile(drawn, inputs / drawn.name)
         records.append(inputs / drawn.name)

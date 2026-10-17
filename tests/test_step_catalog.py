@@ -24,11 +24,11 @@ def test_the_catalogue_is_plain_json_for_the_studio_and_agents():
     described = step_catalog.describe()
     assert json.loads(json.dumps(described)) == described
     names = [step["name"] for step in described]
-    assert names[:3] == ["picture", "generate", "finish"]
+    assert names[:4] == ["picture", "concept", "generate", "finish"]
     finish = next(step for step in described if step["name"] == "finish")
     faces = next(param for param in finish["params"] if param["name"] == "faces")
     assert faces == {"name": "faces", "type": "int", "default": 40000, "range": [1000, 200000],
-                     "choices": None, "row": True, "help": faces["help"]}
+                     "choices": None, "row": True, "help": faces["help"], "flag": None}
     assert finish["skip"] and finish["replace"] == ["glb"]
 
 
@@ -116,7 +116,7 @@ NOT_SETTINGS = {"-h", "--help", "--out", "--blender", "--check-in-unreal", "--js
 def test_every_setting_of_the_script_is_in_the_catalogue(step, script):
     """The other way round: a flag added to the script and not to the catalogue would be
     out of reach of the batches, the agents and the studio's forms."""
-    described = {f"--{param.name.replace('_', '-')}" for param in step_catalog.CATALOG[step].params}
+    described = {param.cli_flag for param in step_catalog.CATALOG[step].params if param.cli_flag}
     missing = sorted(flag for flag in _flags(script) - NOT_SETTINGS - described if flag.startswith("--"))
     assert missing == [], f"{script} has settings the catalogue does not describe: {missing}"
 
@@ -124,20 +124,36 @@ def test_every_setting_of_the_script_is_in_the_catalogue(step, script):
 def test_every_checks_param_is_a_flag_of_the_checks_script():
     flags = _flags("check_asset")
     for param in step_catalog.CATALOG["checks"].params:
-        if param.name in ("stop_on_fail",):   # a batch decision, not a check setting
-            continue
-        if param.name == "reference":   # the script takes the file; a batch row has its own
-            assert "--reference" in flags
-            continue
-        assert f"--{param.name.replace('_', '-')}" in flags, param.name
+        if param.cli_flag:   # stop_on_fail is a batch decision, not a check setting
+            assert param.cli_flag in flags, param.name
 
 
 def test_every_picture_param_is_a_flag_of_the_picture_script():
     flags = _flags("text_image")
     for param in step_catalog.CATALOG["picture"].params:
-        if param.name in ("prompt", "pick"):   # the script's words, and its pictures are the pick
-            continue
-        assert f"--{param.name.replace('_', '-')}" in flags, param.name
+        if param.cli_flag:   # the words are its argument, and the pictures it writes are the pick
+            assert param.cli_flag in flags, param.name
+
+
+def test_every_concept_param_is_a_flag_of_the_concept_script():
+    sys.path.insert(0, str(REPO / "scripts"))
+    import reference_concept
+
+    make = reference_concept.parser()._subparsers._group_actions[0].choices["make"]
+    flags = {flag for action in make._actions for flag in action.option_strings}
+    described = {param.cli_flag for param in step_catalog.CATALOG["concept"].params if param.cli_flag}
+    assert described <= flags, described - flags
+    assert flags - described - {"-h", "--help"} == set()
+
+
+def test_the_concept_choices_are_the_prompts_own():
+    from image_to_3dlab.concept import prompts
+
+    spec = step_catalog.CATALOG["concept"]
+    assert spec.param("mode").choices == prompts.MODES
+    assert spec.param("structure").choices == tuple(prompts.STRUCTURES)
+    assert spec.param("guide").choices == prompts.GUIDES
+    assert spec.param("view").choices == tuple(prompts.VIEWS)
 
 
 def test_the_picture_settings_match_the_engine():

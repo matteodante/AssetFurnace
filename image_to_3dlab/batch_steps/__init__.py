@@ -53,6 +53,9 @@ class StepContext:
     log: Callable[[str], None]
     picture: Path | None = None   # the row's current picture: its first image, or a drawn one
     clips: list[Path] = field(default_factory=list)   # animated GLBs a step before made
+    # for a step that makes candidates: what they are made from (its fingerprint without
+    # the pick), to keep them across runs and to tell a pick still holds
+    candidate_key: str | None = None
 
 
 @dataclass
