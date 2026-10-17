@@ -183,7 +183,13 @@ status telling you exactly what's missing:
   Mac it compiles with Metal (needs full Xcode). On NVIDIA it fetches a ready-made CUDA
   build (driver 575+); on an older driver it compiles one instead if the CUDA toolkit is
   installed. It also installs BiRefNet-lite, the background remover
-  (224 MB), so thin and light-coloured parts survive the cut-out.
+  (224 MB), so thin and light-coloured parts survive the cut-out, and MoGe-2 (1.3 GB, MIT,
+  with its own PyTorch in `vendor/moge/`), which estimates each picture's camera as Pixal3D's
+  official recipe does (TencentARC/Pixal3D `inference.py`, read 17/10/2026: 12 steps in every
+  flow, the field of view from MoGe-2, on the recipe's own crop; the structure guidance stays at 10
+  where the recipe has 7.5, which dropped a sword blade). An install from before sets it up with
+  `python scripts/bootstrap_pixal3d.py --moge`; without it the camera is the 20° gauge, and the
+  run says so.
   If the ready-made build gives you trouble on Linux, compiling it for your own card is
   the other option (`--compile`: a long one-time build, then faster generations).
   **Agent instruction:** if a user's NVIDIA Pixal3D install fails or will not run, compile

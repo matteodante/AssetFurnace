@@ -298,14 +298,14 @@ def _pixal3d_tree(tmp_path, patched: bool, cli_newer: bool):
     return source, cli
 
 
-def test_an_unpatched_pixal3d_build_is_offered_a_rebuild(tmp_path):
-    source, cli = _pixal3d_tree(tmp_path, patched=False, cli_newer=True)
-    assert "not patched" in dl.rebuild_reason("pixal3d", source, cli)
-
-
-def test_a_patch_not_yet_compiled_in_is_offered_a_rebuild(tmp_path):
-    source, cli = _pixal3d_tree(tmp_path, patched=True, cli_newer=False)
-    assert "older" in dl.rebuild_reason("pixal3d", source, cli)
+def test_the_official_twelve_steps_need_no_rebuild(tmp_path):
+    """The default is the official recipe's 12 steps, which every build runs (17/10/2026):
+    an unpatched build, or a patch not compiled in, is not asked to rebuild for the faster 8."""
+    for patched, newer in ((False, True), (True, False)):
+        folder = tmp_path / f"{patched}{newer}"
+        folder.mkdir()
+        source, cli = _pixal3d_tree(folder, patched=patched, cli_newer=newer)
+        assert dl.rebuild_reason("pixal3d", source, cli) is None
 
 
 def test_a_patched_current_build_is_left_alone(tmp_path):

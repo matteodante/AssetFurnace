@@ -23,6 +23,15 @@ from tests.test_glb_turn import make_glb, read
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "pixal3d_generate.py"
 
 
+
+@pytest.fixture(autouse=True)
+def no_moge(monkeypatch):
+    """These tests are about the CLI, not the camera estimate: MoGe-2 counts as not set up,
+    whatever this machine has (tests/test_pixal3d_official_recipe.py covers it)."""
+    from image_to_3dlab import moge_fov
+
+    monkeypatch.setattr(moge_fov, "installed", lambda repo=None: False)
+
 def _load():
     spec = importlib.util.spec_from_file_location("pixal3d_generate", SCRIPT)
     module = importlib.util.module_from_spec(spec)
@@ -348,7 +357,7 @@ def test_the_manifest_carries_the_licence_from_the_catalogue(tmp_path):
     catalogue = resolve("pixal3d")
     assert record["backend"] == "pixal3d"
     assert record["license"] == {"name": catalogue.license_name, "url": catalogue.license_url}
-    assert record["parameters"] == {"res": 1024, "seed": 42, "fov": 0.35, "gss": 10.0,
+    assert record["parameters"] == {"res": 1024, "seed": 42, "fov": 0.35, "fov_source": "asked", "gss": 10.0,
                                     "gsh": None, "matted": True, "steps": 12}
     assert len(record["input"]["sha256"]) == 64
     assert len(record["output"]["sha256"]) == 64
@@ -536,11 +545,12 @@ def _built(tmp_path, patched):
     return source, cli
 
 
-def test_auto_runs_fast_steps_on_a_patched_build(tmp_path):
+def test_the_official_twelve_even_on_a_patched_build(tmp_path):
+    """The user's decision (17/10/2026): the official recipe's 12 steps; 8 only when asked."""
     source, cli = _built(tmp_path, patched=True)
     steps, note = px.resolve_steps(None, source, cli)
-    assert steps == px.FAST_STEPS == 8
-    assert "auto" in note
+    assert steps == 12 and "official" in note
+    assert px.resolve_steps(px.FAST_STEPS, source, cli)[0] == 8
 
 
 def test_auto_falls_back_to_twelve_on_an_unpatched_build(tmp_path):
@@ -548,7 +558,6 @@ def test_auto_falls_back_to_twelve_on_an_unpatched_build(tmp_path):
     source, cli = _built(tmp_path, patched=False)
     steps, note = px.resolve_steps(None, source, cli)
     assert steps == 12
-    assert "patch_pixal3d_steps.py" in note
 
 
 def test_an_explicit_count_the_build_cannot_honour_is_refused(tmp_path):

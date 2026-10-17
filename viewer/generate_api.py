@@ -1746,9 +1746,10 @@ def _hunyuan_xiong_readiness() -> dict[str, Any]:
 PIXAL3D_DEFAULT_SETTINGS: dict[str, Any] = {
     "res": 1024,
     "seed": 42,
-    "fov": 0.3490658503988659,
-    # "auto": the wrapper runs 8 on a patched trellis-cli and 12 otherwise, so an install
-    # without scripts/patch_pixal3d_steps.py keeps working. 12 forces the full count.
+    # "auto": estimated per picture with MoGe-2, as Pixal3D's official recipe does (the 20
+    # degree gauge where MoGe-2 is not set up); a number in radians forces it.
+    "fov": "auto",
+    # "auto": the official recipe's 12 steps.
     "steps": "auto",
 }
 PIXAL3D_STEP_CHOICES = {"auto", 12}
@@ -1777,12 +1778,15 @@ def _pixal3d_validate_settings(raw: Any) -> dict[str, Any]:
     try:
         settings["res"] = int(settings["res"])
         settings["seed"] = int(settings["seed"])
-        settings["fov"] = float(settings["fov"])
+        if settings["fov"] not in ("auto", None):
+            settings["fov"] = float(settings["fov"])
     except (TypeError, ValueError) as exc:
-        raise ValueError("res and seed must be integers, fov a number") from exc
+        raise ValueError('res and seed must be integers, fov "auto" or a number') from exc
     if settings["res"] not in PIXAL3D_VALID_RES:
         raise ValueError("Pixal3D single-image runs at res 1024 only")
-    if not 0.05 <= settings["fov"] <= 2.0:
+    if settings["fov"] is None:
+        settings["fov"] = "auto"
+    if settings["fov"] != "auto" and not 0.05 <= settings["fov"] <= 2.0:
         raise ValueError("fov is in radians; 0.349 is 20 degrees")
     if settings["steps"] != "auto":
         try:
@@ -1800,8 +1804,7 @@ def _pixal3d_build_args(job: Job) -> list[str]:
         str(job.image_path), str(job.output_path),
         "--res", str(s["res"]),
         "--seed", str(s["seed"]),
-        "--fov", str(s["fov"]),
-    ] + ([] if s.get("steps", "auto") == "auto" else ["--steps", str(s["steps"])])
+    ] + ([] if s.get("fov", "auto") == "auto" else ["--fov", str(s["fov"])])       + ([] if s.get("steps", "auto") == "auto" else ["--steps", str(s["steps"])])
 
 
 def _pixal3d_parse_line(job: Job, line: str) -> None:

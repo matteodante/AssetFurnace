@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A set's weapon and shield reach Unreal as static meshes hung from sockets of the hands
+  (`SOCKET_Weapon` on hand_r, `SOCKET_Shield` on hand_l), not as pieces skinned to a bone: the
+  export keeps them in the body's space, the Unreal check makes the sockets on the body from
+  the skeleton it imported and checks that the hand holds what hangs from them, and the
+  picture shows them in the hands. The weapon's picture is asked for handle down and turned
+  when the picture judge sees its handle at the top (the first real set's sword was drawn
+  point down in three seeds out of three). Any object can be held the same way: the studio's
+  Export for Unreal has "Held" (right or left hand) and "Held by", `export_unreal.py --socket
+  SOCKET_Weapon=hand_r --body body.glb`, and a batch row's `"export_unreal": {"socket": ...}`
+  (agents through `run_steps`).
 - A base body says how it is dressed under its pieces, the person's choice when it is
   registered on every route: a bodysuit, simple clothes (shirt, breeches, cloth shoes), minimal
   underwear, or words of their own (`slot_parts.py body --dressing`, `pieces_add_body(dressing=)`,
@@ -345,6 +355,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concept record and `output/concept/judgements.jsonl`.
 
 ### Changed
+- Pixal3D follows its official recipe (TencentARC/Pixal3D `inference.py`, master, read
+  2026-10-17): 12 sampling steps in every flow (8 only when asked), and the camera's field
+  of view estimated per picture with MoGe-2 (`Ruicheng/moge-2-vitl`, MIT) instead of a
+  fixed 20 degrees, on the recipe's own crop (the alpha's box, square, on black), in the
+  studio, batches and the command line; the structure guidance stays at 10 (the recipe's 7.5
+  dropped a sword blade). `bootstrap_pixal3d.py`
+  sets MoGe-2 up with PyTorch for the machine (`--moge` for an existing install); without
+  it the 20 degree gauge stays and the run says so. The manifest records where the field
+  of view came from.
 - Text to image runs as Qwen-Image 2.1 Turbo's card says (docs/text-to-image.md): 2048x2048
   by default with the card's presets, the official transparent-background prompt (a real
   alpha, so the 3D step needs no cut-out), and the official prompt rewriting, run on this

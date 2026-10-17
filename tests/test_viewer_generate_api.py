@@ -481,7 +481,11 @@ def test_pixal3d_build_args_carry_the_camera(tmp_path):
                   api._pixal3d_validate_settings({}), "pixal3d")
     args = api._pixal3d_build_args(job)
     assert args[:2] == [str(tmp_path / "input.png"), str(tmp_path / "model.glb")]
-    assert "--fov" in args
+    # the official recipe: the wrapper estimates the camera with MoGe-2 unless one is forced
+    assert "--fov" not in args and "--steps" not in args
+    forced = api.Job("0" * 32, tmp_path, tmp_path / "input.png", tmp_path / "model.glb",
+                     api._pixal3d_validate_settings({"fov": 0.349}), "pixal3d")
+    assert api._pixal3d_build_args(forced)[api._pixal3d_build_args(forced).index("--fov") + 1] == "0.349"
 
 
 def test_sf3d_build_args_matches_pipeline_cli(tmp_path):

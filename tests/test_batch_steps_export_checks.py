@@ -269,3 +269,12 @@ def test_checks_run_again_with_another_result_are_queued_again(tmp_path, monkeyp
     assert item["status"] == "fail" and item["summary"]["fail"] == ["budget.faces"]
     batch.run_batch(batch.load_batch(spec_path))   # done: nothing queued again
     assert sum(line["event"] == "queued" for line in review.load(tmp_path / batch.REVIEW_LOG)) == 2
+
+
+def test_a_batch_row_hangs_its_object_from_a_socket_of_its_body(tmp_path, fake_export):
+    body = tiny_glb(tmp_path / "body.glb")
+    ctx = _context(tmp_path, _row(tmp_path), "export_unreal", {"body": str(body), "socket": "SOCKET_Weapon=hand_r"})
+    assert export_step.run(ctx).ok
+    assert fake_export[0]["socket"] == {"name": "SOCKET_Weapon", "bone": "hand_r"}
+    bad = _context(tmp_path, _row(tmp_path), "export_unreal", {"body": str(body), "socket": "hand_r"})
+    assert "NAME=BONE" in export_step.run(bad).reason

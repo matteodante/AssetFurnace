@@ -67,6 +67,14 @@ def test_rigid_pieces_follow_the_first_head_bone_or_the_right_hand():
     assert bf.rigid_bone(no_head, "helmet") == "b2"
 
 
+def test_the_weapon_follows_the_hand_not_a_finger():
+    """The fingers inherit the hand's role; a finger carrying more skin than the hand took the
+    weapon on the first real set (it followed middle_02_r). Only the head picks by skin."""
+    assert ROLES["b7"][0] == "hand" and ROLES["b8"][0] == "hand" and ROLES["b8"][1] > ROLES["b7"][1]
+    assert bf.rigid_bone(ROLES, "weapon", carried={"b7": 120, "b8": 900}) == "b7"
+    assert bf.rigid_bone(ROLES, "shield", carried={"b10": 50, "b11": 700}) == "b10"
+
+
 def test_the_head_bone_carrying_most_of_the_head_holds_the_helmet():
     split = dict(ROLES, b12=("head", 2, ""))
     assert bf.rigid_bone(split, "helmet") == "b3"
