@@ -346,6 +346,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- The Windows installer installs what was tested, from this repository: packages from
+  `requirements.lock` as `install.sh` does (CUDA PyTorch at the lock's own versions), the
+  default repository is github.com/matteodante/AssetFurnace, the newest release is the
+  repository's own (a clone that once fetched the upstream's tags no longer goes back to
+  its v0.4.3), and run as `.\install.ps1` from a clone it updates that clone. WINDOWS.md,
+  the README and the studio's update command run the clone's installer instead of the
+  upstream's one-liner; the update check asks this repository's releases.
 - Library: an asset with no picture or 3D model of its own keeps its id when a later finish
   or rig joins it (one from a Blender version, say), so its versions, name and hidden flag
   stay with it; and what is made from a Blender version of one of its moves joins it too.
