@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The MCP server follows the MCP specification 2025-11-25 and is called `assetfurnace`:
+  - every tool has annotations (title, read only, destructive, idempotent, this machine only);
+  - every tool publishes the shape of its result and answers with it (`structuredContent`);
+  - the files a result names come back as resource links with their `mimeType`, readable
+    with `resources/read` (only under `output/` or a root the client shares);
+  - the new `wait_batch` follows a batch with progress notifications;
+  - paths outside the repository, its `output/` and the client's roots are refused, in the
+    call and in the spec it names;
+  - optional Streamable HTTP on 127.0.0.1 with a bearer token, reached from another machine
+    through an SSH tunnel (`--http`, `docs/batches.md`).
 - A set's weapon and shield reach Unreal as static meshes hung from sockets of the hands
   (`SOCKET_Weapon` on hand_r, `SOCKET_Shield` on hand_l), not as pieces skinned to a bone: the
   export keeps them in the body's space, the Unreal check makes the sockets on the body from
