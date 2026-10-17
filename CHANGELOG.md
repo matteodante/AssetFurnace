@@ -15,6 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `slot_parts.py materials SET_DIR --set helmet=leather` (saved in the set's `materials.json`).
   The Unreal export packs the material's roughness and metal into the ORM
   (`export_unreal.py --material`, and `slot_parts.py unreal` for every piece).
+- Batches: an edited row runs again from its first changed step, not from the start. A new
+  face budget reruns `finish` and what follows without regenerating; a new real size reruns
+  only `export_unreal` and `checks`; a step added at the end runs alone. Each step keeps a
+  fingerprint of its settings, the row fields it reads and the steps before it. Finished
+  batches from before keep their results.
+- Batch steps `export_unreal` (the Unreal 5.8 export, with name, collision, LODs, tint,
+  facing, body and animations as settings) and `checks` (the review queue's checks, with
+  thresholds as `--set`). Rows now reach the review queue with their checks report and can
+  be approved there; `checks` is a default step.
+- `image_to_3dlab/step_catalog.py`: one description per pipeline step (parameters, types,
+  ranges, what can be skipped or replaced), read by every route, with a parity test against
+  the scripts' flags. Plan: `docs/plans/2026-10-17-step-parity-design.md`.
 - Characters in pieces: several pictures per piece, and the right one picked before the 3D
   (`slot_parts/candidates.py`). Each picture is scored by Qwen3-VL ("is this one helmet / one
   boot / ...?", stricter for a pauldron) with the outline against the slot's mask as the

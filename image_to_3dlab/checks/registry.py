@@ -133,6 +133,26 @@ def load_profile(name: str = "prop", overrides: dict | None = None) -> dict:
     return profile
 
 
+def parse_overrides(pairs: list[str]) -> dict:
+    """`check.name.setting=value` pairs into the profile override shape.
+
+    The check name is everything before the last dot: `budget.faces.max=20000` sets `max`
+    on `budget.faces`. Values are read as JSON when they parse (numbers, true/false).
+    """
+    overrides: dict[str, dict] = {}
+    for pair in pairs:
+        name, equals, raw = pair.partition("=")
+        check, dot, setting = name.rpartition(".")
+        if not (equals and dot and check and setting):
+            raise ValueError(f"expected check.setting=value, got {pair!r}")
+        try:
+            value = json.loads(raw)
+        except ValueError:
+            value = raw
+        overrides.setdefault(check, {})[setting] = value
+    return overrides
+
+
 GENERIC_SETTINGS = {"enabled", "warn_only"}
 
 

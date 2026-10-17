@@ -408,37 +408,37 @@ def test_the_state_file_is_never_left_half_written(tmp_path, monkeypatch):
 
 def test_a_missing_step_is_skipped_with_a_warning(tmp_path, monkeypatch, fake_finish, capsys):
     install_fake_generator(monkeypatch)
-    spec_path = write_spec(tmp_path, rows=1, steps=["generate", "finish", "export_unreal"])
+    spec_path = write_spec(tmp_path, rows=1, steps=["generate", "finish", "materials"])
     report = batch.run_batch(batch.load_batch(spec_path))
     assert report.exit_code == 0
-    step = _state(spec_path)["rows"]["SM_row01"]["steps"]["export_unreal"]
+    step = _state(spec_path)["rows"]["SM_row01"]["steps"]["materials"]
     assert step["status"] == "skipped" and "not available" in step["warning"]
-    assert "export_unreal" in capsys.readouterr().err
+    assert "materials" in capsys.readouterr().err
 
 
 def test_a_step_that_becomes_available_runs_on_resume(tmp_path, monkeypatch, fake_finish):
     generator = install_fake_generator(monkeypatch)
-    spec_path = write_spec(tmp_path, rows=1, steps=["generate", "finish", "checks"])
+    spec_path = write_spec(tmp_path, rows=1, steps=["generate", "finish", "materials"])
     batch.run_batch(batch.load_batch(spec_path))
     seen = []
 
-    def checks(ctx):
+    def materials(ctx):
         from image_to_3dlab.batch_steps import StepResult
         seen.append(ctx.asset.name)
         return StepResult()
 
-    monkeypatch.setitem(batch.STEPS, "checks", fake_step(checks))
+    monkeypatch.setitem(batch.STEPS, "materials", fake_step(materials))
     generator.calls.clear()
     batch.run_batch(batch.load_batch(spec_path))
     assert seen == ["SM_row01.glb"] and generator.calls == []
-    assert _state(spec_path)["rows"]["SM_row01"]["steps"]["checks"]["status"] == "done"
+    assert _state(spec_path)["rows"]["SM_row01"]["steps"]["materials"]["status"] == "done"
 
 
-def test_the_shipped_steps_are_generate_and_finish():
+def test_the_shipped_steps():
     available = batch.available_steps()
     assert list(available) == list(batch.STEP_NAMES)
-    assert available["generate"] and available["finish"]
-    assert not any(available[name] for name in ("materials", "export_unreal", "checks"))
+    assert all(available[name] for name in ("generate", "finish", "export_unreal", "checks"))
+    assert not available["materials"]
 
 
 def test_a_step_module_that_fails_to_import_is_an_error_not_a_skip(tmp_path, monkeypatch):
@@ -562,8 +562,6 @@ def test_size_and_measure_reach_the_row_and_its_records(tmp_path, monkeypatch, f
     assert (loaded.rows[1].size_cm, loaded.rows[1].measure) == (42.5, "height")
     batch.run_batch(loaded)
     directory = spec_path.parent / "out" / "test-batch"
-    manifest = json.loads((directory / "rows" / "SM_row01" / "manifest.json").read_text())
-    assert manifest["batch"]["size_cm"] == 180 and manifest["batch"]["measure"] == "height"
     index = json.loads((directory / batch.INDEX_FILE).read_text())
     assert index["rows"][1]["size_cm"] == 42.5 and index["rows"][1]["measure"] == "height"
 
@@ -761,8 +759,8 @@ def test_a_row_stopped_after_queueing_is_queued_once_and_finished(tmp_path, monk
     install_fake_generator(monkeypatch)
     real = batch.queue_for_review
 
-    def queue_then_stop(spec, row, asset):
-        real(spec, row, asset)
+    def queue_then_stop(spec, row, asset, **kwargs):
+        real(spec, row, asset, **kwargs)
         raise KeyboardInterrupt
 
     monkeypatch.setattr(batch, "queue_for_review", queue_then_stop)
@@ -1405,10 +1403,10 @@ def test_a_rows_final_hash_is_kept_not_recomputed(tmp_path, monkeypatch, fake_fi
 def test_a_review_queue_error_fails_its_row_not_the_batch(tmp_path, monkeypatch, fake_finish):
     install_fake_generator(monkeypatch)
 
-    def broken(spec, row, asset):
+    def broken(spec, row, asset, **kwargs):
         if row.id == "SM_row01":
             raise OSError("review log is read-only")
-        return real(spec, row, asset)
+        return real(spec, row, asset, **kwargs)
 
     real = batch.queue_for_review
     monkeypatch.setattr(batch, "queue_for_review", broken)

@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from image_to_3dlab import step_catalog
 from image_to_3dlab.batch import image_from_record, recorded_image
 from image_to_3dlab.batch_steps import StepContext, StepResult
 from image_to_3dlab.blender import blender_version, find_blender, missing_help, version_problem
@@ -35,7 +36,6 @@ DEFAULT_FACES = 40000
 # Option -> flag; booleans are handled one by one below.
 VALUE_FLAGS = {"atlas": "--atlas", "texture_size": "--texture-size", "metallic": "--metallic",
                "roughness": "--roughness", "ior": "--ior", "voxel": "--voxel"}
-OPTIONS = {"paint", "photo", "skip_bake", "skip_compress", *VALUE_FLAGS}
 REPAINT_OFF_MAC = ("the repaint runs on Apple Silicon only (it uses MLX); remove "
                    '"paint": true from the finish options')
 # What the repaint runs (scripts/hunyuan_mlx_xiong_generate.py), and its licence.
@@ -59,13 +59,10 @@ CLASS_ORDER = ("commercial-clear", "commercial-conditional", "territory-restrict
 def preflight(rows) -> list[str]:
     problems = []
     for row in rows:
-        settings = row.options.get("finish", {})
-        unknown = sorted(set(settings) - OPTIONS)
-        if unknown:
-            problems.append(f"row {row.id}: unknown finish option(s) {', '.join(unknown)}; "
-                            f"options are {', '.join(sorted(OPTIONS))}")
-        problems += [f"row {row.id}: finish option {problem}"
-                     for problem in _bad_values(settings)]
+        # names, types and ranges come from the step catalogue, as for every route
+        problems += [f"row {row.id}: finish option {problem}" if not problem.startswith("unknown")
+                     else f"row {row.id}: {problem}"
+                     for problem in step_catalog.check("finish", row.options.get("finish", {}))]
     for row in rows:
         image = row.images[0] if row.images else (row.concept or recorded_image(row.asset))
         if image is None:
@@ -100,31 +97,6 @@ def preflight(rows) -> list[str]:
             if missing:
                 problems.append(f"the repaint needs its weights in {PAINT_WEIGHTS} (missing: "
                                 f"{', '.join(missing)}); the Setup page installs them after asking")
-    return problems
-
-
-# What each option takes, checked before the batch rather than by the worker's argparse
-# after the generation it depends on.
-WHOLE = {"atlas": (256, 8192), "texture_size": (256, 8192)}
-FRACTION = {"metallic": (0.0, 1.0), "roughness": (0.0, 1.0), "ior": (1.0, 3.0),
-            "voxel": (0.0, 0.1)}
-SWITCHES = ("paint", "photo", "skip_bake", "skip_compress")
-
-
-def _bad_values(settings: dict[str, Any]) -> list[str]:
-    problems = []
-    for key, (low, high) in WHOLE.items():
-        value = settings.get(key)
-        if value is not None and (isinstance(value, bool) or not isinstance(value, int)
-                                  or not low <= value <= high):
-            problems.append(f"{key} must be a whole number from {low} to {high}, not {value!r}")
-    for key, (low, high) in FRACTION.items():
-        value = settings.get(key)
-        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
-                                  or not low <= value <= high):
-            problems.append(f"{key} must be a number from {low} to {high}, not {value!r}")
-    problems += [f"{key} must be true or false, not {settings[key]!r}"
-                 for key in SWITCHES if key in settings and not isinstance(settings[key], bool)]
     return problems
 
 
