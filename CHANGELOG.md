@@ -226,6 +226,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concept record and `output/concept/judgements.jsonl`.
 
 ### Fixed
+- Creature clips: `-long` takes keep the motion of a bone that moves under a still root (a
+  snake's head, a fox's bounce), with windows at most half a short clip; a foot is held on
+  its side of the body only as much as the source's own foot is, measured from the hips;
+  and a limb's motion is turned to its heading inside the body's frame (a 45-degree body
+  roll bent an arm 22 degrees wrong).
+- Setting up FLUX.2 klein on a fresh install fetches the shared prebuilt sd-cli first,
+  instead of stopping until Qwen-Image had been installed.
 - The studio reads and writes its JSON and text files as UTF-8 on every machine, and the
   test suite passes on Windows without `PYTHONUTF8=1`: with the locale's cp1252, an em dash
   or a middle dot written as UTF-8 failed to decode. `tests/test_text_encoding.py` keeps new

@@ -617,3 +617,32 @@ stato corretto sul suo ramo (sezione 15).
 8. Un giudice visivo (Qwen3-VL) che voti sulla famiglia insieme alle regole, dopo un insieme etichettato di 60-100
    rig.
 
+## 18. Review di Codex del 17/10/2026 sul lavoro unito
+
+Ogni punto verificato sulle righe citate prima di toccarle; tutti e quattro veri, uno con la causa sbagliata.
+
+- **Versioni `-long` senza il moto sotto la radice (vero).** Mesh2Motion tiene ferma la radice e muove l'osso sotto:
+  la testa del serpente in `Side winding` (0,65 × 0,68) e l'anca della volpe nella corsa (0,33). `vary` ricostruiva
+  ogni osso dallo scarto di riposo. Ora un osso il cui scarto dal padre cambia nella clip porta con sé quello scarto
+  come parte della sintesi. In più la finestra è al massimo metà della clip: sui 14 fotogrammi della corsa, finestre
+  da 11 ne dimezzavano il rimbalzo. Dopo: testa del serpente 0,98×, rimbalzo della volpe 0,94×.
+- **Piedi spostati in animazioni legittime (vero, causa diversa).** Codex dava la colpa al blocco del piede; spegnerlo
+  non cambia nulla (10,2% della taglia sul ragno). La causa era la regola "ogni piede dalla sua parte del corpo":
+  respingeva la zampa anteriore del ragno, che nella camminata della sorgente passa sotto la testa. Ora il margine
+  segue la sorgente, cioè quanto il suo piede resta fuori in quel fotogramma, fino a un terzo; se la sorgente
+  attraversa, il bersaglio la segue. La metà del corpo passa per l'anca, non per una radice ferma: una volpe che muore
+  rotolando aveva i piedi spostati di un terzo della taglia. Il controllo "clip riportata sul proprio scheletro" ora
+  gira su tutte le 30 clip della libreria, non solo sulla prima, ed è quello che avrebbe trovato l'errore.
+  Restano fuori dal confronto solo le articolazioni che la sorgente stira dentro un arto (il dito del kaiju scivola di
+  0,2-0,3 m nell'attacco e nella morte), che nessun retarget a ossa rigide può seguire.
+- **Rotazioni di corpo e arto composte nell'ordine sbagliato (vero).** L'allineamento di direzione dell'arto si
+  applicava al moto dell'arto negli assi del mondo, dopo il corpo. Va applicato negli assi del corpo:
+  `totale = corpo · H L Hᵀ`, con `L = corpoᵀ · arto`. Con rollio di 45° e arto piegato di 30° l'errore era di 22°;
+  ora è nullo. Senza rollio, o con `H` identità, il risultato non cambia.
+- **Setup di FLUX su un'installazione nuova (vero).** "Set up" lanciava un installer dei soli pesi, che usciva se
+  mancava `sd-cli`. Ora, se manca, lo stesso setup annuncia e scarica la build precompilata condivisa con Qwen-Image,
+  poi i pesi; su una macchina senza build precompilata non scarica niente.
+
+Dopo le correzioni le deformazioni sui quattro rig veri sono quelle della sezione 15. La morte del ragno torna a
+incrociare i piedi, come la sorgente, che si raggomitola incrociando tutte e quattro le coppie di zampe.
+
