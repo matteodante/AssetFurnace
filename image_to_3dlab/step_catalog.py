@@ -269,9 +269,7 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
                                                        "the model; false for none"),
             Param("forward", "vector3", None, help="which way the model faces, in Blender axes; "
                                                    "default from the creature family, else 0 -1 0"),
-            Param("body", "file", None, help="equipment, or an object on a socket: the rigged body it belongs to"),
-            Param("socket", "text", None, help="an object held by the body (a weapon, a shield): NAME=BONE, "
-                                               "the socket of its skeleton it hangs from in Unreal"),
+            Param("body", "file", None, help="equipment: the rigged body it belongs to"),
             Param("body_name", "text", None, help="equipment: the body's export name"),
             Param("animations", "files", None, help="creatures: more animated GLBs"),
             Param("material", "choice", None, choices=None,
@@ -279,6 +277,8 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
                        "and metal in the ORM"),
             Param("two_sided", "bool", None, help="draw both faces of every triangle; unset: cloth is two "
                                                   "sided, the rest one sided"),
+            Param("grip", "file", None, help="a weapon or shield: its grip record (grip.json, from a set or "
+                                             "slot_parts/grip.py): the pivot there, a grip socket, the blade up"),
         ),
         row_fields=("kind", "size_cm", "measure", "profile"),
         skip="no Unreal files are written", replace=(),

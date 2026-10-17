@@ -58,30 +58,18 @@ export function sameSource(a, b) {
     && a.moves.length === b.moves.length && a.moves.every((move, i) => move === b.moves[i]);
 }
 
-// An object held in a hand hangs from a socket of its body in Unreal: the weapon from the
-// right hand, the shield from the left (the sockets the Unreal check makes on the body).
-export const HELD_CHOICES = [['', 'Not held'], ['weapon', 'In the right hand (weapon)'], ['shield', 'In the left hand (shield)']];
-
-// Equipment and a held object are placed by their body, so they need one.
-export function needsBody(kind, held = '') {
-  return kind === 'equipment' || (kind === 'prop' && Boolean(held));
+// Equipment is scaled with the body that wears it, so its size is the wearer's.
+export function sizeLabel(kind) {
+  return kind === 'equipment' ? "Wearer's height (cm)" : 'Real size (cm)';
 }
 
-// Equipment and a held object are scaled with their body, so the size is the body's.
-export function sizeLabel(kind, held = '') {
-  if (kind === 'equipment') return "Wearer's height (cm)";
-  return needsBody(kind, held) ? "Holder's height (cm)" : 'Real size (cm)';
-}
-
-export function requestBody({ source, kind, size, measure, body, moves, check, material, held = '',
+export function requestBody({ source, kind, size, measure, body, moves, check, material,
   name = '', collision = 'auto', lods = 'auto', tint = 'auto', forward = 'auto' }) {
-  // Equipment and held objects are checked in Unreal together with their body's export,
-  // which the panel does not have, so only from the command line.
-  const placed = needsBody(kind, held);
-  const data = { file: source.file, kind, size_cm: Number(size), measure, check: Boolean(check) && !placed };
+  // Equipment is checked in Unreal together with its body's export, which the panel does
+  // not have, so only from the command line.
+  const data = { file: source.file, kind, size_cm: Number(size), measure, check: Boolean(check) && kind !== 'equipment' };
   if (kind === 'creature' && moves) data.animations = source.moves;
-  if (placed) data.body = body;
-  if (kind === 'prop' && held) data.held = held;
+  if (kind === 'equipment') data.body = body;
   if (material) data.material = material; // empty: the rule picks it from the model's prompt
   // the export's own settings; "auto" (the default) is left to the export
   if (String(name).trim()) data.name = String(name).trim();
@@ -134,8 +122,7 @@ export function createUnrealPanel({ root, url, assets }) {
       <label class="field"><span data-size-label>Real size (cm)</span><input data-size type="number" min="0.1" step="0.1" inputmode="decimal" placeholder="e.g. 180"></label>
       <label class="field">Measured as<select data-measure><option value="height">Height</option><option value="longest">Longest side</option></select></label>
     </div>
-    <label class="field" data-held-label hidden title="Held in a hand: it hangs from a socket of the body's hand in Unreal">Held<select data-held>${HELD_CHOICES.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
-    <label class="field" data-body-label hidden><span data-body-word>Worn by</span><select data-body></select></label>
+    <label class="field" data-body-label hidden>Worn by<select data-body></select></label>
     <label class="field" title="One material for the whole model: it sets roughness and metal in Unreal">Material<select data-material>${MATERIAL_CHOICES.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
     <label class="check" data-moves-label hidden><input type="checkbox" data-moves checked> Include its moves</label>
     <details class="adv" data-more><summary>More options</summary>
@@ -164,22 +151,18 @@ export function createUnrealPanel({ root, url, assets }) {
   }
   function controls() {
     const kind = el('kind').value;
-    const held = kind === 'prop' ? el('held').value : '';
-    const placed = needsBody(kind, held);
-    el('held-label').hidden = kind !== 'prop';
-    el('body-label').hidden = !placed;
-    el('body-word').textContent = kind === 'equipment' ? 'Worn by' : 'Held by';
+    el('body-label').hidden = kind !== 'equipment';
     el('moves-label').hidden = kind !== 'creature' || !context?.source.moves.length;
-    el('check-label').hidden = !capabilities?.unreal || placed;
-    el('size-label').textContent = sizeLabel(kind, held);
-    if (placed) el('measure').value = 'height';
+    el('check-label').hidden = !capabilities?.unreal || kind === 'equipment';
+    el('size-label').textContent = sizeLabel(kind);
+    if (kind === 'equipment') el('measure').value = 'height';
     const blocked = !context || working || !capabilities?.blender || sizeProblem(el('size').value)
-      || (placed && !el('body').value);
+      || (kind === 'equipment' && !el('body').value);
     el('export').disabled = Boolean(blocked);
-    for (const key of ['kind', 'size', 'measure', 'held', 'body', 'moves', 'check', 'material', 'name', 'collision',
-      'lods', 'tint', 'forward']) el(key).disabled = working;
+    for (const key of ['kind', 'size', 'measure', 'body', 'moves', 'check', 'material', 'name', 'collision', 'lods',
+      'tint', 'forward']) el(key).disabled = working;
     el('prop-only').hidden = kind !== 'prop';
-    el('measure').disabled = working || placed;
+    el('measure').disabled = working || kind === 'equipment';
   }
   async function load() {
     if (capabilities) return;
@@ -335,14 +318,6 @@ export function createUnrealPanel({ root, url, assets }) {
     controls();
     propose();
   });
-  let lastHeld = '';
-  el('held').addEventListener('change', () => {
-    // a held object's size is its holder's height, not its own
-    if (Boolean(el('held').value) !== Boolean(lastHeld)) el('size').value = '';
-    lastHeld = el('held').value;
-    el('measure').value = lastHeld ? 'height' : 'longest';
-    controls();
-  });
   for (const key of ['size', 'body', 'measure']) el(key).addEventListener('input', controls);
   el('export').addEventListener('click', async () => {
     const ctx = context;
@@ -359,7 +334,7 @@ export function createUnrealPanel({ root, url, assets }) {
         body: JSON.stringify(requestBody({
           source: ctx.source, kind: el('kind').value, size: el('size').value, measure: el('measure').value,
           body: el('body').value, moves: el('moves').checked, check: el('check').checked && capabilities?.unreal,
-          material: el('material').value, held: el('held').value, name: el('name').value, collision: el('collision').value,
+          material: el('material').value, name: el('name').value, collision: el('collision').value,
           lods: el('lods').value, tint: el('tint').value, forward: el('forward').value,
         })),
       });

@@ -13,7 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA_VERSION = 1
-MODES = ("dressed_split", "body_and_equipment")  # modes 2 and 3; mode 1 needs no record of its own
+# modes 2 and 3; mode 1 needs no record of its own; "standalone": weapons and shields only, no concept
+MODES = ("dressed_split", "body_and_equipment", "standalone")
 
 
 def _sha(path) -> str | None:
@@ -40,6 +41,14 @@ def models(matte: str | None = None) -> list[dict]:
     return out
 
 
+def classification() -> str:
+    """The set's licence class: the strictest of the models every set goes through (Qwen's
+    research-only since its licence was read, 2026-10-17)."""
+    from image_to_3dlab.unreal_profile import strictest_class
+
+    return strictest_class(m.get("classification") for m in models()) or "commercial-conditional"
+
+
 def body_entry(body: dict, body_json: Path) -> dict:
     """The base body a set is on, as its record names it."""
     return {"name": body["name"], "record": str(Path(body_json).resolve()),
@@ -50,7 +59,7 @@ def now_text(now: datetime | None = None) -> str:
     return (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
 
 
-def parts_record(*, mode: str, set_name: str, body: dict, body_json: Path, concept: Path, concept_info: dict,
+def parts_record(*, mode: str, set_name: str, body: dict, body_json: Path, concept: Path | None, concept_info: dict,
                  chosen: dict, pieces: dict, fit: dict | None, checks: dict, matte: str | None,
                  now: datetime | None = None) -> dict:
     if mode not in MODES:
@@ -60,13 +69,13 @@ def parts_record(*, mode: str, set_name: str, body: dict, body_json: Path, conce
         "set": set_name, "mode": mode,
         "created": now_text(now),
         "body": body_entry(body, body_json),
-        "concept": {"path": str(Path(concept).resolve()), "sha256": _sha(concept), **concept_info},
+        "concept": {"path": str(Path(concept).resolve()), "sha256": _sha(concept), **concept_info} if concept else None,
         "slots": chosen,
         "pieces": pieces,
         "fit": {k: fit[k] for k in ("covered_share", "files") if k in fit} if fit else None,
         "checks": checks,
         "models": models(matte),
-        "classification": "commercial-conditional",
+        "classification": classification(),
     }
 
 
@@ -95,7 +104,7 @@ def fit_provenance(out: Path, job: dict, report: dict) -> list[Path]:
             "schema": "slot_parts.fit/1",
             "output": {"path": name, "sha256": _sha(glb)},
             "license": LICENSES["pixal3d"].license_name,
-            "classification": "commercial-conditional",
+            "classification": classification(),
             "components": [{"role": m["role"], "name": m["id"], "license": m["license"]} for m in models()],
             "source": {"path": str(source), "sha256": _sha(source) if source else None},
             "body": str(job["body"]),
