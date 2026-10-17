@@ -130,7 +130,7 @@ def _models(output: Path) -> list[dict[str, Any]]:
         for run in (top, *_dirs(top)):
             glb = run / f"{run.name}.glb"
             if glb.is_file():
-                found.append({"stem": run.name, "file": glb})
+                found.append({"stem": run.name, "file": glb, "record": run / f"{run.name}.json"})
     return found
 
 
@@ -143,7 +143,7 @@ def _finishes(output: Path) -> list[dict[str, Any]]:
         if results:
             source, image = run / "input" / "source.glb", run / "input" / "source.png"
             found.append({"stem": run.name, "file": results[0], "source": source if source.is_file() else None,
-                          "image": image if image.is_file() else None})
+                          "image": image if image.is_file() else None, "settings": run / "input" / "settings.json"})
     return found
 
 
@@ -318,6 +318,8 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
             "clips": [{"name": c["name"], "file": rel(c["file"])} for c in clips],
             "props": [{"name": p["name"], "file": rel(p["file"])} for p in (prop_set["props"] if prop_set else [])],
             "updated": max((f.stat().st_mtime for f in files), default=0),
+            "made": made_with(model, fin),
+            "stale": stale_steps(hashes, model, fin, rig),
         })
     hashes.save()
     from blender_versions import attach_versions
@@ -332,6 +334,41 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
             asset["name"] = names[asset["id"]]
     assets.sort(key=lambda a: a["updated"], reverse=True)
     return assets
+
+
+def _json(path: Path | None) -> dict[str, Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path is not None else {}
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def made_with(model: dict[str, Any] | None, fin: dict[str, Any] | None) -> dict[str, Any]:
+    """What the current 3D model and finish were made with, for the Steps panel's Redo to
+    start from: the engine and seed in the 3D run's record, the finish's own settings."""
+    made: dict[str, Any] = {}
+    record = _json(model.get("record")) if model else {}
+    if record:
+        seed = (record.get("parameters") or {}).get("seed")
+        engine = record.get("backend") or (record.get("model") or {}).get("backend")
+        made["model"] = {"seed": seed if isinstance(seed, int) else None, "engine": engine}
+    settings = _json(fin.get("settings")) if fin else {}
+    if settings:
+        made["finished"] = {"faces": settings.get("faces"), "texture_size": settings.get("texture_size"),
+                            "photo": not settings.get("skip_photo", False)}
+    return made
+
+
+def stale_steps(hashes: _Hashes, model: dict[str, Any] | None, fin: dict[str, Any] | None,
+                rig: dict[str, Any] | None) -> dict[str, bool]:
+    """Which later steps were made from an earlier version of the step before them: a
+    finish of another 3D model than the current one, a rig of another finish."""
+    finished = bool(fin and model and fin.get("source") is not None
+                    and hashes.of(fin["source"]) != hashes.of(model["file"]))
+    base = fin or model
+    rigged = bool(rig and base and rig.get("input_sha") and rig["input_sha"] != hashes.of(base["file"]))
+    return {"finished": finished, "rigged": rigged}
 
 
 def _read_meta(output: Path) -> dict[str, Any]:

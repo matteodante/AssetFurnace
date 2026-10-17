@@ -1,7 +1,8 @@
 // AssetFurnace studio: Library | one viewer | Steps.
 // Steps run here through the server's job APIs, prop-sheet splitting included.
 
-import { STEPS, stepCount, doneCount, statusText, displayModel, stepFile, servedUrl, visibleAssets, openingView, isModelFile } from './library.js';
+import { STEPS, stepCount, doneCount, statusText, displayModel, stepFile, servedUrl, visibleAssets, openingView, isModelFile,
+  canRedo, staleNote, madeWith } from './library.js';
 import { createStudioViewer } from './viewer.js';
 import { readyEngines, readableLog } from './jobs.js';
 import { stepBody, wireStep } from './steps.js';
@@ -26,6 +27,7 @@ let filter = 'all', query = '', showHidden = false, limit = 30;
 let current = null;
 let engines = [], presets = [], recipes = null, busy = false, playNext = null;
 let making = null, viewingMaking = false;  // the asset Create is making right now
+let redo = null;   // the finished step being made again with other values, on the current asset
 const selectedVersions = new Map();
 let displayedFile = null;
 
@@ -96,12 +98,21 @@ function renderSteps(asset) {
     if (i >= total) return `<li class="step na"><header><span class="dot">–</span><span><h3>${step.label}</h3><div class="sum">Not needed for props</div></span></header></li>`;
     const state = i < done ? 'done' : i === done ? 'now' : 'later';
     const dot = state === 'done' ? '✓' : i + 1;
-    const showBody = state === 'now' || (step.id === 'animated' && state === 'done');
-    const body = showBody ? `<div class="body">${stepBody(step.id, asset, ctx)}</div>` : '';
-    return `<li class="step ${state}" data-step="${step.id}"><header><span class="dot">${dot}</span><span style="min-width:0"><h3>${step.label}</h3>${state === 'done' ? `<div class="sum">${escape(sum[step.id])}${stepLink(asset, step.id)}</div>` : ''}</span></header>${body}</li>`;
+    const redoing = state === 'done' && redo === step.id && canRedo(asset, step.id);
+    const showBody = state === 'now' || (step.id === 'animated' && state === 'done') || redoing;
+    const body = showBody ? `<div class="body">${stepBody(step.id, asset, ctx, { redo: redoing })}</div>` : '';
+    const made = state === 'done' ? madeWith(asset, step.id) : '';
+    const stale = state === 'done' ? staleNote(asset, step.id) : null;
+    const redoButton = state === 'done' && canRedo(asset, step.id)
+      ? `<button class="ghost redo" data-redo="${step.id}" aria-pressed="${redoing}">${redoing ? 'Keep it' : 'Redo…'}</button>` : '';
+    return `<li class="step ${state}${stale ? ' stale' : ''}" data-step="${step.id}"><header><span class="dot">${dot}</span><span style="min-width:0"><h3>${step.label}</h3>${state === 'done' ? `<div class="sum">${escape(sum[step.id])}${made ? ` · ${escape(made)}` : ''}${stale ? ` · <span class="warn">${escape(stale)}</span>` : ''}${stepLink(asset, step.id)}</div>` : ''}</span>${redoButton}</header>${body}</li>`;
   }).join('');
   $('steps').querySelectorAll('.step').forEach((card) => {
     if (card.querySelector('.body [data-run]')) wireStep(card, card.dataset.step, asset, ctx);
+  });
+  $('steps').querySelectorAll('[data-redo]').forEach((button) => button.onclick = () => {
+    redo = redo === button.dataset.redo ? null : button.dataset.redo;   // a second click keeps the step as it is
+    renderSteps(asset);
   });
   setDownload(displayModel(asset));
 }
@@ -125,11 +136,12 @@ const ctx = {
   asset: () => current,
   onBusy: (on) => { busy = on; document.body.classList.toggle('busy', on); },
   // after a new move, open the asset on that move
-  onDone: async (stepId, { preset } = {}) => { playNext = preset; await loadLibrary(current?.id); },
+  onDone: async (stepId, { preset } = {}) => { playNext = preset; redo = null; await loadLibrary(current?.id); },
 };
 
 function show(asset) {
   closeSheet($('stage'));   // Create/Activity/How to use/About cover the viewer; get them out of the way
+  if (asset?.id !== current?.id) redo = null;
   current = asset;
   viewingMaking = false;
   $('progress').hidden = true;

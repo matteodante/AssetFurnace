@@ -6,6 +6,9 @@ import { plainError } from './jobs.js';
 
 const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const PICTURE_TYPES = /\.(png|jpe?g|webp)$/i;
+// Finish's triangle budgets, as the Steps panel offers them.
+export const FACES = [[5000, '5,000 triangles · phones, crowds'], [15000, '15,000 triangles · light'],
+  [40000, '40,000 triangles · game-ready'], [100000, '100,000 triangles · close-ups']];
 
 /**
  * The picture job's settings from Create's choices. A new seed each time by default, so the
@@ -16,6 +19,12 @@ export function pictureSettings({ size = 768, steps = 8, newEachTime = true, see
   const count = Math.max(1, Math.min(50, Math.round(Number(steps)) || 10));
   const fixed = Number.isFinite(Number(seed)) ? Math.trunc(Number(seed)) : 42;
   return { width: side, height: side, steps: count, seed: newEachTime ? freshSeed(random) : fixed };
+}
+
+/** The 3D model's seed from Create's choice: a new one each time, or the one kept. */
+export function modelSeedFor({ newEachTime = true, seed = 42 } = {}, random = Math.random) {
+  const fixed = Number.isFinite(Number(seed)) ? Math.max(0, Math.trunc(Number(seed))) : 42;
+  return newEachTime ? freshSeed(random) : fixed;
 }
 
 /** A new random seed, so trying again gives a different result. */
@@ -30,7 +39,8 @@ export function openCreate({ stage, recipes, engines, presets, onStart, onRefere
   stage.appendChild(sheet);
   const state = { have: 'idea', want: 'character', stop: null, tips: false, useRecipe: true, text: '', file: null,
     engine: engines[0]?.id, firstMove: presets.find((p) => !p.take)?.id,
-    pic: { size: 768, steps: 8, newEachTime: true, seed: 42 }, keep: false };
+    pic: { size: 768, steps: 8, newEachTime: true, seed: 42 }, keep: false,
+    model: { newEachTime: true, seed: 42 }, faces: 40000 };
   const close = () => sheet.remove();
 
   const render = () => {
@@ -66,7 +76,10 @@ export function openCreate({ stage, recipes, engines, presets, onStart, onRefere
           <label class="check"><input type="checkbox" data-pic="newEachTime" ${state.pic.newEachTime ? 'checked' : ''}><span>New picture each time <span class="hint">untick to reuse a seed and get the same picture back</span></span></label>
           ${state.pic.newEachTime ? '' : `<label class="field">Seed<input type="number" data-pic="seed" step="1" value="${state.pic.seed}"></label>`}
         </div></details>` : ''}
-      ${active.includes('model') ? `<details class="adv"><summary>Advanced: 3D model</summary>${engines.length > 1 ? `<label class="field">Engine<select data-k="engine">${engines.map((e, i) => `<option value="${esc(e.id)}" ${e.id === state.engine ? 'selected' : ''}>${i ? '' : 'Best quality: '}${esc(e.label)}</option>`).join('')}</select></label>` : ''}<label class="check"><input type="checkbox" data-k="keep" ${state.keep ? 'checked' : ''}><span>Keep everything <span class="hint">textures, in-between meshes and resume files, for digging into a bad result. Takes a lot more disk.</span></span></label></details>` : ''}
+      ${active.includes('model') ? `<details class="adv"><summary>Advanced: 3D model</summary>${engines.length > 1 ? `<label class="field">Engine<select data-k="engine">${engines.map((e, i) => `<option value="${esc(e.id)}" ${e.id === state.engine ? 'selected' : ''}>${i ? '' : 'Best quality: '}${esc(e.label)}</option>`).join('')}</select></label>` : ''}<label class="check"><input type="checkbox" data-model="newEachTime" ${state.model.newEachTime ? 'checked' : ''}><span>New 3D model each time <span class="hint">untick to reuse a seed and get the same model back</span></span></label>
+        ${state.model.newEachTime ? '' : `<label class="field">3D seed<input type="number" data-model="seed" min="0" step="1" value="${state.model.seed}"></label>`}
+        <label class="check"><input type="checkbox" data-k="keep" ${state.keep ? 'checked' : ''}><span>Keep everything <span class="hint">textures, in-between meshes and resume files, for digging into a bad result. Takes a lot more disk.</span></span></label></details>` : ''}
+      ${active.includes('finished') && state.want !== 'prop' ? `<label class="field">Detail<select data-k="faces">${FACES.map(([v, t]) => `<option value="${v}" ${v === state.faces ? 'selected' : ''}>${t}</option>`).join('')}</select></label>` : ''}
       <p class="error" data-error hidden></p>
       <div class="row end"><span class="hint">${active.length} step${active.length === 1 ? '' : 's'}${active.includes('picture') ? ' · the picture uses Qwen-Image, run on this machine' : ''}</span><button type="submit" class="primary">Make it</button></div>
     </form>`;
@@ -101,6 +114,11 @@ export function openCreate({ stage, recipes, engines, presets, onStart, onRefere
     q('[data-k="move"]')?.addEventListener('change', (e) => { state.firstMove = e.target.value; });
     q('[data-k="engine"]')?.addEventListener('change', (e) => { state.engine = e.target.value; });
     q('[data-k="keep"]')?.addEventListener('change', (e) => { state.keep = e.target.checked; });
+    q('[data-k="faces"]')?.addEventListener('change', (e) => { state.faces = Number(e.target.value); });
+    sheet.querySelectorAll('[data-model]').forEach((el) => el.addEventListener('change', () => {
+      state.model[el.dataset.model] = el.type === 'checkbox' ? el.checked : Number(el.value);
+      if (el.dataset.model === 'newEachTime') { render(); sheet.querySelector('[data-model="newEachTime"]').closest('details').open = true; }
+    }));
     sheet.querySelectorAll('[data-pic]').forEach((el) => el.addEventListener('change', () => {
       const key = el.dataset.pic;
       state.pic[key] = el.type === 'checkbox' ? el.checked : Number(el.value);
@@ -122,7 +140,8 @@ export function openCreate({ stage, recipes, engines, presets, onStart, onRefere
       onStart({ have: state.have, want: state.want, steps: active, file: state.file, engine: state.engine, firstMove: state.firstMove,
         description: state.text.trim(), prompt: state.have === 'idea' ? composePrompt(state.text, state.want, recipes, state.useRecipe) : null,
         pictureSettings: active.includes('picture') ? pictureSettings(state.pic) : null,
-        modelSeed: active.includes('model') ? freshSeed() : null,   // a new 3D try each time, like the picture
+        modelSeed: active.includes('model') ? modelSeedFor(state.model) : null,   // a new 3D try each time unless kept
+        finishSettings: active.includes('finished') && state.want !== 'prop' ? { faces: state.faces } : null,
         keepEverything: active.includes('model') && state.keep });
     };
     text?.focus();
@@ -167,6 +186,7 @@ export function planForm(plan, made = {}) {
   if (plan.firstMove) form.append('first_move', plan.firstMove);
   if (plan.pictureSettings) form.append('picture_settings', JSON.stringify(plan.pictureSettings));
   if (plan.modelSeed != null) form.append('model_seed', String(plan.modelSeed));
+  if (plan.finishSettings) form.append('finish_settings', JSON.stringify(plan.finishSettings));
   if (plan.keepEverything) form.append('keep_everything', '1');
   form.append('made', JSON.stringify(made));
   if (plan.file) form.append('file', plan.file);

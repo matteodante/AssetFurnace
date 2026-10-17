@@ -81,6 +81,7 @@ class Chain:
     first_move: str | None = None
     picture_settings: dict[str, Any] = field(default_factory=dict)  # size, steps, seed (the image job checks them)
     model_seed: int | None = None                                    # a fresh 3D try each time; None = engine default
+    finish_settings: dict[str, Any] = field(default_factory=dict)    # faces, texture_size, skip_photo (Finish checks them)
     keep_everything: bool = False                                    # the 3D step keeps its textures, meshes, caches
     made: dict[str, str | None] = field(default_factory=dict)       # picture/model/finished/rigged paths
     upload: tuple[str, bytes] | None = None                          # (file name, bytes) when the user gave a file
@@ -264,7 +265,7 @@ class ChainRunner:
         if step == "finished":
             if not chain.made.get("model"):
                 raise ValueError("Finish needs a 3D model, and there is none yet")
-            body, ctype = multipart({"settings": "{}"},
+            body, ctype = multipart({"settings": json.dumps(chain.finish_settings)},
                                     {"asset": self._file(chain.made["model"]), "image": self._picture(chain)})
             return kind, self._post("/api/finish", body, ctype)
         if step == "rigged":
@@ -370,6 +371,7 @@ def chain_from_form(form: dict[str, dict[str, Any]]) -> Chain:
         steps = json.loads(text("steps") or "[]")
         made = json.loads(text("made") or "{}")
         picture = json.loads(text("picture_settings") or "{}")
+        finish = json.loads(text("finish_settings") or "{}")
     except ValueError as exc:
         raise ValueError(f"the plan is not readable: {exc}") from exc
     upload = form.get("file")
@@ -379,6 +381,8 @@ def chain_from_form(form: dict[str, dict[str, Any]]) -> Chain:
         picture_settings={k: picture[k] for k in ("width", "height", "steps", "seed") if k in picture}
         if isinstance(picture, dict) else {},
         model_seed=int(text("model_seed")) if (text("model_seed") or "").isdigit() else None,
+        finish_settings={k: finish[k] for k in ("faces", "texture_size", "skip_photo") if k in finish}
+        if isinstance(finish, dict) else {},
         keep_everything=text("keep_everything") in ("1", "true"),
         made={k: str(v) for k, v in made.items() if k in ("picture", "model", "finished", "rigged") and v},
         upload=(upload.get("filename") or "upload", upload["data"]) if upload and upload.get("filename") and upload.get("data") else None,
