@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The final review of the step parity work (Codex, by area) found these, each fixed with a test:
+  - a row that starts from words passes Finish's preflight before its picture is drawn;
+  - Checks and Finish's repaint use the picture the model was made from (a concept step's),
+    not the row's original;
+  - a replaced `animate` keeps the clips made before it, as `animate` itself does;
+  - the rig and text-to-image work with relative output folders, whatever folder they run from;
+  - a model's material is proposed from its words through a rig's record and Pixal3D's record;
+  - `--pick concept=N` resumes an outfit pick on the command line (and so in the studio and MCP);
+  - a set carried to another body keeps its material corrections, and "Fit again" on it carries
+    it again;
+  - a clip animated from a Blender version no longer claims that version's hash;
+  - a version of a finished Blender version is finished too (the Steps panel offers the Rig);
+  - a held object exported from the studio keeps its body's export name;
+  - the Unreal check refuses two held objects that put one socket on two bones;
+  - a Pixal3D install no longer downloads MoGe-2 without its own consent (its own card);
+  - over MCP: a review report outside the shared folders is withheld, the picture an asset's
+    record names is held to them too, `run_steps` never rewrites a running batch's spec, picks
+    made at once all stay, a link to `asset#1.glb` reads that file, and a shared network folder
+    keeps its server.
+
 ### Added
 - The MCP server follows the MCP specification 2025-11-25 and is called `assetfurnace`:
   - every tool has annotations (title, read only, destructive, idempotent, this machine only);

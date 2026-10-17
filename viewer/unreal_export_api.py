@@ -133,7 +133,7 @@ def options(output: Path, data: dict, kind: str) -> dict:
         if forward not in FACINGS:
             raise ValueError(f"facing is auto or one of {', '.join(FACINGS)}")
         out["forward"] = FACINGS[forward]
-    if kind == "equipment" and data.get("body_name"):
+    if (kind == "equipment" or data.get("held")) and data.get("body_name"):
         out["body_name"] = up.base_name(str(data["body_name"]))
     return out
 

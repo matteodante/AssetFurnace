@@ -33,6 +33,7 @@ import inspect
 import json
 import mimetypes
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -130,6 +131,7 @@ class Item(TypedDict, total=False):
     state: str
     report: dict[str, Any] | None
     report_file: str | None
+    report_withheld: str
     problem: str
 
 
@@ -219,6 +221,8 @@ def _outside_spec(loaded: batch.BatchSpec) -> list[str]:
     paths = [loaded.directory]
     for row in loaded.rows:
         paths += [*row.images, *([row.asset] if row.asset else []), *map(Path, _strings(row.replace))]
+        # the picture an asset's record leads to: read, and copied into the batch
+        paths += [row.concept] if getattr(row, "concept", None) else []
         paths += [Path(s) for step, settings in row.options.items() for s in _step_files(step, settings)]
     paths = [path if path.is_absolute() else here / path for path in paths]
     return [f"{path}: {OUTSIDE}" for path in dict.fromkeys(paths) if not _allowed(path, roots)]
@@ -482,11 +486,12 @@ def pick_candidate(batch_ref: str, row_id: str, step: str, choice: int) -> Picke
         return {"picked": False, "problem": f"the spec sets {step}'s pick for {row_id}; "
                                             f"change it there ({spec})"}
     picks_path = directory / batch.PICKS_FILE
-    picks = batch.read_json(picks_path)
-    picks = picks if isinstance(picks, dict) else {}
-    # with what it was picked among: new words or settings leave it behind
-    picks.setdefault(row_id, {})[step] = {"choice": choice, "key": key}
-    batch.write_json(picks_path, picks)
+    with _PICKS_LOCK:   # two picks at once both stay
+        picks = batch.read_json(picks_path)
+        picks = picks if isinstance(picks, dict) else {}
+        # with what it was picked among: new words or settings leave it behind
+        picks.setdefault(row_id, {})[step] = {"choice": choice, "key": key}
+        batch.write_json(picks_path, picks)
     if batch.lock_holder(directory) is not None:
         return {"picked": True, "resumed": None,
                 "note": "the batch is running: the pick is used when it runs next "
@@ -527,6 +532,8 @@ def describe_steps() -> Steps:
 
 
 AGENT_SPECS = batch.DEFAULT_OUTPUT / ".agent"
+_AGENT_LOCK = threading.Lock()   # MCP calls run in worker threads: one writes and starts a spec at a time
+_PICKS_LOCK = threading.Lock()   # and one reads and writes a batch's picks.json at a time
 
 
 def run_steps(name: str, steps: list[str], prompt: str | None = None, images: list[str] | None = None,
@@ -556,10 +563,15 @@ def run_steps(name: str, steps: list[str], prompt: str | None = None, images: li
             "output": {"directory": str(batch.DEFAULT_OUTPUT)}, "rows": [row]}
     if not batch.ID_PATTERN.fullmatch(name):
         return {"started": False, "problems": [f"name {name!r}: letters, digits, '_', '.', '-'"]}
-    AGENT_SPECS.mkdir(parents=True, exist_ok=True)
     path = AGENT_SPECS / f"{name}.json"
-    batch.write_json(path, spec)
-    return {**submit_batch(str(path)), "spec": str(path)}
+    with _AGENT_LOCK:
+        running = batch.lock_holder(batch.DEFAULT_OUTPUT / name)
+        if running is not None:   # its runner may not have read the spec yet: leave it as it is
+            return {"started": False, "problems": [f"{name} is running (pid {running}): wait for it, or "
+                                                   "cancel_batch, then call run_steps again"], "spec": str(path)}
+        AGENT_SPECS.mkdir(parents=True, exist_ok=True)
+        batch.write_json(path, spec)
+        return {**submit_batch(str(path)), "spec": str(path)}
 
 
 def list_steps() -> StepNames:
@@ -599,9 +611,14 @@ def review_item(key: str, log: str | None = None) -> Item:
     from .checks import review
 
     try:
-        return review.item_with_report(_review_log(log), key)
+        item = review.item_with_report(_review_log(log), key)
     except KeyError:
         return {"problem": f"{key} is not in the review queue"}
+    roots, report = _ROOTS.get(), item.get("report_file")
+    if roots is not None and report and not _allowed(Path(report), roots):
+        # the log names the report; over MCP it is read only where the client may look
+        item = {**item, "report": None, "report_withheld": f"{report}: {OUTSIDE}"}
+    return item
 
 
 def check_asset(glb: str, key: str | None = None, profile: str | None = None,
@@ -861,11 +878,15 @@ def _paths_in(arguments: dict[str, Any]) -> list[str]:
 
 
 def _uri_path(uri: str) -> Path | None:
-    from urllib.parse import urlparse
+    from urllib.parse import unquote, urlparse
     from urllib.request import url2pathname
 
     parsed = urlparse(uri)
-    return Path(url2pathname(parsed.path)) if parsed.scheme == "file" else None
+    if parsed.scheme != "file":
+        return None
+    if parsed.netloc and parsed.netloc.lower() != "localhost":   # a network folder: //server/share/...
+        return Path("//" + parsed.netloc + unquote(parsed.path))
+    return Path(url2pathname(parsed.path))
 
 
 async def _client_roots(ctx) -> list[Path]:
@@ -1007,8 +1028,9 @@ def _serve_files(server) -> None:
     from mcp.server.mcpserver.resources.templates import ResourceSecurity
 
     async def read_file(path, ctx):
-        found = _uri_path("file:///" + path)
-        if found is None or not _readable(found, await _client_roots(ctx)):
+        # already decoded by the SDK: read as a URL again, "asset#1.glb" would lose "#1.glb"
+        found = Path(path if re.match(r"[A-Za-z]:", path) else "/" + path)
+        if not _readable(found, await _client_roots(ctx)):
             raise ValueError(f"{path}: not a file AssetFurnace hands out (only under output/ or a root you share)")
         return found.read_bytes()
 

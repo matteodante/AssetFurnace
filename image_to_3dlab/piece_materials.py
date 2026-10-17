@@ -128,24 +128,43 @@ def propose(*, slot: str | None = None, kind: str | None = None, words: str = ""
     return {"material": DEFAULT, "by": "rule", "reason": "default"}
 
 
-def prompt_for(path: Path, depth: int = 4) -> str:
-    """The words a single asset was made from: the prompt in its provenance record, or in its
-    input's, following the chain of inputs (model <- picture). Empty when none is found."""
-    path = Path(path)
-    for _ in range(depth):
-        record = path.with_name(path.stem + ".provenance.json")
+RECORD_KEYS = ("prompt", "input", "source_record")
+
+
+def _record(path: Path) -> dict | None:
+    """A file's record: `<stem>.provenance.json`, else `<stem>.json` (what Pixal3D writes)
+    when it reads as one."""
+    for name in (path.stem + ".provenance.json", path.stem + ".json"):
+        record = path.with_name(name)
         if not record.is_file():
-            return ""
+            continue
         try:
             data = json.loads(record.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            return ""
-        if not isinstance(data, dict):
-            return ""   # not a provenance record: no words to read, never a crash
-        if isinstance(data.get("prompt"), str) and data["prompt"].strip():
-            return data["prompt"]
-        source = (data.get("input") or {}).get("path") if isinstance(data.get("input"), dict) else None
-        if not isinstance(source, str) or not source:
+            continue
+        if isinstance(data, dict) and any(key in data for key in RECORD_KEYS):
+            return data
+    return None   # no record, or not a provenance record: no words to read, never a crash
+
+
+def prompt_for(path: Path, depth: int = 4) -> str:
+    """The words a single asset was made from: the prompt in its provenance record, or in its
+    input's, following the chain of inputs (model <- picture), and into the source's record a
+    rig keeps (`source_record`). Empty when none is found."""
+    path = Path(path)
+    for _ in range(depth):
+        data, source = _record(path), None
+        for _ in range(depth):   # a record may hold its source's record inside it (a rig's)
+            if not isinstance(data, dict):
+                break
+            if isinstance(data.get("prompt"), str) and data["prompt"].strip():
+                return data["prompt"]
+            given = data.get("input") if isinstance(data.get("input"), dict) else {}
+            if isinstance(given.get("path"), str) and given["path"]:
+                source = given["path"]
+                break
+            data = data.get("source_record")
+        if not source:
             return ""
         path = Path(source)
     return ""
