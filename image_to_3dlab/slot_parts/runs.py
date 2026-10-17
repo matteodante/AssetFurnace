@@ -117,8 +117,10 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
 
     payload: mode (2: the outfit already drawn, `concept`; 3: drawn from `outfit` words),
     body, set, slots ({slot: {route, split, prompt, material}}), weapon, shield, style, seeds ("3,7"),
-    choose (stop after the pictures to pick, when there are several seeds). `concept` is a
-    path, already checked by the caller.
+    choose (stop after the pictures to pick, when there are several seeds), concept_seeds
+    ("3,4,5", mode 3: the outfit drawn once per seed; default the first of `seeds`) and
+    choose_concept (stop after the outfits to pick one, when there are several). `concept`
+    is a path, already checked by the caller.
     """
     if payload.get("resume"):
         return resume_command(output, payload)
@@ -134,14 +136,15 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
         asked = ((payload.get("slots") or {}).get(held) or {}).get("material")
         if asked and str(payload.get(held) or "").strip():
             chosen[held] = {"material": piece_materials.check(asked)}
-    seeds = [int(s) for s in str(payload.get("seeds", "3")).split(",") if s.strip()][:MAX_SEEDS] or [3]
+    seeds = _seeds(payload.get("seeds", "3")) or [3]
+    concept_seeds = _seeds(payload.get("concept_seeds") or "") or seeds[:1]
     folder = output / "sets" / set_name / body_mod.load(body_json)["name"]
     folder.mkdir(parents=True, exist_ok=True)
     spec = folder / "slots.json"
     spec.write_text(json.dumps(chosen, indent=1) + "\n", encoding="utf-8")
     command = _base(body_json, set_name) + [
         "--slots-json", str(spec), "--seeds", ",".join(map(str, seeds)),
-        "--concept-seeds", str(seeds[0]), "--root", str(output / "sets")]
+        "--concept-seeds", ",".join(map(str, concept_seeds)), "--root", str(output / "sets")]
     if mode == 2:
         concept = payload.get("concept")
         if not concept or not Path(concept).is_file():
@@ -152,6 +155,8 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
         if not outfit:
             raise ValueError("describe the outfit to draw on the body")
         command += ["--outfit", outfit[:600]]
+        if payload.get("choose_concept") and len(concept_seeds) > 1:
+            command.append("--stop-at-concept")
     for held in ("weapon", "shield"):
         words = str(payload.get(held) or "").strip()
         if words:
@@ -161,9 +166,16 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     command += bible_args(payload)
     if not chosen and not any(f"--{h}" in command for h in ("weapon", "shield")):
         raise ValueError("choose at least one slot, a weapon or a shield")
-    if payload.get("choose") and len(seeds) > 1 and chosen:
+    if payload.get("choose") and len(seeds) > 1:   # the pieces', the weapon's and the shield's pictures
         command.append("--stop-at-pictures")
     return command, folder / "run.log"
+
+
+def _seeds(text: Any) -> list[int]:
+    try:
+        return [int(s) for s in str(text).split(",") if s.strip()][:MAX_SEEDS]
+    except ValueError:
+        raise ValueError("seeds are whole numbers separated by commas, e.g. 3,7") from None
 
 
 def bible_args(payload: dict) -> list[str]:
@@ -175,16 +187,17 @@ def bible_args(payload: dict) -> list[str]:
 
 
 def resume_command(output: Path, payload: dict) -> tuple[list[str], Path]:
-    """The run that goes on from the pictures, with the picks ({slot: seed})."""
+    """The run that goes on from the pictures (or the outfits), with the picks ({slot: seed},
+    `concept` for the outfit)."""
     body_json = _body_json(output, payload.get("body"))
     set_name = _set_name(payload.get("set"))
     folder = output / "sets" / set_name / body_mod.load(body_json)["name"]
     if not (folder / "run_state.json").is_file():
         raise ValueError(f"{set_name} has no pictures waiting for picks")
-    offered = candidates_mod.load(folder / "pieces")["slots"]
+    offered = waiting_picks(output, folder) or {}
     picks = {}
     for slot, seed in (payload.get("picks") or {}).items():
-        if slot not in offered or str(seed) not in {str(s) for s in offered[slot]["candidates"]}:
+        if slot not in offered or str(seed) not in {str(c["seed"]) for c in offered[slot]["candidates"]}:
             raise ValueError(f"{slot}: {seed} is not one of its pictures")
         picks[slot] = int(seed)
     command = _base(body_json, set_name) + ["--slots-json", str(folder / "slots.json"),
@@ -240,12 +253,25 @@ COMMANDS = {"run": run_command, "resume": resume_command, "fit": fit_command, "r
 
 
 def waiting_picks(output: Path, folder: Path) -> dict[str, Any] | None:
-    """The candidates a stopped run waits on: every slot's pictures and scores."""
-    if not (folder / "run_state.json").is_file():
+    """The candidates a stopped run waits on: every slot's pictures and scores, or the
+    outfits drawn (`concept`, no score) when the run waits on the outfit."""
+    state_path = folder / "run_state.json"
+    if not state_path.is_file():
         return None
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if state.get("waiting") == "concept":
+        seeds = [int(s) for s in state.get("concepts") or []]
+        return {"concept": {"auto": seeds[0], "picked": int(state.get("picked", seeds[0])) if seeds else None,
+                            "doubt": False, "outfit": True,
+                            "candidates": [{"seed": seed, "picture": rel(output, folder / "concept" / f"s{seed}.png"),
+                                            "score": None, "is_piece": None, "shape": None} for seed in seeds]}}             if seeds else None
     out = {}
     for slot, entry in candidates_mod.load(folder / "pieces")["slots"].items():
         out[slot] = {"auto": entry["auto"], "picked": entry["picked"], "doubt": bool(entry.get("doubt")),
+                     "held": bool(entry.get("held")),
                      "candidates": [{"seed": int(seed), "picture": rel(output, Path(c["picture"])),
                                      "score": c["score"], "is_piece": c.get("is_piece"), "shape": c["shape"]["score"]}
                                     for seed, c in sorted(entry["candidates"].items(), key=lambda kv: int(kv[0]))]}

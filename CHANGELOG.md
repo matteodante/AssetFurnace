@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces: the mode 3 outfit can be drawn once per seed and wait for a pick
+  (`slot_parts.py run --stop-at-concept`, `pieces_run(concept_seeds=, choose_concept=)`,
+  the Pieces page's "Outfit pictures"); the weapon and shield are picked among their seeds
+  like the drawn pieces; and the Pieces page fits a set again, carries it to another body
+  and exports it for Unreal, as `fit`, `refit` and `unreal` do. `refit` now writes the
+  carried set's record on its new body, and `fit` works on a set of a weapon or shield alone.
 - A version made in Blender goes on through Finish, Rig and Animate. The studio shows the
   steps on a chosen version, Rig and Animate list versions among their models (a version
   that kept its skeleton is animated as a rig, copied once and not rigged again), and what

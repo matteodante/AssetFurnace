@@ -10,6 +10,11 @@
                                          piece's pictures are made and scored;
                                          {"resume": true, "body", "set", "picks": {slot: seed}}
                                          goes on from there with the person's picks
+                                         ("concept": seed when the run waits on the outfits, asked
+                                         with "concept_seeds": "3,4,5" and "choose_concept");
+                                         {"action": "fit" | "refit" | "unreal", "body", "set",
+                                         "to" (refit), "size_cm" (unreal)}: fit a made set again,
+                                         carry it to another body, export it for Unreal
     POST /api/slot-parts/run/cancel
     POST /api/slot-parts/materials       {"set", "body", "pieces": {slot: material | null}}: a
                                          person's material for pieces of a made set (null: back
@@ -66,9 +71,9 @@ def register_body(output: Path, payload: dict) -> dict:
                               clips, payload.get("labels") or {})
 
 
-def _checked(output: Path, payload: dict) -> dict:
+def _checked(output: Path, payload: dict, action: str = "run") -> dict:
     """The page's request with its concept, if any, found inside the output folder."""
-    if int(payload.get("mode", 3)) == 2 and not payload.get("resume"):
+    if action == "run" and int(payload.get("mode", 3)) == 2 and not payload.get("resume"):
         return {**payload, "concept": _inside(output, payload.get("concept"))}
     return payload
 
@@ -116,10 +121,12 @@ def job_status(output: Path) -> dict[str, Any]:
 def start_run(output: Path, payload: dict, popen=subprocess.Popen) -> dict[str, Any]:
     if _JOB and _JOB["process"].poll() is None:
         raise ValueError(f"a set is already being made ({_JOB['set']}); wait or stop it")
-    action = "resume" if payload.get("resume") else "run"
+    action = str(payload.get("action") or ("resume" if payload.get("resume") else "run"))
+    if action not in runs.COMMANDS:
+        raise ValueError(f"unknown action {action!r}: {', '.join(runs.COMMANDS)}")
     if action == "run" and int(payload.get("mode", 3)) not in (2, 3):
         raise ValueError("mode 1 (one piece) is + Create; this page makes modes 2 and 3")
-    process, record = runs.start(output, action, _checked(output, payload), popen=popen)
+    process, record = runs.start(output, action, _checked(output, payload, action), popen=popen)
     _JOB.clear()
     _JOB.update(process=process, record=record, log=record["log"], folder=record["folder"], set=payload["set"],
                 body=payload["body"], started=record["started"])

@@ -124,6 +124,25 @@ def test_a_set_is_started_like_the_studio_starts_it(output, started):
     assert again["started"] is False and "already" in again["problems"][0]
 
 
+def test_an_agent_can_wait_for_the_outfit_and_pick_it(output, started):
+    mcp_server.pieces_run("stick", "red", outfit="red plate", slots=["torso"], concept_seeds="3,4",
+                          choose_concept=True)
+    (command,) = started
+    assert "--stop-at-concept" in command and command[command.index("--concept-seeds") + 1] == "3,4"
+    folder = output / "sets" / "red" / "stick"
+    (folder / "concept").mkdir(parents=True)
+    for seed in (3, 4):
+        (folder / "concept" / f"s{seed}.png").write_bytes(b"png")
+    (folder / "run_state.json").write_text(json.dumps({"waiting": "concept", "concepts": [3, 4]}))
+    (output / "sets" / runs.RUN_FILE).write_text(json.dumps({   # the run has ended, waiting
+        "pid": 999999, "action": "run", "set": "red", "body": "stick", "log": str(folder / "run.log"),
+        "folder": str(folder), "started": 0}))
+    waiting = mcp_server.pieces_status()["picks"]
+    assert [c["seed"] for c in waiting["concept"]["candidates"]] == [3, 4]
+    assert mcp_server.pieces_pick("stick", "red", {"concept": 4})["started"]
+    assert started[-1][started[-1].index("--pick") + 1] == "concept=4"
+
+
 def test_mode_2_takes_a_concept_file(output, started, tmp_path):
     concept = tmp_path / "drawn.png"
     concept.write_bytes(b"png")
