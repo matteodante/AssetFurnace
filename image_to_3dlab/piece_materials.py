@@ -140,10 +140,12 @@ def prompt_for(path: Path, depth: int = 4) -> str:
             data = json.loads(record.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return ""
+        if not isinstance(data, dict):
+            return ""   # not a provenance record: no words to read, never a crash
         if isinstance(data.get("prompt"), str) and data["prompt"].strip():
             return data["prompt"]
         source = (data.get("input") or {}).get("path") if isinstance(data.get("input"), dict) else None
-        if not source:
+        if not isinstance(source, str) or not source:
             return ""
         path = Path(source)
     return ""

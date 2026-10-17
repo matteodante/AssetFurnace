@@ -28,7 +28,9 @@ def choose(ctx: StepContext) -> dict:
     asked = ctx.options.get("material")
     if asked:
         return {"material": piece_materials.check(asked), "by": "person", "reason": "chosen in the batch spec"}
-    words = piece_materials.prompt_for(ctx.asset) if ctx.asset else ""
+    # the current model's words, else the row's own model's: a rig's record has no path back
+    words = ((piece_materials.prompt_for(ctx.asset) if ctx.asset else "")
+             or (piece_materials.prompt_for(ctx.row.asset) if ctx.row.asset else ""))
     kind = ctx.row.kind if ctx.row.kind in piece_materials.KIND_DEFAULTS else None
     return piece_materials.propose(kind=kind, words=words)
 

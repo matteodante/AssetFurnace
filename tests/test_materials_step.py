@@ -29,7 +29,7 @@ def _spec(tmp_path, steps, row=None):
     # the words it was made from, in its provenance, as a generated model keeps them
     asset.with_suffix(".provenance.json").write_text(json.dumps({
         "license": {"name": "MIT"}, "classification": "commercial-clear",
-        "prompt": "an old oak chest with iron bands"}))
+        "prompt": "an old chest with iron bands"}))
     spec = {"schema_version": 1, "name": "mats", "output": {"directory": "out"},
             "rows": [{"id": "SM_Chest", "asset": str(asset), "kind": "prop", "size_cm": 80,
                       "steps": list(steps), **(row or {})}]}
@@ -56,9 +56,9 @@ def test_the_rule_proposes_the_material_and_the_export_takes_it(tmp_path, monkey
     install_fake_generator(monkeypatch)
     spec = _spec(tmp_path, ["materials", "export_unreal"])
     assert batch.run_batch(batch.load_batch(spec)).exit_code == 0
-    assert exported == ["wood"]   # "oak" in the prompt
+    assert exported == ["metal"]   # "iron" in the prompt (a prop is wood by default)
     record = json.loads((tmp_path / "out" / "mats" / "rows" / "SM_Chest" / "materials" / "material.json").read_text())
-    assert record["material"] == "wood" and record["by"] == "rule" and "prompt" in record["reason"]
+    assert record["material"] == "metal" and record["by"] == "rule" and "prompt" in record["reason"]
 
 
 def test_a_person_chooses_it_and_a_change_reruns_only_from_there(tmp_path, monkeypatch, exported):
@@ -176,3 +176,34 @@ def test_the_studio_material_menu_offers_none():
     out = json.loads(result.stdout)
     assert out["none"] == "none" and out["auto"] is None
     assert ["none", "Keep its own maps"] in out["options"]
+
+
+def test_the_words_come_from_the_row_even_after_a_rig(tmp_path, monkeypatch, exported):
+    """A rig's record has no path back to the model it rigged: the rule still reads the words
+    of the row's own model."""
+    install_fake_generator(monkeypatch)
+
+    def rig(ctx):
+        rigged = tiny_glb(ctx.step_dir / "chest_rigged.glb", "rigged")
+        sidecar = rigged.with_suffix(".provenance.json")
+        sidecar.write_text(json.dumps({"license": {"name": "MIT"}, "input": {"name": "chest.glb"}}))
+        return StepResult(asset=rigged, sidecar=sidecar, files=[rigged, sidecar])
+
+    monkeypatch.setitem(batch.STEPS, "rig", fake_step(rig))
+    batch.run_batch(batch.load_batch(_spec(tmp_path, ["rig", "materials", "export_unreal"])))
+    assert exported == ["metal"]
+
+
+def test_the_material_must_come_before_the_export(tmp_path, monkeypatch):
+    install_fake_generator(monkeypatch)
+    with pytest.raises(batch.BatchError, match="before export_unreal"):
+        batch.load_batch(_spec(tmp_path, ["export_unreal", "materials"]))
+
+
+@pytest.mark.parametrize("record", ["[1, 2]", '{"input": {"path": 7}}', '"text"'])
+def test_an_odd_provenance_record_falls_back_to_the_kind(tmp_path, record):
+    from image_to_3dlab import piece_materials
+
+    model = tiny_glb(tmp_path / "m.glb")
+    model.with_suffix(".provenance.json").write_text(record)
+    assert piece_materials.prompt_for(model) == ""

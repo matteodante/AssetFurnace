@@ -250,6 +250,7 @@ Then, in that repository's `.mcp.json`:
 | `pieces_run(body, set, mode, slots, outfit, concept, weapon, shield, style, seeds, choose)` | A set on a body, in the background, as the studio's Pieces page starts it; `choose` stops after the pictures |
 | `pieces_status()`, `pieces_pick(body, set, picks)` | The run's log and the pictures waiting (paths and scores); go on with your picks |
 | `pieces_fit`, `pieces_refit(body, set, to)`, `pieces_unreal(body, set, size_cm)`, `pieces_cancel()` | Fit again, carry a set to another body, export it for Unreal, stop the run |
+| `pieces_materials(body, set, pieces)` | Correct the one material of pieces of a made set (`{"helmet": "leather"}`, `null` for the rule's again); `pieces_unreal` then exports with them |
 | `describe_steps()` | Every step with its settings (types, defaults, ranges), what can be skipped or replaced, what makes candidates, and whether it is installed |
 | `run_steps(name, steps, prompt, images, asset, ..., options)` | One asset through some steps: a batch of one row, written to `output/batches/.agent/<name>.json` and started. Call it again with other settings to rerun from the first changed step |
 | `pick_candidate(batch_ref, row_id, step, choice)` | Pick one of the candidates a waiting row offers (`batch_status` lists them under `waiting`), or change a pick; resumes the batch |

@@ -686,6 +686,9 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
             problems.append(f"{label}: step {step!r} is listed twice")
     if "picture" in steps and steps[0] != "picture":
         problems.append(f"{label}: picture makes the row's picture, so it must come first")
+    if "materials" in steps and "export_unreal" in steps and steps.index("materials") > steps.index("export_unreal"):
+        problems.append(f"{label}: materials chooses the material the export packs, so it must come before "
+                        "export_unreal")
     if "generate" in steps and any(step not in PICTURE_STEPS for step in steps[:steps.index("generate")]):
         problems.append(f"{label}: generate makes the asset, so it must come first (only a "
                         "step that draws its picture may come before it)")

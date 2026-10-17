@@ -37,7 +37,6 @@ from urllib.parse import unquote, urlsplit
 import batch_api
 
 from image_to_3dlab import piece_materials, processes
-from image_to_3dlab.slot_parts import body as body_mod
 from image_to_3dlab.slot_parts import runs
 
 REPO = Path(__file__).resolve().parents[1]
@@ -76,17 +75,6 @@ def _checked(output: Path, payload: dict, action: str = "run") -> dict:
     if action == "run" and int(payload.get("mode", 3)) == 2 and not payload.get("resume"):
         return {**payload, "concept": _inside(output, payload.get("concept"))}
     return payload
-
-
-def made_set(output: Path, payload: dict) -> Path:
-    """A made set's folder, `output/sets/<set>/<body>/`, from the page's names."""
-    body, set_name = str(payload.get("body", "")), str(payload.get("set", ""))
-    if not body_mod.NAME.match(body) or not body_mod.NAME.match(set_name):
-        raise ValueError("name a set and its body: letters, digits, '.', '_' or '-'")
-    folder = output / "sets" / set_name / body
-    if not any(folder.glob("*.parts.json")):
-        raise ValueError(f"{set_name} on {body} is not a finished set")
-    return folder
 
 
 def save_materials(output: Path, payload: dict) -> dict:
