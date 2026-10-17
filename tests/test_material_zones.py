@@ -239,3 +239,28 @@ def test_points_agree_where_the_vote_put_their_material(tmp_path):
     result = mz.point_agreement({0: zone}, points)
     assert result["points"] == 3 and result["agreement"] == pytest.approx(2 / 3)
     assert result["zone_points"] == 2 and result["zone_agreement"] == 1.0
+
+
+def test_zones_default_to_sam2_until_sam3_is_granted(tmp_path, monkeypatch):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("game_materials_cli", Path(__file__).resolve().parents[1]
+                                                  / "scripts" / "game_materials.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    asked = []
+
+    def fake_find(asset, work, segmenter, vocabulary=None):
+        asked.append(segmenter)
+        _, zone, record = zoned(tmp_path / "z")
+        return {0: zone}, record
+
+    monkeypatch.setattr(mz, "find_zones", fake_find)
+    (tmp_path / "z").mkdir()
+    asset = make_glb(tmp_path / "knight.glb", painted())
+    assert cli.main([str(asset), str(tmp_path / "out"), "--zones"]) == 0
+    assert asked == ["sam2"]
+    monkeypatch.undo()
+    import inspect
+
+    assert inspect.signature(mz.find_zones).parameters["segmenter"].default == "sam2"

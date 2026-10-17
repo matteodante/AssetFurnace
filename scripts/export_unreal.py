@@ -256,6 +256,9 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
         raise RuntimeError(f"Blender could not reshape the model: {report.get('error')}")
     stamp = {"kind": kind, "size_cm": size_cm, "measure": measure, "profile": up.SIDECAR_SCHEMA}
     data, textures = up.finalize_glb(Path(p["job"]["out"]).read_bytes(), stamp=stamp)
+    if report.get("vertex_colour"):  # a fitted base body: hide the skin under the armour
+        data, masked = up.mask_from_vertex_alpha(data)
+        report["masked_materials"] = masked
     p["glb"].write_bytes(data)
     if p["tint"]:
         from PIL import Image
@@ -270,7 +273,8 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
                          animations=report.get("animations", []), tint=p["tint"].name if p["tint"] else None,
                          problems=problems, orm=any(m.get("orm") for m in textures["materials"].values()),
                          facing_bones=facing_bones(_family(Path(source)) if kind == "creature" else None,
-                                                   report.get("bones") or {}))
+                                                   report.get("bones") or {}),
+                         opacity_mask="vertex_alpha" if report.get("masked_materials") else None)
     if p["materials_record"]:
         record = p["out_dir"] / f"{p['names']['mesh']}.materials.json"
         shutil.copyfile(p["materials_record"], record)
