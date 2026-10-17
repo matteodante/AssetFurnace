@@ -531,6 +531,18 @@ def pieces_unreal(body: str, set: str, size_cm: float = 180.0) -> dict[str, Any]
     return _pieces("unreal", {"body": body, "set": set, "size_cm": size_cm})
 
 
+def pieces_materials(body: str, set: str, pieces: dict[str, str | None]) -> dict[str, Any]:
+    """Correct the one material of pieces of a made set: {"helmet": "leather"}; None gives a
+    piece the rule's proposal back. Answers every piece's material and why (person, asked
+    before the run, or the rule). pieces_unreal then exports with them."""
+    from .slot_parts import runs
+
+    try:
+        return {"saved": True, **runs.save_materials(OUTPUT, {"body": body, "set": set, "pieces": pieces})}
+    except (ValueError, OSError) as exc:
+        return {"saved": False, "problems": [str(exc)]}
+
+
 def pieces_status() -> dict[str, Any]:
     """The last run: running or not, the end of its log, the set's record when done, and
     the pictures waiting for a pick (absolute paths, with their scores)."""
@@ -554,7 +566,8 @@ def pieces_cancel() -> dict[str, Any]:
 
 TOOLS = (validate_batch, submit_batch, resume_batch, batch_status, list_outputs, cancel_batch,
          list_steps, review_queue, review_item, check_asset, review_decide, pieces_list, pieces_add_body,
-         pieces_run, pieces_pick, pieces_fit, pieces_refit, pieces_unreal, pieces_status, pieces_cancel,
+         pieces_run, pieces_pick, pieces_fit, pieces_refit, pieces_unreal, pieces_materials, pieces_status,
+         pieces_cancel,
          describe_steps, run_steps, pick_candidate, rerun_step)
 
 

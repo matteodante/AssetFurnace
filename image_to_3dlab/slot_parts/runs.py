@@ -207,6 +207,22 @@ def resume_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     return command, folder / "run.log"
 
 
+def save_materials(output: Path, payload: dict) -> dict:
+    """A person's materials for pieces of a made set ({slot: material, or None for the rule's
+    proposal again}); every piece's material afterwards. The Unreal export reads them."""
+    body, set_name = str(payload.get("body", "")), str(payload.get("set", ""))
+    if not body_mod.NAME.match(body) or not body_mod.NAME.match(set_name):
+        raise ValueError("name a set and its body: letters, digits, '.', '_' or '-'")
+    folder = output / "sets" / set_name / body
+    if not any(folder.glob("*.parts.json")):
+        raise ValueError(f"{set_name} on {body} is not a finished set")
+    pieces = payload.get("pieces")
+    if not isinstance(pieces, dict) or not pieces:
+        raise ValueError("give the pieces' materials, e.g. {\"helmet\": \"leather\"}")
+    piece_materials.save_corrections(folder, {str(k): (None if v in (None, "") else str(v)) for k, v in pieces.items()})
+    return {"set": set_name, "body": body, "materials": piece_materials.set_materials(folder)}
+
+
 def _fitted(output: Path, payload: dict) -> tuple[Path, Path, Path]:
     """A set's folder on a body, that body's record, and the set's fit folder (which must exist)."""
     body_json = _body_json(output, payload.get("body"))
