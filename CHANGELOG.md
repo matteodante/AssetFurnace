@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- The Unreal export passes the glTF validator without warnings: it writes a normal map's
+  tangents, and a skinned mesh is a root node as the glTF spec asks (on the first real set
+  the validator warned of both). The knight's body and helmet export with 0 errors and 0
+  warnings, and still import and retarget in UE 5.8.
 - The final review of the step parity work (Codex, by area) found these, each fixed with a test:
   - a row that starts from words passes Finish's preflight before its picture is drawn;
   - Checks and Finish's repaint use the picture the model was made from (a concept step's),

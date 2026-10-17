@@ -463,10 +463,22 @@ def run(job):
             if slot.material is not None:
                 slot.material.use_backface_culling = not two_sided
     report["two_sided"] = two_sided
+    # glTF asks for a skinned mesh as a root node, the joints alone placing it (the validator's
+    # NODE_SKINNED_MESH_NON_ROOT on the first real set): out from under its armature, where it is,
+    # still deformed by it through its modifier
+    for o in bpy.context.scene.objects:
+        if (o.type == "MESH" and o.parent is not None and o.parent.type == "ARMATURE"
+                and any(m.type == "ARMATURE" for m in o.modifiers)):
+            world = o.matrix_world.copy()
+            o.parent = None
+            o.matrix_world = world
+    bpy.context.view_layer.update()
     bpy.ops.export_scene.gltf(
         filepath=str(out), export_format="GLB", export_yup=True,
         export_animations=exported_animations,
         **({"export_animation_mode": "NLA_TRACKS"} if exported_animations else {}),
+        # a normal map's tangents written, not left to each reader (MESH_PRIMITIVE_GENERATED_TANGENT_SPACE)
+        export_tangents=True,
         export_skins=skinned, export_cameras=False, export_lights=False, export_extras=False, **colours)
     report["blender"] = bpy.app.version_string
     return report
