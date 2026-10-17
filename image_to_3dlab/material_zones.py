@@ -40,7 +40,7 @@ from image_to_3dlab.materials import CHANNELS, Surface, island_labels, srgb_to_l
 
 VOCABULARY = tuple(m for m in MATERIALS if m != "other")
 MAX_MATERIALS = 6
-SEGMENTERS = ("sam3", "sam2")
+SEGMENTERS = ("sam31", "sam3", "sam2")
 ZONE_PROFILES = ("creature", "equipment_part")
 SIGMA = 0.004
 HINT_WEIGHT = 0.5
@@ -49,8 +49,9 @@ TRIAL = ("not run: needs the user's material points (design section 6, scripts/z
          "at least 75% of the points in the zone of their material")
 
 # Starting roughness and metallic per material, after the material -> roughness/metallic table of
-# MaterialSeg3D++ (2026). Only where an asset has no map of its own, and only once they pass the
-# Poly Haven trial (design sections 4 and 6; scripts/zones_trial.py pbr).
+# MaterialSeg3D++ (2026). They failed the Poly Haven trial on 2026-10-17 (SAM 2.1 zones: roughness
+# RMSE 0.30, 32% worse than a constant; metal wrong on 42% of the area; design section 10), so
+# nothing writes them into an asset; they are kept to measure better zones the same way.
 DEFAULT_PBR = {
     "cloth": (0.9, 0.0), "leather": (0.6, 0.0), "metal": (0.35, 1.0), "skin": (0.55, 0.0),
     "fur": (0.9, 0.0), "hair": (0.6, 0.0), "feathers": (0.85, 0.0), "scales": (0.45, 0.0),
@@ -160,9 +161,12 @@ def status(count: int, profile: str | None) -> tuple[str, str]:
     return "fail", "fewer than 2 tint zones: recolouring would change the whole asset at once"
 
 
-def zone_records(zone: ZoneMap, albedo_srgb: np.ndarray, count: int = 3) -> list[dict]:
-    """The sidecar's zones: channel, material, area and mean linear colour (the tint formula's c)."""
-    linear = srgb_to_linear(albedo_srgb[..., :3] / 255.0)
+def zone_records(zone: ZoneMap, albedo_srgb: np.ndarray, count: int = 3, factor=(1.0, 1.0, 1.0)) -> list[dict]:
+    """The sidecar's zones: channel, material, area and mean linear colour (the tint formula's c).
+
+    The colour is the one the renderer shows: the texture times the material's baseColorFactor.
+    """
+    linear = srgb_to_linear(albedo_srgb[..., :3] / 255.0) * np.asarray(factor, dtype=np.float64)[:3]
     areas = zone.areas()
     out = []
     for channel, name in zip(CHANNELS, zone.zones(count)):
@@ -218,7 +222,7 @@ def region_scores(regions: np.ndarray, names: list[str | None], phrases: list[st
 # --------------------------------------------------------------------------- the models
 
 def _run(task: str, job: dict, work: Path, model: mm.HubModel, run=subprocess.run, lock=gpu_lock.gpu) -> dict:
-    folder = mm.require(model)
+    folder = mm.require_sam31() if model is mm.SAM31 else mm.require(model)
     python = mm.require_env()
     work.mkdir(parents=True, exist_ok=True)
     job_path, result = work / f"{task}_job.json", work / f"{task}_result.json"
@@ -246,11 +250,11 @@ def segment(views: list[mv.View], folder: Path, phrases: list[str], segmenter: s
     if segmenter not in SEGMENTERS:
         raise ValueError(f"unknown segmenter {segmenter!r}; choose from {', '.join(SEGMENTERS)}")
     colours = [folder / f"view_{v.index:02d}_color.png" for v in views]
-    if segmenter == "sam3":
-        outs = [work / f"view_{v.index:02d}_sam3.npz" for v in views]
+    if segmenter in ("sam31", "sam3"):
+        outs = [work / f"view_{v.index:02d}_{segmenter}.npz" for v in views]
         runner("segment_sam3", {"phrases": phrases,
                                 "images": [{"path": str(c), "out": str(o)} for c, o in zip(colours, outs)]},
-               work, mm.SAM3)
+               work, mm.SAM31 if segmenter == "sam31" else mm.SAM3)
         return {v.index: np.moveaxis(np.load(o)["scores"].astype(np.float64), 0, -1) * (v.material >= 0)[..., None]
                 for v, o in zip(views, outs)}
     outs = [work / f"view_{v.index:02d}_regions.npz" for v in views]
@@ -283,13 +287,14 @@ def segment(views: list[mv.View], folder: Path, phrases: list[str], segmenter: s
 
 def components(segmenter: str) -> list[dict]:
     """The models a zoning run used, for the provenance record."""
-    used = [mm.QWEN35, mm.SAM3 if segmenter == "sam3" else mm.SAM21]
+    used = [mm.QWEN35, {"sam31": mm.SAM31, "sam3": mm.SAM3}.get(segmenter, mm.SAM21)]
     return [{"component": f"{m.repo}@{m.revision}", "purpose": "material zones", "license": m.license,
              "license_url": m.license_url,
-             "commercial_status": "commercial-conditional" if m is mm.SAM3 else "commercial-clear"} for m in used]
+             "commercial_status": "commercial-conditional" if m in (mm.SAM3, mm.SAM31) else "commercial-clear"}
+            for m in used]
 
 
-def find_zones(asset: Path, work: Path, segmenter: str = "sam2", vocabulary: list[str] | None = None,
+def find_zones(asset: Path, work: Path, segmenter: str = "sam31", vocabulary: list[str] | None = None,
                size: int = 512, around: int = 16, render=mv.render_views, runner=_run,
                metal_hints: dict[int, np.ndarray] | None = None) -> tuple[dict[int, ZoneMap], dict]:
     """Zones for every textured material of `asset`, and a record of how they were found."""

@@ -458,7 +458,7 @@ def test_every_gated_repo_is_one_the_sign_in_check_asks_about():
     checked = {repo for repo, _ in hf_api.GATED}
     gated = {b.id: b.gated_repo for b in bc.CATALOG if b.gated_repo}
     assert gated == {"trellis": "facebook/dinov3-vitl16-pretrain-lvd1689m",
-                     "sf3d": "stabilityai/stable-fast-3d", "materials-zones": "facebook/sam3"}
+                     "sf3d": "stabilityai/stable-fast-3d", "materials-zones": "facebook/sam3.1"}
     assert set(gated.values()) <= checked
     assert bc.BY_ID["trellis"].describe(bc.APPLE)["gated_repo"] == gated["trellis"]
 

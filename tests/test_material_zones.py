@@ -241,7 +241,7 @@ def test_points_agree_where_the_vote_put_their_material(tmp_path):
     assert result["zone_points"] == 2 and result["zone_agreement"] == 1.0
 
 
-def test_zones_default_to_sam2_until_sam3_is_granted(tmp_path, monkeypatch):
+def test_zones_default_to_sam31(tmp_path, monkeypatch):
     import importlib.util
 
     spec = importlib.util.spec_from_file_location("game_materials_cli", Path(__file__).resolve().parents[1]
@@ -259,8 +259,27 @@ def test_zones_default_to_sam2_until_sam3_is_granted(tmp_path, monkeypatch):
     (tmp_path / "z").mkdir()
     asset = make_glb(tmp_path / "knight.glb", painted())
     assert cli.main([str(asset), str(tmp_path / "out"), "--zones"]) == 0
-    assert asked == ["sam2"]
+    assert asked == ["sam31"]
     monkeypatch.undo()
     import inspect
 
-    assert inspect.signature(mz.find_zones).parameters["segmenter"].default == "sam2"
+    assert inspect.signature(mz.find_zones).parameters["segmenter"].default == "sam31"
+
+
+def test_a_zones_mean_colour_includes_the_base_colour_factor(tmp_path):
+    _, zone, _ = zoned(tmp_path)
+    white = np.full((SIZE, SIZE, 3), 255, np.uint8)
+    records = mz.zone_records(zone, white, factor=(0.5, 0.5, 0.5))
+    assert records[0]["mean_linear"] == pytest.approx([0.5, 0.5, 0.5])
+
+
+def test_sam31_segments_through_the_same_task_and_is_named_in_the_provenance(tmp_path):
+    asset = make_glb(tmp_path / "knight.glb", painted())
+    calls = []
+    zones, record = mz.find_zones(asset, tmp_path / "work", "sam31", vocabulary=["leather", "metal", "cloth"],
+                                  render=fake_render(painted()), around=2, runner=fake_runner(calls))
+    assert calls == [("segment_sam3", "sam31")]
+    assert zones[0].zones() == ["leather", "metal", "cloth"]
+    assert {c["component"].split("@")[0] for c in record["components"]} == {mm.QWEN35.repo, mm.SAM31.repo}
+    assert all(c["commercial_status"] == "commercial-conditional" for c in record["components"]
+               if c["component"].startswith(mm.SAM31.repo))

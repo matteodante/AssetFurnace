@@ -304,6 +304,9 @@ def delight_image(image: Path, out_path: Path, *, intrinsics: Callable = run_int
     image, out_path = Path(image), Path(out_path)
     if out_path.exists() and out_path.samefile(image):
         raise ValueError("the result would overwrite the concept")
+    if out_path.with_suffix(".provenance.json").resolve() == image.with_suffix(".provenance.json").resolve():
+        raise ValueError(f"{out_path.name} would share {image.stem}.provenance.json with the concept and "
+                         "overwrite its licence record; give the result another name")
     data = image.read_bytes()
     source_sha256, licence = hashlib.sha256(data).hexdigest(), source_provenance(image)
     picture = np.asarray(Image.open(image).convert("RGBA"))

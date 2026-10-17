@@ -121,6 +121,7 @@ The asset's surface, as opposed to its shape.
 | `bake_stiffness.py` | Bake foliage stiffness into a GLB as vertex colours, for engine-side wind. |
 | `classify_thickness.py` | Separate solid body from thin foliage by measuring local thickness. |
 | `material_label_set.py` | Queue assets for the user's material labels, follow the progress, export what is complete. |
+| `label_sheet.py` | Build the pictures of the material label sheet, and bring its labels back into the project's record. |
 | `reference_concept.py` | Draw a new concept from a reference: prepare a map, then redraw, dress, add a piece or turn it. |
 | `game_materials.py` | Pack a generated GLB's own maps as a game-ready ORM, with its sidecar and licence record. |
 | `bootstrap_materials.py` | Install the game-material models and their environment, after saying what, how big and under which licence. |
@@ -130,6 +131,7 @@ The asset's surface, as opposed to its shape.
 | `baked_light_trial.py` | Build, train and test the learned baked-light check. |
 | `zones_trial.py` | Test tint zones by material, and the roughness and metallic they imply. |
 | `materials_worker.py` | Run a material model on images, inside the materials environment. |
+| `sam3_keys.py` | Map a SAM 3 / SAM 3.1 checkpoint from Meta's layout to the one transformers' Sam3Model loads. |
 
 ## Measure and judge
 
