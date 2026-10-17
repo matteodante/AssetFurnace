@@ -55,9 +55,11 @@ def resolve(bible: str | None, kind: str | None = None, references: int = 0,
 
 
 def styled(prompt: str, style: Style | None) -> str:
-    """The prompt with the bible's words after it."""
-    base = prompt.strip().rstrip(",.")
-    return f"{base}, {style.words}" if style and style.words else base
+    """The prompt with the bible's words after it; without a bible, the prompt untouched
+    (the same words and seed draw the same picture as before)."""
+    if not (style and style.words):
+        return prompt
+    return f"{prompt.strip().rstrip(',.')}, {style.words}"
 
 
 def record(style: Style) -> dict:

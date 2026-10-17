@@ -80,6 +80,7 @@ def run(ctx: StepContext) -> StepResult:
         text_image.generate(apply.styled(ctx.row.prompt or "", style), {**settings_of(ctx.options), "seed": seed},
                             path, log=ctx.log, session=f"batch picture {ctx.row.id}", extra_provenance=extra)
 
+    # the first version's key had no bible in it: its candidates were drawn without one
     pictures = _candidates.draw_all(ctx, "picture", seeds_of(ctx.options), draw,
-                                    legacy=legacy_key(ctx.row.prompt, ctx.options))
+                                    legacy=None if style else legacy_key(ctx.row.prompt, ctx.options))
     return _candidates.choose(ctx, pictures)

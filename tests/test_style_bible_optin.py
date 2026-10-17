@@ -55,6 +55,36 @@ def test_the_active_bible_gives_its_words_and_references(output):
     assert apply.resolve("auroconts", "creature").words == "hand-painted, warm palette"   # no creature words
 
 
+def test_without_a_bible_the_prompt_is_left_as_it_was():
+    # the same words, the same seed, the same picture as before bibles existed
+    assert apply.styled("a barrel, game asset.", None) == "a barrel, game asset."
+    assert apply.styled(" a barrel ", None) == " a barrel "
+
+
+def test_pictures_drawn_without_a_bible_are_not_taken_for_a_bible_row(monkeypatch, tmp_path):
+    """The first version's candidates key had no bible in it: with a bible asked, those
+    candidates (drawn without one) must not be adopted."""
+    from types import SimpleNamespace
+
+    from image_to_3dlab.batch_steps import picture as picture_step
+
+    seen = {}
+
+    def draw_all(ctx, step, seeds, draw, legacy=None):
+        seen["legacy"] = legacy
+        return {}
+
+    monkeypatch.setattr(picture_step._candidates, "draw_all", draw_all)
+    monkeypatch.setattr(picture_step._candidates, "choose", lambda ctx, pictures: None)
+    monkeypatch.setattr(apply, "resolve", lambda name, kind, **kw: apply.Style("b", Path("b"), "0" * 64, "words", kind)
+                        if name else None)
+    row = SimpleNamespace(prompt="a barrel", kind="prop", id="r")
+    picture_step.run(SimpleNamespace(options={"bible": "-"}, row=row, log=None))
+    assert seen["legacy"] is None
+    picture_step.run(SimpleNamespace(options={}, row=row, log=None))
+    assert seen["legacy"] == picture_step.legacy_key("a barrel", {})
+
+
 def test_an_unknown_bible_is_refused(output):
     with pytest.raises(sb.BibleError):
         apply.resolve("nope", "prop")
