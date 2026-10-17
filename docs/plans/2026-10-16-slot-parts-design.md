@@ -418,6 +418,53 @@ dettaglio, rendendo ogni pezzo prima e dopo ogni passaggio.
 
 ![Il pettorale: finito, adattato con la gabbia, con lo spostamento lisciato su tutta la superficie, e su quella esterna](img/slot-parts/5-fit-keeps-the-shape.jpg)
 
+## 15. Più immagini per pezzo, e quella giusta (17/10/2026)
+
+L'utente ha precisato il flusso dei modi 2 e 3:
+1. prima l'immagine intera del personaggio o del set;
+2. poi un'immagine per ogni pezzo, ricavata da quella;
+3. poi si sceglie l'immagine giusta di ogni pezzo, e solo quella va al 3D.
+
+Su main mancava il punto 3: con più semi si prendeva il primo.
+
+**Ora** (`slot_parts/candidates.py`).
+- Con più semi ogni immagine riceve due punteggi.
+  - **È il pezzo?** Qwen3-VL, il giudice della bibbia di stile, risponde sì o no. Per lo spallaccio la domanda chiede
+    che non ci sia niente attaccato: niente piastra del petto o della schiena, niente cinghia, secondo spallaccio o
+    bracciale.
+  - **La sagoma**: copertura della maschera dello slot meno ciò che sta molto fuori. Decide solo i pareggi del
+    giudice (arrotondato a due decimali). Pesata nel punteggio, premiava chi ricopia il taglio, e il taglio di uno
+    spallaccio contiene un pezzo di pettorale.
+- Il migliore va al 3D da solo. Tutto finisce in `pieces/candidates.json`.
+- Se nessuna immagine convince il giudice (tutte sotto 0,5), il pezzo è segnalato: servono altri semi o altre parole.
+- **Nello studio** la pagina Pieces fa 3 immagini per pezzo (semi 1, 2, 3).
+  - Con "fammi vedere le immagini prima del 3D", il lavoro si ferma dopo le immagini (`run --stop-at-pictures`).
+  - La pagina mostra i candidati con il migliore spuntato. L'utente cambia quelli che vuole e preme "Make the 3D"
+    (`run --resume --pick`).
+- Senza Qwen3-VL (llama.cpp non installato) decide la sagoma, e il record lo dice.
+
+**Misura.** Tre vestiti: i due cavalieri rossi delle prove (s3, s7) sull'uomo e un ranger di cuoio disegnato sulla
+donna con `add_piece`. In tutto 18 slot e 4 semi ciascuno, 72 immagini, etichettate a vista.
+
+| | Slot con un candidato giusto | Scelta automatica giusta |
+|---|---|---|
+| Parole di prima, punteggio combinato | 15 su 18 | 14 su 15 (sbagliato uno spallaccio con il pettorale attaccato) |
+| Parole nuove, domanda nuova per lo spallaccio, sagoma come spareggio | 18 su 18 | **18 su 18** |
+
+- **Parole di prima.** Nei 3 slot senza candidati giusti la colpa era delle parole predefinite (`pieces.WORDS`).
+  - Il busto nominava gli spallacci, e la modifica li disegnava: 8 semi su 8.
+  - L'elmo era "a closed helmet", e il cappuccio di cuoio diventava acciaio.
+- **Parole nuove.** Busto "senza spallacci né maniche": 8 su 8 puliti. Testa "elmo, cappuccio o cappello come
+  disegnato, senza il viso": 4 cappucci su 4.
+- **Formulazioni della domanda sullo spallaccio**, misurate sulle 12 immagini:
+  - la domanda semplice: 10 su 12 immagini giuste;
+  - "c'è altro oltre allo spallaccio?": 9 su 12;
+  - quella scelta: 11 su 12.
+- **Avvertenza.** Regola e domanda sono state messe a punto su questi stessi tre set: il 18 su 18 va ricontrollato su
+  set nuovi.
+
+![Il flusso per pezzo sul ranger di cuoio: immagine intera, taglio e 4 immagini per pezzo, la scelta automatica in arancione](img/slot-parts/6-candidates-leather.jpg)
+
 ## Seguiti
 
 - Mantello: prova a parte, con la vista di schiena (funzione 2, caso 4) e la stoffa in Unreal.
