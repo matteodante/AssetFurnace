@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces: the mode 3 outfit can be drawn once per seed and wait for a pick
+  (`slot_parts.py run --stop-at-concept`, `pieces_run(concept_seeds=, choose_concept=)`,
+  the Pieces page's "Outfit pictures"); the weapon and shield are picked among their seeds
+  like the drawn pieces; and the Pieces page fits a set again, carries it to another body
+  and exports it for Unreal, as `fit`, `refit` and `unreal` do.
 - The style bible can be applied, opt-in, wherever pictures are drawn: `--bible` on
   `text_image.py`, `reference_concept.py make` and `slot_parts.py run`; `bible` in the
   batch steps `picture` and `concept` and in `pieces_run`; a "Style bible" box in Create,
