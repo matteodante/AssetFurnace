@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tangents, and a skinned mesh is a root node as the glTF spec asks (on the first real set
   the validator warned of both). The knight's body and helmet export with 0 errors and 0
   warnings, and still import and retarget in UE 5.8.
+- Pixal3D leaves less behind (the first real set kept 811 MB of it): the `.ply` trellis-cli
+  writes beside the GLB, which nothing reads, is removed once the run ends (`--keep-ply` keeps
+  it), and the cut-out it made is kept only as the subject's outline, which a body's or a
+  weapon's camera still reads.
+- Text to image follows Qwen-Image 2.1 Turbo's card on every route, as the command line already
+  did: the batches' `picture` step and a set's weapon and shield pictures draw at 2048 with the
+  card's transparent background and prompt rewriting (`transparent`, `rewrite` in the step
+  catalogue; `--opaque`, `--no-rewrite` on `scripts/text_image.py`), and Create in the studio
+  offers the card's seven presets, square 2048 first, with 1024 as a fast draft. The catalogue
+  says a negative prompt works only with `cfg_scale` above 1, and carries the Unreal export's
+  `two_sided` (`--two-sided` on `scripts/export_unreal.py`).
 - A batch refuses a research-only source (Qwen's pictures, since its licence was read) only
   for a run with commercial intent, as a run's own backends are; any other run goes on, with
   a warning in its log, its state (`licence_warnings`) and `validate_batch`. A set's record

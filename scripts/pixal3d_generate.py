@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import math
 import os
 import subprocess
@@ -129,7 +130,7 @@ def face_front(output: Path) -> None:
 
     pixal3d.cpp writes models facing -Z, so every viewer showed the back first. The camera
     in `<output>.svviews/` turns too, or Pixel Match would paint the photo on the back.
-    The .ply beside it is left as written: nothing here reads it.
+    The .ply beside it is removed once the run ends (`leftovers`): nothing reads it.
     """
     turned = output.with_name(output.name + ".turning")
     turned.write_bytes(turn_glb(output.read_bytes()))
@@ -138,6 +139,24 @@ def face_front(output: Path) -> None:
     if cameras.is_file():
         cameras.write_text(json.dumps(turn_cameras(json.loads(cameras.read_text())),
                                       indent=2) + "\n")
+
+
+def leftovers(output: Path, cutout: Path | None, keep_ply: bool = False) -> None:
+    """What a finished run needs no more (handed over by the audit, 17/10/2026: a real set kept
+    811 MB of them). The .ply trellis-cli writes beside the GLB: nothing reads it. The cut-out
+    this run made stays, but only as the subject's outline (alpha on black): a body's or a
+    weapon's Pixal3D camera still reads it (`image_to_3dlab/slot_parts/camera.py`), and its
+    colours are the source picture's."""
+    from PIL import Image
+
+    ply = Path(output).with_suffix(".ply")
+    if ply.is_file() and not keep_ply:
+        ply.unlink()
+    if cutout is not None and Path(cutout).is_file():
+        with Image.open(cutout) as opened:
+            alpha = opened.convert("RGBA").getchannel("A")
+        outline = Image.merge("LA", (Image.new("L", alpha.size, 0), alpha))
+        outline.save(cutout, optimize=True)
 
 
 def has_alpha(image: Path) -> bool:
@@ -421,6 +440,10 @@ def main() -> int:
         help="force background removal even if the image looks cut out already",
     )
     parser.add_argument(
+        "--keep-ply", action="store_true",
+        help="keep the .ply trellis-cli writes beside the GLB (nothing here reads it; removed by default)",
+    )
+    parser.add_argument(
         "--no-matte", dest="matte", action="store_false",
         help="never matte; use the image exactly as given (u2net can eat thin structures)",
     )
@@ -466,16 +489,27 @@ def main() -> int:
         print(f"[pixal3d] matted image: {image}", flush=True)
 
     started = time.time()
-    fov, fov_source = choose_fov(args.fov, image)
+    run_input = image
+    if matted_here:
+        # its own copy of the cut-out: another run on this source, ending while this one waits for
+        # the GPU, keeps only the outline of the shared one (`leftovers`)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        run_input = args.output.with_name(f"{args.output.stem}__matted_input{image.suffix}").resolve()
+        shutil.copyfile(image, run_input)
+    fov, fov_source = choose_fov(args.fov, run_input)
     command = build_command(
-        image, args.output, args.res, args.seed, fov,
+        run_input, args.output, args.res, args.seed, fov,
         args.models, args.cli, matted, args.gss, args.gsh,
     )
     print(f"[pixal3d] res={args.res} seed={args.seed} gss={args.gss} matted={matted}",
           flush=True)
     print(f"[pixal3d] {steps_note}", flush=True)
 
-    code = run_trellis(command, steps)
+    try:
+        code = run_trellis(command, steps)
+    finally:
+        if run_input != image:
+            run_input.unlink(missing_ok=True)
     if code != 0:
         raise SystemExit(f"trellis-cli exited with code {code}")
     if not args.output.is_file():
@@ -489,6 +523,7 @@ def main() -> int:
                       seconds=seconds, steps=steps)
     record_path = args.output.with_name(f"{args.output.stem}.json")
     record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    leftovers(args.output, image if matted_here else None, keep_ply=args.keep_ply)
 
     size = args.output.stat().st_size / 1048576
     print(f"[pixal3d] done in {seconds:.0f}s -> {args.output} "

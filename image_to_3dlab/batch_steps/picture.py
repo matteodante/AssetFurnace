@@ -76,8 +76,12 @@ def run(ctx: StepContext) -> StepResult:
     style = apply.resolve(ctx.options.get("bible"), ctx.row.kind)
     extra = {"style": apply.record(style)} if style else None
 
+    # text alone, as the card says (its size, transparent background, rewriting) unless asked otherwise
+    card = {key: text_image.T2I_DEFAULTS[key] for key in ("width", "height", "transparent", "rewrite")}
+
     def draw(seed, path):
-        text_image.generate(apply.styled(ctx.row.prompt or "", style), {**settings_of(ctx.options), "seed": seed},
+        text_image.generate(apply.styled(ctx.row.prompt or "", style),
+                            {**card, **settings_of(ctx.options), "seed": seed},
                             path, log=ctx.log, session=f"batch picture {ctx.row.id}", extra_provenance=extra)
 
     # the first version's key had no bible in it: its candidates were drawn without one

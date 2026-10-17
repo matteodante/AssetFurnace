@@ -72,7 +72,7 @@ def run(ctx: StepContext) -> StepResult:
             measure=ctx.row.measure or "height", name=options.get("name") or ctx.row.id,
             out_dir=ctx.step_dir, lods=paths["lods"], collision=options.get("collision"),
             body=Path(options["body"]) if options.get("body") else None,
-            animations=paths["animations"],
+            animations=paths["animations"], two_sided=options.get("two_sided"),
             tint=False if options.get("tint") is False else Path(options["tint"]) if options.get("tint") else None,
             forward=tuple(float(value) for value in forward) if forward else None,
             body_name=options.get("body_name"), material=options.get("material") or ctx.material, log=ctx.log,

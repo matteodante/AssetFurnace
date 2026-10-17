@@ -108,7 +108,10 @@ Every step's settings are described once, with their types and ranges, in
 its first row.
 
 `picture` settings: `seed` (default 42), `count` (1 to 8), `pick` (the seed to keep),
-`width`, `height`, `cfg_scale`, `sampler`, `negative_prompt` (used only with `cfg_scale` above
+`width`, `height` (default 2048, as Qwen-Image 2.1 Turbo's card draws text alone; its other
+presets are 2400x1792, 1792x2400, 2528x1696, 1696x2528, 2752x1536 and 1536x2752, and 1024 is
+about five times faster), `transparent` and `rewrite` (the card's transparent background and
+prompt rewriting, both on by default), `cfg_scale`, `sampler`, `negative_prompt` (used only with `cfg_scale` above
 1: at the Turbo's default of 1 stable-diffusion.cpp skips it, and the provenance records it
 as not applied), `bible` (a style bible's
 words after the prompt: `"-"` for the active one, or its name; none by default; `concept`
