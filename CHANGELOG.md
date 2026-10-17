@@ -270,6 +270,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Batches: a batch made before per-step fingerprints no longer regenerates every row when
+  `checks` joins its default steps or a row is edited; the row as it last ran is rebuilt
+  from its spec copy and its still-valid steps are kept. A file named in a step's settings
+  (a body, a LOD, a tint) counts by its content, so replacing it reruns that step and
+  moving it does not; a done row whose file has since gone keeps its result. Checks run
+  again with another result are queued for review again.
 - Characters in pieces, from a second review:
   - a run resumed after the person picked the pictures keeps the weapon, shield, style and
     seeds it was started with;

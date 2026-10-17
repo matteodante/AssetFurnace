@@ -240,3 +240,32 @@ def test_the_real_checks_run_on_a_row(tmp_path):
     assert result.ok, result.reason
     report = json.loads((ctx.step_dir / "SM_Cat.checks.json").read_text())
     assert report["asset_key"] == "SM_Cat" and report["profile"] == "prop"
+
+
+def test_export_preflight_checks_its_files_when_it_will_run(tmp_path, monkeypatch):
+    monkeypatch.setattr(export_step, "find_blender", lambda: Path("blender.exe"))
+    row = _row(tmp_path, options={"export_unreal": {"lods": [str(tmp_path / "gone_LOD1.glb")]}})
+    (problem,) = export_step.preflight([row])
+    assert "gone_LOD1.glb" in problem and "SM_Cat" in problem
+
+
+def test_checks_run_again_with_another_result_are_queued_again(tmp_path, monkeypatch, fake_checks):
+    install_fake_generator(monkeypatch)
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(FakeFinish().run))
+    spec_path = write_spec(tmp_path, rows=1, steps=["generate", "finish", "checks"])
+    batch.run_batch(batch.load_batch(spec_path))
+
+    def failing(asset, profile="prop", overrides=None):
+        return {"asset": str(asset.glb), "asset_sha256": asset.sha256, "status": "fail", "profile": profile,
+                "results": [{"check": "budget.faces", "status": "fail"},
+                            {"check": "license.components", "status": "pass"}], "skipped": []}
+
+    monkeypatch.setattr(checks_step, "run_checks", failing)
+    spec = json.loads(spec_path.read_text())
+    spec["defaults"]["checks"] = {"set": {"budget.faces.max": 10}}
+    spec_path.write_text(json.dumps(spec))
+    batch.run_batch(batch.load_batch(spec_path))
+    (item,) = review.queue(review.load(tmp_path / batch.REVIEW_LOG))
+    assert item["status"] == "fail" and item["summary"]["fail"] == ["budget.faces"]
+    batch.run_batch(batch.load_batch(spec_path))   # done: nothing queued again
+    assert sum(line["event"] == "queued" for line in review.load(tmp_path / batch.REVIEW_LOG)) == 2

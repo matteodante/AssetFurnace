@@ -150,10 +150,105 @@ def test_a_state_from_before_step_fingerprints_keeps_its_unchanged_rows(tmp_path
     generator.calls.clear()
     fake_finish.calls.clear()
     batch.run_batch(batch.load_batch(spec_path))
-    # row 2 changed with no step fingerprints to compare: it runs whole, as it did before
-    assert generator.calls == ["row02"] and fake_finish.calls == ["SM_row02"]
+    # row 2 changed: rebuilt from the last run's spec copy, only its finish runs again
+    assert generator.calls == [] and fake_finish.calls == ["SM_row02"]
     stamped = _state(spec_path)["rows"]["SM_row01"]["steps"]
     assert all(step.get("fingerprint") for step in stamped.values())
+
+
+def _strip_step_fingerprints(spec_path: Path) -> None:
+    """As a batch made before steps had fingerprints left its state."""
+    state = _state(spec_path)
+    for entry in state["rows"].values():
+        for step in entry["steps"].values():
+            step.pop("fingerprint", None)
+    (spec_path.parent / "out" / "test-batch" / batch.STATE_FILE).write_text(json.dumps(state))
+
+
+def test_an_old_batch_given_a_new_default_step_runs_only_that_step(tmp_path, monkeypatch, fake_finish):
+    """`checks` joined the default steps: an old batch must not regenerate for it."""
+    generator = install_fake_generator(monkeypatch)
+    calls: list[str] = []
+    monkeypatch.setitem(batch.STEPS, "checks", _recording_step(calls, "checks"))
+    spec_path = write_spec(tmp_path, rows=2)
+    batch.run_batch(batch.load_batch(spec_path))
+    _strip_step_fingerprints(spec_path)
+    (spec_path.parent / "out" / "test-batch" / batch.SPEC_COPY).unlink()   # older still: no copy
+    _edit(spec_path, lambda spec: spec["defaults"].update(steps=["generate", "finish", "checks"]))
+    generator.calls.clear()
+    fake_finish.calls.clear()
+    assert batch.pending_work(batch.load_batch(spec_path), _state(spec_path), False) == {
+        "SM_row01": ("checks",), "SM_row02": ("checks",)}
+    batch.run_batch(batch.load_batch(spec_path))
+    assert generator.calls == [] and fake_finish.calls == []
+    assert calls == ["checks:SM_row01", "checks:SM_row02"]
+
+
+def test_an_old_batch_with_a_new_seed_still_regenerates(tmp_path, monkeypatch, fake_finish):
+    generator = install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    batch.run_batch(batch.load_batch(spec_path))
+    _strip_step_fingerprints(spec_path)
+    _edit(spec_path, lambda spec: spec["rows"][0].update(seed=99))
+    generator.calls.clear()
+    batch.run_batch(batch.load_batch(spec_path))
+    assert generator.calls == ["row01"]
+
+
+def test_an_old_batch_whose_picture_changed_regenerates(tmp_path, monkeypatch, fake_finish):
+    """The rebuilt row reads the files as they are now: a changed picture cannot pass."""
+    from batch_fakes import tiny_png
+
+    generator = install_fake_generator(monkeypatch)
+    spec_path = write_spec(tmp_path, rows=1)
+    batch.run_batch(batch.load_batch(spec_path))
+    _strip_step_fingerprints(spec_path)
+    tiny_png(tmp_path / "refs" / "row01.png", seed=77)
+    _edit(spec_path, lambda spec: spec["rows"][0].update(faces=9000))
+    generator.calls.clear()
+    batch.run_batch(batch.load_batch(spec_path))
+    assert generator.calls == ["row01"]
+
+
+def test_a_file_option_replaced_in_place_reruns_its_step(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch)
+    calls: list[str] = []
+    monkeypatch.setitem(batch.STEPS, "export_unreal", _recording_step(calls, "export_unreal"))
+    lod = tiny_glb(tmp_path / "lods" / "crate_LOD1.glb", "one")
+    spec_path = write_spec(tmp_path, rows=1, steps=["generate", "finish", "export_unreal"])
+    _edit(spec_path, lambda spec: spec["rows"][0].update(
+        size_cm=90, export_unreal={"lods": ["lods/crate_LOD1.glb"]}))
+    batch.run_batch(batch.load_batch(spec_path))
+    batch.run_batch(batch.load_batch(spec_path))
+    assert calls == ["export_unreal:SM_row01"]   # unchanged: done
+    tiny_glb(lod, "two")
+    fake_finish.calls.clear()
+    batch.run_batch(batch.load_batch(spec_path))
+    assert calls == ["export_unreal:SM_row01"] * 2 and fake_finish.calls == []
+
+
+def test_the_same_files_by_another_path_are_the_same_row(tmp_path):
+    one = tiny_glb(tmp_path / "a" / "body.glb", "same")
+    two = tiny_glb(tmp_path / "b" / "body.glb", "same")
+    rows = [batch.BatchRow(id="SK_A", images=(), asset=None, kind="equipment", faces=None, profile=None,
+                           steps=("generate", "export_unreal"), backend="fake",
+                           options={"export_unreal": {"body": str(path)}}) for path in (one, two)]
+    assert rows[0].fingerprint() == rows[1].fingerprint()
+    assert rows[0].step_fingerprints() == rows[1].step_fingerprints()
+
+
+def test_a_done_rows_missing_file_option_does_not_stop_the_batch(tmp_path, monkeypatch, fake_finish):
+    install_fake_generator(monkeypatch)
+    calls: list[str] = []
+    monkeypatch.setitem(batch.STEPS, "export_unreal", _recording_step(calls, "export_unreal"))
+    lod = tiny_glb(tmp_path / "lods" / "crate_LOD1.glb")
+    spec_path = write_spec(tmp_path, rows=1, steps=["generate", "finish", "export_unreal"])
+    _edit(spec_path, lambda spec: spec["rows"][0].update(
+        size_cm=90, export_unreal={"lods": ["lods/crate_LOD1.glb"]}))
+    batch.run_batch(batch.load_batch(spec_path))
+    lod.unlink()
+    spec = batch.load_batch(spec_path)   # loads: the row is done
+    assert batch.run_batch(spec).exit_code == 0 and calls == ["export_unreal:SM_row01"]
 
 
 def test_a_resume_preflights_only_the_steps_that_will_rerun(tmp_path, monkeypatch, fake_finish):

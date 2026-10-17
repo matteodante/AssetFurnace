@@ -141,10 +141,21 @@ class BatchRow:
             "asset_image": digest(image) if image else None,
             "kind": self.kind, "faces": self.faces, "profile": self.profile,
             "steps": list(self.steps), "backend": self.backend,
-            "parameters": self.parameters, "options": self.options,
+            "parameters": self.parameters, "options": self._options_by_content(),
             "size_cm": self.size_cm, "measure": self.measure,
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+    def _options_by_content(self) -> dict[str, dict[str, Any]]:
+        """The step options, with the files they name by content: a body or a LOD
+        replaced in place is a change, the same files reached by another path are not."""
+        out = {}
+        for name, options in self.options.items():
+            options = dict(options)
+            for key in step_catalog.file_options(name, options):
+                options[key] = _file_digests(options[key])
+            out[name] = options
+        return out
 
     def step_fingerprints(self) -> dict[str, str]:
         """One fingerprint per step, chained: each covers the row's source, every step
@@ -163,10 +174,9 @@ class BatchRow:
             "asset_image": digest(image) if image else None,
         })
         fingerprints = {}
+        by_content = self._options_by_content()
         for name in self.steps:
-            options = dict(self.options.get(name, {}))
-            for key in step_catalog.file_options(name, options):
-                options[key] = _file_digests(options[key])
+            options = by_content.get(name, {})
             fields = (step_catalog.CATALOG[name].row_fields if name in step_catalog.CATALOG
                       else UNKNOWN_STEP_FIELDS)
             previous = _hash({"after": previous, "step": name, "options": options,
@@ -187,8 +197,10 @@ def _file_digests(value: Any) -> Any:
     """A file option by its content: the same path holding another file is a change."""
     if isinstance(value, list):
         return [_file_digests(item) for item in value]
-    if isinstance(value, str) and Path(value).is_file():
-        return {"path": value, "sha256": sha256_file(Path(value))}
+    if isinstance(value, str):
+        # a file gone is an input gone, as for the row's own images: a done row keeps its
+        # result, a row still to run fails on it
+        return {"sha256": sha256_file(Path(value))}
     return value
 
 
@@ -699,7 +711,8 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
         if merged:
             options[step] = merged
             if step in step_catalog.CATALOG and step != "generate":
-                problems += [f"{label}: {problem}" for problem in step_catalog.check(step, merged)]
+                problems += [f"{label}: {problem}"
+                             for problem in step_catalog.check(step, merged, files=False)]
     concept = None
     if asset is not None and asset.is_file() and not images:
         concept = recorded_image(asset) or next(
@@ -762,12 +775,64 @@ def preflight(spec: BatchSpec, work: dict[str, tuple[str, ...]] | None = None) -
     return problems
 
 
+def _last_run_rows(directory: Path) -> dict[str, dict[str, Any]]:
+    """The rows as the last run resolved them (`spec.json`), by id."""
+    last = read_json(directory / SPEC_COPY)
+    return {row["id"]: row for row in (last or {}).get("rows", [])
+            if isinstance(row, dict) and isinstance(row.get("id"), str)}
+
+
+def _as_it_ran(row: BatchRow, entry: dict[str, Any], last: dict[str, Any] | None) -> BatchRow | None:
+    """The row as it was when `entry` was made, if that can be told for certain: rebuilt
+    from the last run's spec copy, or this row with the steps it ran, whichever gives back
+    the fingerprint the entry recorded. None when neither does."""
+    candidates = []
+    if last:
+        try:
+            candidates.append(BatchRow(
+                id=row.id, images=tuple(Path(image) for image in last.get("images") or []),
+                asset=Path(last["asset"]) if last.get("asset") else None, kind=last.get("kind"),
+                faces=last.get("faces"), profile=last.get("profile"), steps=tuple(last.get("steps") or ()),
+                backend=last.get("backend"), parameters=last.get("parameters") or {},
+                options={name: last[name] for name in STEP_NAMES if isinstance(last.get(name), dict)},
+                size_cm=last.get("size_cm"), measure=last.get("measure"), concept=row.concept))
+        except (TypeError, ValueError):
+            pass
+    candidates.append(BatchRow(**{**row.__dict__, "steps": tuple(entry.get("steps", {}))}))
+    for candidate in candidates:
+        try:
+            if candidate.fingerprint() == entry.get("fingerprint"):
+                return candidate
+        except OSError:   # an input it named is gone: it cannot be told
+            continue
+    return None
+
+
+def _with_known_fingerprints(row: BatchRow, entry: dict[str, Any],
+                             last: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    """The entry's steps, those done before steps had fingerprints given the ones they ran
+    with, when the row as it ran can be rebuilt. A batch from before this change, edited or
+    given a new default step, then keeps what is still valid instead of running whole."""
+    steps = {name: dict(step) for name, step in entry.get("steps", {}).items()}
+    if not any(step.get("status") == "done" and "fingerprint" not in step for step in steps.values()):
+        return steps
+    ran = _as_it_ran(row, entry, last)
+    if ran is None:
+        return steps
+    then = ran.step_fingerprints()
+    for name, step in steps.items():
+        if step.get("status") == "done" and "fingerprint" not in step and name in then:
+            step["fingerprint"] = then[name]
+    return steps
+
+
 def pending_work(spec: BatchSpec, state: dict[str, Any] | None,
                  retry_failed: bool) -> dict[str, tuple[str, ...]]:
     """What a run would execute, given the saved state: per pending row, the steps from
     its first unfinished one. Done rows (unless a step they skipped now exists) and
     failed ones (unless retrying) are not there."""
     previous = (state or {}).get("rows", {})
+    last = _last_run_rows(spec.directory)
     work: dict[str, tuple[str, ...]] = {}
     for row in spec.rows:
         entry = previous.get(row.id)
@@ -783,7 +848,8 @@ def pending_work(spec: BatchSpec, state: dict[str, Any] | None,
         if entry.get("fingerprint") != fingerprint:
             # edited: from its first step whose fingerprint changed (failed or not: the
             # spec changed, so it is a new request)
-            work[row.id] = _remaining(row, entry, spec.directory, row.step_fingerprints())
+            known = {"steps": _with_known_fingerprints(row, entry, last.get(row.id))}
+            work[row.id] = _remaining(row, known, spec.directory, row.step_fingerprints())
             continue
         if _still_done(entry, spec.directory):
             continue
@@ -1111,6 +1177,7 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
               log: Callable[[str], None]) -> BatchReport:
     directory = spec.directory
     previous = state.get("rows", {})
+    last = _last_run_rows(directory)   # read before this run writes its own copy
     rows: dict[str, Any] = {}
     for row in spec.rows:
         entry = previous.get(row.id)
@@ -1130,8 +1197,8 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
         elif entry.get("fingerprint") != fingerprint:
             # Edited: the steps before the first changed one keep their results. A step
             # done before steps had fingerprints has none, so it counts as changed.
-            kept = {name: step for name, step in entry.get("steps", {}).items()
-                    if name in row.steps}
+            kept = {name: step for name, step in
+                    _with_known_fingerprints(row, entry, last.get(row.id)).items() if name in row.steps}
             again = _remaining(row, {"steps": kept}, directory, fingerprints)
             entry = {"status": "queued", "fingerprint": fingerprint, "steps": kept,
                      **({"staged": entry["staged"]} if entry.get("staged") else {}),
@@ -1360,12 +1427,12 @@ def queue_for_review(spec: BatchSpec, row: BatchRow, asset: Path,
     if not isinstance(report, dict) or report.get("asset_sha256") != sha:
         report, report_file = None, None
     # the key is the asset's id (feature 7's contract): the same bytes under it are the
-    # same version. Queued again only when who made it, what it is, or its report changed.
-    if any(line.get("event") == "queued" and line.get("key") == row.id
-           and line.get("asset_sha256") == sha and line.get("source") == source
-           and line.get("kind") == kind
-           and (report_file is None or line.get("report") == str(report_file))
-           for line in _lines(log_path)):
+    # same version. Queued again only when who made it, what it is, or its report changed
+    # (checks run again with other thresholds write the same file with another result).
+    ours = [line for line in _lines(log_path) if line.get("event") == "queued"
+            and line.get("key") == row.id and line.get("source") == source]
+    if any(line.get("asset_sha256") == sha and line.get("kind") == kind for line in ours) and (
+            report_file is None or _same_report(ours[-1], report_file, report)):
         return
     try:
         from image_to_3dlab.checks import enqueue_for_review
@@ -1391,6 +1458,15 @@ def queue_for_review(spec: BatchSpec, row: BatchRow, asset: Path,
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(event, sort_keys=True) + "\n")
+
+
+def _same_report(line: dict[str, Any], report_file: Path, report: dict[str, Any]) -> bool:
+    """Whether a queued line already carries this report's result."""
+    from image_to_3dlab.checks.review import licence_status, summary
+
+    return (line.get("report") == str(report_file) and line.get("status") == report.get("status")
+            and line.get("summary") == summary(report) and line.get("profile") == report.get("profile")
+            and line.get("license_status") == licence_status(report))
 
 
 def _lines(path: Path) -> list[dict[str, Any]]:
