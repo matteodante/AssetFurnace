@@ -9,7 +9,13 @@ import struct
 from pathlib import Path
 
 import pytest
-from batch_fakes import FakeFinish, fake_step, install_fake_generator, tiny_glb, tiny_png
+from batch_fakes import (
+    FakeFinish,
+    fake_step,
+    install_fake_generator,
+    tiny_glb,
+    tiny_png,
+)
 
 from image_to_3dlab import batch, mcp_server
 
@@ -116,7 +122,7 @@ def test_a_changed_file_reruns_from_its_step_and_keeps_the_ones_before(tmp_path,
 
 
 def test_a_generated_model_replaced_after_a_drawn_picture(tmp_path, steps, monkeypatch):
-    generator, finish, seen = steps
+    generator, finish, _seen = steps
     from image_to_3dlab.batch_steps import picture as picture_step
 
     monkeypatch.setattr(picture_step.text_image, "generate",
@@ -134,7 +140,7 @@ def test_a_generated_model_replaced_after_a_drawn_picture(tmp_path, steps, monke
 
 
 def test_rig_and_clips_of_your_own(tmp_path, steps):
-    generator, finish, seen = steps
+    _generator, finish, seen = steps
     skinned(tmp_path / "rigged.glb")
     clips = [skinned(tmp_path / f"knight_{name}.glb", name) for name in ("idle", "walk")]
     spec_path = _spec(tmp_path, {"kind": "creature", "size_cm": 180, "steps": ["generate", "finish", "rig", "animate",
