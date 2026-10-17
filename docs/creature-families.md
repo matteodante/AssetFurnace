@@ -77,7 +77,7 @@ for the Unreal export's facing), the second to leave out the GenMM takes. In a b
 clips are a step of their own, `clips`, after `rig` (`"clips": {"family": "quadruped",
 "variations": false}`; settings `family`, `clips`, `library`, `variations`,
 `variation_factor`, `variation_seed`), and leaving it out of the row's steps skips them; an
-`animate` step after it adds its clips to the family's. Agents reach it through `run_steps`.
+`animate` step before or after it adds its clips to the family's. Agents reach it through `run_steps`.
 
 ## Into Unreal
 

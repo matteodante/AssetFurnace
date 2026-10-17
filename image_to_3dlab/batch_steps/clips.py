@@ -61,7 +61,9 @@ def run(ctx: StepContext) -> StepResult:
     if found.get("clips_error") and not clips:
         return StepResult(ok=False, reason=found["clips_error"])
     family = creature_family.family_path(rigged)
-    return StepResult(asset=rigged, sidecar=sidecar, clips=clips,
+    made = {clip.name for clip in clips}   # an animate step's clips before this one stay too
+    return StepResult(asset=rigged, sidecar=sidecar,
+                      clips=[*clips, *(clip for clip in ctx.clips or [] if clip.name not in made)],
                       files=[rigged, sidecar, *([family] if family.is_file() else []), *clips, *records, log],
                       record={"family": found.get("family"), "clips": [clip.name for clip in clips],
                               **({"problems": found["clips_error"]} if found.get("clips_error") else {})})
