@@ -283,3 +283,26 @@ def test_the_pieces_page_shows_outfits_to_pick_and_set_actions():
     assert '<option value="elf">' in out["set"] and '<option value="stick">' not in out["set"]
     assert out["payload"]["choose_concept"] is True and out["payload"]["concept_seeds"] == "3,4"
     assert "concept_seeds" not in out["plain"]   # left empty: the outfit takes the first picture seed, as before
+
+
+# ------------------------------------------------------------- the concept names every chosen piece
+
+def test_the_outfit_names_every_chosen_piece():
+    from image_to_3dlab.slot_parts import pieces
+
+    chosen = {"helmet": {}, "torso": {}, "boots": {}, "gloves": {"prompt": "leather bracers"}}
+    words = pieces.concept_outfit("crimson and gold plate armour with armoured boots", chosen)
+    assert words.startswith("crimson and gold plate armour with armoured boots")
+    assert "a helmet" in words and "leather bracers" in words   # the pieces the outfit left out
+    assert words.count("boots") == 1 and "breastplate" not in words   # named already ("armour", "boots")
+    assert pieces.concept_outfit("a red robe", {}) == "a red robe"
+
+
+def test_the_concept_is_drawn_with_the_chosen_helmet(tmp_path):
+    body_json, source = _with_picture(tmp_path)
+    calls = []
+    edit, generate, run = _fakes(source, calls)
+    cli.run_set(body_json, "red", "helmet,torso", outfit="red plate armour", concept_seeds=(3, 4),
+                stop_at_concept=True, root=tmp_path / "sets", run=run, edit=edit, generate=generate, score=_score)
+    drawn = [c for c in calls if c[0] == "sd-cli" and Path(c[c.index("-o") + 1]).parent.name == "concept"]
+    assert drawn and all("a helmet" in c[c.index("-p") + 1] for c in drawn)

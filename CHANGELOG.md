@@ -337,6 +337,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces: the outfit concept names every chosen piece, as the design asks. A
+  helmet the outfit's words left out was not drawn, so its cut was the face and the piece
+  edit invented a helmet; the concept now adds the chosen pieces the outfit does not name,
+  in their own words when they have them.
 - Studio Batches page: a pick that is saved but whose batch cannot resume (its preflight
   refuses) now says so, with the reasons, instead of leaving the row on "Pick one".
 - Batches: a batch made before per-step fingerprints no longer regenerates every row when
