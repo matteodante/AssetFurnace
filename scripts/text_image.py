@@ -37,9 +37,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("prompt", help="what to draw")
     parser.add_argument("--out", type=Path,
                         help="folder for the pictures (default output/images/<words>__<time>/)")
-    parser.add_argument("--width", type=int, default=text_image.DEFAULTS["width"],
-                        help="pixels, 256 to 1536, rounded to a multiple of 32")
-    parser.add_argument("--height", type=int, default=text_image.DEFAULTS["height"])
+    parser.add_argument("--width", type=int, default=text_image.T2I_DEFAULTS["width"],
+                        help=f"pixels, {text_image.MIN_SIZE} to {text_image.MAX_SIZE}, rounded to a multiple of 32; "
+                             "the model card's sizes are 2048x2048, 2400x1792, 1792x2400, 2528x1696, "
+                             "1696x2528, 2752x1536, 1536x2752")
+    parser.add_argument("--height", type=int, default=text_image.T2I_DEFAULTS["height"])
     parser.add_argument("--seed", type=int, default=text_image.DEFAULTS["seed"], help="same seed, same picture")
     parser.add_argument("--count", type=int, default=1, help=f"pictures to pick from, 1 to {MAX_COUNT}, "
                                                             "with consecutive seeds")
@@ -78,8 +80,10 @@ def make(prompt: str, out: Path | None, settings: dict, count: int = 1, log=prin
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # text to image as the model card says: a transparent background and the rewriting
     settings = {"width": args.width, "height": args.height, "seed": args.seed, "cfg_scale": args.cfg_scale,
-                "sampler": args.sampler, "negative_prompt": args.negative_prompt}
+                "sampler": args.sampler, "negative_prompt": args.negative_prompt,
+                "transparent": text_image.T2I_DEFAULTS["transparent"], "rewrite": text_image.T2I_DEFAULTS["rewrite"]}
     quiet = args.json
     try:
         made = make(args.prompt, args.out, settings, args.count,

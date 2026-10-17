@@ -340,6 +340,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concept record and `output/concept/judgements.jsonl`.
 
 ### Changed
+- Text to image runs as Qwen-Image 2.1 Turbo's card says (docs/text-to-image.md): 2048x2048
+  by default with the card's presets, the official transparent-background prompt (a real
+  alpha, so the 3D step needs no cut-out), and the official prompt rewriting, run on this
+  machine with the text encoder already installed. The rewriting's system prompt comes with
+  the Qwen-Image setup; without it the picture is drawn from the prompt as written. Runs from
+  reference pictures stay at 1024: 2048 with references does not fit 16 GB.
 - Qwen-Image's licence class now says what its licence says: `research-only` (the Qwen
   Research License allows it "for research or evaluation purposes only", 1(i) and 2(a)),
   and the records cite the licence text instead of an unverified post about output rights.
