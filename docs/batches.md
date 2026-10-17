@@ -80,6 +80,7 @@ step needs installed. A bad batch does not start, rather than stopping at row 7.
 | `generate` | Writes the row's run manifest and runs it, exactly as `pipeline.py --run-manifest` would |
 | `finish` | The studio's Finish (`scripts/retopo_repaint.py`) at the row's face budget, with Pixel Match when the model kept its camera |
 | `rig` | A skeleton and skin weights (SkinTokens and the weight clean-up, as the studio's Animate tab; `scripts/autorig.py rig`). The rigged GLB becomes the row's asset. Holds the GPU lock while SkinTokens runs |
+| `clips` | A rigged creature's family and its test clips (feature 6, `scripts/creature_clips.py`): the CC0 library's carried by chains, procedural ones for the rest, longer GenMM takes unless `"variations": false`. After `rig`; the clips reach a creature's Unreal export |
 | `animate` | Preset clips played on the rig (`"animate": {"presets": ["idle", "walk"]}`, `speed`, `arm_spread`; `scripts/autorig.py animate`). CPU only. The row's asset stays the rig; `export_unreal` takes the clips as a creature's animations |
 | `export_unreal` | The row's asset as Unreal 5.8 files (`scripts/export_unreal.py`), into `rows/<id>/export_unreal/`. Needs `size_cm`. The row's asset stays the finished model |
 | `checks` | The automatic checks of the review queue (`scripts/check_asset.py`): the row reaches the queue with its report and can be approved there |
@@ -104,7 +105,10 @@ Every step's settings are described once, with their types and ranges, in
 its first row.
 
 `picture` settings: `seed` (default 42), `count` (1 to 8), `pick` (the seed to keep),
-`width`, `height`, `cfg_scale`, `sampler`, `negative_prompt`.
+`width`, `height`, `cfg_scale`, `sampler`, `negative_prompt`, `bible` (a style bible's
+words after the prompt: `"-"` for the active one, or its name; none by default; `concept`
+takes it too, with up to three of the bible's pictures). An edited or another active bible
+reruns the step.
 
 `concept` settings: `mode` (required), `shape` and `style_refs` (files; the shape default
 is the row's picture), the words the mode needs (`subject` and `colours` for redraw,

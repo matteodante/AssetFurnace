@@ -33,14 +33,14 @@ export function freshSeed(random = Math.random) {
 }
 
 /** Show the Create sheet over the viewer. `onStart(plan)` runs it. */
-export function openCreate({ stage, recipes, engines, presets, onStart, onReference }) {
+export function openCreate({ stage, recipes, engines, presets, styleBible = null, onStart, onReference }) {
   const sheet = document.createElement('div');
   sheet.className = 'sheet';
   stage.appendChild(sheet);
   const state = { have: 'idea', want: 'character', stop: null, tips: false, useRecipe: true, text: '', file: null,
     engine: engines[0]?.id, firstMove: presets.find((p) => !p.take)?.id,
     pic: { size: 768, steps: 8, newEachTime: true, seed: 42 }, keep: false,
-    model: { newEachTime: true, seed: 42 }, faces: 40000 };
+    model: { newEachTime: true, seed: 42 }, faces: 40000, useBible: false };
   const close = () => sheet.remove();
 
   const render = () => {
@@ -54,6 +54,7 @@ export function openCreate({ stage, recipes, engines, presets, onStart, onRefere
     const source = state.have === 'idea'
       ? `<label class="field">Describe it<textarea data-k="text" rows="3" placeholder="${state.want === 'character' ? 'A stylised orc blacksmith with short tusks, a braided beard and heavy boots' : state.want === 'picture' ? 'Concept art of an orc blacksmith at a glowing forge' : 'A weathered wooden tavern barrel with iron bands'}">${esc(state.text)}</textarea></label>
          ${recipe?.wording ? `<label class="check addline"><input type="checkbox" data-k="recipe" ${state.useRecipe ? 'checked' : ''}><span><b>We add:</b> ${esc(recipe.wording)}</span></label>` : ''}
+         ${styleBible ? `<label class="check addline"><input type="checkbox" data-k="bible" ${state.useBible ? 'checked' : ''}><span><b>Style bible:</b> ${esc(styleBible)} <span class="hint">its words go after yours (scripts/style_bible.py)</span></span></label>` : ''}
          <div class="warnings" aria-live="polite"></div>`
       : `<div class="drop" data-drop tabindex="0" role="button">${state.file ? `<b>${esc(state.file.name)}</b><br><span class="hint">${(state.file.size / 1048576).toFixed(1)} MB · click or drop another to replace</span>` : `Drop ${state.have === 'picture' ? 'a picture (PNG, JPG, WebP)' : 'a 3D model (GLB)'} here, or click to choose`}</div>`;
     sheet.innerHTML = `<form class="sheet-card" novalidate>
@@ -111,6 +112,7 @@ export function openCreate({ stage, recipes, engines, presets, onStart, onRefere
     const text = q('[data-k="text"]');
     if (text) { text.oninput = () => { state.text = text.value; warn(); }; warn(); }
     q('[data-k="recipe"]')?.addEventListener('change', (e) => { state.useRecipe = e.target.checked; });
+    q('[data-k="bible"]')?.addEventListener('change', (e) => { state.useBible = e.target.checked; });
     q('[data-k="move"]')?.addEventListener('change', (e) => { state.firstMove = e.target.value; });
     q('[data-k="engine"]')?.addEventListener('change', (e) => { state.engine = e.target.value; });
     q('[data-k="keep"]')?.addEventListener('change', (e) => { state.keep = e.target.checked; });
@@ -142,7 +144,8 @@ export function openCreate({ stage, recipes, engines, presets, onStart, onRefere
         pictureSettings: active.includes('picture') ? pictureSettings(state.pic) : null,
         modelSeed: active.includes('model') ? modelSeedFor(state.model) : null,   // a new 3D try each time unless kept
         finishSettings: active.includes('finished') ? { faces: state.faces } : null,
-        keepEverything: active.includes('model') && state.keep });
+        keepEverything: active.includes('model') && state.keep,
+        bible: styleBible && state.useBible && active.includes('picture') ? '-' : null });
     };
     text?.focus();
   }
@@ -187,6 +190,7 @@ export function planForm(plan, made = {}) {
   if (plan.pictureSettings) form.append('picture_settings', JSON.stringify(plan.pictureSettings));
   if (plan.modelSeed != null) form.append('model_seed', String(plan.modelSeed));
   if (plan.finishSettings) form.append('finish_settings', JSON.stringify(plan.finishSettings));
+  if (plan.bible) form.append('bible', plan.bible);
   if (plan.keepEverything) form.append('keep_everything', '1');
   form.append('made', JSON.stringify(made));
   if (plan.file) form.append('file', plan.file);

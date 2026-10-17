@@ -49,12 +49,15 @@ def parser() -> argparse.ArgumentParser:
     make.add_argument("--depth", action="store_true", help="other_view: the second shape picture is that side's depth")
     make.add_argument("--seed", type=int)
     make.add_argument("--attempts", type=int, default=1, help=f"1 to {concept_api.ATTEMPTS['most']}, one seed each")
+    make.add_argument("--bible", help="a style bible's words and pictures: - for the active one, or its name")
+    make.add_argument("--kind", help="the bible's words for this kind too (prop, creature, character...)")
     return top
 
 
 def request(args: argparse.Namespace, seed: int) -> dict:
     out = {"mode": args.mode, "shape": args.shape, "style_refs": args.style_ref, "depth": args.depth, "seed": seed}
     out.update({f: getattr(args, f) for f in FIELDS if getattr(args, f) is not None})
+    out.update({key: getattr(args, key) for key in ("bible", "kind") if getattr(args, key, None)})
     return out
 
 

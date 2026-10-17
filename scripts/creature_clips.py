@@ -4,14 +4,18 @@
 Runs after the auto-rig, in the same Python that runs SkinTokens (it has the `bpy` wheel):
 
     python scripts/creature_clips.py --rig out/wolf_rigged.glb [--family auto|digitigrade|...]
+        [--no-clips] [--no-library] [--no-variations] [--variation-factor 2] [--variation-seed 0]
 
 Writes `wolf_rigged.family.json` (the family and the role of every chain, in glTF space)
 and, for a family that has them, `wolf_<family>-<motion>.glb` beside the rig: the names
 the studio already lists as clips of `wolf_rigged.glb`. With the CC0 clip library
 installed (`scripts/bootstrap_clip_library.py`) a family first gets its library clips,
 carried onto the rig by `chain_retarget.py`; the procedural clips of `creature_motion.py`
-fill in the motions the library does not have. This file only reads the armature and
-keys it.
+fill in the motions the library does not have. `--no-clips` writes only the family file
+(the Unreal export reads a creature's facing from it). `--no-library` makes only the procedural
+clips; `--no-variations` leaves out the longer takes of the looping library clips (GenMM,
+`--variation-factor` times as long, varied with `--variation-seed`). This file only reads
+the armature and keys it.
 
 A test clip is a bonus on top of a rig, so a family or clip that cannot be made does not
 undo the rig: the reason goes into the family file and the exit code stays 0. Each clip
@@ -81,26 +85,43 @@ def wanted_motions(family: str, chosen: bool) -> tuple[str, ...]:
     return creature_motion.clips_for(family)
 
 
-def plan(family: str, chosen: bool, legs: int, installed: bool | None = None) -> list[tuple[str, str | None]]:
+def plan(family: str, chosen: bool, legs: int, installed: bool | None = None, library: bool = True,
+         variations: bool = True, clips: bool = True) -> list[tuple[str, str | None]]:
     """(motion, library creature or None for a procedural clip), library clips first. A
-    library motion replaces the procedural one of the same name."""
+    library motion replaces the procedural one of the same name. Without `library` only
+    the procedural clips; without `variations` no longer takes of the library's loops;
+    without `clips` none (the family alone)."""
     import creature_motion
 
-    if family not in creature_motion.DEFAULT_CLIPS and not chosen:
+    if not clips or (family not in creature_motion.DEFAULT_CLIPS and not chosen):
         return []
-    installed = cl.installed() if installed is None else installed
+    installed = (cl.installed() if installed is None else installed) and library
     source = cl.source_for(family, legs) if installed else None
-    library = [(motion, source) for motion in [*cl.SOURCES[source]["clips"], *cl.variations(source)]]         if source else []
+    motions = [*cl.SOURCES[source]["clips"], *(cl.variations(source) if variations else [])] if source else []
+    library = [(motion, source) for motion in motions]
     have = {motion for motion, _ in library}
     return library + [(motion, None) for motion in wanted_motions(family, chosen) if motion not in have]
 
 
-def main() -> None:  # pragma: no cover - needs bpy
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--rig", required=True, type=Path, help="rigged GLB (SkinTokens output)")
     ap.add_argument("--family", default=AUTO, choices=(AUTO, *cf.FAMILIES))
+    ap.add_argument("--no-clips", dest="clips", action="store_false",
+                    help="only the family file, no test clips")
+    ap.add_argument("--no-library", dest="library", action="store_false",
+                    help="only the procedural test clips, not the CC0 library's")
+    ap.add_argument("--no-variations", dest="variations", action="store_false",
+                    help="no longer takes of the library's looping clips")
+    ap.add_argument("--variation-factor", type=float, default=cl.LONGER_FACTOR,
+                    help="how much longer a varied take is (default %(default)s)")
+    ap.add_argument("--variation-seed", type=int, default=cl.LONGER_SEED, help="the variation's seed")
     ap.add_argument("--blend", type=Path, help="also save the last clip as a .blend for inspection")
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> None:  # pragma: no cover - needs bpy
+    args = build_parser().parse_args()
 
     chosen = None if args.family == AUTO else args.family
     found = recognise(args.rig, chosen)
@@ -110,14 +131,16 @@ def main() -> None:  # pragma: no cover - needs bpy
         return
     errors = []
     found["clip_sources"] = {}
-    for motion, source in plan(found["family"], chosen is not None, len(found.get("legs") or [])):
+    for motion, source in plan(found["family"], chosen is not None, len(found.get("legs") or []),
+                               library=args.library, variations=args.variations, clips=args.clips):
         try:
-            name = _write_clip(args.rig, found["family"], motion, args.blend, source)
+            name = _write_clip(args.rig, found["family"], motion, args.blend, source,
+                               factor=args.variation_factor, seed=args.variation_seed)
         except Exception as exc:  # noqa: BLE001 - a missing clip must not cost the rig, or the other clips
             traceback.print_exc()
             errors.append(f"{motion}: {type(exc).__name__}: {exc}")
             continue
-        made = cl.motion_record(source, motion) if source else None
+        made = cl.motion_record(source, motion, args.variation_factor, args.variation_seed) if source else None
         write_provenance(args.rig, clip_path(args.rig, name), name, found["family"], made)
         found["clips"].append(name)
         if made:
@@ -129,7 +152,7 @@ def main() -> None:  # pragma: no cover - needs bpy
 
 
 def _write_clip(rigged: Path, family: str, motion: str, blend: Path | None,  # pragma: no cover
-                source: str | None = None) -> str:
+                source: str | None = None, factor: float = cl.LONGER_FACTOR, seed: int = cl.LONGER_SEED) -> str:
     import bpy
     from mathutils import Matrix
 
@@ -167,7 +190,7 @@ def _write_clip(rigged: Path, family: str, motion: str, blend: Path | None,  # p
         clip_source = cr.load_source(cl.pack_dir() / cl.SOURCES[source]["file"], cl.source_roles(source), clip,
                                      loop=loop)
         if motion != cl.base_motion(motion):
-            clip_source = cr.longer(clip_source, cl.LONGER_FACTOR, cl.LONGER_SEED, loop)
+            clip_source = cr.longer(clip_source, factor, seed, loop)
         frames = cr.retarget(rig, roles, clip_source)
     else:
         frames = cm.make(motion, rig, roles)

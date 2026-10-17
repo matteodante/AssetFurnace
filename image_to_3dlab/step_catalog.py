@@ -88,6 +88,8 @@ MODES = ("redraw", "dress", "add_piece", "other_view", "complete_piece")
 STRUCTURES = ("depth", "lineart")
 GUIDES = ("body", "pose")
 VIEWS = ("side", "back")
+# image_to_3dlab.creature_family.FAMILIES, with "auto" first
+FAMILIES = ("auto", "humanoid", "digitigrade", "quadruped", "multileg", "winged", "serpent", "plant")
 
 CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
     StepSpec(
@@ -103,6 +105,9 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
             Param("cfg_scale", "float", 1.0, range=(0.0, 20.0)),
             Param("sampler", "choice", "euler", choices=SAMPLERS),
             Param("negative_prompt", "text", None, help="what to keep out"),
+            Param("bible", "text", None, help="a style bible's words after the prompt: - for the active "
+                                              "one, or its name; none by default"),
+            Param("kind", "text", None, row=True, help="the asset's kind, for the bible's words for that kind"),
         ),
         row_fields=(),
         skip="give the row its picture as images instead", replace=("png", "jpg"),
@@ -128,6 +133,9 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
             Param("view", "choice", None, choices=VIEWS, help="other_view: which side"),
             Param("depth", "bool", None, help="other_view: the second shape picture is that side's depth"),
             Param("style", "text", None, help="style words"),
+            Param("bible", "text", None, help="a style bible's words and up to three of its pictures: - for "
+                                              "the active one, or its name; none by default"),
+            Param("kind", "text", None, row=True, help="the asset's kind, for the bible's words for that kind"),
             Param("seed", "int", 42, range=(0, 2**31 - 1)),
             Param("count", "int", 1, range=(1, 4), flag="--attempts", help="concepts to pick from, seed, seed+1..."),
             Param("pick", "int", None, range=(0, 2**31 - 1), flag="",
@@ -190,6 +198,24 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
         cli="scripts/autorig.py rig", run="image_to_3dlab.batch_steps.rig:run", gpu=True,
         note="SkinTokens and the skin-weight clean-up, as the studio's Animate tab. The "
              "rigged GLB becomes the row's asset.",
+    ),
+    StepSpec(
+        name="clips", label="Family clips", feature=6, takes=("asset",), makes="clips",
+        params=(
+            Param("family", "choice", "auto", choices=FAMILIES, help="the creature's family; auto: recognised"),
+            Param("clips", "bool", True, flag="--no-clips",
+                  help="the test clips; off: the family alone (the Unreal export's facing)"),
+            Param("library", "bool", True, flag="--no-library", help="the CC0 library's clips, carried by chains"),
+            Param("variations", "bool", True, flag="--no-variations",
+                  help="the library's loops also as longer varied takes (GenMM)"),
+            Param("variation_factor", "float", 2.0, range=(1.0, 8.0), help="how much longer a varied take is"),
+            Param("variation_seed", "int", 0, range=(0, 2**31 - 1), help="the variation's seed"),
+        ),
+        row_fields=(),
+        skip="no test clips; the rig goes on as it is", replace=(),
+        cli="scripts/creature_clips.py", run="image_to_3dlab.batch_steps.clips:run",
+        note="After rig. The clips reach a creature's Unreal export; the family file beside "
+             "the rig gives it its facing.",
     ),
     StepSpec(
         name="animate", label="Animate", takes=("asset",), makes="clips",

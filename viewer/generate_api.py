@@ -94,6 +94,7 @@ from autorig_api import (
 )
 from assets_api import assets_payload, set_hidden as set_asset_hidden, set_name as set_asset_name, thumbnail as asset_thumbnail
 import activity_api
+import style_api
 from activity_api import ChainRunner, chain_from_form, read_history
 from props_api import (
     PROPS_JOBS,
@@ -2240,7 +2241,12 @@ class Handler(SimpleHTTPRequestHandler):
                                   "missing": exc.missing})
             return
         try:
-            job = image_api.start(prompt, payload.get("settings") or {})
+            prompt, extra = image_api.with_style(prompt, payload)
+        except ValueError as exc:   # BibleError: an unknown bible, or none active
+            self._send_json(400, {"error": str(exc)})
+            return
+        try:
+            job = image_api.start(prompt, payload.get("settings") or {}, extra)
         except RuntimeError as exc:
             self._send_json(409, {"error": str(exc)})
             return
@@ -2336,7 +2342,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if unreal_export_api.handle(self, OUTPUT_ROOT):
             return
-        if batch_api.handle(self, OUTPUT_ROOT) or slot_parts_api.handle(self, OUTPUT_ROOT):
+        if (batch_api.handle(self, OUTPUT_ROOT) or slot_parts_api.handle(self, OUTPUT_ROOT)
+                or style_api.handle(self, OUTPUT_ROOT)):
             return
         if urlparse(self.path).path in ("", "/", "/viewer", "/viewer/"):
             self.send_response(HTTPStatus.FOUND)  # the front door is the studio
@@ -2768,6 +2775,9 @@ class Handler(SimpleHTTPRequestHandler):
             chosen = str((form.get("model") or {}).get("value", "")).strip()
             try:
                 family = creature_family_api.parse_family((form.get("family") or {}).get("value"))
+                # the clips after the rig, and their longer takes: on unless the page says "0"
+                clips = (form.get("clips") or {}).get("value") not in ("0", "false")
+                variations = (form.get("variations") or {}).get("value") not in ("0", "false")
             except ValueError as exc:
                 self._send_json(422, {"error": str(exc)})
                 return
@@ -2785,7 +2795,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json(422, {"error": "send a .glb in 'asset' or a listed 'model'"})
                 return
             try:
-                job = ANIMATE_JOBS.create_rig(name, data, record, origin, family)
+                job = ANIMATE_JOBS.create_rig(name, data, record, origin, family, clips, variations)
             except RuntimeError as exc:
                 self._send_json(409, {"error": str(exc)})
                 return

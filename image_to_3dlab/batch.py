@@ -56,7 +56,7 @@ REPO = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = REPO / "output" / "batches"
 
 # Stable names: functions 5, 7 and 8 plug in under these. Order here is only for listing.
-STEP_NAMES = ("picture", "concept", "generate", "finish", "rig", "animate", "materials", "export_unreal",
+STEP_NAMES = ("picture", "concept", "generate", "finish", "rig", "clips", "animate", "materials", "export_unreal",
               "checks")
 STEP_PACKAGE = "image_to_3dlab.batch_steps"
 # Steps installed by hand, over the modules: tests use this for fakes.
@@ -163,6 +163,8 @@ class BatchRow:
             options = dict(options)
             for key in step_catalog.file_options(name, options):
                 options[key] = _file_digests(options[key])
+            if options.get("bible"):   # the bible by what it says (for this kind): edited, or another active one, is a change
+                options["bible"] = {"bible": _bible_digest(options["bible"]), "kind": self.kind}
             out[name] = options
         return out
 
@@ -208,6 +210,18 @@ UNKNOWN_STEP_FIELDS = ("kind", "faces", "profile", "backend", "parameters", "siz
 
 def _hash(payload: Any) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _bible_digest(bible: str) -> Any:
+    """A style bible by its name and the hash of its bible.json; as given when it cannot be
+    found (the step's preflight says why)."""
+    from .style import apply
+
+    try:
+        style = apply.resolve(bible)
+    except ValueError:
+        return bible
+    return {"bible": style.name, "sha256": style.sha256}
 
 
 def _file_digests(value: Any) -> Any:
