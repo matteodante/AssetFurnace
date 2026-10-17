@@ -445,8 +445,15 @@ def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0
     if exporter is None:
         sys.path.insert(0, str(REPO / "scripts"))
         from export_unreal import export_unreal as exporter
+    from image_to_3dlab import piece_materials
+
     record = body_mod.load(body_json)
     report = json.loads((Path(fit_dir) / "fit.json").read_text())
+    try:
+        chosen = piece_materials.set_materials(Path(fit_dir).parent)
+    except FileNotFoundError:            # a set fitted before its record: the slots' defaults
+        chosen = {}
+    materials = {}
     base = "".join(part.capitalize() for part in record["name"].replace("_", "-").split("-"))
     body_glb = Path(fit_dir) / "body_masked.glb"
     exported = {"body": exporter(body_glb, kind="creature", size_cm=size_cm, name=base, out_dir=Path(out) / base)}
@@ -455,13 +462,18 @@ def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0
         if name in ("set.glb", "preview.glb", "body_masked.glb", "body_trimmed.glb"):
             continue
         piece = "".join(part.capitalize() for part in Path(name).stem.split("_"))
+        slot = piece_materials.piece_of(name)
+        if slot is not None:
+            materials[slot] = chosen.get(slot) or piece_materials.propose(slot=slot)
         pieces_out[Path(name).stem] = exporter(Path(fit_dir) / name, kind="equipment", size_cm=size_cm,
                                                name=f"{base}{piece}", body=body_glb, body_name=base,
-                                               out_dir=Path(out) / f"{base}{piece}")
+                                               out_dir=Path(out) / f"{base}{piece}",
+                                               material=materials[slot]["material"] if slot else None)
     summary = {
         "body": record["name"], "size_cm": size_cm, "skeleton": f"SK_{base}_Skeleton",
         "meshes": {"body": exported["body"]["glb"], **{k: v["glb"] for k, v in pieces_out.items()}},
         "problems": {k: v.get("problems", []) for k, v in {"body": exported["body"], **pieces_out}.items()},
+        "materials": materials,
         "how": [
             "Import the body first, then each piece on the body's Skeleton (each .unreal.json says so).",
             ("Put every piece on a Skeletal Mesh Component under the body's and call SetLeaderPoseComponent(body) "
@@ -577,9 +589,22 @@ def main(argv: list[str] | None = None) -> int:
     un.add_argument("--body", type=Path, required=True)
     un.add_argument("--size-cm", type=float, default=180.0, help="the body's real height")
     un.add_argument("--out", type=Path, help="default: unreal/ beside fit/")
+    mt = sub.add_parser("materials", help="show or correct the one material of each piece of a set")
+    mt.add_argument("set_dir", type=Path, help="output/sets/<set>/<body>/")
+    mt.add_argument("--set", action="append", default=[], metavar="SLOT=MATERIAL",
+                    help="a person's material for a piece (repeatable)")
+    mt.add_argument("--clear", action="append", default=[], metavar="SLOT", help="go back to the rule's proposal")
     args = p.parse_args(argv)
     try:
-        if args.command == "refit":
+        if args.command == "materials":
+            from image_to_3dlab import piece_materials
+
+            changes = {**{slot: None for slot in args.clear},
+                       **dict(item.split("=", 1) for item in args.set)}
+            if changes:
+                piece_materials.save_corrections(args.set_dir, changes)
+            print(json.dumps(piece_materials.set_materials(args.set_dir), indent=1))
+        elif args.command == "refit":
             name = body_mod.load(args.body)["name"]
             out = args.out or args.fit.parent.parent / name / "fit"
             report = run_fit(refit_job(args.fit, args.source, args.body, out), args.blender)

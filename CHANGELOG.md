@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- One material per piece (game materials, `image_to_3dlab/piece_materials.py`): each piece of a
+  character in pieces, and each single asset, gets one material (metal, leather, cloth...).
+  A readable rule proposes it from the piece's words, the outfit clause that names the piece,
+  or the slot's or kind's default. A person corrects it with
+  `slot_parts.py materials SET_DIR --set helmet=leather` (saved in the set's `materials.json`).
+  The Unreal export packs the material's roughness and metal into the ORM
+  (`export_unreal.py --material`, and `slot_parts.py unreal` for every piece).
 - MCP tools for the review queue (`review_queue`, `review_item`, `check_asset` with
   thresholds, `review_decide`) and for characters in pieces (`pieces_list`,
   `pieces_add_body`, `pieces_run`, `pieces_status`, `pieces_pick`, `pieces_fit`,

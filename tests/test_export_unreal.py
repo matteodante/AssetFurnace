@@ -551,3 +551,25 @@ def test_a_vertex_alpha_mask_sets_the_material_to_mask_and_is_checked_in_unreal(
     assert results["opacity_mask"] is True
     results = {r["check"]: r["ok"] for r in up.evaluate_unreal({"names": ["SK_Body"], "lods": 1}, expected)}
     assert results["opacity_mask"] is False
+
+
+def test_a_chosen_material_reaches_the_glb_and_the_sidecar(files, tmp_path):
+    result = ex.export_unreal(files["part"], kind="prop", size_cm=40, out_dir=tmp_path / "out", material="leather",
+                              blender=Path("blender"), run=_fake_blender(material="MI_Part"), log=lambda m: None)
+    assert result["unreal"]["material"] == "leather"
+    document, _ = parse_glb(Path(result["glb"]).read_bytes())
+    pbr = document["materials"][0].get("pbrMetallicRoughness", {})
+    assert (pbr["roughnessFactor"], pbr["metallicFactor"]) == (0.6, 0.0)
+
+
+def test_a_material_outside_the_vocabulary_is_refused_before_blender(files):
+    with pytest.raises(ValueError, match="one of"):
+        ex.plan(files["part"], kind="prop", size_cm=40, material="steel")
+
+
+def test_cli_takes_the_material(files, tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(ex, "export_unreal", lambda *a, **k: seen.update(k) or {
+        "ok": True, "out_dir": "", "glb": "", "sidecar": "", "problems": []})
+    assert ex.main([str(files["part"]), "--kind", "prop", "--size-cm", "40", "--material", "wood"]) == 0
+    assert seen["material"] == "wood"

@@ -15,6 +15,9 @@ Writes one folder (default `output/unreal/<Name>__<time>/`) holding:
 - `T_<Name>_Tint.png` and `<mesh>.materials.json` when the material step left a tint mask and
   its record beside the model (or `--tint` names a mask).
 
+`--material` gives the piece its one material (`metal`, `leather`, `cloth`...): its roughness and
+metal go into the ORM (`image_to_3dlab/piece_materials.py`).
+
 `--size-cm` is the real height (`--measure height`, the default) or longest side: a
 generated model has no real size of its own. Equipment takes its size, facing and
 ground from the body it was cut from (`--body`), so it lands on that body in Unreal and
@@ -42,6 +45,7 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from image_to_3dlab import piece_materials  # noqa: E402
 from image_to_3dlab import unreal_profile as up  # noqa: E402
 from image_to_3dlab.glb_turn import parse_glb  # noqa: E402
 
@@ -64,9 +68,11 @@ def default_base(source: Path, kind: str, animations: list[Path] | None = None) 
 def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", name: str | None = None,
          out_dir: Path | None = None, lods: list[Path] | None = None, collision: str | None = None,
          body: Path | None = None, animations: list[Path] | None = None, tint: Path | None = None,
-         forward: tuple[float, float, float] | None = None, body_name: str | None = None) -> dict[str, Any]:
+         forward: tuple[float, float, float] | None = None, body_name: str | None = None,
+         material: str | None = None) -> dict[str, Any]:
     """Check the request and work out names, files and the Blender job. No side effects."""
     source = Path(source)
+    material = piece_materials.check(material) if material is not None else None
     kind = up.KIND_ALIASES.get(kind, kind)
     if kind not in up.KINDS:
         raise ValueError(f"--kind must be one of {', '.join(up.KINDS)}")
@@ -121,7 +127,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
         "family": (family or {}).get("family"),
         "out": str((work / "blender.glb").resolve()), "report": str((work / "blender.json").resolve()),
     }
-    return {"names": names, "out_dir": out_dir, "work": work, "job": job,
+    return {"names": names, "out_dir": out_dir, "work": work, "job": job, "material": material,
             "glb": out_dir / f"{names['mesh']}.glb", "sidecar": out_dir / f"{names['mesh']}.unreal.json",
             "provenance": out_dir / f"{names['mesh']}.provenance.json",
             "tint": (out_dir / f"{names['tint']}.png") if tint else None, "tint_source": tint,
@@ -223,7 +229,7 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
                   out_dir: Path | None = None, lods: list[Path] | None = None, collision: str | None = None,
                   body: Path | None = None, animations: list[Path] | None = None, tint: Path | None = None,
                   forward: tuple[float, float, float] | None = None, body_name: str | None = None,
-                  blender: Path | None = None, run=subprocess.run,
+                  material: str | None = None, blender: Path | None = None, run=subprocess.run,
                   log=lambda message: print(message)) -> dict[str, Any]:
     """Export one asset for Unreal. Returns the paths written, the problems found and
     the sidecar. Raises ValueError for a bad request and RuntimeError when Blender fails."""
@@ -231,7 +237,7 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
 
     p = plan(source, kind=kind, size_cm=size_cm, measure=measure, name=name, out_dir=out_dir, lods=lods,
              collision=collision, body=body, animations=animations, tint=tint, forward=forward,
-             body_name=body_name)
+             body_name=body_name, material=material)
     kind = p["job"]["kind"]
     blender = blender or find_blender()
     if blender is None:
@@ -255,7 +261,7 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
     if not report.get("ok"):
         raise RuntimeError(f"Blender could not reshape the model: {report.get('error')}")
     stamp = {"kind": kind, "size_cm": size_cm, "measure": measure, "profile": up.SIDECAR_SCHEMA}
-    data, textures = up.finalize_glb(Path(p["job"]["out"]).read_bytes(), stamp=stamp)
+    data, textures = up.finalize_glb(Path(p["job"]["out"]).read_bytes(), stamp=stamp, material=p["material"])
     if report.get("vertex_colour"):  # a fitted base body: hide the skin under the armour
         data, masked = up.mask_from_vertex_alpha(data)
         report["masked_materials"] = masked
@@ -282,6 +288,8 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
     sidecar["blender"] = {k: report.get(k) for k in ("blender", "scale", "yaw_deg", "offset_m", "dims_before_m",
                                                       "box_after_m", "removed", "bones", "root_head_m")}
     sidecar["materials"] = textures["materials"]
+    if p["material"]:
+        sidecar["material"] = p["material"]
     p["sidecar"].write_text(json.dumps(sidecar, indent=1), encoding="utf-8")
     p["provenance"].write_text(json.dumps(provenance(p["inputs"], p["glb"]), indent=1), encoding="utf-8")
     if not problems:  # kept when something is wrong, to look at what Blender wrote
@@ -313,6 +321,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="a tint mask to ship as T_<Name>_Tint.png (default: the one T_*_Tint.png beside the model)")
     parser.add_argument("--forward", type=float, nargs=3, metavar=("X", "Y", "Z"),
                         help="non-humanoid creatures: which way the model faces in Blender (default 0 -1 0)")
+    parser.add_argument("--material", choices=piece_materials.MATERIALS,
+                        help="the one material of this piece: sets its roughness and metal (game materials)")
     parser.add_argument("--blender", type=Path, help="Blender executable (default: found like Finish finds it)")
     parser.add_argument("--check-in-unreal", action="store_true",
                         help="then import it in Unreal 5 with scripts/unreal_import_check.py")
@@ -329,7 +339,8 @@ def main(argv=None) -> int:
         result = export_unreal(args.source, kind=args.kind, size_cm=args.size_cm, measure=args.measure,
                                name=args.name, out_dir=args.out, lods=args.lods, collision=args.collision,
                                body=args.body, body_name=args.body_name, animations=args.animations, tint=args.tint,
-                               forward=tuple(args.forward) if args.forward else None, blender=args.blender)
+                               forward=tuple(args.forward) if args.forward else None, material=args.material,
+                               blender=args.blender)
     except (ValueError, RuntimeError) as exc:
         print(f"export_unreal: {exc}", file=sys.stderr)
         return 2

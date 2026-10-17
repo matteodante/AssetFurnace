@@ -530,20 +530,29 @@ def mask_from_vertex_alpha(data: bytes, cutoff: float = 0.5) -> tuple[bytes, lis
     return (build_glb(document, binary) if changed else data), changed
 
 
-def finalize_glb(data: bytes, stamp: Mapping[str, Any] | None = None) -> tuple[bytes, dict]:
+def finalize_glb(data: bytes, stamp: Mapping[str, Any] | None = None,
+                 material: str | None = None) -> tuple[bytes, dict]:
     """Pack each material's ORM texture and give every texture its Unreal name.
 
     Material names (`MI_<Name>`, set by the Blender step) decide the texture names. The
     metallicRoughness image is rebuilt as an ORM (occlusion from the material's own
     occlusion texture when it has one, else white) and used for both slots, so Unreal
     gets one linear `T_<Name>_ORM` instead of two half-used maps.
+
+    With `material` (a word of ``piece_materials.MATERIALS``: one material per piece), roughness
+    and metal come from that material instead of the asset's own map or factors.
     """
+    from image_to_3dlab import piece_materials
+
+    chosen = piece_materials.pbr(material) if material is not None else None
     document, binary = parse_glb(data)
     textures = document.get("textures", [])
     images = document.get("images", [])
     new_images: dict[int, bytes] = {}
     added_textures: list[dict] = []
     info: dict[str, Any] = {"materials": {}}
+    if material is not None:
+        info["material"] = piece_materials.check(material)
     pixels_cache: dict[int, np.ndarray] = {}
 
     def pixels(texture_index: int) -> np.ndarray:
@@ -553,14 +562,21 @@ def finalize_glb(data: bytes, stamp: Mapping[str, Any] | None = None) -> tuple[b
         return pixels_cache[source]
 
     names: dict[int, str] = {}
-    for material in document.get("materials", []):
-        name = material.get("name") or "MI_Material"
-        pbr = material.setdefault("pbrMetallicRoughness", {})
+    for entry in document.get("materials", []):
+        name = entry.get("name") or "MI_Material"
+        pbr = entry.setdefault("pbrMetallicRoughness", {})
         record: dict[str, Any] = {"orm": None, "occlusion": None}
         mr_ref = pbr.get("metallicRoughnessTexture")
+        if chosen is not None:
+            record["material"] = info["material"]
+            # glTF multiplies map and factor: the map carries the values, the factors become 1.
+            pbr["roughnessFactor"], pbr["metallicFactor"] = (1.0, 1.0) if mr_ref is not None else chosen
         if mr_ref is not None:
             mr = pixels(mr_ref["index"])
-            occlusion_ref = material.get("occlusionTexture")
+            if chosen is not None:
+                mr = mr.copy()
+                mr[..., 1], mr[..., 2] = round(chosen[0] * 255), round(chosen[1] * 255)
+            occlusion_ref = entry.get("occlusionTexture")
             # Occlusion packs into R only when it is read the same way as metal-roughness;
             # another UV set or transform keeps it a texture of its own.
             packable = occlusion_ref is not None and occlusion_ref.get("texCoord", 0) == mr_ref.get("texCoord", 0) \
@@ -577,14 +593,14 @@ def finalize_glb(data: bytes, stamp: Mapping[str, Any] | None = None) -> tuple[b
             pbr["metallicRoughnessTexture"] = dict(mr_ref, index=texture_index)
             if occlusion_ref is None or packable:
                 base = occlusion_ref if packable else {k: v for k, v in mr_ref.items() if k != "scale"}
-                material["occlusionTexture"] = dict(base, index=texture_index)
+                entry["occlusionTexture"] = dict(base, index=texture_index)
                 record.update(occlusion="baked" if packable else "none")
             else:
                 names[textures[occlusion_ref["index"]]["source"]] = texture_name(name, "occlusion")
                 record.update(occlusion="separate")
             record["orm"] = texture_name(name, "orm")
-        for role, ref in (("base_color", pbr.get("baseColorTexture")), ("normal", material.get("normalTexture")),
-                          ("emissive", material.get("emissiveTexture"))):
+        for role, ref in (("base_color", pbr.get("baseColorTexture")), ("normal", entry.get("normalTexture")),
+                          ("emissive", entry.get("emissiveTexture"))):
             if ref is not None:
                 names[textures[ref["index"]]["source"]] = texture_name(name, role)
                 record[role] = texture_name(name, role)
