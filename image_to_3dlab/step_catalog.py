@@ -231,6 +231,19 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
              "model; the export takes the clips.",
     ),
     StepSpec(
+        name="materials", label="Material", feature=8, takes=("asset",), makes="material",
+        params=(
+            Param("material", "choice", None, choices=None,
+                  help="the asset's one material (metal, leather, cloth...); default the rule's, from "
+                       "the words it was made from or its kind"),
+        ),
+        row_fields=("kind",),
+        skip="the export keeps the model's own roughness and metal", replace=(),
+        cli="scripts/export_unreal.py", run="image_to_3dlab.batch_steps.materials:run",
+        note="One material per asset or piece (function 8); no zones. The export packs its roughness and "
+             "metal into the ORM. A set's pieces: slot_parts.py materials and pieces_materials.",
+    ),
+    StepSpec(
         name="export_unreal", label="Unreal export", feature=5, takes=("asset",), makes="export",
         params=(
             Param("kind", "choice", "prop", choices=("prop", "creature", "equipment"), row=True),

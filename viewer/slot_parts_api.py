@@ -90,13 +90,9 @@ def made_set(output: Path, payload: dict) -> Path:
 
 
 def save_materials(output: Path, payload: dict) -> dict:
-    """A person's materials for pieces of a set; every piece's material afterwards."""
-    folder = made_set(output, payload)
-    pieces = payload.get("pieces")
-    if not isinstance(pieces, dict) or not pieces:
-        raise ValueError("give the pieces' materials, e.g. {\"helmet\": \"leather\"}")
-    piece_materials.save_corrections(folder, {str(k): (None if v in (None, "") else str(v)) for k, v in pieces.items()})
-    return {"set": payload["set"], "body": payload["body"], "materials": piece_materials.set_materials(folder)}
+    """A person's materials for pieces of a set; every piece's material afterwards (the same
+    function the MCP server's pieces_materials calls)."""
+    return runs.save_materials(output, payload)
 
 
 def resume_command(output: Path, payload: dict) -> tuple[list[str], Path]:

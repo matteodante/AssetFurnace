@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The `materials` step: a batch row (or an agent's `run_steps`) gets its one material, the
+  person's (`"materials": {"material": "leather"}`) or the rule's from the model's words and
+  kind, and `export_unreal` packs it into the ORM; left out, the model keeps its own maps.
+  Agents correct a set's pieces with `pieces_materials`, and the studio's Export for Unreal
+  can leave the material out ("Keep its own maps"). One material per piece, no zones.
 - Characters in pieces: the mode 3 outfit can be drawn once per seed and wait for a pick
   (`slot_parts.py run --stop-at-concept`, `pieces_run(concept_seeds=, choose_concept=)`,
   the Pieces page's "Outfit pictures"); the weapon and shield are picked among their seeds

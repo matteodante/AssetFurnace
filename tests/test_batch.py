@@ -406,7 +406,16 @@ def test_the_state_file_is_never_left_half_written(tmp_path, monkeypatch):
 
 # -------------------------------------------------------------------- step registry
 
-def test_a_missing_step_is_skipped_with_a_warning(tmp_path, monkeypatch, fake_finish, capsys):
+@pytest.fixture
+def unbuilt(monkeypatch):
+    """`materials` as it was before its module existed: a name the runner knows, not built.
+    A test's stand-in in STEPS still counts, as for any step."""
+    real = batch.load_step
+    monkeypatch.setattr(batch, "load_step",
+                        lambda name: batch.STEPS.get(name) if name == "materials" else real(name))
+
+
+def test_a_missing_step_is_skipped_with_a_warning(tmp_path, monkeypatch, fake_finish, capsys, unbuilt):
     install_fake_generator(monkeypatch)
     spec_path = write_spec(tmp_path, rows=1, steps=["generate", "finish", "materials"])
     report = batch.run_batch(batch.load_batch(spec_path))
@@ -416,7 +425,7 @@ def test_a_missing_step_is_skipped_with_a_warning(tmp_path, monkeypatch, fake_fi
     assert "materials" in capsys.readouterr().err
 
 
-def test_a_step_that_becomes_available_runs_on_resume(tmp_path, monkeypatch, fake_finish):
+def test_a_step_that_becomes_available_runs_on_resume(tmp_path, monkeypatch, fake_finish, unbuilt):
     generator = install_fake_generator(monkeypatch)
     spec_path = write_spec(tmp_path, rows=1, steps=["generate", "finish", "materials"])
     batch.run_batch(batch.load_batch(spec_path))
@@ -437,8 +446,7 @@ def test_a_step_that_becomes_available_runs_on_resume(tmp_path, monkeypatch, fak
 def test_the_shipped_steps():
     available = batch.available_steps()
     assert list(available) == list(batch.STEP_NAMES)
-    assert all(available[name] for name in ("generate", "finish", "export_unreal", "checks"))
-    assert not available["materials"]
+    assert all(available.values())   # every step the runner names is built
 
 
 def test_a_step_module_that_fails_to_import_is_an_error_not_a_skip(tmp_path, monkeypatch):

@@ -84,7 +84,7 @@ step needs installed. A bad batch does not start, rather than stopping at row 7.
 | `animate` | Preset clips played on the rig (`"animate": {"presets": ["idle", "walk"]}`, `speed`, `arm_spread`; `scripts/autorig.py animate`). CPU only. The row's asset stays the rig; `export_unreal` takes the clips as a creature's animations |
 | `export_unreal` | The row's asset as Unreal 5.8 files (`scripts/export_unreal.py`), into `rows/<id>/export_unreal/`. Needs `size_cm`. The row's asset stays the finished model |
 | `checks` | The automatic checks of the review queue (`scripts/check_asset.py`): the row reaches the queue with its report and can be approved there |
-| `materials` | Reserved name: skipped with a warning until it exists |
+| `materials` | The asset's one material (function 8, `image_to_3dlab/piece_materials.py`): `"materials": {"material": "leather"}`, or the rule's proposal from the words the model was made from (its provenance) and the row's `kind`. Written to `rows/<id>/materials/material.json`; `export_unreal` packs its roughness and metal into the ORM (its own `material` wins). Left out: the export keeps the model's own maps. A set's pieces have theirs in the set's `materials.json` (`slot_parts.py materials`, MCP `pieces_materials`) |
 
 `finish` does **not** repaint: the repaint needs Hunyuan 2.1 Paint weights, whose licence
 excludes the EU, UK and South Korea, and runs on Apple Silicon only. A row that wants it
