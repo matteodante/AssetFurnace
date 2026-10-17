@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Pixal3D leaves less behind (the first real set kept 811 MB of it): the `.ply` trellis-cli
+  writes beside the GLB, which nothing reads, is removed once the run ends (`--keep-ply` keeps
+  it), and the cut-out it made is kept only as the subject's outline, which a body's or a
+  weapon's camera still reads.
 - Text to image follows Qwen-Image 2.1 Turbo's card on every route, as the command line already
   did: the batches' `picture` step and a set's weapon and shield pictures draw at 2048 with the
   card's transparent background and prompt rewriting (`transparent`, `rewrite` in the step
