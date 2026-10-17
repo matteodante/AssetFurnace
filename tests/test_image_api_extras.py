@@ -72,3 +72,62 @@ def test_a_job_can_be_named_instead_of_slugging_its_prompt(tmp_path):
     job = manager.create("Image 1 is a depth map of a wolf", api.clean_settings({}), name="Wolf redrawn!")
     assert job.directory.name.startswith("wolf-redrawn__")
     assert job.output_path.name.startswith("wolf-redrawn__")
+
+
+# ---- the studio's pictures take the shared GPU lock, like every other GPU job ---------
+
+def lock_checking_sd_cli(tmp_path: Path, lock: Path) -> list[str]:
+    """A stand-in sd-cli that only succeeds while the GPU lock names this server."""
+    script = tmp_path / "locked_sd_cli.py"
+    script.write_text(
+        "import sys\n"
+        "from pathlib import Path\n"
+        f"lock = Path({str(lock)!r})\n"
+        "args = sys.argv[1:]\n"
+        "if not lock.exists() or 'studio-image' not in lock.read_text():\n"
+        "    print('no GPU lock held', flush=True); sys.exit(9)\n"
+        "from PIL import Image\n"
+        "Image.new('RGB', (8, 8)).save(args[args.index('-o') + 1])\n")
+    return [sys.executable, str(script)]
+
+
+def test_a_studio_picture_holds_the_gpu_lock_while_sd_cli_runs(tmp_path, monkeypatch):
+    from image_to_3dlab import text_image
+
+    lock = tmp_path / "gpu.lock"
+    monkeypatch.setattr(text_image, "GPU_LOCK", lock)
+    fake = lock_checking_sd_cli(tmp_path, lock)
+    monkeypatch.setattr(api, "build_command", lambda prompt, settings, out, weights: [*fake, "-o", str(out)])
+    manager = api.ImageJobManager(output_root=tmp_path / "images")
+    job = manager.create("a fox", api.clean_settings({}))
+    api.run_job(job, manager, weights=WEIGHTS)
+    assert job.status == "done", job.error
+    assert not lock.exists()
+
+
+def test_a_studio_picture_waits_for_a_busy_gpu_and_can_be_cancelled_meanwhile(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    from image_to_3dlab import text_image
+
+    lock = tmp_path / "gpu.lock"
+    lock.write_text(f"{os.getpid()} pixal3d", encoding="utf-8")   # a live holder: this process
+    monkeypatch.setattr(text_image, "GPU_LOCK", lock)
+    monkeypatch.setattr(api, "GPU_POLL", 0.05)
+    fake = lock_checking_sd_cli(tmp_path, lock)
+    monkeypatch.setattr(api, "build_command", lambda prompt, settings, out, weights: [*fake, "-o", str(out)])
+    manager = api.ImageJobManager(output_root=tmp_path / "images")
+    job = manager.create("a fox", api.clean_settings({}))
+    worker = threading.Thread(target=api.run_job, args=(job, manager), kwargs={"weights": WEIGHTS})
+    worker.start()
+    deadline = time.monotonic() + 10
+    while not any("Waiting for the GPU" in str(e.get("message", "")) for e in job.events):
+        assert time.monotonic() < deadline, job.events
+        time.sleep(0.02)
+    assert job.status == "queued" and "pixal3d" in job.events[-1]["message"]
+    assert manager.cancel(job.id)
+    worker.join(10)
+    assert job.status == "cancelled"
+    assert lock.read_text(encoding="utf-8") == f"{os.getpid()} pixal3d"   # theirs, untouched
+    assert not job.output_path.exists()

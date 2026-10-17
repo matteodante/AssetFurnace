@@ -340,12 +340,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concept record and `output/concept/judgements.jsonl`.
 
 ### Changed
+- Qwen-Image's licence class now says what its licence says: `research-only` (the Qwen
+  Research License allows it "for research or evaluation purposes only", 1(i) and 2(a)),
+  and the records cite the licence text instead of an unverified post about output rights.
+  This project's own, non-commercial use keeps working: a run is refused only with
+  commercial intent, and the licence check warns "non-commercial use only" instead of
+  passing. Exports and derived assets carry the class.
+- SF3D's licence label: free, commercial use included, under $1M annual revenue, with
+  registration (it said non-commercial). The DINOv3 terms for passing the encoder on
+  (a copy of the licence, "Built with DINOv3") are in the Pixal3D and TRELLIS.2 records,
+  and the BiRefNet GGUF that comes with Pixal3D is described as a third-party conversion.
 - Style bibles: new concepts take their style from the prompt alone. Style references stay
   off unless asked for, because an image edit also copies their content, and the automatic
   style judge is postponed; the second labelled sample and the reasons are in the style
   bible design.
 
 ### Fixed
+- Library names and hidden flags are never lost: two changes at once (a rename and a hide)
+  no longer write over each other, the file is replaced whole so a crash cannot truncate it,
+  and a damaged one is kept aside as `.bad-<time>` instead of being overwritten.
+- The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
+  Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
+  only text to image took it.
+- Studio pictures and reference concepts take the shared GPU lock while sd-cli runs, as the
+  command line and the batches already did; while another session holds the GPU the job
+  stays queued, says whom it waits for, and can be cancelled.
+- The GPU lock appears with its holder already written in it, so an empty or unreadable
+  lock file (a writer that died) is taken over after a minute instead of blocking every GPU
+  job for an hour; a live process that started after its lock was written is a reused pid;
+  and a stale lock is only removed if it is still the one judged stale.
+- The Windows installer installs what was tested, from this repository: packages from
+  `requirements.lock` as `install.sh` does (CUDA PyTorch at the lock's own versions), the
+  default repository is github.com/matteodante/AssetFurnace, the newest release is the
+  repository's own (a clone that once fetched the upstream's tags no longer goes back to
+  its v0.4.3), and run as `.\install.ps1` from a clone it updates that clone. WINDOWS.md,
+  the README and the studio's update command run the clone's installer instead of the
+  upstream's one-liner; the update check asks this repository's releases.
 - A negative prompt at `cfg_scale` 1 (the Turbo's default) is no longer passed to sd-cli nor
   recorded among the settings that made the picture: stable-diffusion.cpp does not compute
   the negative branch at 1, so the provenance now lists it under
@@ -443,6 +473,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names safely, and prop metadata uses portable paths on Windows.
 
 ### Security
+- Downloads are pinned: stable-diffusion.cpp is release `master-961-60423ab` (the one the
+  Turbo recipe was measured with, after the `--sigmas qwen-image-2.1-turbo` preset landed)
+  with the SHA-256 of each archive, and an sd-cli at another commit is replaced on the next
+  setup instead of being left alone; the Qwen-Image weights download at fixed Hugging Face
+  revisions; the Pixal3D CUDA prebuilt is checked against its SHA-256. An archive that does
+  not match is deleted, never unpacked.
 - The Studio server refuses what a web page could forge. Every older endpoint that changes
   something (setup and weight removal, the Hugging Face sign-in, generate, image, finish,
   props, rig, plans, Library names) now needs the Studio's own origin and request header,
