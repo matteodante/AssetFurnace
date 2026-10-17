@@ -71,9 +71,16 @@ def ensure_project(project: Path, engine_root: Path, need_manny: bool) -> Path:
     return project
 
 
+def on_a_body(side: dict) -> str | None:
+    """The body a piece goes on: worn (equipment) or held from a socket of its skeleton."""
+    if side["kind"] == "equipment":
+        return side.get("skeleton_from")
+    return (side.get("socket") or {}).get("on")
+
+
 def ordered(exports: list[dict]) -> list[dict]:
-    """Bodies before the equipment that goes on them."""
-    return sorted(exports, key=lambda e: e["sidecar"]["kind"] == "equipment")
+    """Bodies before the equipment and held pieces that go on them."""
+    return sorted(exports, key=lambda e: on_a_body(e["sidecar"]) is not None)
 
 
 def editor_commands(editor: Path, project: Path, job: Path) -> list[list[str]]:
@@ -132,14 +139,15 @@ def fit_results(exports: list[dict]) -> dict[str, dict]:
     results = {}
     for export in exports:
         side = export["sidecar"]
-        if side["kind"] != "equipment" or side.get("skeleton_from") not in bodies:
+        on = on_a_body(side)
+        if on not in bodies:
             continue
-        body = bodies[side["skeleton_from"]]["expect"]
+        body = bodies[on]["expect"]
         mine = side["expect"]
         same = (mine.get("size_cm"), mine.get("measure")) == (body.get("size_cm"), body.get("measure"))
         results[side["mesh"]] = {"check": "fit", "ok": same, "detail": (
             f"exported for a {mine.get('size_cm')} cm {mine.get('measure')} body; "
-            f"{side['skeleton_from']} was exported at {body.get('size_cm')} cm {body.get('measure')}")}
+            f"{on} was exported at {body.get('size_cm')} cm {body.get('measure')}")}
     return results
 
 
@@ -179,7 +187,7 @@ def stage_for(exports: list[dict], measured: dict, manny: bool) -> dict:
     for export in exports:
         side = export["sidecar"]
         got = measured.get("assets", {}).get(side["mesh"], {})
-        if side["kind"] == "equipment" or "error" in got:
+        if on_a_body(side) is not None or "error" in got:
             continue
         bounds = got.get("bounds_cm") or [100, 100, 100]
         order.append(side["mesh"])
@@ -520,6 +528,38 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
                 got.update(retarget_idle(side, mesh))
         return got
 
+    def make_socket(export):
+        """The held piece's socket on its body's skeletal mesh, at the inverse of the bone's
+        reference pose: the piece, in the body's space, hangs from it where the fit put it.
+        Then the hand bone is brought into the piece's own space through that socket (judged
+        outside Unreal, by unreal_profile.grip)."""
+        want = export["sidecar"]["socket"]
+        body = next(e for e in job["exports"] if e["sidecar"]["mesh"] == want["on"])
+        body_mesh, held = mesh_of(body), mesh_of(export)
+        reference = unreal.AnimPoseExtensions.get_reference_pose(body_mesh.get_editor_property("skeleton"))
+        if want["bone"] not in [str(b) for b in unreal.AnimPoseExtensions.get_bone_names(reference)]:
+            return {"made": False, "bone_found": False, "error": f"no bone {want['bone']}"}
+        bone = unreal.AnimPoseExtensions.get_bone_pose(reference, want["bone"], unreal.AnimPoseSpaces.WORLD)
+        local = unreal.MathLibrary.invert_transform(bone)
+        if body_mesh.find_socket(want["name"]) is None:
+            # a socket's name and bone are read-only properties: a new one is named by renaming it
+            fresh = unreal.SkeletalMeshSocket(outer=body_mesh)
+            body_mesh.add_socket(fresh, False)
+            body_mesh.rename_socket(fresh.get_editor_property("socket_name"), want["name"])
+        socket = body_mesh.find_socket(want["name"])
+        socket.set_socket_parent(body_mesh, want["bone"])
+        socket.set_socket_local_transform(local)
+        unreal.EditorAssetLibrary.save_loaded_asset(body_mesh)
+        # read back what was stored, as the game will: socket on the bone, the piece on the socket
+        stored = body_mesh.find_socket(want["name"])
+        if stored is None or str(stored.get_editor_property("bone_name")) != want["bone"]:
+            return {"made": False, "bone_found": True, "error": f"{want['name']} is not on {want['bone']} once saved"}
+        held_space = unreal.MathLibrary.compose_transforms(stored.get_socket_local_transform(), bone)
+        hand = unreal.MathLibrary.inverse_transform_location(held_space, bone.translation)
+        box = held.get_bounding_box()
+        return {"made": True, "bone_found": True, "hand_cm": [hand.x, hand.y, hand.z],
+                "box_cm": [[box.min.x, box.min.y, box.min.z], [box.max.x, box.max.y, box.max.z]]}
+
     def retarget_idle(side, mesh):
         tools = unreal.AssetToolsHelpers.get_asset_tools()
         folder = f"{job['content_root']}/{side['mesh']}/Retarget"
@@ -677,6 +717,12 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
                 data["assets"][export["sidecar"]["mesh"]] = measure(export)
             except Exception:
                 data["assets"][export["sidecar"]["mesh"]] = {"error": traceback.format_exc()[-1500:]}
+            if export["sidecar"].get("socket") and "error" not in data["assets"][export["sidecar"]["mesh"]]:
+                try:
+                    data["assets"][export["sidecar"]["mesh"]]["socket"] = make_socket(export)
+                except Exception:
+                    data["assets"][export["sidecar"]["mesh"]]["socket"] = {
+                        "made": False, "error": traceback.format_exc()[-800:]}
             write(data)
         try:
             if job["manny"]:
@@ -737,10 +783,20 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
         where = dict(zip(stage["order"], stage["positions"]))
         if job["manny"]:
             spawn(load(MANNY_MESH), where["Manny"], stage["actor_yaw"], load(MANNY_IDLE), tags=[walk_tag + MANNY_WALK])
+        standing = {}
         for export in job["exports"]:
             side = export["sidecar"]
             mesh, got = mesh_of(export), data["assets"].get(side["mesh"], {})
             if mesh is None:
+                continue
+            if side.get("socket"):
+                # Held: hung from its socket of the body, with no offset, as a game attaches it.
+                body = standing.get(side["socket"]["on"])
+                if body is not None and (got.get("socket") or {}).get("made"):
+                    piece = spawn(mesh, where[side["socket"]["on"]], stage["actor_yaw"])
+                    piece.static_mesh_component.set_mobility(unreal.ComponentMobility.MOVABLE)
+                    snap = unreal.AttachmentRule.SNAP_TO_TARGET
+                    piece.attach_to_actor(body, side["socket"]["name"], snap, snap, snap, False)
                 continue
             if side["kind"] == "equipment":
                 # Worn, not shown apart: Unreal's Leader Pose makes it follow the body.
@@ -750,7 +806,7 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
                 continue
             tags = [leader_tag + side["mesh"]] + ([walk_tag + got["walk_asset"]] if got.get("walk_asset") else [])
             animation = load(got["retarget_asset"]) if got.get("retarget_asset") else None
-            spawn(mesh, where[side["mesh"]], stage["actor_yaw"], animation, tags=tags)
+            standing[side["mesh"]] = spawn(mesh, where[side["mesh"]], stage["actor_yaw"], animation, tags=tags)
         actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
         for actor in actors.get_all_level_actors():
             always_loaded(actor)  # the template's floor and sky too

@@ -16,7 +16,9 @@ What it does to the model:
 - puts each extra animation on its own NLA track, exported as one glTF animation each;
 - adds baked LODs as `LODn_SM_<Name>` nodes and a `UBX_`/`UCX_` collision node;
 - culls back faces (glTF `doubleSided` false) unless the job says two sided (cloth);
-- equipment takes all of that from its body (`body` in the job), so it lands on the body.
+- equipment takes all of that from its body (`body` in the job), so it lands on the body;
+- an object held in a hand (`held` in the job) too, but leaves its skeleton behind: a static
+  mesh in the body's space, which Unreal hangs from a socket of the hand.
 
 Writes the GLB and a JSON report of what it measured and changed.
 """
@@ -195,6 +197,25 @@ def _measure_skeleton(bpy, arm, meshes, job):
             "dims_before_m": dims, "forward_before": forward}
 
 
+def _unskin(bpy, objects):
+    """The meshes alone, where their skeleton's rest pose holds them; the skeletons removed."""
+    armatures = [o for o in objects if o.type == "ARMATURE"]
+    _rest(bpy, armatures)
+    meshes = [o for o in objects if o.type == "MESH"]
+    for mesh in meshes:
+        world = mesh.matrix_world.copy()
+        for modifier in [m for m in mesh.modifiers if m.type == "ARMATURE"]:
+            mesh.modifiers.remove(modifier)
+        mesh.parent = None
+        mesh.matrix_world = world
+        mesh.vertex_groups.clear()
+    for obj in objects:
+        if obj.type != "MESH":
+            bpy.data.objects.remove(obj, do_unlink=True)
+    bpy.context.view_layer.update()
+    return meshes
+
+
 def _transform_matrix(t):
     from mathutils import Matrix
 
@@ -339,7 +360,8 @@ def run(job):
     skinned = job["kind"] != "prop"
 
     body = None
-    if job["kind"] == "equipment":
+    held = job.get("held")
+    if job["kind"] == "equipment" or held:
         objects, removed = _import(bpy, job["body"])
         arm = next((o for o in objects if o.type == "ARMATURE"), None)
         if arm is None:
@@ -390,12 +412,20 @@ def run(job):
         _rest(bpy, [arm], rest=False)
         report["root_head_m"] = list(arm.matrix_world @ arm.data.bones[up.ROOT_BONE].head_local)
     else:
-        lo, hi = _world_box(bpy, meshes)
-        dims = [h - low for low, h in zip(lo, hi)]
-        scale = up.scale_factor(dims, job["size_cm"], job["measure"])
-        turn = Matrix.Diagonal((scale, scale, scale, 1.0))
-        offset = up.ground_offset([v * scale for v in lo], [v * scale for v in hi])
-        matrix = Matrix.Translation(offset) @ turn
+        if held:
+            # in the body's space, moved exactly as the body is: the socket finds it there
+            meshes = _unskin(bpy, objects)
+            lo, hi = _world_box(bpy, meshes)
+            dims = [h - low for low, h in zip(lo, hi)]
+            scale, offset, matrix = body["scale"], body["offset"], _transform_matrix(body)
+            report["held"] = held
+        else:
+            lo, hi = _world_box(bpy, meshes)
+            dims = [h - low for low, h in zip(lo, hi)]
+            scale = up.scale_factor(dims, job["size_cm"], job["measure"])
+            turn = Matrix.Diagonal((scale, scale, scale, 1.0))
+            offset = up.ground_offset([v * scale for v in lo], [v * scale for v in hi])
+            matrix = Matrix.Translation(offset) @ turn
         _apply(bpy, meshes, matrix)
         lod_files = job.get("lods", [])
         node = up.lod_node(names["mesh"], 0) if lod_files else names["mesh"]
@@ -404,7 +434,8 @@ def run(job):
         for index, path in enumerate(lod_files, start=1):
             lod_objects, lod_removed = _import(bpy, path)
             report["removed"] += lod_removed
-            lod_meshes = [o for o in lod_objects if o.type == "MESH"]
+            # a held piece's detail levels leave their skeleton too, or the body's move misses them
+            lod_meshes = _unskin(bpy, lod_objects) if held else [o for o in lod_objects if o.type == "MESH"]
             _apply(bpy, lod_meshes, matrix)
             lod = _join(bpy, lod_meshes, up.lod_node(names["mesh"], index))
             _materials([lod], job["base"], index)
@@ -412,7 +443,8 @@ def run(job):
         if job.get("collision") in ("box", "convex"):
             _collision(bpy, mesh, job["collision"], names["collision"][job["collision"]])
             report["collision"] = job["collision"]
-        report.update(humanoid=False, scale=scale, yaw_deg=0.0, offset_m=list(offset), dims_before_m=dims)
+        report.update(humanoid=False, scale=scale, yaw_deg=math.degrees(body["yaw"]) if held else 0.0,
+                      offset_m=list(offset), dims_before_m=dims)
         lo, hi = _world_box(bpy, [mesh])
 
     report["box_after_m"] = [lo, hi]
