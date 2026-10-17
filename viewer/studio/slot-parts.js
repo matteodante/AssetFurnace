@@ -88,6 +88,11 @@ export function changedMaterials(menus = []) {
   return Object.fromEntries(menus.filter((m) => m.value !== m.was).map((m) => [m.slot, m.value]));
 }
 
+// The user's decision (17/10/2026): in the studio a set stops after the pictures, the automatic
+// pick already ticked, and one click makes the 3D. The command line and agents go straight on
+// unless asked (--stop-at-pictures, pieces_run(choose=True)).
+export const FORM_DEFAULTS = { seeds: '1,2,3', choose: true };
+
 /** The run request from the form's state; throws with what is missing, in words. */
 export function runPayload(state = {}) {
   const mode = Number(state.mode);
@@ -225,8 +230,8 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
         <td>${s.name === 'shoulders' ? `<label><input type="checkbox" data-split="shoulders"> two pieces</label>` : ''}</td>
         <td><input type="text" data-prompt="${escape(s.name)}" placeholder="${s.held ? 'what it is, e.g. a longsword' : 'optional words for this piece'}"></td>
         <td><select data-material="${escape(s.name)}" aria-label="${escape(slotLabel(s.name))} material" title="One material for the whole piece: Auto lets the rule pick it from the words">${materialOptions(info.materials)}</select></td></tr>`).join('')}</tbody></table>
-      <div class="row"><label title="One picture of each piece per seed; the best-scored goes to 3D">Pictures per piece (seeds) <input type="text" name="seeds" value="1,2,3" size="8"></label>
-        <label><input type="checkbox" name="choose" checked> let me check the pictures before the 3D</label>
+      <div class="row"><label title="One picture of each piece per seed; the best-scored goes to 3D">Pictures per piece (seeds) <input type="text" name="seeds" value="${FORM_DEFAULTS.seeds}" size="8"></label>
+        <label><input type="checkbox" name="choose"${FORM_DEFAULTS.choose ? ' checked' : ''}> let me check the pictures before the 3D</label>
         <label>Style <input type="text" name="style" placeholder="optional, e.g. hand-painted"></label>
         ${styleBible ? `<label title="Its words for every piece"><input type="checkbox" name="useBible"> style bible: ${escape(styleBible)}</label>` : ''}
         <button type="submit" class="primary">Make the set</button></div>`;
