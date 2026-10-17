@@ -356,6 +356,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- The GPU lock is let go even when another job is reading it at that moment: Windows
+  refused to delete the open file, the release gave up without a word, and every other GPU
+  job then waited on a lock nobody held (the suite hung on it on 2026-10-17).
 - Library names and hidden flags are never lost: two changes at once (a rename and a hide)
   no longer write over each other, the file is replaced whole so a crash cannot truncate it,
   and a damaged one is kept aside as `.bad-<time>` instead of being overwritten.
