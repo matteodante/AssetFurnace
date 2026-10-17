@@ -363,8 +363,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    if args.check_in_unreal and up.KIND_ALIASES.get(args.kind, args.kind) == "equipment":
-        print("export_unreal: equipment is checked on its body's Skeleton, so check both exports together:\n"
+    if args.check_in_unreal and (up.KIND_ALIASES.get(args.kind, args.kind) == "equipment" or args.socket):
+        print("export_unreal: equipment and held objects are checked on their body's Skeleton, so check both "
+              "exports together:\n"
               "    python scripts/unreal_import_check.py BODY_EXPORT_DIR PART_EXPORT_DIR", file=sys.stderr)
         return 2
     try:

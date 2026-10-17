@@ -434,7 +434,8 @@ def run(job):
         for index, path in enumerate(lod_files, start=1):
             lod_objects, lod_removed = _import(bpy, path)
             report["removed"] += lod_removed
-            lod_meshes = [o for o in lod_objects if o.type == "MESH"]
+            # a held piece's detail levels leave their skeleton too, or the body's move misses them
+            lod_meshes = _unskin(bpy, lod_objects) if held else [o for o in lod_objects if o.type == "MESH"]
             _apply(bpy, lod_meshes, matrix)
             lod = _join(bpy, lod_meshes, up.lod_node(names["mesh"], index))
             _materials([lod], job["base"], index)

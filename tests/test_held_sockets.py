@@ -259,3 +259,32 @@ def test_the_panel_asks_for_a_body_only_for_a_held_object():
     assert out["held"]["held"] == "weapon" and out["held"]["body"] == "b.glb"
     assert "held" not in out["loose"] and "body" not in out["loose"]
     assert out["needs"] == [True, False, True] and out["choices"] == ["", "weapon", "shield"]
+
+
+def test_a_held_object_is_checked_in_unreal_only_with_its_body(tmp_path, capsys):
+    weapon, body = tiny_glb(tmp_path / "weapon.glb"), tiny_glb(tmp_path / "body.glb")
+    assert export_unreal.main([str(weapon), "--kind", "prop", "--size-cm", "180", "--body", str(body),
+                               "--socket", "SOCKET_Weapon=hand_r", "--check-in-unreal"]) == 2
+    assert "BODY_EXPORT_DIR PART_EXPORT_DIR" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(__import__("image_to_3dlab.blender", fromlist=["find_blender"]).find_blender() is None,
+                    reason="needs Blender")
+def test_real_blender_moves_a_held_pieces_detail_levels_with_it(tmp_path):
+    from image_to_3dlab.glb_turn import parse_glb
+    from tests.test_export_unreal import _skinned_glb
+
+    body, held, lod = tmp_path / "body.glb", tmp_path / "held.glb", tmp_path / "held_LOD1.glb"
+    for path in (body, held, lod):
+        path.write_bytes(_skinned_glb())
+    piece = export_unreal.export_unreal(held, kind="prop", size_cm=150, body=body, name="Sword", lods=[lod],
+                                        socket={"name": "SOCKET_Weapon", "bone": "hand_r"},
+                                        out_dir=tmp_path / "w", log=lambda m: None)
+    document, _ = parse_glb(Path(piece["glb"]).read_bytes())
+    boxes = {}
+    for node in document["nodes"]:
+        if "mesh" in node and node["name"].startswith("LOD"):
+            accessor = document["accessors"][document["meshes"][node["mesh"]]["primitives"][0]["attributes"]["POSITION"]]
+            boxes[node["name"]] = (accessor["min"], accessor["max"])
+    assert set(boxes) == {"LOD0_SM_Sword", "LOD1_SM_Sword"}
+    assert np.allclose(boxes["LOD0_SM_Sword"], boxes["LOD1_SM_Sword"], atol=1e-4)
