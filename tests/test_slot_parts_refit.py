@@ -69,3 +69,48 @@ def test_the_set_for_unreal_shares_one_skeleton(tmp_path):
     assert summary["skeleton"] == "SK_Stick_Skeleton" and set(summary["meshes"]) == {"body", "helmet", "gloves_R", "gloves_L"}
     assert any("SetLeaderPoseComponent" in line for line in summary["how"])
     assert any("Opacity Mask" in line for line in summary["how"])
+
+
+def test_each_piece_goes_to_unreal_with_its_material(tmp_path):
+    folder = _fit_dir(tmp_path)
+    body_json, *_ = _body(tmp_path)
+    parts = {"set": "first", "slots": {"helmet": {"prompt": "a leather hood"}, "gloves": {"prompt": ""}},
+             "pieces": {"helmet": {}, "gloves": {}}, "concept": {"prompt": "steel gauntlets"}}
+    (folder.parent / "first.parts.json").write_text(json.dumps(parts))
+    calls = {}
+
+    def exporter(source, **kwargs):
+        calls[Path(source).name] = kwargs.get("material")
+        return {"glb": str(tmp_path / f"{kwargs['name']}.glb"), "problems": []}
+
+    path = cli.unreal_set(folder, body_json, tmp_path / "unreal", exporter=exporter)
+    assert calls == {"body_masked.glb": None, "helmet.glb": "leather", "gloves_R.glb": "metal", "gloves_L.glb": "metal"}
+    summary = json.loads(path.read_text())
+    assert summary["materials"]["helmet"] == {"material": "leather", "by": "rule",
+                                              "reason": "the piece's words say 'leather'"}
+
+
+def test_a_set_without_its_record_gets_the_slot_defaults(tmp_path):
+    folder = _fit_dir(tmp_path)
+    body_json, *_ = _body(tmp_path)
+    calls = {}
+
+    def exporter(source, **kwargs):
+        calls[Path(source).name] = kwargs.get("material")
+        return {"glb": "x.glb", "problems": []}
+
+    cli.unreal_set(folder, body_json, tmp_path / "unreal", exporter=exporter)
+    assert calls["helmet.glb"] == "metal"
+
+
+def test_the_cli_shows_and_corrects_a_sets_materials(tmp_path, capsys):
+    folder = tmp_path / "set" / "first"
+    folder.mkdir(parents=True)
+    (folder / "first.parts.json").write_text(json.dumps(
+        {"set": "first", "slots": {"helmet": {"prompt": ""}}, "pieces": {"helmet": {}}, "concept": {}}))
+    assert cli.main(["materials", str(folder), "--set", "helmet=cloth"]) == 0
+    shown = json.loads(capsys.readouterr().out)
+    assert shown["helmet"]["material"] == "cloth" and shown["helmet"]["by"] == "person"
+    assert cli.main(["materials", str(folder), "--clear", "helmet"]) == 0
+    assert json.loads(capsys.readouterr().out)["helmet"]["by"] == "rule"
+    assert cli.main(["materials", str(folder), "--set", "helmet=steel"]) == 1

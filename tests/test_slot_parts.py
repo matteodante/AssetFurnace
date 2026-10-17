@@ -294,3 +294,10 @@ def test_the_subject_comes_from_the_cut_out_or_from_a_picture_already_cut_out(tm
     clear = tmp_path / "clear.png"
     matte.save(clear)  # a concept that arrived cut out: Pixal3D writes no __matted.png for it
     assert camera.subject_alpha(clear).sum() == 16
+
+
+def test_choose_keeps_a_material_asked_before_the_run():
+    chosen = slots.choose({"helmet": {"material": "Leather"}, "boots": {}})
+    assert chosen["helmet"]["material"] == "leather" and "material" not in chosen["boots"]
+    with pytest.raises(ValueError, match="one of"):
+        slots.choose({"helmet": {"material": "steel"}})

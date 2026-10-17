@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- One material per piece (game materials, `image_to_3dlab/piece_materials.py`): each piece of a
+  character in pieces, and each single asset, gets one material (metal, leather, cloth...).
+  A readable rule proposes it from the piece's words, the outfit clause that names the piece,
+  or the slot's or kind's default. A person corrects it with
+  `slot_parts.py materials SET_DIR --set helmet=leather` (saved in the set's `materials.json`).
+  The Unreal export packs the material's roughness and metal into the ORM
+  (`export_unreal.py --material`, and `slot_parts.py unreal` for every piece).
 - Characters in pieces: several pictures per piece, and the right one picked before the 3D
   (`slot_parts/candidates.py`). Each picture is scored by Qwen3-VL ("is this one helmet / one
   boot / ...?", stricter for a pauldron) with the outline against the slot's mask as the
