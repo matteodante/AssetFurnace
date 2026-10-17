@@ -43,10 +43,10 @@ the spec file**, like in a run manifest.
 | `asset` | An existing GLB, for a row that skips `generate` |
 | `kind` | `prop` (default), `creature` or `equipment` |
 | `faces` | Face budget for `finish`, 1,000 to 200,000 (default 40,000) |
-| `profile` | Output profile, for `export_unreal` once it exists |
-| `size_cm` | The asset's real size in centimetres, for `export_unreal` |
+| `profile` | Output profile, kept with the row and its outputs |
+| `size_cm` | The asset's real size in centimetres, for `export_unreal` and `checks` |
 | `measure` | What `size_cm` measures: `height` (default) or `longest` side |
-| `steps` | In order. Default `generate`, `finish` |
+| `steps` | In order. Default `generate`, `finish`, `checks` |
 | `backend` | Default `pixal3d`, the only generator batches run today (see below) |
 | `parameters`, `seed` | Generator settings: `seed`, `steps`, `gss`, `gsh`, `fov`, `matte` for Pixal3D |
 | `finish`, ... | Settings for one step, under its name: `"finish": {"atlas": 1024}` |
@@ -76,13 +76,27 @@ step needs installed. A bad batch does not start, rather than stopping at row 7.
 |---|---|
 | `generate` | Writes the row's run manifest and runs it, exactly as `pipeline.py --run-manifest` would |
 | `finish` | The studio's Finish (`scripts/retopo_repaint.py`) at the row's face budget, with Pixel Match when the model kept its camera |
-| `materials`, `export_unreal`, `checks` | Reserved names: skipped with a warning until they exist |
+| `export_unreal` | The row's asset as Unreal 5.8 files (`scripts/export_unreal.py`), into `rows/<id>/export_unreal/`. Needs `size_cm`. The row's asset stays the finished model |
+| `checks` | The automatic checks of the review queue (`scripts/check_asset.py`): the row reaches the queue with its report and can be approved there |
+| `materials` | Reserved name: skipped with a warning until it exists |
 
 `finish` does **not** repaint: the repaint needs Hunyuan 2.1 Paint weights, whose licence
 excludes the EU, UK and South Korea, and runs on Apple Silicon only. A row that wants it
 says `"finish": {"paint": true}`. Its other settings: `photo` (Pixel Match, on by
 default), `atlas`, `texture_size`, `metallic`, `roughness`, `ior`, `voxel`, `skip_bake`,
 `skip_compress`.
+
+`export_unreal` settings: `name` (default the row's id), `collision` (`box`, `convex`,
+`unreal`; objects), `lods` (files, `[]` for none; default the `_LODn` files beside the
+model), `tint`, `forward` (three numbers, Blender axes), `body` and `body_name`
+(equipment, which needs its body), `animations` (creatures). File paths are relative to
+the spec. `checks` settings: `profile` (default from `kind`), `set` (thresholds, as
+`--set`: `{"budget.faces.max": 20000}`), `reference` (compare with the row's picture,
+default true), `height`, `width`, `depth` in metres (default `size_cm` when it is a
+height), `stop_on_fail` (a failed check fails the row; by default the reviewer decides).
+Every step's settings are described once, with their types and ranges, in
+`image_to_3dlab/step_catalog.py`; a misspelt or out-of-range one stops the batch before
+its first row.
 
 Adding a step is one file in `image_to_3dlab/batch_steps/`; its docstring has the
 contract. A done row whose skipped step later exists runs that step (and the ones after
@@ -112,9 +126,12 @@ output/batches/<name>/
     input/             copies of the row's images
     generate/<licence class>/<stem>.glb, .provenance.json, .json, .svviews/
     finish/<id>.glb, <id>.provenance.json, <id>.retopo-repaint.json, finish.log
+    export_unreal/SM_<Name>.glb, .unreal.json, .provenance.json (T_<Name>_Tint.png)
+    checks/<id>.checks.json
 ```
 
-`outputs.json` lists only finished rows, with their kind, profile, size, final asset,
+`outputs.json` lists only finished rows, with their kind, profile, size, final asset, the
+Unreal export (`unreal`) and checks report (`checks`) when those steps ran,
 its provenance and every file the steps wrote: the hand-off for anything that reads a
 batch's results.
 
@@ -127,7 +144,8 @@ runs, so you can rig or hide a batch asset like any other.
 `image_to_3dlab.checks.enqueue_for_review`, or, until that package is installed, a line
 in the same format. The key is the row's id and the version its GLB's sha256, with the
 `checks` report when that step ran on this very file; the same version is never queued
-twice, a new one is. `equipment` rows are queued with the checks' `equipment_part` kind.
+twice, a new one is, and so is the same version when it now comes with its report (adding
+`checks` to a finished batch makes its rows approvable). `equipment` rows are queued with the checks' `equipment_part` kind.
 Approving or sending back happens in the review queue, and the Batches page shows where
 each row's current version stands.
 
@@ -141,7 +159,12 @@ Run the same command again. Then:
   there with the recorded hash, so a finish that crashed does not cost a generation;
 - a **failed** row stays failed (its reason is in the state) unless you add
   `--retry-failed`: a row that always fails should not take the GPU on every resume;
-- a row you **edited** in the spec runs again; its old files stay on disk;
+- a row you **edited** in the spec runs again **from its first step whose settings
+  changed**: a new face budget reruns `finish` and what follows, not the generation; a
+  new `size_cm` reruns `export_unreal` and `checks`; a step added at the end runs alone; a
+  new seed or picture reruns everything. Each step keeps a fingerprint of what it ran
+  with (its settings, the row fields it reads, and every step before it). Old files stay
+  on disk;
 - a changed **intent or licence policy** refuses to resume: rename the batch or remove its
   folder.
 

@@ -190,7 +190,11 @@ def list_outputs(batch_ref: str, row_id: str | None = None) -> dict[str, Any]:
     listed = [{**row, "asset": absolute(row.get("asset")),
                "sidecar": absolute(row.get("sidecar")),
                "references": [absolute(path) for path in row.get("references", [])],
-               "files": [absolute(path) for path in row.get("files", [])]} for row in rows]
+               "files": [absolute(path) for path in row.get("files", [])],
+               **({"unreal": {key: absolute(path) for key, path in row["unreal"].items()}}
+                  if row.get("unreal") else {}),
+               **({"checks": {**row["checks"], "report": absolute(row["checks"]["report"])}}
+                  if row.get("checks") else {})} for row in rows]
     return {"name": index.get("batch", directory.name), "directory": str(directory),
             "rows": listed}
 

@@ -47,7 +47,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import manifest_run
+from . import manifest_run, step_catalog
 from .batch_steps import StepContext
 from .processes import group_alive, process_alive
 from .provenance import validate_run_policy
@@ -61,7 +61,7 @@ STEP_PACKAGE = "image_to_3dlab.batch_steps"
 # Steps installed by hand, over the modules: tests use this for fakes.
 STEPS: dict[str, Any] = {}
 
-DEFAULT_STEPS = ("generate", "finish")
+DEFAULT_STEPS = ("generate", "finish", "checks")
 DEFAULT_BACKEND = "pixal3d"
 KINDS = ("prop", "creature", "equipment")
 # What `scripts/retopo_repaint.py` and `blender_retopo_bake.py` accept.
@@ -145,6 +145,51 @@ class BatchRow:
             "size_cm": self.size_cm, "measure": self.measure,
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+    def step_fingerprints(self) -> dict[str, str]:
+        """One fingerprint per step, chained: each covers the row's source, every step
+        before it, and what this step itself depends on (its options and the row fields
+        the catalogue names). An edited row runs again from its first step whose
+        fingerprint changed; the steps before keep their results."""
+        digest = sha256_file
+        records = [c for c in ((self.asset.with_suffix(".provenance.json"),
+                                self.asset.with_suffix(".json")) if self.asset else ())
+                   if c.is_file()]
+        image = self.concept if self.asset and not self.images else None
+        previous = _hash({
+            "images": [digest(image) for image in self.images],
+            "asset": digest(self.asset) if self.asset else None,
+            "asset_records": [[c.name, digest(c)] for c in records],
+            "asset_image": digest(image) if image else None,
+        })
+        fingerprints = {}
+        for name in self.steps:
+            options = dict(self.options.get(name, {}))
+            for key in step_catalog.file_options(name, options):
+                options[key] = _file_digests(options[key])
+            fields = (step_catalog.CATALOG[name].row_fields if name in step_catalog.CATALOG
+                      else UNKNOWN_STEP_FIELDS)
+            previous = _hash({"after": previous, "step": name, "options": options,
+                              "fields": {key: getattr(self, key) for key in fields}})
+            fingerprints[name] = previous
+        return fingerprints
+
+
+# A step the catalogue does not describe yet depends, as far as anyone knows, on all of them.
+UNKNOWN_STEP_FIELDS = ("kind", "faces", "profile", "backend", "parameters", "size_cm", "measure")
+
+
+def _hash(payload: Any) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _file_digests(value: Any) -> Any:
+    """A file option by its content: the same path holding another file is a change."""
+    if isinstance(value, list):
+        return [_file_digests(item) for item in value]
+    if isinstance(value, str) and Path(value).is_file():
+        return {"path": value, "sha256": sha256_file(Path(value))}
+    return value
 
 
 def recorded_sidecar(asset: Path | None) -> Path | None:
@@ -649,9 +694,12 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
             if not isinstance(source, dict):
                 problems.append(f"{label}: the settings for {step} must be an object")
                 continue
-            merged.update(source)
+            # a file named in the spec is found from the spec's folder, like its images
+            merged.update(step_catalog.resolve_files(step, source, base))
         if merged:
             options[step] = merged
+            if step in step_catalog.CATALOG and step != "generate":
+                problems += [f"{label}: {problem}" for problem in step_catalog.check(step, merged)]
     concept = None
     if asset is not None and asset.is_file() and not images:
         concept = recorded_image(asset) or next(
@@ -729,8 +777,13 @@ def pending_work(spec: BatchSpec, state: dict[str, Any] | None,
             if entry is None or not _still_done(entry, spec.directory):
                 work[row.id] = ()
             continue
-        if entry is None or entry.get("fingerprint") != fingerprint:
+        if entry is None:
             work[row.id] = row.steps
+            continue
+        if entry.get("fingerprint") != fingerprint:
+            # edited: from its first step whose fingerprint changed (failed or not: the
+            # spec changed, so it is a new request)
+            work[row.id] = _remaining(row, entry, spec.directory, row.step_fingerprints())
             continue
         if _still_done(entry, spec.directory):
             continue
@@ -740,13 +793,16 @@ def pending_work(spec: BatchSpec, state: dict[str, Any] | None,
     return work
 
 
-def _remaining(row: BatchRow, entry: dict[str, Any], directory: Path) -> tuple[str, ...]:
-    """The steps from the first one not done with its files still in place."""
+def _remaining(row: BatchRow, entry: dict[str, Any], directory: Path,
+               fingerprints: dict[str, str] | None = None) -> tuple[str, ...]:
+    """The steps from the first one not done with its files still in place, or, given the
+    row's step fingerprints, the first one done for another version of the row."""
     for index, name in enumerate(row.steps):
         step = entry.get("steps", {}).get(name, {})
         files = step.get("files", [])
-        if step.get("status") != "done" or not all(
-                (directory / record["path"]).is_file() for record in files):
+        if (step.get("status") != "done"
+                or (fingerprints is not None and step.get("fingerprint") != fingerprints[name])
+                or not all((directory / record["path"]).is_file() for record in files)):
             return row.steps[index:]
     return ()
 
@@ -1068,9 +1124,25 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
             rows[row.id] = {**(entry or {}), "status": "failed", "steps": (entry or {}).get("steps", {}),
                             "reason": f"input: {exc}", "fingerprint": None}
             continue
-        if entry is None or entry.get("fingerprint") != fingerprint:
-            entry = {"status": "queued", "fingerprint": fingerprint, "steps": {},
-                     **({"note": "the row changed in the spec"} if entry else {})}
+        fingerprints = row.step_fingerprints()
+        if entry is None:
+            entry = {"status": "queued", "fingerprint": fingerprint, "steps": {}}
+        elif entry.get("fingerprint") != fingerprint:
+            # Edited: the steps before the first changed one keep their results. A step
+            # done before steps had fingerprints has none, so it counts as changed.
+            kept = {name: step for name, step in entry.get("steps", {}).items()
+                    if name in row.steps}
+            again = _remaining(row, {"steps": kept}, directory, fingerprints)
+            entry = {"status": "queued", "fingerprint": fingerprint, "steps": kept,
+                     **({"staged": entry["staged"]} if entry.get("staged") else {}),
+                     "note": (f"the row changed in the spec; it runs again from {again[0]}"
+                              if again else "the row changed in the spec")}
+        else:
+            # unchanged: steps done before fingerprints existed are stamped with theirs,
+            # so a later edit can tell which of them to keep
+            for name, step in entry.get("steps", {}).items():
+                if step.get("status") == "done" and "fingerprint" not in step and name in fingerprints:
+                    step["fingerprint"] = fingerprints[name]
         rows[row.id] = entry
     # rows dropped from the spec keep their record, apart: they are not part of the batch
     removed = {**state.get("removed_rows", {}),
@@ -1176,10 +1248,14 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     asset = row.asset
     sidecar = recorded_sidecar(asset) if asset else None
     steps = entry.setdefault("steps", {})
+    for name in [name for name in steps if name not in row.steps]:
+        del steps[name]   # a step taken out of the row is no longer part of its result
+    fingerprints = row.step_fingerprints()
     rerun = False   # once a step runs again, every step after it does too
     for name in row.steps:
         done = steps.get(name, {})
         if (not rerun and done.get("status") == "done"
+                and done.get("fingerprint") == fingerprints[name]
                 and _files_intact(done.get("files", []), directory)):
             asset = _absolute(done.get("asset"), directory) or asset
             sidecar = _absolute(done.get("sidecar"), directory) or sidecar
@@ -1189,7 +1265,8 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
         if step is None:
             warning = f"step {name} is not available yet; skipped"
             print(f"warning: {row.id}: {warning}", file=sys.stderr, flush=True)
-            steps[name] = {"status": "skipped", "warning": warning}
+            steps[name] = {"status": "skipped", "warning": warning,
+                           "fingerprint": fingerprints[name]}
             save()
             continue
         step_dir = row_dir / name
@@ -1219,7 +1296,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
         asset = result.asset or asset
         sidecar = result.sidecar if result.asset else sidecar
         steps[name] = {
-            "status": "done", "finished_at": now(),
+            "status": "done", "finished_at": now(), "fingerprint": fingerprints[name],
             "files": [record for path in result.files
                       for record in _file_records(path, directory)],
             "asset": _relative(result.asset, directory) if result.asset else None,
@@ -1232,7 +1309,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     # queues it (the same version is never queued twice) before recording it done.
     if asset is not None:
         try:
-            queue_for_review(spec, row, asset)
+            queue_for_review(spec, row, asset, report_file=checks_report(row_dir, steps))
         except Exception as exc:  # noqa: BLE001 - one row's queue error must not stop the batch
             # the row's steps are done and kept; --retry-failed just queues it
             _fail(entry, steps, "review", f"could not queue it for review: {exc}", save, log)
@@ -1243,6 +1320,13 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
                  sidecar=_relative(sidecar, directory) if sidecar else None)
     save()
     log("done")
+
+
+def checks_report(row_dir: Path, steps: dict[str, Any]) -> Path | None:
+    """The report the row's checks step wrote, if it ran."""
+    done = steps.get("checks", {})
+    report = (done.get("record") or {}).get("report") if done.get("status") == "done" else None
+    return row_dir / "checks" / report if report else None
 
 
 def _fail(entry, steps, name, reason, save, log) -> None:
@@ -1256,28 +1340,33 @@ def _fail(entry, steps, name, reason, save, log) -> None:
 REVIEW_KINDS = {"prop": "prop", "creature": "creature", "equipment": "equipment_part"}
 
 
-def queue_for_review(spec: BatchSpec, row: BatchRow, asset: Path) -> None:
+def queue_for_review(spec: BatchSpec, row: BatchRow, asset: Path,
+                     report_file: Path | None = None) -> None:
     """Put a finished row in the review queue of the checks (feature 7).
 
     The queue's own `image_to_3dlab.checks.enqueue_for_review` writes the line once that
     package is installed; until then this writes the same line itself. The key is the
-    row's id, the version the asset's sha256: the same version is never queued twice. A
-    `<asset>.checks.json` left by the checks step comes along when it is for this file.
+    row's id, the version the asset's sha256: the same version is never queued twice,
+    unless it now comes with a checks report it did not have. The report is the checks
+    step's (`report_file`), or a `<asset>.checks.json` beside the asset, when it is for
+    this very file.
     """
     log_path = spec.output_dir.parent / REVIEW_LOG
     sha = sha256_file(asset)
     kind = REVIEW_KINDS.get(row.kind, row.kind)
     source = f"batch:{spec.name}"
-    # the key is the asset's id (feature 7's contract): the same bytes under it are the
-    # same version. Queued again only when who made it or what it is changed.
-    if any(line.get("event") == "queued" and line.get("key") == row.id
-           and line.get("asset_sha256") == sha and line.get("source") == source
-           and line.get("kind") == kind for line in _lines(log_path)):
-        return
-    report_file = asset.with_suffix(".checks.json")
+    report_file = report_file or asset.with_suffix(".checks.json")
     report = read_json(report_file) if report_file.is_file() else None
     if not isinstance(report, dict) or report.get("asset_sha256") != sha:
         report, report_file = None, None
+    # the key is the asset's id (feature 7's contract): the same bytes under it are the
+    # same version. Queued again only when who made it, what it is, or its report changed.
+    if any(line.get("event") == "queued" and line.get("key") == row.id
+           and line.get("asset_sha256") == sha and line.get("source") == source
+           and line.get("kind") == kind
+           and (report_file is None or line.get("report") == str(report_file))
+           for line in _lines(log_path)):
+        return
     try:
         from image_to_3dlab.checks import enqueue_for_review
     except ModuleNotFoundError as exc:
@@ -1385,8 +1474,24 @@ def _index(spec: BatchSpec, rows: dict[str, Any]) -> dict[str, Any]:
             "files": [record["path"] for step in entry["steps"].values()
                       for record in step.get("files", [])],
             "finished_at": entry.get("finished_at"),
+            **_extra_outputs(directory, directory / "rows" / row.id, entry["steps"]),
         })
     return {"schema_version": 1, "batch": spec.name, "updated_at": now(), "rows": listed}
+
+
+def _extra_outputs(directory: Path, row_dir: Path, steps: dict[str, Any]) -> dict[str, Any]:
+    """What a step left beside the asset: the Unreal export and the checks report."""
+    extra: dict[str, Any] = {}
+    export = steps.get("export_unreal", {})
+    if export.get("status") == "done" and export.get("record"):
+        folder = row_dir / "export_unreal"
+        extra["unreal"] = {key: _relative(folder / export["record"][key], directory)
+                           for key in ("glb", "sidecar") if export["record"].get(key)}
+    report = checks_report(row_dir, steps)
+    if report is not None:
+        extra["checks"] = {"status": steps["checks"]["record"].get("status"),
+                           "report": _relative(report, directory)}
+    return extra
 
 
 # ------------------------------------------------------------------------------ CLI

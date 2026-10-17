@@ -52,7 +52,7 @@ def test_generate_writes_a_row_manifest_and_keeps_inputs_in_the_row(tmp_path, mo
     assert manifest["model"] == {"backend": "fake", "parameters": {"seed": 2}}
     assert Path(manifest["input"]["path"]) == ctx.row_dir / "input" / "cat.png"
     assert manifest["batch"]["references"] == [str(ctx.row_dir / "input" / "cat_side.png")]
-    assert manifest["batch"]["faces"] == 3000 and manifest["batch"]["kind"] == "prop"
+    assert manifest["batch"]["id"] == "SM_Cat" and "faces" not in manifest["batch"]
     assert (ctx.row_dir / "input" / "cat_side.png").is_file()
     assert result.asset.parent == ctx.step_dir / "clear"
     assert result.sidecar == result.asset.with_suffix(".provenance.json")
