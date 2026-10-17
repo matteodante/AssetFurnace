@@ -135,6 +135,16 @@ def test_a_sets_weapon_and_shield_are_checked_licensed_and_queued_on_their_own(t
         assert queued[f"arms-stick-{slot}"]["license_status"] == licence["status"]
 
 
+def test_a_review_key_stays_within_the_queues_limit():
+    """Codex review: a 64-character set and body made a key the review queue refuses."""
+    from image_to_3dlab.checks import review
+
+    long_set, long_body = "s" * 64, "b" * 64
+    keys = {cli.review_key(long_set, long_body, slot) for slot in ("weapon", "shield")}
+    assert len(keys) == 2 and all(review.safe_key(key) == key for key in keys)
+    assert cli.review_key("red", "stick", "weapon") == "red-stick-weapon"
+
+
 def test_weapon_pictures_are_scored_and_the_best_is_offered_first(tmp_path, judged):
     body_json, source = _with_picture(tmp_path)
     edit, generate, run = _fakes(source, [])
