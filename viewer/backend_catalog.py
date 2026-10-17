@@ -624,6 +624,26 @@ CATALOG: tuple[Backend, ...] = (
         ),
     ),
     Backend(
+        id="gltf-validator",
+        label="glTF Validator (Khronos)",
+        kind="tool",
+        best_for=("Checks every model against the glTF 2.0 specification, as an engine "
+                  "importer would, before it leaves for Unreal or Godot."),
+        tradeoff="Optional. Without it the asset checks say glTF validity was not checked.",
+        license_name="Apache-2.0",
+        license_url="https://github.com/KhronosGroup/glTF-Validator",
+        install="scripts/bootstrap_gltf_validator.py",
+        runs_on=(APPLE, NVIDIA, AMD),
+        setup_minutes=1,
+        weights=(
+            # The program itself, about 2.2 MB, pinned with its checksum in the bootstrap.
+            WeightSet("glTF-Validator 2.0.0-dev.3.10",
+                      "https://github.com/KhronosGroup/glTF-Validator/releases/tag/2.0.0-dev.3.10",
+                      2_320_898, _host.executable(REPO / "vendor" / "gltf-validator", "gltf_validator"),
+                      note="A native program, no model weights."),
+        ),
+    ),
+    Backend(
         id="matte",
         label="Background remover (BiRefNet-lite)",
         kind="tool",

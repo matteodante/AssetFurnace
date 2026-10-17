@@ -356,6 +356,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- glTF validity is never silently unchecked: without Khronos' glTF-Validator the `gltf.valid`
+  check warns that it did not run (it was skipped, and no report said so), and the validator
+  can be installed from Setup & Status (about 2 MB) as well as from its script.
 - Library names and hidden flags are never lost: two changes at once (a rename and a hide)
   no longer write over each other, the file is replaced whole so a crash cannot truncate it,
   and a damaged one is kept aside as `.bad-<time>` instead of being overwritten.

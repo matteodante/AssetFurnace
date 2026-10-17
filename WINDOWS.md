@@ -26,7 +26,11 @@ Poi usare Setup nell'interfaccia, oppure gli script originali del progetto:
 .venv\Scripts\python.exe scripts\bootstrap_qwen_image.py --yes
 .venv\Scripts\python.exe scripts\bootstrap_autorig.py --yes
 .venv\Scripts\python.exe scripts\bootstrap_gltfpack.py --yes
+.venv\Scripts\python.exe scripts\bootstrap_gltf_validator.py --yes
 ```
+
+Il validatore glTF di Khronos (circa 2 MB, anche da Setup) serve al controllo `gltf.valid`:
+senza, i report degli asset lo segnalano come non eseguito.
 
 Questi comandi scaricano i modelli: Pixal3D circa 8,4 GB, Qwen circa 14,6 GB e
 SkinTokens circa 1,6 GB, oltre a programmi e dipendenze. Blender 4.2 o successivo
