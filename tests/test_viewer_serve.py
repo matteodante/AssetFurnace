@@ -99,3 +99,57 @@ def test_a_network_server_always_has_a_token():
 def test_the_runpod_link_carries_the_token():
     plan = serve.launch_plan({"RUNPOD_POD_ID": "abc123"}, port=8777, token="t0k")
     assert "https://abc123-8777.proxy.runpod.net/viewer/studio.html?token=t0k" in plan.message
+
+
+# --- the launcher can stop the server it started -------------------------------------
+def test_the_server_leaves_its_pid_where_the_stop_script_looks(tmp_path):
+    path = serve.write_pid_file(8777, tmp_path)
+    assert path == tmp_path / "server-8777.pid"
+    assert path.read_text(encoding="utf-8").split()[0] == str(__import__("os").getpid())
+
+
+def test_the_pid_file_is_removed_only_if_it_is_still_ours(tmp_path):
+    path = serve.write_pid_file(8777, tmp_path)
+    serve.remove_pid_file(path)
+    assert not path.exists()
+    path.write_text("12345 8777", encoding="utf-8")          # another server's, since
+    serve.remove_pid_file(path)
+    assert path.exists()
+
+
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+import pytest
+
+
+@pytest.mark.skipif(os.name != "nt" or not shutil.which("powershell"), reason="the Windows launcher")
+def test_the_stop_script_stops_the_server_and_nothing_else(tmp_path):
+    root = tmp_path / "lab"
+    (root / "viewer").mkdir(parents=True)
+    (root / "viewer" / "serve.py").write_text("import time\ntime.sleep(120)\n")
+    server = subprocess.Popen([sys.executable, str(root / "viewer" / "serve.py")])
+    other = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        (root / "journal").mkdir()
+        (root / "journal" / "server-8777.pid").write_text(f"{server.pid} 8777")
+        done = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                               str(REPO / "Ferma-AssetFurnace.ps1"), "-Root", str(root)],
+                              capture_output=True, text=True, timeout=60, check=False)
+        assert done.returncode == 0, done.stdout + done.stderr
+        server.wait(10)
+        assert other.poll() is None
+        assert not (root / "journal" / "server-8777.pid").exists()
+        # a pid file naming a process that is not the server stops nothing
+        (root / "journal" / "server-8777.pid").write_text(f"{other.pid} 8777")
+        subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                        str(REPO / "Ferma-AssetFurnace.ps1"), "-Root", str(root)],
+                       capture_output=True, text=True, timeout=60, check=False)
+        time.sleep(0.5)
+        assert other.poll() is None
+    finally:
+        server.kill()
+        other.kill()
