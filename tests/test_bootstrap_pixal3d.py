@@ -16,10 +16,12 @@ import pytest
 
 
 def test_weight_size_matches_the_catalogue():
+    from image_to_3dlab import moge_fov as boot_moge
+
     """The Setup page and this script must not quote different numbers for one download."""
     pixal = next(b for b in backend_catalog.CATALOG if b.id == "pixal3d")
     assert sum(w.bytes_expected for w in pixal.weights) == pytest.approx(
-        boot.WEIGHTS_GB * backend_catalog.GB + boot.matte.LITE_BYTES, rel=0.01)
+        boot.WEIGHTS_GB * backend_catalog.GB + boot.matte.LITE_BYTES + boot_moge.WEIGHTS_BYTES, rel=0.01)
 
 
 @pytest.fixture

@@ -36,6 +36,7 @@ from image_to_3dlab import clip_library as _clips
 from image_to_3dlab import host as _host
 from image_to_3dlab import material_models as _material_models
 from image_to_3dlab import matte as _matte
+from image_to_3dlab import moge_fov as _moge
 from image_to_3dlab.host import AMD, APPLE, NVIDIA
 from image_to_3dlab.provenance import QWEN_OUTPUT_RIGHTS
 
@@ -341,6 +342,10 @@ CATALOG: tuple[Backend, ...] = (
                       _matte.model_file(_matte.LITE_MODEL),
                       note="Cuts the subject out before generation, keeping thin and "
                            "light-coloured parts. Shared with the other routes."),
+            WeightSet("MoGe-2 camera estimate (Ruicheng/moge-2-vitl)", _moge.REPO_ID, _moge.WEIGHTS_BYTES,
+                      HF_HUB_DIR / "models--Ruicheng--moge-2-vitl",
+                      note="MIT. Estimates each picture's field of view, as Pixal3D's official recipe "
+                           "does; runs in its own environment (vendor/moge), on the GPU where there is one."),
         ),
     ),
     Backend(

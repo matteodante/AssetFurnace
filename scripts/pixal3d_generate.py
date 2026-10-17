@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
@@ -49,18 +50,22 @@ PIXAL3D_ROOT = REPO / "vendor" / "pixal3d-cpp"
 CLI = executable(PIXAL3D_ROOT / "build", "trellis-cli")
 MODELS = PIXAL3D_ROOT / "models" / "pixal3d-sv"
 
-# The gauge camera the single-view path is designed around: 20 degrees, as radians.
+# The gauge camera when MoGe-2 is not set up: 20 degrees, as radians. The official recipe
+# (TencentARC/Pixal3D inference.py, master, read 2026-10-17) estimates it per picture with
+# MoGe-2 instead (image_to_3dlab/moge_fov.py), and so does this script once it is installed.
 DEFAULT_FOV = 0.3490658503988659
 
 # Structure guidance strength. `trellis-cli` defaults to 7.5, which can drop thin parts
 # (a sword blade vanished entirely); 10 keeps them. 13 is worse: thin parts detach.
 DEFAULT_GSS = 10.0
 
-# Sampling steps. `trellis-cli` hard-codes 12 for every flow; `--steps` lowers it through
+# Sampling steps: 12 in every flow, the official recipe's (inference.py's ss, shape and tex
+# sampling steps; read 2026-10-17) and trellis-cli's own. `--steps` lowers it through
 # `PIXAL3D_STEPS`, which only a build patched by `scripts/patch_pixal3d_steps.py` reads.
 DEFAULT_STEPS = 12
-# What "auto" picks when the build can honour it: same shape and front as 12 on the robot
-# and murloc tests (2026-09-28), 16-31% faster; small painted marks on unseen sides soften.
+# Asked for only: 16-31% faster with the same shape on the robot and murloc tests
+# (2026-09-28), small painted marks on unseen sides softer. The user's decision (17/10/2026)
+# is the official recipe, so it is no longer the default.
 FAST_STEPS = 8
 STEPS_ENV = "PIXAL3D_STEPS"
 STEPS_MARKER = "i2l_steps"
@@ -92,7 +97,7 @@ LICENSE_NAME = PROFILE.license_name
 LICENSE_URL = PROFILE.license_url
 
 
-def manifest(image: Path, output: Path, *, res: int, seed: int, fov: float, gss: float,
+def manifest(image: Path, output: Path, *, res: int, seed: int, fov: float, gss: float, fov_source: str = "asked",
              gsh: float | None, matted: bool, matted_here: bool,
              seconds: float, steps: int = DEFAULT_STEPS,
              matte_model: str | None = None) -> dict[str, object]:
@@ -107,7 +112,7 @@ def manifest(image: Path, output: Path, *, res: int, seed: int, fov: float, gss:
         "input": {"path": str(image), "sha256": sha256_file(image)},
         "output": {"path": str(output), "sha256": sha256_file(output),
                    "classification": PROFILE.classification},
-        "parameters": {"res": res, "seed": seed, "fov": fov, "gss": gss, "gsh": gsh,
+        "parameters": {"res": res, "seed": seed, "fov": fov, "fov_source": fov_source, "gss": gss, "gsh": gsh,
                        "matted": matted, "steps": steps},
         "license": {"name": LICENSE_NAME, "url": LICENSE_URL},
         "components": [{
@@ -245,16 +250,11 @@ def resolve_steps(requested: int | None, source: Path = FLOW_SOURCE,
                   cli: Path = CLI) -> tuple[int, str]:
     """The step count a run will use, and a log line saying why.
 
-    Unset means auto: FAST_STEPS on a patched, rebuilt trellis-cli, otherwise the stock 12
-    -- never a refusal, because every install that predates the patch lands here. An
-    explicit `--steps` the build cannot honour is refused instead (see steps_problem).
+    Unset means the official 12, which every build runs. An explicit `--steps` the build
+    cannot honour is refused (see steps_problem).
     """
     if requested is None:
-        if steps_problem(FAST_STEPS, source, cli) is None:
-            return FAST_STEPS, f"steps={FAST_STEPS} (auto)"
-        return DEFAULT_STEPS, (f"steps={DEFAULT_STEPS} (auto: this trellis-cli has no steps "
-                               "patch; run scripts/patch_pixal3d_steps.py and rebuild for "
-                               f"{FAST_STEPS})")
+        return DEFAULT_STEPS, f"steps={DEFAULT_STEPS} (the official recipe)"
     problem = steps_problem(requested, source, cli)
     if problem:
         raise SystemExit(problem)
@@ -349,6 +349,25 @@ def readiness(cli: Path = CLI, models: Path = MODELS) -> dict[str, object]:
     }
 
 
+def choose_fov(asked: float | None, image: Path) -> tuple[float, str]:
+    """The field of view to run with, and where it came from: asked for, estimated by MoGe-2
+    as the official recipe does, or the 20 degree gauge when MoGe-2 is not set up (said)."""
+    if asked is not None:
+        return asked, "asked"
+    from image_to_3dlab import moge_fov
+
+    if moge_fov.installed():
+        estimated = moge_fov.estimate(image)
+        if estimated is not None:
+            print(f"[pixal3d] field of view {math.degrees(estimated):.1f} degrees (MoGe-2)", flush=True)
+            return estimated, "moge-2"
+        print("[pixal3d] MoGe-2 could not estimate the camera; using the 20 degree gauge", flush=True)
+        return DEFAULT_FOV, "gauge 20 degrees (MoGe-2 failed)"
+    print("[pixal3d] MoGe-2 is not set up, so the camera is the 20 degree gauge, not the official "
+          "estimate: run scripts/bootstrap_pixal3d.py --moge", flush=True)
+    return DEFAULT_FOV, "gauge 20 degrees (MoGe-2 not installed)"
+
+
 def run_trellis(command: list[str], steps, lock_path: Path | None = None, cwd: Path | None = None) -> int:
     """trellis-cli, holding the shared GPU lock while it computes (AGENTS.md): the studio,
     batches and characters in pieces all run Pixal3D through here."""
@@ -380,8 +399,9 @@ def main() -> int:
     parser.add_argument("--res", type=int, choices=(1024,), default=1024)  # --sv-image is 1024-only
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
-        "--fov", type=float, default=DEFAULT_FOV,
-        help="gauge camera FOV in radians for the single-view rig; 0.349 is 20 degrees",
+        "--fov", type=float, default=None,
+        help="camera FOV in radians; default: estimated by MoGe-2 as the official recipe does "
+             "(the 20 degree gauge, 0.349, when MoGe-2 is not set up)",
     )
     parser.add_argument(
         "--gss", type=float, default=DEFAULT_GSS,
@@ -447,8 +467,9 @@ def main() -> int:
         print(f"[pixal3d] matted image: {image}", flush=True)
 
     started = time.time()
+    fov, fov_source = choose_fov(args.fov, image)
     command = build_command(
-        image, args.output, args.res, args.seed, args.fov,
+        image, args.output, args.res, args.seed, fov,
         args.models, args.cli, matted, args.gss, args.gsh,
     )
     print(f"[pixal3d] res={args.res} seed={args.seed} gss={args.gss} matted={matted}",
@@ -463,7 +484,7 @@ def main() -> int:
     face_front(args.output)
 
     seconds = time.time() - started
-    record = manifest(args.image, args.output, res=args.res, seed=args.seed, fov=args.fov,
+    record = manifest(args.image, args.output, res=args.res, seed=args.seed, fov=fov, fov_source=fov_source,
                       gss=args.gss, gsh=args.gsh, matted=matted, matted_here=matted_here,
                       matte_model=used_matte,
                       seconds=seconds, steps=steps)

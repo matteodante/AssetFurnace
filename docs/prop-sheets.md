@@ -39,7 +39,8 @@ The pictures Qwen-Image makes are yours ([Qwen's statement](https://x.com/QwenDe
 ## 2. Turn it into 3D
 
 In **Generate 3D**, pick **Pixal3D** and the sheet, and keep the default settings
-(resolution 1024, field of view 20°).
+(resolution 1024; the field of view estimated by MoGe-2, as Pixal3D's official recipe does,
+or 20° where MoGe-2 is not set up).
 
 ## 3. Split and finish in the studio
 

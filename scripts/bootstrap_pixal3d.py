@@ -205,6 +205,8 @@ def announcement(build: bool = True, weights: bool = True,
         lines.append(f"             {WEIGHTS_REPO}, plus BiRefNet matting ({MATTE_REPO})")
         lines.append(f"  and:     BiRefNet-lite background remover, "
                      f"{matte.LITE_BYTES / 1e6:.0f} MB -> {matte.model_file(matte.LITE_MODEL)}")
+        lines.append("  and:     MoGe-2 (Ruicheng/moge-2-vitl, MIT), 1.3 GB, with PyTorch -> vendor/moge/: "
+                     "the official recipe's camera estimate")
     note = old_driver_note(target(), prefer_compile)
     if note:
         lines += ["", "  " + note]
@@ -509,7 +511,56 @@ def build_decision(present: bool, rebuild: bool, kind: str) -> str:
     return "cannot-rebuild" if kind == "prebuilt" else "rebuild"
 
 
-def main(argv: list[str] | None = None) -> int:
+# PyTorch for MoGe-2, by machine: CUDA on NVIDIA (seconds; on the CPU one estimate took 8
+# minutes), the default wheels on a Mac (Metal), the CPU wheels anywhere else.
+TORCH_INDEX = {"nvidia": "https://download.pytorch.org/whl/cu128", "cpu": "https://download.pytorch.org/whl/cpu"}
+
+
+def torch_index(platform: str | None = None) -> str | None:
+    from image_to_3dlab import host
+
+    found = platform or host.host_platform()
+    if found == host.NVIDIA:
+        return TORCH_INDEX["nvidia"]
+    if found == host.APPLE:
+        return None   # PyPI's own wheels carry Metal
+    return TORCH_INDEX["cpu"]
+
+
+def moge_commands(python: str = sys.executable, platform: str | None = None,
+                  wrong_torch: bool = False) -> list[list[str]]:
+    """MoGe-2's own environment: PyTorch for this machine (torch_index) and the MoGe package
+    at its last MoGe-2 commit (image_to_3dlab/moge_fov.py). `wrong_torch`: the environment
+    has a CPU PyTorch where CUDA is wanted, which pip would keep, so it goes first."""
+    from image_to_3dlab import moge_fov
+
+    env = moge_fov.env_dir()
+    py = str(moge_fov.python())
+    index = torch_index(platform)
+    return [[python, "-m", "venv", str(env)],
+            [py, "-m", "pip", "install", "--upgrade", "pip"],
+            *([[py, "-m", "pip", "uninstall", "-y", "torch", "torchvision"]] if wrong_torch else []),
+            [py, "-m", "pip", "install", "--upgrade", "torch", "torchvision", *(["--index-url", index] if index else [])],
+            [py, "-m", "pip", "install", moge_fov.CODE_URL]]
+
+
+def install_moge(runner=subprocess.run, download=None) -> None:
+    """The environment and the pinned MoGe-2 weights (Ruicheng/moge-2-vitl, MIT, 1.3 GB)."""
+    from image_to_3dlab import moge_fov
+
+    wrong = False
+    if torch_index() == TORCH_INDEX["nvidia"] and moge_fov.python().is_file():
+        found = subprocess.run([str(moge_fov.python()), "-c", "import torch; print(torch.version.cuda or '')"],
+                               capture_output=True, text=True, check=False)
+        wrong = found.returncode == 0 and not found.stdout.strip()
+    for command in moge_commands(wrong_torch=wrong):
+        runner(command, check=True)
+    if download is None:
+        from huggingface_hub import hf_hub_download as download
+    download(moge_fov.REPO_ID, moge_fov.WEIGHTS_FILE, revision=moge_fov.REVISION)
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--yes", action="store_true",
@@ -525,7 +576,28 @@ def main(argv: list[str] | None = None) -> int:
                         help="Compile for this card with nvcc even when the prebuilt would "
                              "run: ~2x faster per model, 15+ minutes once. AMD already "
                              "compiles; there is no prebuilt to skip.")
-    args = parser.parse_args(argv)
+    parser.add_argument("--moge", action="store_true",
+                        help="Set up MoGe-2 only (the official recipe's camera estimate): its own "
+                             "environment with PyTorch for this machine, and 1.3 GB of weights. A full install includes it.")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    if args.moge:
+        from image_to_3dlab import moge_fov
+
+        print(f"\nAbout to install MoGe-2 for Pixal3D's camera estimate:\n  {moge_fov.REPO_ID} at "
+              f"{moge_fov.REVISION[:12]}, {moge_fov.WEIGHTS_BYTES / 1e9:.1f} GB, licence {moge_fov.LICENSE}\n"
+              f"  PyTorch ({torch_index() or 'PyPI'}) and MoGe ({moge_fov.CODE_COMMIT[:12]}) -> "
+              f"{moge_fov.env_dir()}\n")
+        if not args.yes and not (sys.stdin and sys.stdin.isatty()
+                                 and input("Continue? [y/N] ").strip().lower() in {"y", "yes"}):
+            print("Nothing downloaded.")
+            return 1
+        install_moge()
+        print("Done.")
+        return 0
 
     key = target()
     kind = current_kind(key, args.compile)
@@ -562,6 +634,7 @@ def main(argv: list[str] | None = None) -> int:
             install_build(key, kind)
     if weights:
         install_weights()
+        install_moge()   # the official recipe's camera estimate
     print("\nDone. Generate with:\n"
           "    python scripts/pixal3d_generate.py input.png output.glb --res 1024")
     return 0
