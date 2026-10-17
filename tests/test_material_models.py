@@ -143,3 +143,11 @@ def test_the_environment_is_marked_finished_only_after_its_last_package(monkeypa
     mm.env_python().write_bytes(b"")
     boot.make_env(lambda command: None)
     assert mm.env_ready()
+
+
+def test_tint_zones_install_qwen_both_segmenters_and_warn_about_sam31_access():
+    backend = bc.BY_ID["materials-zones"]
+    assert [w.source for w in backend.weights] == [mm.QWEN35.repo, mm.SAM31.repo, mm.SAM21.repo]
+    assert backend.gated_repo == mm.SAM31.repo and "1.b.v" in backend.caveat
+    command = download_api.command_for("materials-zones", host=bc.NVIDIA)
+    assert command[-3:] == ["--only", "env,qwen35,sam21,sam31", "--yes"]

@@ -241,7 +241,7 @@ def test_points_agree_where_the_vote_put_their_material(tmp_path):
     assert result["zone_points"] == 2 and result["zone_agreement"] == 1.0
 
 
-def test_zones_default_to_sam2_until_sam3_is_granted(tmp_path, monkeypatch):
+def test_zones_default_to_sam31(tmp_path, monkeypatch):
     import importlib.util
 
     spec = importlib.util.spec_from_file_location("game_materials_cli", Path(__file__).resolve().parents[1]
@@ -259,11 +259,11 @@ def test_zones_default_to_sam2_until_sam3_is_granted(tmp_path, monkeypatch):
     (tmp_path / "z").mkdir()
     asset = make_glb(tmp_path / "knight.glb", painted())
     assert cli.main([str(asset), str(tmp_path / "out"), "--zones"]) == 0
-    assert asked == ["sam2"]
+    assert asked == ["sam31"]
     monkeypatch.undo()
     import inspect
 
-    assert inspect.signature(mz.find_zones).parameters["segmenter"].default == "sam2"
+    assert inspect.signature(mz.find_zones).parameters["segmenter"].default == "sam31"
 
 
 def test_a_zones_mean_colour_includes_the_base_colour_factor(tmp_path):
