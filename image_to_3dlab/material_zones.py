@@ -40,7 +40,7 @@ from image_to_3dlab.materials import CHANNELS, Surface, island_labels, srgb_to_l
 
 VOCABULARY = tuple(m for m in MATERIALS if m != "other")
 MAX_MATERIALS = 6
-SEGMENTERS = ("sam3", "sam2")
+SEGMENTERS = ("sam31", "sam3", "sam2")
 ZONE_PROFILES = ("creature", "equipment_part")
 SIGMA = 0.004
 HINT_WEIGHT = 0.5
@@ -221,7 +221,7 @@ def region_scores(regions: np.ndarray, names: list[str | None], phrases: list[st
 # --------------------------------------------------------------------------- the models
 
 def _run(task: str, job: dict, work: Path, model: mm.HubModel, run=subprocess.run, lock=gpu_lock.gpu) -> dict:
-    folder = mm.require(model)
+    folder = mm.require_sam31() if model is mm.SAM31 else mm.require(model)
     python = mm.require_env()
     work.mkdir(parents=True, exist_ok=True)
     job_path, result = work / f"{task}_job.json", work / f"{task}_result.json"
@@ -249,11 +249,11 @@ def segment(views: list[mv.View], folder: Path, phrases: list[str], segmenter: s
     if segmenter not in SEGMENTERS:
         raise ValueError(f"unknown segmenter {segmenter!r}; choose from {', '.join(SEGMENTERS)}")
     colours = [folder / f"view_{v.index:02d}_color.png" for v in views]
-    if segmenter == "sam3":
-        outs = [work / f"view_{v.index:02d}_sam3.npz" for v in views]
+    if segmenter in ("sam31", "sam3"):
+        outs = [work / f"view_{v.index:02d}_{segmenter}.npz" for v in views]
         runner("segment_sam3", {"phrases": phrases,
                                 "images": [{"path": str(c), "out": str(o)} for c, o in zip(colours, outs)]},
-               work, mm.SAM3)
+               work, mm.SAM31 if segmenter == "sam31" else mm.SAM3)
         return {v.index: np.moveaxis(np.load(o)["scores"].astype(np.float64), 0, -1) * (v.material >= 0)[..., None]
                 for v, o in zip(views, outs)}
     outs = [work / f"view_{v.index:02d}_regions.npz" for v in views]
@@ -286,13 +286,14 @@ def segment(views: list[mv.View], folder: Path, phrases: list[str], segmenter: s
 
 def components(segmenter: str) -> list[dict]:
     """The models a zoning run used, for the provenance record."""
-    used = [mm.QWEN35, mm.SAM3 if segmenter == "sam3" else mm.SAM21]
+    used = [mm.QWEN35, {"sam31": mm.SAM31, "sam3": mm.SAM3}.get(segmenter, mm.SAM21)]
     return [{"component": f"{m.repo}@{m.revision}", "purpose": "material zones", "license": m.license,
              "license_url": m.license_url,
-             "commercial_status": "commercial-conditional" if m is mm.SAM3 else "commercial-clear"} for m in used]
+             "commercial_status": "commercial-conditional" if m in (mm.SAM3, mm.SAM31) else "commercial-clear"}
+            for m in used]
 
 
-def find_zones(asset: Path, work: Path, segmenter: str = "sam2", vocabulary: list[str] | None = None,
+def find_zones(asset: Path, work: Path, segmenter: str = "sam31", vocabulary: list[str] | None = None,
                size: int = 512, around: int = 16, render=mv.render_views, runner=_run,
                metal_hints: dict[int, np.ndarray] | None = None) -> tuple[dict[int, ZoneMap], dict]:
     """Zones for every textured material of `asset`, and a record of how they were found."""

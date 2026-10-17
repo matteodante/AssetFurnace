@@ -11,7 +11,8 @@ and where each answer goes::
      "steps": null, "ensemble": 1, "resolution": 768, "seed": 0, "background": 0.5,
      "result": "<where to write the run record>"}
 
-``segment_sam3`` scores every pixel against each phrase with SAM 3; ``regions_sam2`` gives SAM
+``segment_sam3`` scores every pixel against each phrase with SAM 3 or SAM 3.1 (once
+``convert_sam31`` has turned SAM 3.1's checkpoint into transformers' files); ``regions_sam2`` gives SAM
 2.1's automatic regions. ``yes_no`` and ``name_materials`` ask Qwen3.5-4B a ``"question"`` about each image, reasoning
 switched off: the first gives P(yes) from the first token's logits, the second the short free
 answer. For ``intrinsics``, each ``out`` gets one float16 HxWx3 array per target the model predicts (``albedo``,
@@ -167,8 +168,59 @@ def regions_sam2(job: dict) -> dict:
             "torch": torch.__version__}
 
 
+# Keys SAM 3.1's checkpoint has and Sam3Model does not: the video tracker's rotary buffers and
+# convolutions. The one level Sam3Model has and SAM 3.1 does not, the neck's fourth FPN level,
+# is never read by the image detector (checked: zeroing it changes no score).
+SAM31_UNUSED = ("vision_encoder.backbone.layers.", "backbone.vision_backbone.interactive_convs.",
+                "backbone.vision_backbone.propagation_convs.", "geometry_encoder.points_")
+SAM31_ABSENT = "vision_encoder.neck.fpn_layers.3."
+
+
+def convert_sam31(job: dict) -> dict:
+    """SAM 3.1's image detector, from Meta's checkpoint, saved as transformers' Sam3Model files."""
+    import shutil
+
+    import torch
+    from transformers import Sam3Config, Sam3Model
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import sam3_keys
+
+    started = time.perf_counter()
+    source, out = Path(job["model"]), Path(job["out"])
+    checkpoint = torch.load(source / "sam3.1_multiplex.pt", map_location="cpu", weights_only=True)
+    checkpoint = checkpoint.get("model", checkpoint)
+    detector = {k.replace("detector.", "", 1): v for k, v in checkpoint.items() if k.startswith("detector.")}
+    mapping = sam3_keys.convert_old_keys_to_new_keys(list(detector))
+    state = {}
+    for old, value in detector.items():
+        key = mapping.get(old, old)
+        if key == "vision_encoder.backbone.embeddings.position_embeddings":
+            value = value[:, 1:, :]                         # no cls token in transformers' layout
+        state[key] = value
+    state = sam3_keys.split_qkv(state)
+    state["text_encoder.text_projection.weight"] = state["text_encoder.text_projection.weight"].T
+    model = Sam3Model(Sam3Config.from_pretrained(source, local_files_only=True))
+    expected = model.state_dict()
+    unused = sorted(k for k in state if k not in expected)
+    usable = {k: v for k, v in state.items() if k in expected}
+    missing, _ = model.load_state_dict(usable, strict=False)
+    wrong_missing = [k for k in missing if not k.startswith(SAM31_ABSENT)]
+    wrong_unused = [k for k in unused if not k.startswith(SAM31_UNUSED)]
+    if wrong_missing or wrong_unused:
+        raise RuntimeError(f"SAM 3.1 does not map onto Sam3Model: missing {wrong_missing[:5]}, "
+                           f"unexpected {wrong_unused[:5]}")
+    out.mkdir(parents=True, exist_ok=True)
+    model.save_pretrained(out, safe_serialization=True)
+    for name in ("processor_config.json", "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json",
+                 "vocab.json", "merges.txt", "LICENSE"):
+        shutil.copyfile(source / name, out / name)
+    return {"loaded": len(usable), "absent": sorted(missing), "unused": len(unused),
+            "seconds": round(time.perf_counter() - started, 1), "torch": torch.__version__}
+
+
 TASKS = {"intrinsics": intrinsics, "yes_no": yes_no, "name_materials": name_materials,
-         "segment_sam3": segment_sam3, "regions_sam2": regions_sam2}
+         "segment_sam3": segment_sam3, "regions_sam2": regions_sam2, "convert_sam31": convert_sam31}
 
 
 def main(argv: list[str]) -> int:
