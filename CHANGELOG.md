@@ -356,6 +356,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Studio pictures and reference concepts take the shared GPU lock while sd-cli runs, as the
+  command line and the batches already did; while another session holds the GPU the job
+  stays queued, says whom it waits for, and can be cancelled.
+- The GPU lock appears with its holder already written in it, so an empty or unreadable
+  lock file (a writer that died) is taken over after a minute instead of blocking every GPU
+  job for an hour; a live process that started after its lock was written is a reused pid;
+  and a stale lock is only removed if it is still the one judged stale.
 - Library: an asset with no picture or 3D model of its own keeps its id when a later finish
   or rig joins it (one from a Blender version, say), so its versions, name and hidden flag
   stay with it; and what is made from a Blender version of one of its moves joins it too.

@@ -22,6 +22,7 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from image_to_3dlab import gpu_lock, text_image
 from image_to_3dlab.host import NVIDIA, host_platform
 from image_to_3dlab.sdcpp import NO_GPU_HELP
 
@@ -154,16 +155,24 @@ class ImageJobManager:
         return True
 
 
+# how often a picture waiting for the GPU looks again (and tells the page it still waits)
+GPU_POLL = 10.0
+
+
+class _Cancelled(Exception):
+    pass
+
+
 def run_job(job: ImageJob, manager: ImageJobManager,
             weights: dict[str, Path] | None = None) -> None:
-    """Drive one sd-cli run to completion, emitting progress as it goes."""
+    """Drive one sd-cli run to completion, emitting progress as it goes. sd-cli runs
+    holding the shared GPU lock, as every GPU job here does; while another session holds
+    it the job stays queued, says whom it waits for, and can be cancelled."""
     try:
         weights = weights or resolve_weights()
         command = build_command(job.prompt, job.settings, job.output_path, weights)
         if job.extra_args:
             command = command[:1] + job.extra_args + command[1:]
-        job.set_status("running", total_steps=job.settings["steps"])
-        started = time.monotonic()
 
         def on_line(line: str) -> None:
             job.log_lines.append(line)
@@ -171,10 +180,24 @@ def run_job(job: ImageJob, manager: ImageJobManager,
             if event:
                 job.emit(event)
 
-        # Only where a GPU is expected from a runtime-loaded backend. The Mac build is
-        # Metal and says nothing of the sort.
-        code, _, no_gpu = run_sdcli(command, watch_gpu=host_platform() == NVIDIA, on_line=on_line,
-                                    on_process=lambda process: setattr(job, "process", process))
+        def waiting(seconds: float) -> None:
+            if job.cancel_requested:
+                raise _Cancelled
+            found = gpu_lock.holder(text_image.GPU_LOCK)
+            job.set_status("queued", message=f"Waiting for the GPU: {found[1] if found else 'busy'}")
+            time.sleep(seconds)
+            if job.cancel_requested:
+                raise _Cancelled
+
+        with gpu_lock.gpu("studio-image", path=text_image.GPU_LOCK, poll=GPU_POLL, sleep=waiting):
+            if job.cancel_requested:
+                raise _Cancelled
+            job.set_status("running", total_steps=job.settings["steps"])
+            started = time.monotonic()
+            # Only where a GPU is expected from a runtime-loaded backend. The Mac build is
+            # Metal and says nothing of the sort.
+            code, _, no_gpu = run_sdcli(command, watch_gpu=host_platform() == NVIDIA, on_line=on_line,
+                                        on_process=lambda process: setattr(job, "process", process))
         elapsed = time.monotonic() - started
         if job.cancel_requested:
             job.set_status("cancelled")
@@ -195,6 +218,8 @@ def run_job(job: ImageJob, manager: ImageJobManager,
             sidecar.write_text(json.dumps({**job.extra_provenance, **record}, indent=2), encoding="utf-8")
             job.set_status("done", result_url=f"/api/image/{job.id}/result.png",
                            elapsed_seconds=round(elapsed, 1))
+    except _Cancelled:
+        job.set_status("cancelled")
     except MissingWeights as exc:
         job.error = str(exc)
         job.set_status("error", error=job.error, needs_setup=True)
