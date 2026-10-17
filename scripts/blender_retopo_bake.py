@@ -143,6 +143,54 @@ def ray_distance(dimensions, fraction: float = 0.02) -> float:
     return max(dimensions) * fraction
 
 
+UV_ROUNDS = 3
+
+
+def unwrap_islands(bpy, mesh, angle_limit: float, rounds: int = UV_ROUNDS, margin: float = 0.002) -> int:
+    """UVs with no island folded onto itself or another; returns the faces still overlapping.
+
+    Smart UV Project at a wide angle gives large islands but projects each onto one plane, so
+    where the surface turns within an island its faces land on each other: the first real set
+    of pieces had a tenth of its helmet's and boots' texels painted twice (10.1% and 11.1%,
+    over the check's 10% fail). Its islands are kept as seams and unwrapped conformally, then
+    the faces that still overlap are cut along islands of half the angle and unwrapped again,
+    a few rounds, and any still left become islands of their own. On those pieces: 0.06% and
+    0.08%, with about twice the islands. Call in edit mode, face select, every face selected.
+    """
+    import bmesh
+
+    settings = bpy.context.scene.tool_settings
+    synced = settings.use_uv_select_sync
+    settings.use_uv_select_sync = True   # UV operators then select mesh faces
+    try:
+        bpy.ops.uv.smart_project(angle_limit=angle_limit, island_margin=0.0002)
+        bpy.ops.mesh.select_all(action="SELECT")
+        bpy.ops.uv.seams_from_islands()
+        bpy.ops.uv.unwrap(method="CONFORMAL", margin=margin)
+        def overlapping() -> int:
+            bpy.ops.mesh.select_all(action="DESELECT")
+            bpy.ops.uv.select_overlap()
+            return sum(1 for face in bmesh.from_edit_mesh(mesh).faces if face.select)
+
+        for _ in range(rounds):
+            if not overlapping():
+                break
+            bpy.ops.uv.smart_project(angle_limit=angle_limit / 2, island_margin=0.0002)
+            bpy.ops.uv.seams_from_islands()
+            bpy.ops.mesh.select_all(action="SELECT")
+            bpy.ops.uv.unwrap(method="CONFORMAL", margin=margin)
+        if overlapping():
+            # the last few (5 to 11 faces on the real pieces): each an island of its own
+            bpy.ops.mesh.mark_seam(clear=False)
+            bpy.ops.mesh.select_all(action="SELECT")
+            bpy.ops.uv.unwrap(method="CONFORMAL", margin=margin)
+        left = overlapping()
+        bpy.ops.mesh.select_all(action="SELECT")
+        return left
+    finally:
+        settings.use_uv_select_sync = synced
+
+
 def main() -> int:
     import bpy
 
@@ -266,7 +314,8 @@ def main() -> int:
 
     bpy.ops.object.mode_set(mode="EDIT")
     bpy.ops.mesh.select_all(action="SELECT")
-    bpy.ops.uv.smart_project(angle_limit=angle_limit, island_margin=0.0002)
+    left = unwrap_islands(bpy, retopo.data, angle_limit)
+    print(f"RETOPO:: uv faces still overlapping={left:,}")
     bpy.ops.object.mode_set(mode="OBJECT")
 
     # --- emission material on the ORIGINAL, so the bake reads its albedo --------------

@@ -342,6 +342,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Finish: the retopology's UVs no longer paint texels twice. Smart UV Project at its wide
+  angle stacked faces of one island on each other (the first real set's helmet and boots
+  failed the uv.overlap check at 10.1% and 11.1%); its islands are now unwrapped
+  conformally, the faces still overlapping cut apart, and the last few made islands of their
+  own: 0.07% on the same pieces.
 - Studio Batches page: a pick that is saved but whose batch cannot resume (its preflight
   refuses) now says so, with the reasons, instead of leaving the row on "Pick one".
 - Batches: a batch made before per-step fingerprints no longer regenerates every row when
