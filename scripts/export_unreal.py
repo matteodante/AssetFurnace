@@ -55,6 +55,14 @@ OUTPUT_ROOT = REPO / "output" / "unreal"
 BLENDER_TIMEOUT = 3600  # seconds; a reshape takes under a minute, a hung Blender would block forever
 
 
+def parse_socket(text: str) -> dict[str, str]:
+    """`SOCKET_Weapon=hand_r` -> {"name": "SOCKET_Weapon", "bone": "hand_r"}."""
+    name, _, bone = str(text).partition("=")
+    if not (name.strip() and bone.strip()):
+        raise ValueError("a socket is NAME=BONE, like SOCKET_Weapon=hand_r")
+    return {"name": name.strip(), "bone": bone.strip()}
+
+
 def default_collision(kind: str) -> str:
     """Objects get a box; skinned meshes get Unreal's own physics asset instead."""
     return "box" if kind == "prop" else "none"
@@ -333,7 +341,11 @@ def build_parser() -> argparse.ArgumentParser:
                         help="objects: LOD1, LOD2... GLBs (default: <name>_LODn.glb beside a _LOD0 source)")
     parser.add_argument("--collision", choices=up.COLLISIONS,
                         help="objects: box (default), convex, or unreal (Interchange makes its own convex hull)")
-    parser.add_argument("--body", type=Path, help="equipment: the rigged body GLB it belongs to")
+    parser.add_argument("--body", type=Path,
+                        help="equipment, or an object on a --socket: the rigged body GLB it belongs to")
+    parser.add_argument("--socket", metavar="NAME=BONE",
+                        help="an object held by --body, hung from this socket of its skeleton "
+                             "(SOCKET_Weapon=hand_r), made by unreal_import_check.py")
     parser.add_argument("--body-name", help="equipment: the body's --name, if it was exported with one")
     parser.add_argument("--animations", type=Path, nargs="*", default=[], help="creatures: more animated GLBs")
     parser.add_argument("--tint", type=Path,
@@ -356,12 +368,13 @@ def main(argv=None) -> int:
               "    python scripts/unreal_import_check.py BODY_EXPORT_DIR PART_EXPORT_DIR", file=sys.stderr)
         return 2
     try:
+        socket = parse_socket(args.socket) if args.socket is not None else None
         result = export_unreal(args.source, kind=args.kind, size_cm=args.size_cm, measure=args.measure,
                                name=args.name, out_dir=args.out, lods=args.lods, collision=args.collision,
                                body=args.body, body_name=args.body_name, animations=args.animations,
                                tint=False if args.tint is not None and str(args.tint).lower() == "none" else args.tint,
                                forward=tuple(args.forward) if args.forward else None, material=args.material,
-                               blender=args.blender)
+                               blender=args.blender, **({"socket": socket} if socket else {}))
     except (ValueError, RuntimeError) as exc:
         print(f"export_unreal: {exc}", file=sys.stderr)
         return 2

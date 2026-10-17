@@ -78,6 +78,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 from PIL import Image
 
+from image_to_3dlab import unreal_profile as up
 from image_to_3dlab.slot_parts import body as body_mod
 from image_to_3dlab.slot_parts import candidates, cuts, masks, orient, pieces, slots
 
@@ -556,8 +557,7 @@ def refit_job(fit_dir: Path, source_body: Path, body_json: Path, out: Path) -> d
 
 
 # Where a held piece hangs in Unreal: a socket of the hand, made at import (the user's decision C).
-SOCKETS = {"weapon": {"name": "SOCKET_Weapon", "bone": "hand_r"},
-           "shield": {"name": "SOCKET_Shield", "bone": "hand_l"}}
+SOCKETS = up.HELD_SOCKETS
 
 
 def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0, exporter=None) -> Path:

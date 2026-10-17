@@ -50,6 +50,13 @@ REFUSED_EXTENSIONS = {"EXT_meshopt_compression", "KHR_meshopt_compression", "EXT
 _PREFIXES = ("SK_", "SM_", "T_", "MI_", "M_", "AS_", "A_")
 SIZE_TOLERANCE = 0.01   # measured size may differ from the request by 1%
 BASE_TOLERANCE_CM = 0.5
+# Where a held object hangs in Unreal: a socket of a hand of the body's skeleton (Mannequin
+# bone names), made by unreal_import_check.py. The user's decision C, 17/10/2026.
+HELD_SOCKETS = {"weapon": {"name": "SOCKET_Weapon", "bone": "hand_r"},
+                "shield": {"name": "SOCKET_Shield", "bone": "hand_l"}}
+# How far the hand bone may be from what it holds. Unreal's hand_r/hand_l sit at the wrist,
+# and the palm closes on the grip about a hand's half length (~9 cm) further on.
+GRIP_REACH_CM = 10.0
 
 # SOMA joint (what kimodo_retarget.map_skintokens_to_soma returns) -> UE5 Mannequin bone.
 SOMA_TO_UE: dict[str, str] = {
@@ -725,6 +732,13 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
     }
 
 
+def grip(hand: list[float], box_lo: list[float], box_hi: list[float]) -> dict[str, Any]:
+    """The hand bone (in the held mesh's own space, through its socket) against that mesh's
+    box: how far outside it is, and whether that is within a hand's reach."""
+    gap = sum(max(lo - v, 0.0, v - hi) ** 2 for v, lo, hi in zip(hand, box_lo, box_hi)) ** 0.5
+    return {"grip_inside": gap <= GRIP_REACH_CM, "grip_gap_cm": round(gap, 2)}
+
+
 def _check(name: str, ok: bool, detail: str) -> dict[str, Any]:
     return {"check": name, "ok": bool(ok), "detail": detail}
 
@@ -756,11 +770,11 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
             results.append(_check("socket", False, f"{wanted['name']} was not made on {wanted['on']}: "
                                   f"{got.get('error', 'no socket')}"))
         else:
-            ok = got.get("bone_found") and got.get("grip_inside")
-            results.append(_check("socket", bool(ok),
-                                  f"{wanted['name']} on {wanted['bone']}: the hand is "
-                                  + ("inside the mesh, where the fit put it" if ok else
-                                     f"{got.get('grip_gap_cm', 0):.1f} cm from the mesh hung from it")))
+            held = grip(got["hand_cm"], *got["box_cm"])
+            results.append(_check("socket", held["grip_inside"],
+                                  f"{wanted['name']} on {wanted['bone']} of {wanted['on']}: the hand is "
+                                  f"{held['grip_gap_cm']:.1f} cm from the mesh hung from it (at most "
+                                  f"{GRIP_REACH_CM:.0f})"))
     if expected.get("collision") in ("box", "convex", "unreal"):
         key = "box_elems" if expected["collision"] == "box" else "convex_elems"
         count = (measured.get("collision") or {}).get(key, 0)

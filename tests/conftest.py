@@ -41,12 +41,9 @@ import pytest
 def _no_real_judge(monkeypatch):
     """No test starts the real picture judge (llama.cpp on the GPU) because it happens to be
     installed: a test that wants a judge gives its own."""
-    from image_to_3dlab.style import judge, models
+    from image_to_3dlab.slot_parts import orient
 
-    def missing(hub=None):
-        raise models.MissingModel("the picture judge is not used in tests")
-
-    monkeypatch.setattr(judge, "find_parts", missing)
+    monkeypatch.setattr(orient, "with_judge", lambda pictures: orient.orient_held(pictures, None))
 
 
 @pytest.fixture(scope="session")
