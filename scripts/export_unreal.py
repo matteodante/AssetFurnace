@@ -327,8 +327,6 @@ def build_parser() -> argparse.ArgumentParser:
                         help="non-humanoid creatures: which way the model faces in Blender (default 0 -1 0)")
     parser.add_argument("--material", choices=piece_materials.MATERIALS,
                         help="the one material of this piece: sets its roughness and metal (game materials)")
-    parser.add_argument("--two-sided", action=argparse.BooleanOptionalAction, default=None,
-                        help="draw both sides of the material (default: only for cloth such as a cloak)")
     parser.add_argument("--blender", type=Path, help="Blender executable (default: found like Finish finds it)")
     parser.add_argument("--check-in-unreal", action="store_true",
                         help="then import it in Unreal 5 with scripts/unreal_import_check.py")
@@ -347,7 +345,7 @@ def main(argv=None) -> int:
                                body=args.body, body_name=args.body_name, animations=args.animations,
                                tint=False if args.tint is not None and str(args.tint).lower() == "none" else args.tint,
                                forward=tuple(args.forward) if args.forward else None, material=args.material,
-                               blender=args.blender, two_sided=args.two_sided)
+                               blender=args.blender)
     except (ValueError, RuntimeError) as exc:
         print(f"export_unreal: {exc}", file=sys.stderr)
         return 2
