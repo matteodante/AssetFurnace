@@ -140,12 +140,20 @@ def test_fit_job_carries_each_piece_box_and_the_concept_size(tmp_path):
     pieces_json = tmp_path / "pieces.json"
     pieces_json.write_text(json.dumps({"cuts": str(path), "slots": {
         "helmet": {"glb": "h.glb", "concept_box": [1, 2, 3, 4]}}}))
-    job = cli.fit_job(pieces_json, tmp_path / "body.json", tmp_path / "fit", {"offset": 0.003})
+    from image_to_3dlab.slot_parts import body as body_mod
+    from tests.test_slot_parts_cli import _body
+
+    body_json, *_ = _body(tmp_path)
+    data = body_mod.load(body_json)
+    data["clips"] = {"walk": str(tmp_path / "walk.glb")}
+    body_mod.write(data, tmp_path / "bodies")
+    job = cli.fit_job(pieces_json, body_json, tmp_path / "fit", {"offset": 0.003})
     assert job["concept_size"] == [512, 512] and job["offset"] == 0.003
+    assert job["clips"] == [str((tmp_path / "walk.glb").resolve())]  # the mask is checked in the body's poses
     assert job["pieces"] == [{"slot": "helmet", "glb": "h.glb", "concept_box": [1, 2, 3, 4]}]
     pieces_json.write_text(json.dumps({"cuts": str(path), "slots": {}}))
     with pytest.raises(ValueError, match="no pieces"):
-        cli.fit_job(pieces_json, tmp_path / "body.json", tmp_path / "fit")
+        cli.fit_job(pieces_json, body_json, tmp_path / "fit")
 
 
 def test_run_fit_writes_the_job_and_runs_blender_headless(tmp_path):

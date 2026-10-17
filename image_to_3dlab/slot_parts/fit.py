@@ -231,6 +231,13 @@ def smooth_spikes(fitted: np.ndarray, edges: np.ndarray, bad: np.ndarray, rounds
     return out
 
 
+def pose_frames(start: int, end: int, count: int = 8) -> list[int]:
+    """`count` frames spread evenly over a clip, its first and last included."""
+    if end <= start or count <= 1:
+        return [start]
+    return sorted({round(f) for f in np.linspace(start, end, count)})
+
+
 def coverage_report(per_frame: list[dict]) -> dict:
     """Worst and mean over frames of {piece: share} measures, and the worst frame's index."""
     names = sorted({n for f in per_frame for n in f["clipping"]})
