@@ -90,3 +90,21 @@ def test_create_offers_the_cards_presets_with_2048_first():
     assert card == {name: list(size) for name, size in text_image.CARD_SIZES.items()}
     assert out["presets"][0][0] == "1:1" and (out["plain"]["width"], out["plain"]["height"]) == (2048, 2048)
     assert (out["wide"]["width"], out["wide"]["height"]) == (2752, 1536) and out["odd"]["width"] == 2048
+
+
+def test_a_chosen_size_reaches_the_picture_settings():
+    # Codex on #113: the menu's change handler made "4:3" a number (NaN), so every choice drew 2048x2048
+    if shutil.which("node") is None:
+        pytest.skip("Node is required to execute browser ES modules")
+    url = (REPO / "viewer" / "studio" / "create.js").as_uri()
+    program = f"""import * as m from {json.dumps(url)};
+      const size = m.picValue('size', {{type: 'select-one', value: '4:3'}});
+      console.log(JSON.stringify({{size, settings: m.pictureSettings({{size}}, () => 0),
+        draft: m.pictureSettings({{size: m.picValue('size', {{type: 'select-one', value: 'draft'}})}}, () => 0),
+        steps: m.picValue('steps', {{type: 'number', value: '12'}}),
+        fresh: m.picValue('newEachTime', {{type: 'checkbox', checked: false}})}}));"""
+    out = json.loads(subprocess.run(["node", "--input-type=module", "--eval", program], check=True,
+                                    capture_output=True, text=True).stdout)
+    assert out["size"] == "4:3" and (out["settings"]["width"], out["settings"]["height"]) == (2400, 1792)
+    assert (out["draft"]["width"], out["draft"]["height"]) == (1024, 1024)
+    assert out["steps"] == 12 and out["fresh"] is False

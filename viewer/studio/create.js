@@ -30,6 +30,12 @@ export function pictureSettings({ size = '1:1', steps = 8, newEachTime = true, s
   return { width: preset[1], height: preset[2], steps: count, seed: newEachTime ? freshSeed(random) : fixed };
 }
 
+/** A picture setting as its control holds it: the size is a preset's name, the rest numbers or a tick. */
+export function picValue(key, el) {
+  if (el.type === 'checkbox') return el.checked;
+  return key === 'size' ? String(el.value) : Number(el.value);
+}
+
 /** The 3D model's seed from Create's choice: a new one each time, or the one kept. */
 export function modelSeedFor({ newEachTime = true, seed = 42 } = {}, random = Math.random) {
   const fixed = Number.isFinite(Number(seed)) ? Math.max(0, Math.trunc(Number(seed))) : 42;
@@ -132,7 +138,7 @@ export function openCreate({ stage, recipes, engines, presets, styleBible = null
     }));
     sheet.querySelectorAll('[data-pic]').forEach((el) => el.addEventListener('change', () => {
       const key = el.dataset.pic;
-      state.pic[key] = el.type === 'checkbox' ? el.checked : Number(el.value);
+      state.pic[key] = picValue(key, el);
       if (key === 'newEachTime') { render(); sheet.querySelector('.picset').closest('details').open = true; }  // show or hide the seed box
     }));
     const picker = q('[data-file]'), drop = q('[data-drop]');
