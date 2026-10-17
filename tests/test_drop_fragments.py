@@ -49,3 +49,27 @@ def test_a_piece_made_on_its_own_is_cleaned_after_its_finish():
     names = [Path(c[1]).name for c in commands]
     assert names.index("drop_fragments.py") > names.index("retopo_repaint.py")
     assert slots.CATALOGUE["gloves"]
+
+
+def test_a_bit_on_the_other_side_of_a_pair_stays():
+    """Gloves and boots come as one file holding both sides: a buckle on the second boot is
+    measured against that boot, not against the first one only."""
+    left = trimesh.creation.box(extents=(0.2, 0.3, 0.1)).subdivide().subdivide()
+    right = left.copy()
+    right.apply_translation((0.6, 0, 0))
+    buckle = trimesh.creation.box(extents=(0.02, 0.02, 0.02))
+    buckle.apply_translation((0.6, 0, 0.06))               # resting on the right boot's top
+    mesh = trimesh.util.concatenate([left, right, buckle])
+    keep, report = fragments.floating(mesh.vertices, mesh.faces)
+    assert keep.all() and report["dropped"] == 0
+
+
+def test_a_bit_resting_inside_a_large_face_is_not_far():
+    """Measured to the surface, not to its corners: a decimated piece has big triangles."""
+    # a disc: its top is a fan of long thin triangles, so mid-radius no corner is near
+    plate = trimesh.creation.cylinder(radius=1.0, height=0.05, sections=200)
+    stud = trimesh.creation.box(extents=(0.01, 0.01, 0.01))
+    stud.apply_translation((0.5, 0.0, 0.03))               # on the disc's top, half way out
+    mesh = trimesh.util.concatenate([plate, stud])
+    keep, _ = fragments.floating(mesh.vertices, mesh.faces)
+    assert keep.all()
