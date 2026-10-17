@@ -187,6 +187,9 @@ def score_candidates(record: dict, cuts_dir: Path, folder: Path, seeds: list[int
     try:
         server = judge.LlamaServer(log=Path(folder) / "judge.log")
     except models.MissingModel as missing:
+        # said in the run's log: the pick panel and pieces_status show it too (candidates.json's judge)
+        print(f"going on without the picture judge ({missing}): each piece's picture is picked by its "
+              "silhouette only; Setup & Status installs the judge", flush=True)
         return candidates.score_all(record, cuts_dir, folder, seeds), f"shape only ({missing})"
     try:
         with server:
@@ -355,14 +358,14 @@ def check_pieces(fit_dir: Path, body_json: Path, set_name: str) -> dict:
 
 
 def make_concept(body_json: Path, outfit: str, folder: Path, seeds: list[int], style: str = "", run=_run,
-                 edit=edit_command, pick: int | None = None) -> tuple[Path, dict]:
+                 edit=edit_command, pick: int | None = None, chosen: dict | None = None) -> tuple[Path, dict]:
     """The outfit drawn on the base body (an edit of its picture), once per seed; the
     picked seed is taken (default the first). Pictures already made are kept."""
     from image_to_3dlab.concept import prompts, sidecar
 
     record = body_mod.load(body_json)
     # add, not dress: the chosen pieces drawn on the bodysuit, the rest of the body left as it is
-    prompt = prompts.add_piece(outfit, style=style)
+    prompt = prompts.add_piece(pieces.concept_outfit(outfit, chosen or {}), style=style)
     folder.mkdir(parents=True, exist_ok=True)
     for seed in seeds:
         picture = folder / f"s{seed}.png"
@@ -455,7 +458,7 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
         if not outfit.strip():
             raise ValueError("give the outfit in words (--outfit) or a concept drawn on the body (--concept)")
         if stop_at_concept and len(concept_seeds) > 1:
-            make_concept(body_json, outfit, folder / "concept", list(concept_seeds), style, run, edit)
+            make_concept(body_json, outfit, folder / "concept", list(concept_seeds), style, run, edit, chosen=drawn)
             held = {slot: {"prompt": chosen[slot]["prompt"]} for slot in ("weapon", "shield") if slot in chosen}
             folder.mkdir(parents=True, exist_ok=True)
             state_path.write_text(json.dumps({"waiting": "concept", "concepts": [int(s) for s in concept_seeds],
@@ -464,7 +467,8 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
                                   encoding="utf-8")
             return folder / "concept"
         concept, concept_info = make_concept(body_json, outfit, folder / "concept", list(concept_seeds), style, run,
-                                             edit, pick=int(concept_pick) if concept_pick is not None else None)
+                                             edit, pick=int(concept_pick) if concept_pick is not None else None,
+                                             chosen=drawn)
         mode = "body_and_equipment"
     else:
         concept_info = {"given": True}

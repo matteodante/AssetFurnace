@@ -174,6 +174,18 @@ def clean_settings(raw: dict[str, Any]) -> dict[str, Any]:
     return settings
 
 
+# stable-diffusion.cpp computes the negative branch only when the guidance is not 1
+# (resolve_guidance in src/pipeline/request.cpp, master f0aac52, read 2026-10-17); the
+# Turbo's card says "CFG=1 by default". At 1 a negative prompt changes nothing.
+NEGATIVE_AT_CFG_1 = ("not applied: at cfg_scale 1 stable-diffusion.cpp does not compute the "
+                     "negative branch; raise cfg_scale above 1, or put what to avoid in the prompt")
+
+
+def negative_applies(settings: dict[str, Any]) -> bool:
+    """Whether the run will use the negative prompt at all."""
+    return bool(settings.get("negative_prompt")) and float(settings.get("cfg_scale", 1.0)) > 1.0
+
+
 def build_command(prompt: str, settings: dict[str, Any], output_path: Path,
                   weights: dict[str, Path], binary: Path = BINARY) -> list[str]:
     """The full argument list, as a pure function so a test can read it without a GPU.
@@ -198,7 +210,7 @@ def build_command(prompt: str, settings: dict[str, Any], output_path: Path,
         "-v",
         "-o", str(output_path),
     ]
-    if settings.get("negative_prompt"):
+    if negative_applies(settings):
         command[command.index("-p") + 2:command.index("-p") + 2] = [
             "--negative-prompt", settings["negative_prompt"]
         ]
@@ -270,8 +282,13 @@ def weight_manifest() -> dict[str, dict[str, str]]:
 
 def provenance(prompt: str, settings: dict[str, Any], seconds: float,
                output_path: Path) -> dict[str, Any]:
-    """What this picture is, and what the licence lets you do with it."""
-    return {
+    """What this picture is, and what the licence lets you do with it. A negative prompt
+    the run could not use is recorded as such, not among the settings that made it."""
+    settings = dict(settings)
+    ignored = None
+    if settings.get("negative_prompt") and not negative_applies(settings):
+        ignored = {"text": settings.pop("negative_prompt"), "reason": NEGATIVE_AT_CFG_1}
+    record = {
         "schema_version": 1,
         "kind": "generated-image",
         "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -293,6 +310,9 @@ def provenance(prompt: str, settings: dict[str, Any], seconds: float,
         "elapsed_seconds": round(seconds, 1),
         "output": output_path.name,
     }
+    if ignored:
+        record["negative_prompt_not_applied"] = ignored
+    return record
 
 
 
@@ -351,6 +371,8 @@ def generate(prompt: str, raw_settings: dict[str, Any], output_path: Path, *,
     if len(prompt) > MAX_PROMPT:
         raise ValueError(f"the prompt is longer than {MAX_PROMPT} characters")
     settings = clean_settings(raw_settings)
+    if settings["negative_prompt"] and not negative_applies(settings):
+        log(f"negative prompt {NEGATIVE_AT_CFG_1}")
     weights = weights or resolve_weights()
     command = build_command(prompt, settings, output_path, weights)
     if extra_args:
