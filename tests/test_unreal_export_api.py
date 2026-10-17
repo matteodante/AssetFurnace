@@ -267,3 +267,22 @@ def test_a_failed_unreal_check_still_hands_back_the_exported_files(output):
     assert view["state"] == "done" and "Unreal check did not finish" in view["message"]
     assert {f["name"] for f in view["files"]} >= {"SM_Barrel.glb"}
     assert api.zip_bytes(output, job["id"])[0].endswith(".zip")
+
+
+def test_the_material_is_the_persons_else_the_rules(output):
+    request = api.parse(output, {"file": "props/p/barrel_LOD0.glb", "kind": "prop", "size_cm": 60, "material": "metal"})
+    assert request["material"] == "metal"
+    (output / "props" / "p" / "barrel_LOD0.provenance.json").write_text(json.dumps({"prompt": "a stone barrel"}))
+    assert api.parse(output, {"file": "props/p/barrel_LOD0.glb", "kind": "prop", "size_cm": 60})["material"] == "stone"
+    assert api.parse(output, {"file": "animate/w/w_rigged.glb", "kind": "creature", "size_cm": 90})["material"] == "skin"
+    with pytest.raises(ValueError, match="one of"):
+        api.parse(output, {"file": "props/p/barrel_LOD0.glb", "kind": "prop", "size_cm": 60, "material": "steel"})
+
+
+def test_the_page_reads_the_rules_material_and_the_choices(server, output):
+    status, body = _request(server, "GET", "/api/unreal-export/material?file=props/p/barrel_LOD0.glb&kind=prop")
+    assert status == 200 and json.loads(body) == {"material": "wood", "by": "rule", "reason": "default for a prop"}
+    status, body = _request(server, "GET", "/api/unreal-export")
+    assert "metal" in json.loads(body)["materials"]
+    status, _ = _request(server, "GET", "/api/unreal-export/material?file=props/p/barrel_LOD0.glb&kind=car")
+    assert status == 422

@@ -49,7 +49,8 @@ def test_a_piece_without_words_takes_its_slot_default():
 
 
 def test_a_single_asset_takes_its_prompt_or_its_kind_default():
-    assert pm.propose(kind="prop", words="a stone well with a wooden roof")["material"] == "stone"
+    assert pm.propose(kind="prop", words="a stone well with a wooden roof") == {
+        "material": "stone", "by": "rule", "reason": "the prompt says 'stone'"}
     assert pm.propose(kind="creature")["material"] == "skin"
     assert pm.propose(kind="prop")["material"] == "wood"
     assert pm.propose()["material"] == "cloth"
@@ -115,3 +116,21 @@ def test_piece_of_a_fitted_file():
     assert pm.piece_of("shoulders_R") == "shoulders"
     assert pm.piece_of("helmet.glb") == "helmet"
     assert pm.piece_of("body_masked.glb") is None
+
+
+def test_prompt_for_follows_the_inputs_to_the_words(tmp_path):
+    picture = tmp_path / "concept.png"
+    (tmp_path / "concept.provenance.json").write_text(json.dumps({"prompt": "a leather saddle"}))
+    model = tmp_path / "run" / "saddle.glb"
+    model.parent.mkdir()
+    (model.parent / "saddle.provenance.json").write_text(json.dumps({"input": {"path": str(picture)}}))
+    assert pm.prompt_for(model) == "a leather saddle"
+    assert pm.prompt_for(tmp_path / "nothing.glb") == ""
+    (model.parent / "saddle.provenance.json").write_text("not json")
+    assert pm.prompt_for(model) == ""
+
+
+def test_outfit_words_are_taken_out_of_the_concepts_edit_prompt():
+    assert pm.outfit_words("Add red plate and leather boots to the character in image 1, fitted closely.") \
+        == "red plate and leather boots"
+    assert pm.outfit_words("red plate") == "red plate"
