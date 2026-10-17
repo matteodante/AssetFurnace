@@ -106,7 +106,7 @@ def test_an_unmatted_concept_goes_through_the_cut_out(tmp_path):
 def test_body_needs_the_pixal3d_cut_out(tmp_path, capsys):
     Image.new("RGB", (8, 8)).save(tmp_path / "body.png")
     code = cli.main(["body", "b", "--image", str(tmp_path / "body.png"), "--rigged", str(tmp_path / "r.glb"),
-                     "--views", str(tmp_path / "v"), "--root", str(tmp_path)])
+                     "--views", str(tmp_path / "v"), "--root", str(tmp_path), "--dressing", "bodysuit"])
     assert code == 1 and "__matted.png" in capsys.readouterr().out
 
 
@@ -117,5 +117,5 @@ def test_body_refuses_a_rig_that_is_not_a_humanoid(tmp_path, capsys):
     Image.new("RGBA", (8, 8), (255, 255, 255, 255)).save(tmp_path / "body__matted.png")
     rig = write_skinned_glb(tmp_path / "strip.glb")
     code = cli.main(["body", "b", "--image", str(tmp_path / "body.png"), "--rigged", str(rig),
-                     "--views", str(tmp_path / "v"), "--root", str(tmp_path)])
+                     "--views", str(tmp_path / "v"), "--root", str(tmp_path), "--dressing", "bodysuit"])
     assert code == 1 and "humanoid" in capsys.readouterr().out

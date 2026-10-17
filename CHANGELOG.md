@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A base body says how it is dressed under its pieces, the person's choice when it is
+  registered on every route: a bodysuit, simple clothes (shirt, breeches, cloth shoes), minimal
+  underwear, or words of their own (`slot_parts.py body --dressing`, `pieces_add_body(dressing=)`,
+  the studio's register form). It is kept in body.json, and the outfit concept keeps those
+  clothes instead of a fixed bodysuit.
 - Batches and agents can replace a step's output with a file of their own:
   `"replace": {"finish": "my.glb"}` in a row, or `run_steps(..., replace=...)`. The step
   does not run, the file (a Blender version, a model made elsewhere, your own rig or clips)
