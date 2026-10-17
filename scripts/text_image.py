@@ -45,7 +45,8 @@ def build_parser() -> argparse.ArgumentParser:
                                                             "with consecutive seeds")
     parser.add_argument("--cfg-scale", type=float, default=text_image.DEFAULTS["cfg_scale"])
     parser.add_argument("--sampler", choices=text_image.SAMPLERS, default=text_image.DEFAULTS["sampler"])
-    parser.add_argument("--negative-prompt", default="", help="what to keep out")
+    parser.add_argument("--negative-prompt", default="",
+                        help="what to keep out; used only with --cfg-scale above 1 (the Turbo runs at 1)")
     parser.add_argument("--bible", help="add a style bible's words: - for the active one, or its name")
     parser.add_argument("--kind", help="the bible's words for this kind too: prop, creature, character, "
                                        "equipment_part, map_object")

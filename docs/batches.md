@@ -105,7 +105,9 @@ Every step's settings are described once, with their types and ranges, in
 its first row.
 
 `picture` settings: `seed` (default 42), `count` (1 to 8), `pick` (the seed to keep),
-`width`, `height`, `cfg_scale`, `sampler`, `negative_prompt`, `bible` (a style bible's
+`width`, `height`, `cfg_scale`, `sampler`, `negative_prompt` (used only with `cfg_scale` above
+1: at the Turbo's default of 1 stable-diffusion.cpp skips it, and the provenance records it
+as not applied), `bible` (a style bible's
 words after the prompt: `"-"` for the active one, or its name; none by default; `concept`
 takes it too, with up to three of the bible's pictures). An edited or another active bible
 reruns the step.
