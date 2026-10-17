@@ -259,12 +259,16 @@ official Python SDK (`MCPServer`, version 2.x):
   more (idempotent), and that it acts on this machine only.
 - Every tool publishes the shape of its result (`outputSchema`) and answers with it
   (`structuredContent`), with the same JSON as text for clients that read only text.
-- Files a result names (models, pictures, reports, logs) also come back as resource links,
-  with their `mimeType` (`model/gltf-binary` for a GLB).
+- Files a result names (models, pictures, reports, logs) under `output/` or a root the client
+  shares also come back as resource links, with their `mimeType` (`model/gltf-binary` for a
+  GLB). `resources/read` hands each one out by its `file:` URI, and nothing else: the
+  repository's own files stay out of reach.
 - `wait_batch` sends progress notifications while it follows a batch: rows settled out of
   all of them.
 - Paths must be inside this repository, its `output/` folder, or a root the client shares
   (MCP roots). Any other path is refused before anything runs, and the refusal names it.
+  This also covers the paths a spec holds: its batch folder (`output.directory`) and its
+  rows' pictures, models, replacements and step files.
 
 ### Batches
 

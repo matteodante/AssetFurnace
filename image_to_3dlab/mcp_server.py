@@ -26,6 +26,7 @@ path it is given held to this repository, its `output/` and the client's roots.
 from __future__ import annotations
 
 import argparse
+import contextvars
 import functools
 import hmac
 import inspect
@@ -183,6 +184,46 @@ def _intent(use_case: str | None, distribution: str | None,
             if value is not None}
 
 
+# The folders the MCP client shares (its roots) for the call in progress; None outside MCP
+# (the command line, the studio, tests of the plain functions), where nothing is held.
+_ROOTS: contextvars.ContextVar[list[Path] | None] = contextvars.ContextVar("assetfurnace_roots", default=None)
+OUTSIDE = ("outside this repository, its output folder and the roots your client shares. Share the folder as a "
+           "root, or put the file in output/.")
+
+
+def _strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for item in value.values() for s in _strings(item)]
+    if isinstance(value, list | tuple):
+        return [s for item in value for s in _strings(item)]
+    return []
+
+
+def _step_files(step: str, settings: Any) -> list[str]:
+    """The file settings of one step (from the step catalogue)."""
+    spec = step_catalog.CATALOG.get(step)
+    if spec is None or not isinstance(settings, dict):
+        return []
+    return [s for param in spec.params if param.type in ("file", "files") for s in _strings(settings.get(param.name))]
+
+
+def _outside_spec(loaded: batch.BatchSpec) -> list[str]:
+    """Over MCP, what a spec reaches outside the allowed folders: its batch folder, its rows'
+    pictures, models, replacements and step files."""
+    roots = _ROOTS.get()
+    if roots is None:
+        return []
+    here = loaded.path.parent
+    paths = [loaded.directory]
+    for row in loaded.rows:
+        paths += [*row.images, *([row.asset] if row.asset else []), *map(Path, _strings(row.replace))]
+        paths += [Path(s) for step, settings in row.options.items() for s in _step_files(step, settings)]
+    paths = [path if path.is_absolute() else here / path for path in paths]
+    return [f"{path}: {OUTSIDE}" for path in dict.fromkeys(paths) if not _allowed(path, roots)]
+
+
 def _check(spec_path: str, intent: dict[str, Any], retry_failed: bool | None = None,
            ) -> tuple[batch.BatchSpec | None, list[str]]:
     """Load and preflight a spec: every row, or with `retry_failed` given, only the rows a
@@ -191,6 +232,9 @@ def _check(spec_path: str, intent: dict[str, Any], retry_failed: bool | None = N
         spec = batch.load_batch(Path(spec_path), intent=intent)
     except batch.BatchError as exc:
         return None, exc.problems
+    outside = _outside_spec(spec)
+    if outside:
+        return spec, outside
     if retry_failed is None:
         return spec, batch.preflight(spec)
     state = batch.read_json(spec.directory / batch.STATE_FILE)
@@ -333,9 +377,10 @@ def wait_batch(batch_ref: str, timeout_s: float = 600, every_s: float = 10, repo
             report(settled, len(rows), f"{settled} of {len(rows)} rows settled ({counts})")
         if status.get("active") is None:
             return {**status, "finished": True, "timed_out": False}
-        if now() - start >= timeout_s:
+        left = timeout_s - (now() - start)
+        if left <= 0:
             return {**status, "finished": False, "timed_out": True}
-        sleep(every_s)
+        sleep(min(every_s, left))
 
 
 def list_outputs(batch_ref: str, row_id: str | None = None) -> Outputs:
@@ -803,21 +848,15 @@ def _allowed(path: Path, roots: list[Path]) -> bool:
 
 
 def _paths_in(arguments: dict[str, Any]) -> list[str]:
-    found = [arguments[k] for k in PATH_ARGUMENTS if isinstance(arguments.get(k), str) and arguments[k]]
-    for key in PATH_LISTS:
-        found += [v for v in arguments.get(key) or [] if isinstance(v, str)]
-    for key in PATH_MAPS:
-        found += [v for v in (arguments.get(key) or {}).values() if isinstance(v, str)]
-    for step, settings in (arguments.get("options") or {}).items():
-        spec = step_catalog.CATALOG.get(step)
-        if spec is None or not isinstance(settings, dict):
-            continue
-        for param in spec.params:
-            value = settings.get(param.name)
-            if param.type == "file" and isinstance(value, str):
-                found.append(value)
-            elif param.type == "files" and isinstance(value, list):
-                found += [v for v in value if isinstance(v, str)]
+    """Every path in a call's arguments: plain, in lists and maps at any depth, and in
+    `options`, whose keys are steps (their file settings) or row fields (run_steps puts
+    them in the row as they are)."""
+    found = [s for key in (*PATH_ARGUMENTS, *PATH_LISTS, *PATH_MAPS) for s in _strings(arguments.get(key)) if s]
+    for key, value in (arguments.get("options") or {}).items():
+        if key in step_catalog.CATALOG:
+            found += _step_files(key, value)
+        if key in (*PATH_ARGUMENTS, *PATH_LISTS, *PATH_MAPS):
+            found += [s for s in _strings(value) if s]
     return found
 
 
@@ -846,21 +885,32 @@ async def _client_roots(ctx) -> list[Path]:
     return [path for path in (_uri_path(str(root.uri)) for root in result.roots) if path is not None]
 
 
-async def _guard(arguments: dict[str, Any], ctx) -> None:
+def _guard(arguments: dict[str, Any], roots: list[Path]) -> None:
+    """Refuse a call whose paths reach outside: its own, and the batch folder a batch_ref
+    names (a spec's own output folder)."""
     from mcp.server.mcpserver.exceptions import ToolError
 
-    outside = [path for path in _paths_in(arguments) if not _allowed(Path(path), [])]
-    if not outside:
-        return
-    roots = await _client_roots(ctx)
-    refused = [path for path in outside if not _allowed(Path(path), roots)]
+    paths = [Path(path) for path in _paths_in(arguments)]
+    if isinstance(arguments.get("batch_ref"), str):
+        try:
+            paths.append(_directory(arguments["batch_ref"]))
+        except (batch.BatchError, OSError, ValueError):
+            pass   # an unreadable spec: the tool says so itself
+    refused = [str(path) for path in dict.fromkeys(paths) if not _allowed(path, roots)]
     if refused:
-        raise ToolError(f"{', '.join(refused)}: outside this repository ({REPO}), its output folder and the "
-                        "roots your client shares. Share the folder as a root, or put the file in output/.")
+        raise ToolError(f"{', '.join(refused)}: {OUTSIDE} (repository: {REPO})")
 
 
-def _links(result: Any) -> list[Any]:
-    """Every existing file the result names, once, as a resource link."""
+def _readable(path: Path, roots: list[Path]) -> bool:
+    """What resources/read hands out: files under output/ or a client root, not the
+    repository's own files (its settings may hold keys)."""
+    path = Path(path).resolve()
+    bases = [OUTPUT.resolve(), *(Path(root).resolve() for root in roots)]
+    return path.is_file() and any(path.is_relative_to(base) for base in bases)
+
+
+def _links(result: Any, roots: list[Path]) -> list[Any]:
+    """Every file the result names that resources/read hands out, once, as a resource link."""
     import mcp_types as types
 
     seen: dict[str, Any] = {}
@@ -877,7 +927,7 @@ def _links(result: Any) -> list[Any]:
         elif isinstance(value, str) and len(value) < 1024 and value not in seen:
             path = Path(value)
             try:
-                if path.is_absolute() and path.is_file():
+                if path.is_absolute() and _readable(path, roots):
                     seen[value] = types.ResourceLink(
                         uri=path.resolve().as_uri(), name=path.name,
                         mime_type=MIME.get(path.suffix.lower()) or mimetypes.guess_type(path.name)[0]
@@ -909,16 +959,21 @@ def _exposed(name: str):
     returns = Annotated[types.CallToolResult, hints["return"]]
 
     async def call(ctx, **arguments):
-        await _guard(arguments, ctx)
+        roots = await _client_roots(ctx)
+        _guard(arguments, roots)
         if "report" in signature.parameters:
             def report(progress, total=None, message=None):
                 anyio.from_thread.run(functools.partial(ctx.report_progress, progress, total, message))
 
             arguments["report"] = report
         tool = globals()[name]   # looked up at each call (tests replace the functions)
-        result = await anyio.to_thread.run_sync(functools.partial(tool, **arguments))
+        held = _ROOTS.set(roots)   # copied into the worker thread with the rest of the context
+        try:
+            result = await anyio.to_thread.run_sync(functools.partial(tool, **arguments))
+        finally:
+            _ROOTS.reset(held)
         result = json.loads(json.dumps(result, default=str))
-        return types.CallToolResult(content=[types.TextContent(text=json.dumps(result)), *_links(result)],
+        return types.CallToolResult(content=[types.TextContent(text=json.dumps(result)), *_links(result, roots)],
                                     structured_content=result)
 
     call.__name__, call.__doc__ = name, original.__doc__
@@ -940,7 +995,28 @@ def build_server():
                         annotations=types.ToolAnnotations(title=title, read_only_hint=read_only,
                                                           destructive_hint=None if read_only else destructive,
                                                           idempotent_hint=idempotent, open_world_hint=False))
+    _serve_files(server)
     return server
+
+
+def _serve_files(server) -> None:
+    """resources/read for the links the tools hand back: a file under output/ or a client
+    root, by its file: URI. The path is checked here, after it is resolved, so the SDK's
+    own checks on template values (which refuse any absolute path) are left out for it."""
+    from mcp.server.mcpserver import Context
+    from mcp.server.mcpserver.resources.templates import ResourceSecurity
+
+    async def read_file(path, ctx):
+        found = _uri_path("file:///" + path)
+        if found is None or not _readable(found, await _client_roots(ctx)):
+            raise ValueError(f"{path}: not a file AssetFurnace hands out (only under output/ or a root you share)")
+        return found.read_bytes()
+
+    # real objects, not this module's postponed strings: the SDK finds the context by its type
+    read_file.__annotations__ = {"path": str, "ctx": Context, "return": bytes}
+    server.resource("file:///{+path}", name="file", title="A file AssetFurnace made",
+                    description="A model, picture or report a tool named, by the link it gave",
+                    mime_type="application/octet-stream", security=ResourceSecurity(exempt_params={"path"}))(read_file)
 
 
 # ------------------------------------------------------------- Streamable HTTP (optional)

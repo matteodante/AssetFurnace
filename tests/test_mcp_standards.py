@@ -80,21 +80,25 @@ def test_a_result_is_structured_content_and_its_text():
 # ------------------------------------------------------------ 3. files as resource links
 
 def test_files_a_tool_hands_back_are_resource_links(tmp_path, monkeypatch):
-    glb, picture = tmp_path / "SM_Cat.glb", tmp_path / "cat.png"
-    glb.write_bytes(b"glb")
-    picture.write_bytes(b"png")
+    made = tmp_path / "repo" / "output" / "lot"
+    made.mkdir(parents=True)
+    monkeypatch.setattr(mcp_server, "REPO", tmp_path / "repo")
+    monkeypatch.setattr(mcp_server, "OUTPUT", tmp_path / "repo" / "output")
+    glb, picture, mine = made / "SM_Cat.glb", made / "cat.png", tmp_path / "mine.png"
+    for path in (glb, picture, mine):
+        path.write_bytes(b"x")
     monkeypatch.setattr(mcp_server, "list_outputs", lambda batch_ref, row_id=None: {
-        "name": "lot", "directory": str(tmp_path),
-        "rows": [{"id": "SM_Cat", "asset": str(glb), "references": [str(picture)],
-                  "files": [str(glb), str(tmp_path / "gone.json")]}]})
-    monkeypatch.setattr(mcp_server, "_allowed", lambda path, roots: True)
+        "name": "lot", "directory": str(made),
+        "rows": [{"id": "SM_Cat", "asset": str(glb), "references": [str(picture), str(mine)],
+                  "files": [str(glb), str(made / "gone.json")]}]})
 
     async def work(session):
-        return await session.call_tool("list_outputs", {"batch_ref": str(tmp_path)})
+        return await session.call_tool("list_outputs", {"batch_ref": str(made)})
 
     result = _talk(work)
     links = {Path(types_path(link.uri)).name: link for link in result.content if link.type == "resource_link"}
-    assert set(links) == {"SM_Cat.glb", "cat.png"}   # once each, and only files that exist
+    # once each, only files that exist, and only those resources/read hands out (not mine.png)
+    assert set(links) == {"SM_Cat.glb", "cat.png"}
     assert links["SM_Cat.glb"].mime_type == "model/gltf-binary" and links["cat.png"].mime_type == "image/png"
     assert links["SM_Cat.glb"].name == "SM_Cat.glb"
 
@@ -256,3 +260,90 @@ def test_the_http_token_comes_from_the_environment_or_is_made_once():
     assert mcp_server.http_token({"ASSETFURNACE_MCP_TOKEN": "abc"}) == ("abc", False)
     made, new = mcp_server.http_token({})
     assert new is True and len(made) >= 32
+
+
+# ----------------------------------------------------------- review round (Codex, #109)
+
+@pytest.fixture
+def repo(tmp_path, monkeypatch):
+    """A repository of its own, so specs and outputs can be inside and outside it."""
+    root = tmp_path / "repo"
+    (root / "output").mkdir(parents=True)
+    monkeypatch.setattr(mcp_server, "REPO", root)
+    monkeypatch.setattr(mcp_server, "OUTPUT", root / "output")
+    return root
+
+
+def test_a_spec_cannot_send_its_batch_outside_through_its_output_folder(repo, tmp_path):
+    from batch_fakes import tiny_glb
+
+    spec = repo / "output" / "lot.json"
+    asset = tiny_glb(repo / "output" / "a.glb")
+    spec.write_text(json.dumps({"schema_version": 1, "name": "lot", "use_case": "showcase", "distribution": "private",
+                                "output": {"directory": str(tmp_path / "elsewhere")},
+                                "rows": [{"id": "SM_A", "asset": str(asset), "steps": ["checks"]}]}))
+    outside = str(tmp_path / "elsewhere")
+
+    for tool in ("validate_batch", "submit_batch"):
+        async def work(session, tool=tool):
+            return await session.call_tool(tool, {"spec": str(spec)})
+
+        result = _talk(work)
+        said = result.content[0].text if result.is_error else " ".join(result.structured_content["problems"])
+        assert outside in said, tool
+        assert result.is_error or not (result.structured_content.get("ok") or result.structured_content.get("started"))
+
+    async def status(session):
+        return await session.call_tool("batch_status", {"batch_ref": str(spec)})
+
+    assert _talk(status).is_error
+
+
+def test_replacements_in_lists_and_in_options_are_held_too(repo, tmp_path):
+    outside = str(tmp_path / "walk.glb")
+    asset = repo / "output" / "a.glb"
+    asset.write_bytes(b"glb")
+    for arguments in ({"replace": {"animate": [outside]}}, {"options": {"replace": {"finish": outside}}}):
+        async def work(session, arguments=arguments):
+            return await session.call_tool("run_steps", {"name": "a", "steps": ["finish", "animate"],
+                                                         "asset": str(asset), **arguments})
+
+        result = _talk(work)
+        assert result.is_error and outside in result.content[0].text, arguments
+
+
+def test_a_link_a_tool_gave_can_be_read_and_nothing_else(repo, tmp_path, monkeypatch):
+    made = repo / "output" / "SM_Cat.glb"
+    made.write_bytes(b"the model")
+    secret = tmp_path / "secret.txt"
+    secret.write_text("no")
+    monkeypatch.setattr(mcp_server, "list_outputs", lambda batch_ref, row_id=None: {"rows": [{"asset": str(made)}]})
+
+    async def work(session):
+        result = await session.call_tool("list_outputs", {"batch_ref": str(repo / "output")})
+        link = next(item for item in result.content if item.type == "resource_link")
+        read = await session.read_resource(str(link.uri))
+        try:
+            await session.read_resource(secret.resolve().as_uri())
+            leaked = True
+        except Exception:  # noqa: BLE001 - refused, however the SDK raises it
+            leaked = False
+        return read, leaked
+
+    read, leaked = _talk(work)
+    import base64
+
+    content = read.contents[0]
+    assert base64.b64decode(content.blob) == b"the model" and leaked is False
+
+
+def test_waiting_never_sleeps_past_its_timeout(monkeypatch):
+    monkeypatch.setattr(mcp_server, "batch_status", _statuses(*[(1, 3, 42)] * 50))
+    slept, clock = [], [0.0]
+
+    def sleep(seconds):
+        slept.append(seconds)
+        clock[0] += seconds
+
+    result = mcp_server.wait_batch("lot", timeout_s=30, every_s=3600, sleep=sleep, now=lambda: clock[0])
+    assert result["timed_out"] is True and sum(slept) <= 30
