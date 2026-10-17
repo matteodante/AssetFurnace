@@ -294,8 +294,10 @@ def test_the_outfit_names_every_chosen_piece():
     words = pieces.concept_outfit("crimson and gold plate armour with armoured boots", chosen)
     assert words.startswith("crimson and gold plate armour with armoured boots")
     assert "a helmet" in words and "leather bracers" in words   # the pieces the outfit left out
-    assert words.count("boots") == 1 and "breastplate" not in words   # named already ("armour", "boots")
+    assert words.count("boots") == 1   # named already
     assert pieces.concept_outfit("a red robe", {}) == "a red robe"
+    # "armour" is the whole outfit, not a breastplate
+    assert "a breastplate" in pieces.concept_outfit("leg armour and boots", {"torso": {}, "boots": {}})
 
 
 def test_the_concept_is_drawn_with_the_chosen_helmet(tmp_path):

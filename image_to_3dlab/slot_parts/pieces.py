@@ -47,8 +47,10 @@ def concept_outfit(outfit: str, chosen: dict) -> str:
     from image_to_3dlab.piece_materials import SLOT_NOUNS
 
     said = set(re.findall(r"[a-z]+", str(outfit).lower()))
+    # "armour" names the whole outfit, not the breastplate: "leg armour and boots" has no torso
+    nouns = {slot: set(SLOT_NOUNS[slot]) - {"armour", "armor"} for slot in CONCEPT_WORDS}
     missing = [(options or {}).get("prompt") or CONCEPT_WORDS[slot] for slot, options in chosen.items()
-               if slot in CONCEPT_WORDS and not said & set(SLOT_NOUNS[slot])]
+               if slot in CONCEPT_WORDS and not said & nouns[slot]]
     return f"{outfit.strip()}, with {', '.join(missing)}" if missing else outfit
 
 
