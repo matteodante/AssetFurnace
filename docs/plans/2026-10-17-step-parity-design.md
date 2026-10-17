@@ -357,10 +357,10 @@ questa lista prima del resoconto finale.
 | Review finale 2, lotti: lo staging del concept sovrascritto da un riferimento (`drawn_` che collide) | unito (#116) |
 | Review finale 2, lotti: concept → generate → finish rifiutato dal preflight | unito (#116) |
 | Review finale 2, lotti: i LOD trovati da soli fuori dall'impronta (un LOD cambiato non riesporta) | unito (#116) |
-| Review finale 2, GPU: annullare il rig su macOS/Linux lascia vivo SkinTokens | in #117 |
-| Review finale 2, GPU: Pixal3D e il giudice lasciano il lucchetto con il figlio ancora vivo | in #117 |
-| Review finale 2, GPU: il recupero di un lucchetto stantio può togliere quello di un lavoro vivo | in #117 |
-| Review finale 2, studio: un'immagine annullata aspetta e riscrive comunque il prompt | in #117 |
+| Review finale 2, GPU: annullare il rig su macOS/Linux lascia vivo SkinTokens | unito (#117) |
+| Review finale 2, GPU: Pixal3D e il giudice lasciano il lucchetto con il figlio ancora vivo | unito (#117) |
+| Review finale 2, GPU: il recupero di un lucchetto stantio può togliere quello di un lavoro vivo | unito (#117) |
+| Review finale 2, studio: un'immagine annullata aspetta e riscrive comunque il prompt | unito (#117) |
 | Review finale 2, pezzi: due avvii insieme senza prenotazione (studio e MCP) | in #118 |
 | Review finale 2, pezzi: il concept in cache ignora l'immagine del corpo | in #118 |
 | Review finale 2, pezzi: solo armi in modo 2 chiede un concept (API dello studio) | in #118 |
