@@ -112,3 +112,16 @@ def test_another_prop_of_the_same_set_needs_its_own_size():
       const b = m.exportSource({json.dumps(BARREL)}, 'props/s/chair_LOD0.glb');
       console.log(JSON.stringify({{keep: m.keepsSize(a, a), other: m.keepsSize(a, b), none: m.keepsSize(null, a)}}));""")
     assert out == {"keep": True, "other": False, "none": False}
+
+
+@needs_node
+def test_the_request_carries_a_chosen_material_and_auto_names_the_rules_pick():
+    out = _run("""
+      const source = {file: 'a.glb', kind: 'prop', moves: []};
+      console.log(JSON.stringify({
+        chosen: m.requestBody({source, kind: 'prop', size: '60', measure: 'longest', material: 'metal'}),
+        auto: m.requestBody({source, kind: 'prop', size: '60', measure: 'longest', material: ''}),
+        labels: [m.autoLabel({material: 'wood', reason: 'default for a prop'}), m.autoLabel(null)],
+      }));""")
+    assert out["chosen"]["material"] == "metal" and "material" not in out["auto"]
+    assert out["labels"] == ["Auto: wood (default for a prop)", "Auto"]

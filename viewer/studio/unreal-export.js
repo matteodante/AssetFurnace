@@ -63,13 +63,19 @@ export function sizeLabel(kind) {
   return kind === 'equipment' ? "Wearer's height (cm)" : 'Real size (cm)';
 }
 
-export function requestBody({ source, kind, size, measure, body, moves, check }) {
+export function requestBody({ source, kind, size, measure, body, moves, check, material }) {
   // Equipment is checked in Unreal together with its body's export, which the panel does
   // not have, so only from the command line.
   const data = { file: source.file, kind, size_cm: Number(size), measure, check: Boolean(check) && kind !== 'equipment' };
   if (kind === 'creature' && moves) data.animations = source.moves;
   if (kind === 'equipment') data.body = body;
+  if (material) data.material = material; // empty: the rule picks it from the model's prompt
   return data;
+}
+
+// "Auto: leather (the prompt says 'leather')": what the rule would pick, as the menu's first entry.
+export function autoLabel(proposal) {
+  return proposal?.material ? `Auto: ${proposal.material} (${proposal.reason})` : 'Auto';
 }
 
 export function sizeProblem(value) {
@@ -104,6 +110,7 @@ export function createUnrealPanel({ root, url, assets }) {
       <label class="field">Measured as<select data-measure><option value="height">Height</option><option value="longest">Longest side</option></select></label>
     </div>
     <label class="field" data-body-label hidden>Worn by<select data-body></select></label>
+    <label class="field" title="One material for the whole model: it sets roughness and metal in Unreal">Material<select data-material><option value="">Auto</option></select></label>
     <label class="check" data-moves-label hidden><input type="checkbox" data-moves checked> Include its moves</label>
     <label class="check" data-check-label hidden><input type="checkbox" data-check> Check it in Unreal too (about two minutes)</label>
     <p class="hint" data-source></p>
@@ -128,13 +135,14 @@ export function createUnrealPanel({ root, url, assets }) {
     const blocked = !context || working || !capabilities?.blender || sizeProblem(el('size').value)
       || (kind === 'equipment' && !el('body').value);
     el('export').disabled = Boolean(blocked);
-    for (const key of ['kind', 'size', 'measure', 'body', 'moves', 'check']) el(key).disabled = working;
+    for (const key of ['kind', 'size', 'measure', 'body', 'moves', 'check', 'material']) el(key).disabled = working;
     el('measure').disabled = working || kind === 'equipment';
   }
   async function load() {
     if (capabilities) return;
     try {
       capabilities = await request('');
+      for (const word of capabilities.materials || []) el('material').add(new Option(word, word));
       if (!capabilities.blender) message('Blender was not found; Export for Unreal needs it. Install it or set I2L_BLENDER.', true);
     } catch (error) { message(error.message, true); }
     controls();
@@ -145,6 +153,15 @@ export function createUnrealPanel({ root, url, assets }) {
     el('body').replaceChildren(new Option('Choose a character…', ''));
     for (const body of bodiesFor(assets(), asset)) el('body').add(new Option(body.name, body.file));
     el('body').value = [...el('body').options].some((o) => o.value === chosen) ? chosen : '';
+  }
+  async function propose() {
+    // The rule's pick for this model and kind, shown on "Auto"; a person may choose another.
+    const ctx = context;
+    if (!ctx) return;
+    try {
+      const proposal = await request(`/material?file=${encodeURIComponent(ctx.source.file)}&kind=${encodeURIComponent(el('kind').value)}`);
+      if (context === ctx) el('material').options[0].textContent = autoLabel(proposal);
+    } catch { el('material').options[0].textContent = 'Auto'; }
   }
   function update(asset, file, revision = null) {
     // The running export keeps its own asset; the latest selection is applied when it ends.
@@ -168,9 +185,11 @@ export function createUnrealPanel({ root, url, assets }) {
     fillBodies(asset);
     el('source').textContent = `From ${basename(source.file)}${source.moves.length ? ` and ${source.moves.length} move(s)` : ''}`;
     el('result').hidden = true;
+    el('material').value = '';
     message('');
     load();
     controls();
+    propose();
   }
   function render(job) {
     const result = el('result');
@@ -269,6 +288,7 @@ export function createUnrealPanel({ root, url, assets }) {
     lastKind = kind;
     el('measure').value = kind === 'prop' ? 'longest' : 'height';
     controls();
+    propose();
   });
   for (const key of ['size', 'body', 'measure']) el(key).addEventListener('input', controls);
   el('export').addEventListener('click', async () => {
@@ -286,6 +306,7 @@ export function createUnrealPanel({ root, url, assets }) {
         body: JSON.stringify(requestBody({
           source: ctx.source, kind: el('kind').value, size: el('size').value, measure: el('measure').value,
           body: el('body').value, moves: el('moves').checked, check: el('check').checked && capabilities?.unreal,
+          material: el('material').value,
         })),
       });
       await poll(job.id, ctx);

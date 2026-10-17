@@ -11,6 +11,9 @@
                                          {"resume": true, "body", "set", "picks": {slot: seed}}
                                          goes on from there with the person's picks
     POST /api/slot-parts/run/cancel
+    POST /api/slot-parts/materials       {"set", "body", "pieces": {slot: material | null}}: a
+                                         person's material for pieces of a made set (null: back
+                                         to the rule's proposal); answers every piece's material
 
 Mode 1 (one piece) is the studio's usual + Create; it needs nothing here. A run is
 `scripts/slot_parts.py run` in the background, one at a time, its output in
@@ -30,7 +33,7 @@ from urllib.parse import unquote, urlsplit
 
 import batch_api
 
-from image_to_3dlab import processes
+from image_to_3dlab import piece_materials, processes
 from image_to_3dlab.slot_parts import body as body_mod
 from image_to_3dlab.slot_parts import candidates as candidates_mod
 from image_to_3dlab.slot_parts import slots
@@ -77,11 +80,16 @@ def list_sets(output: Path) -> list[dict[str, Any]]:
             continue
         preview = path.parent / "fit" / "preview.glb"
         checks = parts.get("checks") or {}
+        try:
+            materials = piece_materials.set_materials(path.parent)
+        except (OSError, ValueError):
+            materials = {}
         found.append({"set": parts.get("set"), "body": (parts.get("body") or {}).get("name"), "mode": parts.get("mode"),
                       "pieces": sorted(parts.get("pieces") or {}), "created": parts.get("created"),
                       "covered": (parts.get("fit") or {}).get("covered_share"),
                       "statuses": {k: v.get("status") for k, v in checks.items()},
-                      "preview": rel(output, preview) if preview.is_file() else None, "record": rel(output, path)})
+                      "preview": rel(output, preview) if preview.is_file() else None, "record": rel(output, path),
+                      "materials": materials})
     found.sort(key=lambda s: s["created"] or "", reverse=True)
     return found
 
@@ -100,6 +108,27 @@ def register_body(output: Path, payload: dict) -> dict:
     path = body_mod.register(str(payload.get("name", "")), picture, rigged, model.with_suffix(".svviews"), None,
                              labels, output / "bodies", clips)
     return {"name": body_mod.load(path)["name"], "record": rel(output, path)}
+
+
+def set_folder(output: Path, payload: dict) -> Path:
+    """A made set's folder, `output/sets/<set>/<body>/`, from the page's names."""
+    body, set_name = str(payload.get("body", "")), str(payload.get("set", ""))
+    if not body_mod.NAME.match(body) or not body_mod.NAME.match(set_name):
+        raise ValueError("name a set and its body: letters, digits, '.', '_' or '-'")
+    folder = output / "sets" / set_name / body
+    if not any(folder.glob("*.parts.json")):
+        raise ValueError(f"{set_name} on {body} is not a finished set")
+    return folder
+
+
+def save_materials(output: Path, payload: dict) -> dict:
+    """A person's materials for pieces of a set; every piece's material afterwards."""
+    folder = set_folder(output, payload)
+    pieces = payload.get("pieces")
+    if not isinstance(pieces, dict) or not pieces:
+        raise ValueError("give the pieces' materials, e.g. {\"helmet\": \"leather\"}")
+    piece_materials.save_corrections(folder, {str(k): (None if v in (None, "") else str(v)) for k, v in pieces.items()})
+    return {"set": payload["set"], "body": payload["body"], "materials": piece_materials.set_materials(folder)}
 
 
 def resume_command(output: Path, payload: dict) -> tuple[list[str], Path]:
@@ -155,6 +184,11 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
         raise ValueError("give the set a name: letters, digits, '.', '_' or '-'")
     raw = {k: v for k, v in (payload.get("slots") or {}).items() if k in slots.DRAWN}
     chosen = slots.choose(raw) if raw else {}
+    for held in ("weapon", "shield"):
+        # a weapon's or shield's material goes beside its words, only when it is being made
+        asked = ((payload.get("slots") or {}).get(held) or {}).get("material")
+        if asked and str(payload.get(held) or "").strip():
+            chosen[held] = {"material": piece_materials.check(asked)}
     seeds = [int(s) for s in str(payload.get("seeds", "3")).split(",") if s.strip()][:5] or [3]
     folder = output / "sets" / set_name / body_mod.load(body_json)["name"]
     folder.mkdir(parents=True, exist_ok=True)
@@ -244,13 +278,16 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
             raise PermissionError("Use this Studio page to make sets")
         if not mutation and parts == ["api", "slot-parts"]:
             handler._send_json(200, {"base": "/output/", "bodies": list_bodies(output), "sets": list_sets(output),
-                                     "slots": catalogue(), "job": job_status(output)})
+                                     "slots": catalogue(), "materials": list(piece_materials.MATERIALS),
+                                     "job": job_status(output)})
         elif mutation and parts == ["api", "slot-parts", "bodies"]:
             handler._send_json(201, register_body(output, _body(handler)))
         elif mutation and parts == ["api", "slot-parts", "run"]:
             handler._send_json(202, start_run(output, _body(handler)))
         elif mutation and parts == ["api", "slot-parts", "run", "cancel"]:
             handler._send_json(200, cancel_run())
+        elif mutation and parts == ["api", "slot-parts", "materials"]:
+            handler._send_json(200, save_materials(output, _body(handler)))
         else:
             handler._send_json(404, {"error": "Unknown endpoint"})
     except PermissionError as exc:
