@@ -101,13 +101,15 @@ def parse_family(value: Any) -> str:
     return family
 
 
-def clip_command(python: Path, rigged: Path, family: str = AUTO, *, library: bool = True,
+def clip_command(python: Path, rigged: Path, family: str = AUTO, *, clips: bool = True, library: bool = True,
                  variations: bool = True, variation_factor: float | None = None,
                  variation_seed: int | None = None) -> tuple[list[str], Path]:
     """The step after rigging: recognise the family, write the test clips (the CC0
-    library's, then procedural ones; `library=False` only the procedural; `variations=False`
-    no longer GenMM takes)."""
+    library's, then procedural ones; `clips=False` the family alone; `library=False` only
+    the procedural; `variations=False` no longer GenMM takes)."""
     command = [str(python), str(CLIPS_SCRIPT), "--rig", str(rigged), "--family", parse_family(family)]
+    if not clips:
+        command.append("--no-clips")
     if not library:
         command.append("--no-library")
     if not variations:

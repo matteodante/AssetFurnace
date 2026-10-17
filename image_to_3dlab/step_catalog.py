@@ -196,6 +196,8 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
         name="clips", label="Family clips", feature=6, takes=("asset",), makes="clips",
         params=(
             Param("family", "choice", "auto", choices=FAMILIES, help="the creature's family; auto: recognised"),
+            Param("clips", "bool", True, flag="--no-clips",
+                  help="the test clips; off: the family alone (the Unreal export's facing)"),
             Param("library", "bool", True, flag="--no-library", help="the CC0 library's clips, carried by chains"),
             Param("variations", "bool", True, flag="--no-variations",
                   help="the library's loops also as longer varied takes (GenMM)"),

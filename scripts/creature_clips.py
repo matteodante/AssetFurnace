@@ -4,14 +4,15 @@
 Runs after the auto-rig, in the same Python that runs SkinTokens (it has the `bpy` wheel):
 
     python scripts/creature_clips.py --rig out/wolf_rigged.glb [--family auto|digitigrade|...]
-        [--no-library] [--no-variations] [--variation-factor 2] [--variation-seed 0]
+        [--no-clips] [--no-library] [--no-variations] [--variation-factor 2] [--variation-seed 0]
 
 Writes `wolf_rigged.family.json` (the family and the role of every chain, in glTF space)
 and, for a family that has them, `wolf_<family>-<motion>.glb` beside the rig: the names
 the studio already lists as clips of `wolf_rigged.glb`. With the CC0 clip library
 installed (`scripts/bootstrap_clip_library.py`) a family first gets its library clips,
 carried onto the rig by `chain_retarget.py`; the procedural clips of `creature_motion.py`
-fill in the motions the library does not have. `--no-library` makes only the procedural
+fill in the motions the library does not have. `--no-clips` writes only the family file
+(the Unreal export reads a creature's facing from it). `--no-library` makes only the procedural
 clips; `--no-variations` leaves out the longer takes of the looping library clips (GenMM,
 `--variation-factor` times as long, varied with `--variation-seed`). This file only reads
 the armature and keys it.
@@ -85,13 +86,14 @@ def wanted_motions(family: str, chosen: bool) -> tuple[str, ...]:
 
 
 def plan(family: str, chosen: bool, legs: int, installed: bool | None = None, library: bool = True,
-         variations: bool = True) -> list[tuple[str, str | None]]:
+         variations: bool = True, clips: bool = True) -> list[tuple[str, str | None]]:
     """(motion, library creature or None for a procedural clip), library clips first. A
     library motion replaces the procedural one of the same name. Without `library` only
-    the procedural clips; without `variations` no longer takes of the library's loops."""
+    the procedural clips; without `variations` no longer takes of the library's loops;
+    without `clips` none (the family alone)."""
     import creature_motion
 
-    if family not in creature_motion.DEFAULT_CLIPS and not chosen:
+    if not clips or (family not in creature_motion.DEFAULT_CLIPS and not chosen):
         return []
     installed = (cl.installed() if installed is None else installed) and library
     source = cl.source_for(family, legs) if installed else None
@@ -105,6 +107,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--rig", required=True, type=Path, help="rigged GLB (SkinTokens output)")
     ap.add_argument("--family", default=AUTO, choices=(AUTO, *cf.FAMILIES))
+    ap.add_argument("--no-clips", dest="clips", action="store_false",
+                    help="only the family file, no test clips")
     ap.add_argument("--no-library", dest="library", action="store_false",
                     help="only the procedural test clips, not the CC0 library's")
     ap.add_argument("--no-variations", dest="variations", action="store_false",
@@ -128,7 +132,7 @@ def main() -> None:  # pragma: no cover - needs bpy
     errors = []
     found["clip_sources"] = {}
     for motion, source in plan(found["family"], chosen is not None, len(found.get("legs") or []),
-                               library=args.library, variations=args.variations):
+                               library=args.library, variations=args.variations, clips=args.clips):
         try:
             name = _write_clip(args.rig, found["family"], motion, args.blend, source,
                                factor=args.variation_factor, seed=args.variation_seed)

@@ -26,6 +26,11 @@ from image_to_3dlab.batch_steps import StepContext, StepResult
 def preflight(rows) -> list[str]:
     problems = [f"row {row.id}: clips {problem}" for row in rows
                 for problem in step_catalog.check("clips", row.options.get("clips", {}))]
+    for row in rows:
+        if "export_unreal" in row.steps and row.kind != "creature":
+            # an object is exported without animations or facing: its clips would be dropped unsaid
+            problems.append(f'row {row.id}: the family clips reach the Unreal export only for "kind": "creature" '
+                            f"(it is {row.kind})")
     if rows and not rigging.installed():
         problems.append(rigging.MISSING)
     return problems
@@ -42,6 +47,7 @@ def run(ctx: StepContext) -> StepResult:
     sidecar = rigged.with_suffix(".provenance.json")
     sidecar.write_text(json.dumps(record or {"license": None}, indent=2), encoding="utf-8")
     command = rigging.clip_command(rigging.venv_python(), rigged, options.get("family", "auto"),
+                                   clips=options.get("clips", True),
                                    library=options.get("library", True), variations=options.get("variations", True),
                                    variation_factor=options.get("variation_factor"),
                                    variation_seed=options.get("variation_seed"))

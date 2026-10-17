@@ -146,12 +146,11 @@ def rig_run_of(glb: Path) -> Path | None:
 
 def rig_commands(source: Path, result: Path, family: str = "auto", clips: bool = True,
                  variations: bool = True) -> list[tuple[list[str], Path]]:
-    """SkinTokens and the skin-weight clean-up (image_to_3dlab/rigging.py), then, unless
-    switched off, the creature's family and its test clips (with or without the longer
-    GenMM takes)."""
+    """SkinTokens and the skin-weight clean-up (image_to_3dlab/rigging.py), then the
+    creature's family and, unless switched off, its test clips (with or without the longer
+    GenMM takes). The family is written either way: the Unreal export reads its facing."""
     return [*rigging.rig_commands(source, result),
-            *([creature_family_api.clip_command(venv_python(), result, family, variations=variations)]
-              if clips else [])]
+            creature_family_api.clip_command(venv_python(), result, family, clips=clips, variations=variations)]
 
 
 def _slug(value: str) -> str:

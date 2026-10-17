@@ -89,6 +89,19 @@ function movePicker(asset, ctx, cta) {
     <button class="primary" data-run="animated">${cta}</button>`;
 }
 
+/** A step card's settings, read at once: the progress card replaces these controls as
+ * soon as a step starts. */
+export function readSettings(card, ctx) {
+  const k = (key) => card.querySelector(`[data-k="${key}"]`);
+  return {
+    backend: k('engine')?.value || ctx.engines[0]?.id,
+    faces: Number(k('faces')?.value), photo: k('photo')?.checked, texture: Number(k('texture')?.value),
+    preset: card.querySelector('[data-preset][aria-pressed="true"]')?.dataset.preset,
+    speed: Number(k('speed')?.value || 1), spread: Number(k('spread')?.value || 0), family: k('family')?.value,
+    clips: k('clips')?.checked ?? true, variations: k('variations')?.checked ?? true,
+  };
+}
+
 /** Wire a step card's controls. `ctx.onDone(asset)` reloads the Library afterwards. */
 export function wireStep(card, stepId, asset, ctx) {
   const k = (key) => card.querySelector(`[data-k="${key}"]`);
@@ -102,19 +115,13 @@ export function wireStep(card, stepId, asset, ctx) {
   if (engine) engine.onchange = () => { card.querySelector('[data-k="licence"]').textContent = ctx.engines.find((e) => e.id === engine.value)?.license || ''; };
 
   card.querySelectorAll('[data-run]').forEach((button) => button.onclick = async () => {
-    // read every setting now: the progress card replaces these controls as soon as it starts
-    const settings = {
-      backend: engine?.value || ctx.engines[0]?.id,
-      faces: Number(k('faces')?.value), photo: k('photo')?.checked, texture: Number(k('texture')?.value),
-      preset: card.querySelector('[data-preset][aria-pressed="true"]')?.dataset.preset,
-      speed: Number(speed?.value || 1), spread: Number(spread?.value || 0), family: k('family')?.value,
-    };
+    const settings = readSettings(card, ctx);
     card.dataset.lastPreset = settings.preset || '';
     const seed = newseed && !newseed.checked ? Math.max(0, Math.trunc(Number(k('seed').value) || 0)) : freshSeed();
     const run = { model: () => startModel(asset, ctx, settings.backend, seed),
       finished: () => (asset.kind === 'prop set' ? startSplit(asset)
         : startFinish(asset, ctx, { faces: settings.faces, skip_photo: !settings.photo, texture_size: settings.texture })),
-      rigged: () => startRig(asset, settings.family, { clips: k('clips')?.checked ?? true, variations: k('variations')?.checked ?? true }),
+      rigged: () => startRig(asset, settings.family, { clips: settings.clips, variations: settings.variations }),
       animated: () => startAnimate(asset, settings.preset, settings.speed, settings.spread) }[stepId];
     await runInCard(card, run, ctx, stepId, '');
   });

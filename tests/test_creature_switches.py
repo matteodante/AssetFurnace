@@ -88,9 +88,32 @@ def test_the_studio_rig_can_skip_the_clips_or_their_longer_takes():
     with_clips = autorig_api.rig_commands(Path("s.glb"), Path("r.glb"), "auto")
     assert any("creature_clips.py" in " ".join(c) for c, _ in with_clips)
     without = autorig_api.rig_commands(Path("s.glb"), Path("r.glb"), "auto", clips=False)
-    assert not any("creature_clips.py" in " ".join(c) for c, _ in without)
+    (family,) = [c for c, _ in without if "creature_clips.py" in " ".join(c)]   # the family file, no clips
+    assert "--no-clips" in family
     short = autorig_api.rig_commands(Path("s.glb"), Path("r.glb"), "auto", variations=False)
     assert any("--no-variations" in c for c, _ in short)
+
+
+def test_without_clips_only_the_family_is_planned():
+    assert creature_clips.plan("digitigrade", True, 4, installed=True, clips=False) == []
+    assert creature_clips.build_parser().parse_args(["--rig", "r.glb", "--no-clips"]).clips is False
+    command, _ = rigging.clip_command(Path("py"), Path("r.glb"), clips=False)
+    assert "--no-clips" in command
+
+
+@needs_node
+def test_the_rig_step_reads_its_switches_before_the_card_changes():
+    """The progress card replaces the controls as soon as a step starts: the switches are
+    read with the other settings, before it."""
+    url = (REPO / "viewer" / "studio" / "steps.js").as_uri()
+    program = (f"import * as m from {json.dumps(url)};\n"
+               "const boxes = { clips: { checked: false }, variations: { checked: false } };\n"
+               "const card = { querySelector: (q) => { const k = /data-k=\"(\\w+)\"/.exec(q); return k ? boxes[k[1]] || null : null; } };\n"
+               "const s = m.readSettings(card, { engines: [] });\n"
+               "console.log(JSON.stringify({ clips: s.clips, variations: s.variations }));")
+    result = subprocess.run([NODE, "--input-type=module", "--eval", program], check=True, capture_output=True,
+                            text=True, encoding="utf-8")
+    assert json.loads(result.stdout) == {"clips": False, "variations": False}
 
 
 @needs_node
@@ -165,6 +188,57 @@ def test_the_clips_step_writes_its_own_folder_and_hands_the_clips_on(tmp_path, m
     record = json.loads((folder / "SM_row01_digitigrade-walk.provenance.json").read_text())
     assert record["license"] == {"name": "MIT"}
     assert json.loads((folder / "SM_row01_digitigrade-walk.provenance.json").read_text())["motion"]["clip"]
+
+
+def test_animate_after_clips_keeps_the_family_clips(tmp_path, monkeypatch, fake_clips):
+    install_fake_generator(monkeypatch)
+    monkeypatch.setitem(batch.STEPS, "finish", fake_step(FakeFinish().run))
+    exported = []
+
+    def export_step(ctx):
+        from image_to_3dlab.batch_steps import StepResult
+        exported.append(sorted(c.name for c in ctx.clips))
+        return StepResult()
+
+    def rig_step(ctx):
+        from test_rigging import skinned
+
+        from image_to_3dlab.batch_steps import StepResult
+        rigged = skinned(ctx.step_dir / f"{ctx.row.id}_rigged.glb")
+        sidecar = rigged.with_suffix(".provenance.json")
+        sidecar.write_text(json.dumps({"license": {"name": "MIT"}}))
+        return StepResult(asset=rigged, sidecar=sidecar, files=[rigged, sidecar])
+
+    def animate_model(rigged, presets, folder, **kwargs):
+        folder.mkdir(parents=True, exist_ok=True)
+        made = []
+        for preset in presets:
+            clip = tiny_glb(folder / f"{rigged.stem}_{preset}.glb", preset)
+            clip.with_suffix(".provenance.json").write_text("{}")
+            made.append(clip)
+        (folder / "animate.log").write_text("ok\n")
+        return made
+
+    monkeypatch.setattr(rigging, "animate_model", animate_model)
+    monkeypatch.setitem(batch.STEPS, "export_unreal", fake_step(export_step))
+    monkeypatch.setitem(batch.STEPS, "rig", fake_step(rig_step))
+    spec_path = write_spec(tmp_path, rows=1, steps=["generate", "finish", "rig", "clips", "animate", "export_unreal"])
+    spec = json.loads(spec_path.read_text())
+    spec["defaults"].update(kind="creature", size_cm=200, animate={"presets": ["wave"]})
+    spec_path.write_text(json.dumps(spec))
+    report = batch.run_batch(batch.load_batch(spec_path))
+    assert report.exit_code == 0, report.failed
+    assert exported == [["SM_row01_digitigrade-idle.glb", "SM_row01_digitigrade-walk.glb", "SM_row01_rigged_wave.glb"]]
+
+
+def test_a_clips_row_that_is_not_a_creature_is_told(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(rigging, "installed", lambda root=None: True)
+    row = SimpleNamespace(id="r", kind="object", steps=["rig", "clips", "export_unreal"], options={})
+    (problem,) = clips_step.preflight([row])
+    assert '"kind": "creature"' in problem
+    assert clips_step.preflight([SimpleNamespace(**{**vars(row), "kind": "creature"})]) == []
 
 
 def test_the_clips_step_is_described_and_checked():
