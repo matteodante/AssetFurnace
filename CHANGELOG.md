@@ -362,6 +362,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
   Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
   only text to image took it.
+- Unreal exports are one-sided: the material culls back faces (glTF `doubleSided` false),
+  so Unreal no longer makes every piece a Two Sided material that draws the inside of a
+  helmet through its openings. Cloth (a cloak, cape, mantle, scarf, banner, flag or veil,
+  by name) stays two sided; `export_unreal(two_sided=)` decides by hand.
 - Studio pictures and reference concepts take the shared GPU lock while sd-cli runs, as the
   command line and the batches already did; while another session holds the GPU the job
   stays queued, says whom it waits for, and can be cancelled.
