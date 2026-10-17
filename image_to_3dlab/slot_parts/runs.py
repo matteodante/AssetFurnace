@@ -264,7 +264,8 @@ def waiting_picks(output: Path, folder: Path) -> dict[str, Any] | None:
         return None
     if state.get("waiting") == "concept":
         seeds = [int(s) for s in state.get("concepts") or []]
-        return {"concept": {"auto": seeds[0], "picked": seeds[0], "doubt": False, "outfit": True,
+        return {"concept": {"auto": seeds[0], "picked": int(state.get("picked", seeds[0])) if seeds else None,
+                            "doubt": False, "outfit": True,
                             "candidates": [{"seed": seed, "picture": rel(output, folder / "concept" / f"s{seed}.png"),
                                             "score": None, "is_piece": None, "shape": None} for seed in seeds]}}             if seeds else None
     out = {}

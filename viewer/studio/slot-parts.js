@@ -217,7 +217,7 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
       ${mode() === 2
         ? '<div class="row"><input type="text" name="concept" placeholder="Concept drawn on that body, a picture under output/ (e.g. images/knight.png)"></div>'
         : `<div class="row"><textarea name="outfit" rows="2" placeholder="The outfit in words, e.g. crimson and gold plate armour: a closed helmet, rounded pauldrons, gauntlets, armoured boots"></textarea></div>
-          <div class="row"><label title="The outfit drawn once per seed on the body">Outfit pictures (seeds) <input type="text" name="conceptSeeds" value="3" size="8"></label>
+          <div class="row"><label title="The outfit drawn once per seed on the body; empty: once, with the first picture seed">Outfit pictures (seeds) <input type="text" name="conceptSeeds" placeholder="first seed" size="8"></label>
             <label><input type="checkbox" name="chooseConcept" checked> let me pick the outfit before the pieces</label></div>`}
       <table class="sp-slots"><tbody>${(info.slots || []).map((s) => `<tr>
         <td><label><input type="checkbox" data-on="${escape(s.name)}"> ${escape(slotLabel(s.name))}</label></td>

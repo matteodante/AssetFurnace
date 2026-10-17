@@ -405,10 +405,13 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
         state = json.loads(state_path.read_text(encoding="utf-8"))
         if state.get("waiting") == "concept":
             # the outfit was waiting for a pick: go on from it as a new run would
-            concept_pick = picks.pop("concept", state["concepts"][0])
+            concept_pick = picks.pop("concept", state.get("picked", state["concepts"][0]))
             if int(concept_pick) not in state["concepts"]:
                 raise ValueError(f"concept: {concept_pick} is not one of the outfits drawn "
                                  f"({', '.join(map(str, state['concepts']))})")
+            # kept until the set is made: a fit that fails goes on from this outfit, not the first
+            state_path.write_text(json.dumps({**state, "picked": int(concept_pick)}, indent=1) + "\n",
+                                  encoding="utf-8")
             outfit, concept_seeds = state["outfit"], tuple(state["concepts"])
             stop_at_pictures = stop_at_pictures or state.get("stop_at_pictures", False)
             resume = False
@@ -458,7 +461,8 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
                         score=score)
         held = {slot: {"prompt": chosen[slot]["prompt"]} for slot in ("weapon", "shield") if slot in chosen}
         if offer_held:   # a weapon or shield is picked like the pieces
-            offered = candidates.load(folder / "pieces")
+            # this run's drawn pieces, never an earlier run's left in candidates.json
+            offered = candidates.load(folder / "pieces") if drawn else {"slots": {}, "judge": None}
             for slot, options in held.items():
                 offered["slots"][slot] = held_candidates(held_pictures(slot, options["prompt"], folder / "pieces",
                                                                        list(seeds), style, run, generate))
@@ -574,12 +578,34 @@ def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0
     return path
 
 
+def carried_record(fit_dir: Path, body_json: Path, out: Path, report: dict) -> Path | None:
+    """`<set>.parts.json` for a set carried to another body: the first body's record with
+    this body and this fit, so the set is listed and exported there too. Its checks are
+    not carried: they were made on the other body."""
+    from image_to_3dlab.slot_parts import sidecar
+
+    found = sorted(Path(fit_dir).parent.glob("*.parts.json"))
+    if not found:
+        return None
+    parts = json.loads(found[0].read_text(encoding="utf-8"))
+    record = body_mod.load(body_json)
+    parts.update(body=sidecar.body_entry(record, body_json), carried_from=(parts.get("body") or {}).get("name"),
+                 fit={k: report[k] for k in ("covered_share", "files") if k in report}, checks={},
+                 created=sidecar.now_text())
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    return sidecar.write(Path(out).parent, parts["set"], parts)
+
+
 def fit_job(pieces_json: Path, body_json: Path, out: Path, options: dict | None = None) -> dict:
     """The job `blender_fit_parts.py` reads: the body, the concept's size and each piece's box."""
     record = json.loads(Path(pieces_json).read_text())
-    cut_record = json.loads(Path(record["cuts"]).read_text())
-    with Image.open(cut_record["concept"]) as concept:
-        size = list(concept.size)
+    cuts = Path(record["cuts"])
+    if cuts.is_file():
+        cut_record = json.loads(cuts.read_text())
+        with Image.open(cut_record["concept"]) as concept:
+            size = list(concept.size)
+    else:   # a weapon or shield alone: nothing was cut from a concept, nothing is placed by one
+        cut_record, size = {"slots": {}}, [1, 1]
     if not record["slots"]:
         raise ValueError(f"{pieces_json} has no pieces: run the pieces command first")
     entries = [{"slot": slot, "glb": entry["glb"],
@@ -700,7 +726,9 @@ def main(argv: list[str] | None = None) -> int:
             name = body_mod.load(args.body)["name"]
             out = args.out or args.fit.parent.parent / name / "fit"
             report = run_fit(refit_job(args.fit, args.source, args.body, out), args.blender)
-            print(f"carried {', '.join(report['pieces'])} over to {name}; body covered {report['covered_share']:.0%}")
+            carried = carried_record(args.fit, args.body, Path(out), report)
+            print(f"carried {', '.join(report['pieces'])} over to {name}; body covered {report['covered_share']:.0%}"
+                  + (f"; wrote {carried}" if carried else ""))
         elif args.command == "unreal":
             path = unreal_set(args.fit, args.body, args.out or args.fit.parent / "unreal", args.size_cm)
             print(f"wrote {path}")

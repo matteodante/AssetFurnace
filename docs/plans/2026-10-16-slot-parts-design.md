@@ -448,7 +448,9 @@ Su main mancava il punto 3: con più semi si prendeva il primo.
   (`run --resume --pick concept=4`) va avanti da quel vestito, anche fino alla scelta dei pezzi. Agenti:
   `pieces_run(concept_seeds=, choose_concept=)` e `pieces_pick({"concept": 4})`.
 - **Un set fatto** ha nella pagina Pieces "Fit again", "Carry to body" ed "Export for Unreal", come i comandi `fit`,
-  `refit` e `unreal` e gli strumenti MCP.
+  `refit` e `unreal` e gli strumenti MCP. Un set portato su un altro corpo ha lì il suo `<set>.parts.json` (con
+  `carried_from`; i controlli non vengono portati, perché erano del primo corpo), quindi la pagina lo elenca e lo
+  esporta. Una scelta del vestito resta nello stato finché il set non è fatto: un fit fallito riparte da quel vestito.
 - Senza Qwen3-VL (llama.cpp non installato) decide la sagoma, e il record lo dice.
 
 **Misura.** Tre vestiti: i due cavalieri rossi delle prove (s3, s7) sull'uomo e un ranger di cuoio disegnato sulla

@@ -40,6 +40,16 @@ def models(matte: str | None = None) -> list[dict]:
     return out
 
 
+def body_entry(body: dict, body_json: Path) -> dict:
+    """The base body a set is on, as its record names it."""
+    return {"name": body["name"], "record": str(Path(body_json).resolve()),
+            "image_sha256": _sha(body["image"]), "rig_sha256": _sha(body["rigged"]), "labels": body.get("labels", {})}
+
+
+def now_text(now: datetime | None = None) -> str:
+    return (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
+
+
 def parts_record(*, mode: str, set_name: str, body: dict, body_json: Path, concept: Path, concept_info: dict,
                  chosen: dict, pieces: dict, fit: dict | None, checks: dict, matte: str | None,
                  now: datetime | None = None) -> dict:
@@ -48,9 +58,8 @@ def parts_record(*, mode: str, set_name: str, body: dict, body_json: Path, conce
     return {
         "schema_version": SCHEMA_VERSION,
         "set": set_name, "mode": mode,
-        "created": (now or datetime.now(timezone.utc)).isoformat(timespec="seconds"),
-        "body": {"name": body["name"], "record": str(Path(body_json).resolve()),
-                 "image_sha256": _sha(body["image"]), "rig_sha256": _sha(body["rigged"]), "labels": body.get("labels", {})},
+        "created": now_text(now),
+        "body": body_entry(body, body_json),
         "concept": {"path": str(Path(concept).resolve()), "sha256": _sha(concept), **concept_info},
         "slots": chosen,
         "pieces": pieces,

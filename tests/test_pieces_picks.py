@@ -70,6 +70,76 @@ def test_mode_3_waits_for_a_pick_among_the_outfits_and_goes_on_from_it(tmp_path)
     assert not (folder / "run_state.json").exists()
 
 
+def test_the_outfit_picked_is_kept_when_the_run_after_it_fails(tmp_path):
+    body_json, source = _with_picture(tmp_path)
+    calls = []
+    edit, generate, run = _fakes(source, calls)
+    common = dict(root=tmp_path / "sets", run=run, edit=edit, generate=generate, score=_score)
+    cli.run_set(body_json, "red", "torso", outfit="red plate", concept_seeds=(3, 4, 5), stop_at_concept=True,
+                **common)
+
+    def broken(job):
+        raise RuntimeError("Blender crashed")
+
+    with pytest.raises(RuntimeError):
+        cli.run_set(body_json, "red", "torso", resume=True, picks={"concept": 5}, fitter=broken, **common)
+    folder = tmp_path / "sets" / "red" / "stick"
+    assert json.loads((folder / "run_state.json").read_text())["picked"] == 5
+    output = tmp_path   # waiting_picks gives paths relative to the folder above sets/
+    assert runs.waiting_picks(output, folder)["concept"]["picked"] == 5
+    path = cli.run_set(body_json, "red", "torso", resume=True, fitter=lambda job: {"covered_share": 0.5, "files": []},
+                       checker=lambda *a: {}, **common)
+    assert json.loads(path.read_text())["concept"]["seed"] == 5   # no pick given: the one picked before
+
+
+def test_a_weapon_alone_offers_only_its_own_pictures(tmp_path):
+    body_json, source = _with_picture(tmp_path)
+    calls = []
+    edit, generate, run = _fakes(source, calls)
+    folder = tmp_path / "sets" / "given" / "stick"
+    candidates.write(folder / "pieces", {"boots": {"candidates": {"1": {"picture": "old.png", "score": 0.9}},
+                                                   "auto": 1, "picked": 1}}, "old judge")   # an earlier run's
+    cli.run_set(body_json, "given", {}, concept=source, weapon="a longsword", seeds=(1, 2), stop_at_pictures=True,
+                root=tmp_path / "sets", run=run, edit=edit, generate=generate, score=_score)
+    assert set(candidates.load(folder / "pieces")["slots"]) == {"weapon"}
+
+
+def test_a_weapon_alone_can_be_fitted_again(tmp_path):
+    body_json, source = _with_picture(tmp_path)
+    folder = tmp_path / "sets" / "given" / "stick"
+    (folder / "pieces").mkdir(parents=True)
+    pieces_json = folder / "pieces" / "pieces.json"
+    pieces_json.write_text(json.dumps({"cuts": str(folder / "cuts" / "cuts.json"), "seeds": [1],
+                                       "slots": {"weapon": {"glb": str(folder / "pieces" / "weapon.glb")}}}))
+    job = cli.fit_job(pieces_json, body_json, folder / "fit")   # no cuts: nothing was drawn on the body
+    assert [p["slot"] for p in job["pieces"]] == ["weapon"]
+
+
+def test_a_carried_set_is_listed_on_its_new_body(tmp_path, monkeypatch):
+    from image_to_3dlab.slot_parts import body as body_mod
+
+    body_json, source = _with_picture(tmp_path)
+    record = body_mod.load(body_json)
+    record["name"] = "tall"
+    tall_json = body_mod.write(record, tmp_path / "bodies")
+    folder = tmp_path / "sets" / "red" / "stick"
+    (folder / "fit").mkdir(parents=True)
+    (folder / "fit" / "fit.json").write_text(json.dumps({"files": ["torso.glb"], "covered_share": 0.5}))
+    (folder / "red.parts.json").write_text(json.dumps({"set": "red", "mode": "body_and_equipment",
+                                                       "body": {"name": "stick"}, "pieces": {"torso": {}},
+                                                       "created": "2026-10-17T10:00:00",
+                                                       "fit": {"covered_share": 0.5}, "checks": {"torso": {}}}))
+    monkeypatch.setattr(cli, "refit_job", lambda *a: {"out": str(tmp_path / "sets" / "red" / "tall" / "fit")})
+    monkeypatch.setattr(cli, "run_fit", lambda job, blender=None: {"pieces": ["torso"], "covered_share": 0.6,
+                                                                  "files": ["torso.glb"]})
+    assert cli.main(["refit", "--fit", str(folder / "fit"), "--from", str(body_json), "--body", str(tall_json)]) == 0
+    carried = json.loads((tmp_path / "sets" / "red" / "tall" / "red.parts.json").read_text())
+    assert carried["body"]["name"] == "tall" and carried["carried_from"] == "stick"
+    assert carried["fit"]["covered_share"] == 0.6 and carried["checks"] == {}   # not checked on this body yet
+    assert [(s["set"], s["body"]) for s in runs.list_sets(tmp_path)] == [("red", "stick"), ("red", "tall")] or \
+        sorted((s["set"], s["body"]) for s in runs.list_sets(tmp_path)) == [("red", "stick"), ("red", "tall")]
+
+
 def test_a_concept_pick_can_lead_to_a_wait_for_the_pieces(tmp_path):
     body_json, source = _with_picture(tmp_path)
     calls = []
@@ -186,6 +256,12 @@ def test_the_studio_page_fits_refits_and_exports_a_set(output, monkeypatch):
     (output / "sets" / runs.RUN_FILE).unlink()
     with pytest.raises(ValueError, match="action"):
         slot_parts_api.start_run(output, {"action": "explode", "body": "stick", "set": "red"}, popen=popen)
+    outside = output.parent / "elsewhere.png"
+    Image.new("RGB", (8, 8)).save(outside)
+    for action in (None, "", False, "run"):   # however "run" is said, the concept must be under output/
+        with pytest.raises(ValueError, match="output folder"):
+            slot_parts_api.start_run(output, {"action": action, "mode": 2, "body": "stick", "set": "red",
+                                              "concept": str(outside), "slots": {"torso": {}}}, popen=popen)
 
 
 @needs_node
@@ -197,7 +273,8 @@ def test_the_pieces_page_shows_outfits_to_pick_and_set_actions():
                "const html = m.pickRows(picks);\n"
                "const set = m.setActions({ set: 'red', body: 'stick' }, [{ name: 'stick' }, { name: 'elf' }]);\n"
                "const payload = m.runPayload({ mode: 3, body: 'stick', set: 'red', outfit: 'red plate', slots: { torso: { on: true } }, conceptSeeds: '3,4', chooseConcept: true });\n"
-               "console.log(JSON.stringify({ html, set, payload }));")
+               "const plain = m.runPayload({ mode: 3, body: 'stick', set: 'red', outfit: 'red plate', slots: { torso: { on: true } }, conceptSeeds: '', chooseConcept: true });\n"
+               "console.log(JSON.stringify({ html, set, payload, plain }));")
     result = subprocess.run([NODE, "--input-type=module", "--eval", program], check=True, capture_output=True,
                             text=True, encoding="utf-8")
     out = json.loads(result.stdout)
@@ -205,3 +282,4 @@ def test_the_pieces_page_shows_outfits_to_pick_and_set_actions():
     assert 'data-set-action="unreal"' in out["set"] and 'data-set-action="refit"' in out["set"]
     assert '<option value="elf">' in out["set"] and '<option value="stick">' not in out["set"]
     assert out["payload"]["choose_concept"] is True and out["payload"]["concept_seeds"] == "3,4"
+    assert "concept_seeds" not in out["plain"]   # left empty: the outfit takes the first picture seed, as before

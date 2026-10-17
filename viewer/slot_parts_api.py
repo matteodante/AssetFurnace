@@ -71,9 +71,9 @@ def register_body(output: Path, payload: dict) -> dict:
                               clips, payload.get("labels") or {})
 
 
-def _checked(output: Path, payload: dict) -> dict:
+def _checked(output: Path, payload: dict, action: str = "run") -> dict:
     """The page's request with its concept, if any, found inside the output folder."""
-    if int(payload.get("mode", 3)) == 2 and not payload.get("resume") and payload.get("action", "run") == "run":
+    if action == "run" and int(payload.get("mode", 3)) == 2 and not payload.get("resume"):
         return {**payload, "concept": _inside(output, payload.get("concept"))}
     return payload
 
@@ -126,8 +126,7 @@ def start_run(output: Path, payload: dict, popen=subprocess.Popen) -> dict[str, 
         raise ValueError(f"unknown action {action!r}: {', '.join(runs.COMMANDS)}")
     if action == "run" and int(payload.get("mode", 3)) not in (2, 3):
         raise ValueError("mode 1 (one piece) is + Create; this page makes modes 2 and 3")
-    process, record = runs.start(output, action, _checked(output, payload) if action == "run" else payload,
-                                 popen=popen)
+    process, record = runs.start(output, action, _checked(output, payload, action), popen=popen)
     _JOB.clear()
     _JOB.update(process=process, record=record, log=record["log"], folder=record["folder"], set=payload["set"],
                 body=payload["body"], started=record["started"])
