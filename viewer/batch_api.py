@@ -112,6 +112,11 @@ def row_action(directory: Path, action: str, body: dict) -> tuple[int, dict[str,
     result = mcp_server.pick_candidate(str(directory), row, step, choice)
     if not result.get("picked"):
         raise ValueError(result.get("problem") or "the pick was not taken")
+    resumed = result.get("resumed")
+    if isinstance(resumed, dict) and not resumed.get("started"):
+        # kept for the next run, but the batch did not go on: say why, not a silent "Pick one"
+        problems = "; ".join(resumed.get("problems") or []) or "the batch could not resume"
+        return 422, {**result, "error": f"the pick is saved, but the batch did not resume: {problems}"}
     return 200, result
 
 

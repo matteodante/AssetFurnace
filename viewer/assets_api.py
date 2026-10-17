@@ -12,6 +12,9 @@ links have to be rebuilt from what each run left behind:
 * picture -> finished: a finish run also keeps the source picture (`input/source.png`),
   which links it even when its 3D model was made outside the Generate tab.
 * finished (or raw) model -> rig: the rig's provenance records its input's sha256.
+* any of these -> a Blender version (`blender-edits/versions/<id>/`): the version records
+  its parent's sha256; a finish or rig made from the version keeps its sha256 the same
+  way, so what is made from a version stays in the asset it came from.
 
 Hashes are cached in `output/.assets-index.json`, keyed by path and invalidated by size
 and modification time, so a Library refresh hashes only new or changed files.
@@ -185,13 +188,21 @@ def _prop_sets(output: Path) -> list[dict[str, Any]]:
     return found
 
 
+def _versions(output: Path) -> list[dict[str, Any]]:
+    """Blender versions, for the lineage only: the Library lists them under their asset."""
+    from blender_versions import list_versions
+
+    return [{"stem": Path(v["file"]).parent.name, "file": output / v["file"], "sha": v["sha256"],
+             "parent_sha": v.get("parent_sha256")} for v in list_versions(output)]
+
+
 def list_assets(output: Path) -> list[dict[str, Any]]:
     """Every asset on disk, the one touched most recently first."""
     if not output.is_dir():
         return []
     hashes = _Hashes(output)
     pictures, models, finishes = _pictures(output), _models(output), _finishes(output)
-    rigs, sets = _rigs(output), _prop_sets(output)
+    rigs, sets, versions = _rigs(output), _prop_sets(output), _versions(output)
     from batch_api import library_nodes  # a batch's finished rows are assets too (docs/batches.md)
 
     batched = library_nodes(output)
@@ -209,7 +220,8 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
     # union-find over every run; each connected group is one asset
     nodes: list[tuple[str, dict[str, Any]]] = (
         [("picture", n) for n in pictures] + [("model", n) for n in models]
-        + [("finished", n) for n in finishes] + [("rigged", n) for n in rigs] + [("set", n) for n in sets])
+        + [("finished", n) for n in finishes] + [("rigged", n) for n in rigs] + [("set", n) for n in sets]
+        + [("version", n) for n in versions])
     parent = list(range(len(nodes)))
 
     def find(i: int) -> int:
@@ -249,13 +261,28 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
             match = model_by_sha.get(hashes.of(fin["source"]))
             if match is not None:
                 join(index_of[id(fin)], match)
+    version_by_sha: dict[str, int] = {}
+    for version in versions:   # the same bytes exported twice are one file to follow
+        join(index_of[id(version)], version_by_sha.setdefault(version["sha"], index_of[id(version)]))
+    for fin in finishes:   # a finish made from a Blender version
+        if fin["source"] is not None and (match := version_by_sha.get(hashes.of(fin["source"]))) is not None:
+            join(index_of[id(fin)], match)
     for rig in rigs:
         sha = rig["input_sha"]
         match = finished_by_sha.get(sha) if sha else None
         if match is None and sha:
             match = model_by_sha.get(sha)
+        if match is None and sha:
+            match = version_by_sha.get(sha)
         if match is not None:
             join(index_of[id(rig)], match)
+    rig_by_sha = {hashes.of(rig["file"]): index_of[id(rig)] for rig in rigs}
+    for version in versions:   # a version joins the file it was made from, a version too
+        parent_sha = version["parent_sha"]
+        match = next((found[parent_sha] for found in (model_by_sha, finished_by_sha, rig_by_sha, version_by_sha)
+                      if parent_sha in found), None)
+        if match is not None:
+            join(index_of[id(version)], match)
     for prop_set in sets:
         if prop_set["file"] is not None:
             match = model_by_sha.get(hashes.of(prop_set["file"]))
@@ -280,6 +307,8 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
         by_kind: dict[str, list[dict[str, Any]]] = {}
         for i in members:
             by_kind.setdefault(nodes[i][0], []).append(nodes[i][1])
+        if set(by_kind) == {"version"}:
+            continue   # versions alone: attach_versions lists them under their asset
 
         def latest(kind: str) -> dict[str, Any] | None:
             items = [n for n in by_kind.get(kind, []) if n.get("file") is not None]

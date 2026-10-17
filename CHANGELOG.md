@@ -14,11 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   like the drawn pieces; and the Pieces page fits a set again, carries it to another body
   and exports it for Unreal, as `fit`, `refit` and `unreal` do. `refit` now writes the
   carried set's record on its new body, and `fit` works on a set of a weapon or shield alone.
+- A version made in Blender goes on through Finish, Rig and Animate. The studio shows the
+  steps on a chosen version, Rig and Animate list versions among their models (a version
+  that kept its skeleton is animated as a rig, copied once and not rigged again), and what
+  is made from a version stays in its asset in the Library.
 - The style bible can be applied, opt-in, wherever pictures are drawn: `--bible` on
   `text_image.py`, `reference_concept.py make` and `slot_parts.py run`; `bible` in the
   batch steps `picture` and `concept` and in `pieces_run`; a "Style bible" box in Create,
   the reference panel and the Pieces page. Its words follow the prompt, a concept also
   takes up to three of its pictures, and the provenance names the bible and its version.
+- Creature families can be switched: the studio's Rig step has "Family test clips" and
+  "Longer takes" (GenMM), `creature_clips.py` takes `--no-clips` (the family alone),
+  `--no-library`, `--no-variations`, `--variation-factor` and `--variation-seed`,
+  `chain_retarget.py` has a command line
+  (`--list`, one library clip onto a rig), and batches have a `clips` step after `rig`.
 - Studio Batches page: a row waiting for a pick shows its candidates and picks with a click;
   every row can run one of its steps again. The page uses the MCP server's own
   `pick_candidate` and `rerun_step`. A batch row that only draws (`picture`, `concept`)
@@ -328,6 +337,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Studio Batches page: a pick that is saved but whose batch cannot resume (its preflight
+  refuses) now says so, with the reasons, instead of leaving the row on "Pick one".
 - Batches: a batch made before per-step fingerprints no longer regenerates every row when
   `checks` joins its default steps or a row is edited; the row as it last ran is rebuilt
   from its spec copy and its still-valid steps are kept. A file named in a step's settings

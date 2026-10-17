@@ -62,9 +62,30 @@ export function stepFile(asset, stepId) {
 /** Whether a finished step can be made again with other values, keeping the ones before:
  *  the 3D model, Finish and Rig. Animate adds moves instead; a picture is remade in Create. */
 export function canRedo(asset, stepId) {
-  if (asset.kind === 'prop set') return false;
+  if (asset.kind === 'prop set' || asset.version) return false;   // a redo would draw over the edit
   const has = { model: asset.model && asset.picture, finished: asset.finished && asset.picture, rigged: asset.rigged }[stepId];
   return Boolean(has);
+}
+
+/**
+ * The asset as the Steps panel shows it on a Blender version: the version stands in for the
+ * step it was made from (a 3D model, a finished one, a rig when it kept its skeleton), so the
+ * steps after it run on the version's file. Null for a prop set, which has no steps after it.
+ */
+export function versionAsset(asset, version) {
+  if (!asset || !version || asset.kind === 'prop set') return null;
+  const parent = String(version.parent_file || '');
+  const from = parent === asset.finished || parent.startsWith('finish/') ? 'finished'
+    : parent === asset.rigged || parent.startsWith('animate/') ? 'finished'   // a rig whose skeleton was dropped
+      : 'model';
+  const stage = version.facts?.skins ? 'rigged' : from;
+  // the steps before it keep their own files; the version's step and those after it start here
+  return {
+    ...asset, version: version.id, stage, kind: stage === 'rigged' ? 'character' : 'model',
+    model: stage === 'model' ? version.file : asset.model,
+    finished: stage === 'finished' ? version.file : stage === 'rigged' ? asset.finished : null,
+    rigged: stage === 'rigged' ? version.file : null, clips: [], props: [], made: {}, stale: {},
+  };
 }
 
 const EARLIER = { finished: 'an earlier 3D model', rigged: 'an earlier Finish' };

@@ -118,6 +118,11 @@ def pickable_models(output: Path = REPO / "output", limit: int = 40) -> list[dic
 
     for model in generated_models(output, limit=limit):
         found.append(_entry(output / model["path"], "generated", output))
+    from blender_versions import list_versions   # a model edited in Blender goes on too
+
+    for version in list_versions(output):
+        found.append(_entry(output / version["file"], "version", output,
+                            f"{friendly_name(Path(version['label']).stem)} (Blender version)"))
     found.sort(key=lambda m: m["modified"], reverse=True)
     return found[:limit]
 
@@ -128,6 +133,18 @@ def resolve_model(relative: str, output: Path = REPO / "output") -> Path:
         if model["path"] == relative:
             return output / relative
     raise ValueError(f"not a model this tab offers: {relative!r}")
+
+
+def blender_version_of(glb: Path) -> dict[str, Any] | None:
+    """The record of a Blender version's `model.glb`, or None for any other file."""
+    import blender_versions
+
+    folder = glb.parent
+    if (glb.name != "model.glb" or folder.parent.name != "versions"
+            or folder.parent.parent.name != blender_versions.DIRECTORY or not blender_versions.ID.fullmatch(folder.name)):
+        return None
+    record = _read_json(folder / "version.json")
+    return record if isinstance(record, dict) and record.get("id") == folder.name else None
 
 
 def rig_run_of(glb: Path) -> Path | None:
@@ -144,11 +161,13 @@ def rig_run_of(glb: Path) -> Path | None:
 # ----------------------------------------------------------------------------- jobs
 
 
-def rig_commands(source: Path, result: Path, family: str = "auto") -> list[tuple[list[str], Path]]:
+def rig_commands(source: Path, result: Path, family: str = "auto", clips: bool = True,
+                 variations: bool = True) -> list[tuple[list[str], Path]]:
     """SkinTokens and the skin-weight clean-up (image_to_3dlab/rigging.py), then the
-    creature's family and its test clips (viewer/creature_family_api.py)."""
+    creature's family and, unless switched off, its test clips (with or without the longer
+    GenMM takes). The family is written either way: the Unreal export reads its facing."""
     return [*rigging.rig_commands(source, result),
-            creature_family_api.clip_command(venv_python(), result, family)]
+            creature_family_api.clip_command(venv_python(), result, family, clips=clips, variations=variations)]
 
 
 def _slug(value: str) -> str:
@@ -215,7 +234,7 @@ class AnimateJobManager:
         return job
 
     def create_rig(self, name: str, data: bytes, source: dict[str, Any] | None,
-                   origin: str, family: str = "auto") -> AnimateJob:
+                   origin: str, family: str = "auto", clips: bool = True, variations: bool = True) -> AnimateJob:
         with self.lock:
             if self.busy():
                 raise RuntimeError("an Animate job is already running")
@@ -231,7 +250,7 @@ class AnimateJobManager:
             source_glb.write_bytes(data)
             result = directory / f"{stem}_rigged.glb"
             job = AnimateJob(uuid.uuid4().hex, "rig", directory, result,
-                             rig_commands(source_glb, result, family), RIG_SECONDS,
+                             rig_commands(source_glb, result, family, clips, variations), RIG_SECONDS,
                              rig_record(name, data, source, origin))
             return self._claim(job)
 
@@ -240,6 +259,9 @@ class AnimateJobManager:
         with self.lock:
             if self.busy():
                 raise RuntimeError("an Animate job is already running")
+            version = blender_version_of(rigged)
+            if version is not None:
+                rigged = self._rig_from_version(rigged, version)
             run = rig_run_of(rigged)
             if run is None:
                 raise ValueError("pick a rigged model first")
@@ -258,6 +280,33 @@ class AnimateJobManager:
                                                result, spread, pace), REPO)],
                              ANIMATE_SECONDS, record)
             return self._claim(job)
+
+    def _rig_from_version(self, glb: Path, version: dict[str, Any]) -> Path:
+        """A Blender version that kept its skeleton, as a rig run of its own (copied, not
+        rigged again), so its moves land beside it as a rig's do; made once per version."""
+        if not (version.get("facts") or {}).get("skins"):
+            raise ValueError("this Blender version has no skeleton: rig it first (the Rig step)")
+        stem = _slug(Path(str(version.get("label") or "edited")).stem)
+        for run in sorted(self.output_root.glob(f"{stem}__rig__*")) if self.output_root.is_dir() else []:
+            made = _read_json(run / f"{stem}_rigged.provenance.json") or {}
+            if (RUN_DIRECTORY.fullmatch(run.name) and made.get("blender_version") == version["id"]
+                    and (made.get("input") or {}).get("sha256") == version["sha256"]):
+                return run / f"{stem}_rigged.glb"
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        directory = self.output_root / f"{stem}__rig__{stamp}"
+        suffix = 2
+        while directory.exists():
+            directory = self.output_root / f"{stem}__rig__{stamp}-{suffix}"
+            suffix += 1
+        directory.mkdir(parents=True)
+        rigged = directory / f"{stem}_rigged.glb"
+        rigged.write_bytes(glb.read_bytes())
+        record = _read_json(glb.with_suffix(".provenance.json")) or {}
+        record = {**record, "input": {"source": version.get("file"), "sha256": version["sha256"]},
+                  "blender_version": version["id"],
+                  "tool": "AssetFurnace: a Blender version used as the rig (not rigged again)"}
+        rigged.with_suffix(".provenance.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+        return rigged
 
     def get(self, job_id: str) -> AnimateJob | None:
         return self.jobs.get(job_id) if JOB_ID.fullmatch(job_id) else None
