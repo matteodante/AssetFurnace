@@ -37,6 +37,8 @@ KNOWN = [
     (r"tencent|hunyuan", "blocked", "Not licensed in the EU, UK or South Korea."),
     (r"non-?commercial|\bnc\b", "blocked", "Non-commercial: not usable in a game that is sold."),
     (r"dinov3", "conditional", "DINOv3 License terms apply to the image encoder."),
+    (r"qwen research", "research", ("Qwen Research License: non-commercial use only, research or evaluation "
+                                    "(sections 1(i), 2(a)); commercial use needs Qwen's separate licence (2(b)).")),
     (r"qwen", "conditional", "Attribution: say 'Built with Qwen'."),
     (r"stability ai community", "conditional", "Stability AI Community License: registration and revenue cap."),
     (r"\bmit\b", "clear", None),
@@ -44,8 +46,10 @@ KNOWN = [
     (r"\bbsd\b", "clear", None),
     (r"\bcc0\b|cc-by|creative commons attribution", "clear", None),
 ]
-# research-only is non-commercial in this repo's policy (provenance.validate_run_policy).
-BLOCKED_CLASSES = {"territory-restricted", "blocked", "non-commercial", "research-only"}
+BLOCKED_CLASSES = {"territory-restricted", "blocked", "non-commercial"}
+# research-only is non-commercial. AssetFurnace is never commercial, so it warns and is
+# named, rather than failing every asset made from such a model (user, 2026-10-17).
+RESEARCH_CLASSES = {"research-only"}
 
 
 def _read(path: Path) -> dict | None:
@@ -211,7 +215,8 @@ def components(asset, config):
 
 def _judge(asset, config):
     records, how = find_records(asset.glb, asset.provenance, asset.output_root)
-    threshold = {"fail": "no provenance, or a blocked licence", "warn": "an unknown licence"}
+    threshold = {"fail": "no provenance, or a blocked licence",
+                 "warn": "an unknown licence, or a non-commercial (research-only) one"}
     if not records:
         why = f" ({how})" if how else ""
         return result("license.components", "fail", None, threshold,
@@ -223,19 +228,22 @@ def _judge(asset, config):
     found = {"licenses": [], "classes": [], "conditions": [], "blocked": []}
     for _, record in records:
         collect(record, found)
-    blocked, unknown, conditional = [], [], []
+    blocked, unknown, conditional, research = [], [], [], []
     for name in found["licenses"]:
         classes, conditions = classify(name)
         if not classes or any(not classify(part)[0] for part in parts(name)):
             unknown.append(name)  # one recognised part must not clear an unknown one
         if "blocked" in classes:
             blocked.append(name)
+        if "research" in classes:
+            research.append(name)
         if "conditional" in classes:
             conditional.append(name)
         for condition in conditions:
             if condition not in found["conditions"]:
                 found["conditions"].append(condition)
     blocked += [c for c in found["classes"] if c in BLOCKED_CLASSES]
+    research += [c for c in found["classes"] if c in RESEARCH_CLASSES and c not in research]
     blocked += [f"{c} (blocked, but loaded)" for c in found["blocked"]]
     value = {"licenses": found["licenses"], "conditions": found["conditions"]}
     details = {"records": [str(p) for p, _ in records], "found": how}
@@ -245,6 +253,10 @@ def _judge(asset, config):
     if unknown:
         return result("license.components", "warn", value, threshold,
                       f"licence not recognised, check it by hand: {', '.join(unknown)}", details)
+    if research:
+        return result("license.components", "warn", value, threshold,
+                      f"non-commercial use only (research or evaluation): {', '.join(research)}; "
+                      f"{'; '.join(found['conditions'])}", details)
     if conditional:
         status = "warn" if config.get("conditional") == "warn" else "pass"
         return result("license.components", status, value, threshold,

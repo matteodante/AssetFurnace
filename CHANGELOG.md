@@ -340,12 +340,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concept record and `output/concept/judgements.jsonl`.
 
 ### Changed
+- Qwen-Image's licence class now says what its licence says: `research-only` (the Qwen
+  Research License allows it "for research or evaluation purposes only", 1(i) and 2(a)),
+  and the records cite the licence text instead of an unverified post about output rights.
+  This project's own, non-commercial use keeps working: a run is refused only with
+  commercial intent, and the licence check warns "non-commercial use only" instead of
+  passing. Exports and derived assets carry the class.
+- SF3D's licence label: free, commercial use included, under $1M annual revenue, with
+  registration (it said non-commercial). The DINOv3 terms for passing the encoder on
+  (a copy of the licence, "Built with DINOv3") are in the Pixal3D and TRELLIS.2 records,
+  and the BiRefNet GGUF that comes with Pixal3D is described as a third-party conversion.
 - Style bibles: new concepts take their style from the prompt alone. Style references stay
   off unless asked for, because an image edit also copies their content, and the automatic
   style judge is postponed; the second labelled sample and the reasons are in the style
   bible design.
 
 ### Fixed
+- The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
+  Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
+  only text to image took it.
 - Studio pictures and reference concepts take the shared GPU lock while sd-cli runs, as the
   command line and the batches already did; while another session holds the GPU the job
   stays queued, says whom it waits for, and can be cancelled.
