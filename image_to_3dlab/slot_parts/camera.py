@@ -45,6 +45,24 @@ class Camera:
                    tuple(float(v) for v in data.get("offset", (0.0, 0.0))))
 
 
+def subject_alpha(picture: Path, matte: Path | None = None) -> np.ndarray:
+    """The subject Pixal3D saw in a picture: `matte` when given, else Pixal3D's cut-out beside
+    the picture (`<stem>__matted.png`), else the picture's own transparency. A picture that
+    arrives already cut out gets no `__matted.png` from Pixal3D."""
+    from PIL import Image
+
+    from image_to_3dlab.matte import is_matted
+
+    picture = Path(picture)
+    found = Path(matte) if matte else picture.with_name(f"{picture.stem}__matted.png")
+    if found.is_file():
+        return np.asarray(Image.open(found).convert("RGBA"))[..., 3] > 127
+    with Image.open(picture) as image:
+        if matte is None and is_matted(image):
+            return np.asarray(image.convert("RGBA"))[..., 3] > 127
+    raise ValueError(f"no cut-out of {picture.name} at {found}: run Pixal3D on it, or pass --matte")
+
+
 def alpha_box(mask: np.ndarray) -> tuple[int, int, int, int]:
     """(x0, y0, x1, y1), inclusive, of the True pixels."""
     ys, xs = np.where(np.asarray(mask))

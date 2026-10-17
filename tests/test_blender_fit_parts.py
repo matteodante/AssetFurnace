@@ -71,3 +71,10 @@ def test_the_head_bone_carrying_most_of_the_head_holds_the_helmet():
     split = dict(ROLES, b12=("head", 2, ""))
     assert bf.rigid_bone(split, "helmet") == "b3"
     assert bf.rigid_bone(split, "helmet", carried={"b3": 181, "b12": 4089}) == "b12"
+
+
+def test_the_helmet_holds_the_head_bones_or_a_lone_neck_joint_never_the_body():
+    full = {"h": ("head", 1, ""), "n": ("neck", 0, ""), "s": ("spine", 1, "")}
+    assert bf.head_bones(full) == ["h"]
+    assert bf.head_bones({"n": ("neck", 0, ""), "s": ("spine", 1, "")}) == ["n"]
+    assert bf.head_bones({"s": ("spine", 1, "")}) == []

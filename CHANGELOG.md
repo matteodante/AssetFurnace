@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SAM 3.1 segments the tint zones by default: setup converts the image detector of Meta's
   checkpoint into transformers' Sam3Model files (`bootstrap_materials.py --only sam31`); SAM 2.1
   stays the fallback without the gated access.
+- Material label sheet (`scripts/label_sheet.py`): renders each asset's four unlit views and its
+  front under three lights for a phone-friendly sheet where the user judges painted light and
+  materials and taps materials on the views; `import` turns every tap into the texel and glTF
+  material it landed on and appends the labels to `output/material-labels.jsonl`.
 - Tint zones use SAM 2.1 by default (`game_materials.py --zones`); `--zones sam3` once its gated
   access is granted. Game materials v2 is closed: what is on, what stays off and why is in design
   section 11.
@@ -264,6 +268,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (fitted on white paper, not stretched to a square); changing the controls while a draw runs
   no longer mixes two requests (the back's depth with a side prompt); and an error while the
   map is prepared stays on the sheet instead of vanishing.
+- Characters in pieces, from a review of the merged work:
+  - Stop on the Pieces page stops the whole run (edits, Pixal3D, Blender), not only the
+    script that starts them, and waits for it before another set can start.
+  - Bones the skeleton reading leaves out (the other fingers of a hand) take the role of
+    their nearest classified bone: the gloves keep those fingers, and B0 no longer cuts them
+    into the breastplate.
+  - The shoulders come out as one piece unless "two pieces" (`shoulders:split`) is chosen;
+    fitted per side all the same, then joined. A refit keeps the choice.
+  - A body registered on the Pieces page can be picked at once as the set's base body.
+  - A concept or body picture that arrives already cut out is read from its own transparency
+    (B0 and body registration looked for a `__matted.png` that Pixal3D does not write then).
+  - A set of only a weapon or shield hides no skin; a rig with one head-and-neck joint fits
+    its helmet round that joint, not round the whole character.
+  - A closed part of a piece that the cage fit folds inside out is turned back out
+    (`fit.inward_islands`): a refit left one strap of a B0 shoulder facing inward.
+- Pieces cut from a whole character (route B0, `blender_segment_parts.py`) no longer fail
+  `uv.overlap` at 70–100%: the caps closing each cut took UVs from all over the atlas and
+  painted across it, so each cap now takes one texel from its rim. A B0 file is also
+  decimated to its slot's face budget (twice for a paired slot), like a piece made on its own.
 - The studio reads and writes its JSON and text files as UTF-8 on every machine, and the
   test suite passes on Windows without `PYTHONUTF8=1`: with the locale's cp1252, an em dash
   or a middle dot written as UTF-8 failed to decode. `tests/test_text_encoding.py` keeps new

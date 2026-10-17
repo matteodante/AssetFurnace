@@ -24,7 +24,7 @@ NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 def record(name: str, *, image: Path, image_size: tuple[int, int], rigged: Path, views: Path,
            cam: camera_mod.Camera, parents: dict, heads: dict, found: dict, labels: dict | None = None,
            clips: dict | None = None) -> dict:
-    roles = skeleton.bone_roles(found)  # refuses anything but a humanoid
+    roles = skeleton.inherit_roles(skeleton.bone_roles(found), parents)  # refuses anything but a humanoid
     return {
         "schema_version": SCHEMA_VERSION, "name": name,
         "image": str(Path(image).resolve()), "image_size": [int(image_size[0]), int(image_size[1])],
@@ -45,7 +45,8 @@ def register(name: str, image: Path, rigged: Path, views: Path | None = None, ma
 
     `views` is the `<model>.svviews` folder of the Pixal3D run the body came from (asked for:
     the rig and finishing steps rename the GLB, so it cannot be guessed). `matte` defaults to
-    Pixal3D's own cut-out, `<image stem>__matted.png` beside the picture.
+    Pixal3D's own cut-out, `<image stem>__matted.png` beside the picture, or the picture's own
+    transparency when it arrived cut out.
     """
     from PIL import Image
 
@@ -55,10 +56,7 @@ def register(name: str, image: Path, rigged: Path, views: Path | None = None, ma
     image, rigged = Path(image), Path(rigged)
     if views is None:
         raise ValueError("give the Pixal3D camera folder (<model>.svviews) the body was made with")
-    matte = Path(matte) if matte else image.with_name(f"{image.stem}__matted.png")
-    if not matte.is_file():
-        raise ValueError(f"no cut-out of the body picture at {matte}: run Pixal3D on it, or pass --matte")
-    alpha = np.asarray(Image.open(matte).convert("RGBA"))[..., 3] > 127
+    alpha = camera_mod.subject_alpha(image, matte)
     with Image.open(image) as picture:
         size = picture.size
     if alpha.shape[::-1] != size:

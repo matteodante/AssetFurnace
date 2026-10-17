@@ -4,6 +4,7 @@
     "budget.faces": {"max": 8000},
     "budget.materials": {"warn": 1, "fail": 2},
     "mesh.holes": {"warn": 2.0, "fail": 5.0},
+    "uv.overlap": {"copies_ok": true},
     "fit.clipping": {"warn": 3.0, "fail": 10.0, "frames": 8},
     "fit.holes": {"warn": 2.0, "fail": 5.0, "frames": 8}
   }
