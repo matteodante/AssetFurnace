@@ -342,6 +342,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
+  Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
+  only text to image took it.
 - Library: an asset with no picture or 3D model of its own keeps its id when a later finish
   or rig joins it (one from a Blender version, say), so its versions, name and hidden flag
   stay with it; and what is made from a Blender version of one of its moves joins it too.

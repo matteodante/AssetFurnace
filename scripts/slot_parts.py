@@ -68,6 +68,7 @@ Exit code 0 when written, 1 when refused (the reason is printed).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -159,12 +160,22 @@ def edit_command(prompt: str, canvas: Path, picture: Path, seed: int) -> list[st
 
 
 def _run(command: list[str]) -> None:
+    """One step of a set. sd-cli holds the shared GPU lock while it draws (Pixal3D takes it in
+    pixal3d_generate.py itself); Blender's steps here do not need it."""
     import subprocess
 
-    done = subprocess.run(command, capture_output=True, text=True, errors="replace", check=False)
+    from image_to_3dlab import gpu_lock
+
+    with gpu_lock.gpu(f"slot_parts {Path(command[0]).stem}") if uses_gpu(command) else contextlib.nullcontext():
+        done = subprocess.run(command, capture_output=True, text=True, errors="replace", check=False)
     if done.returncode != 0:
         tool = Path(command[1] if len(command) > 1 and command[1].endswith(".py") else command[0]).name
         raise ValueError(f"{tool} failed ({done.returncode}): {(done.stdout + done.stderr)[-600:]}")
+
+
+def uses_gpu(command: list[str]) -> bool:
+    """sd-cli's drawings: the one thing a set runs directly on the GPU."""
+    return bool(command) and Path(command[0]).stem.lower() == "sd-cli"
 
 
 def score_candidates(record: dict, cuts_dir: Path, folder: Path, seeds: list[int]) -> tuple[dict, str]:
