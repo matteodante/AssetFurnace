@@ -222,13 +222,17 @@ def test_animate_after_clips_keeps_the_family_clips(tmp_path, monkeypatch, fake_
     monkeypatch.setattr(rigging, "animate_model", animate_model)
     monkeypatch.setitem(batch.STEPS, "export_unreal", fake_step(export_step))
     monkeypatch.setitem(batch.STEPS, "rig", fake_step(rig_step))
-    spec_path = write_spec(tmp_path, rows=1, steps=["generate", "finish", "rig", "clips", "animate", "export_unreal"])
-    spec = json.loads(spec_path.read_text())
-    spec["defaults"].update(kind="creature", size_cm=200, animate={"presets": ["wave"]})
-    spec_path.write_text(json.dumps(spec))
-    report = batch.run_batch(batch.load_batch(spec_path))
-    assert report.exit_code == 0, report.failed
-    assert exported == [["SM_row01_digitigrade-idle.glb", "SM_row01_digitigrade-walk.glb", "SM_row01_rigged_wave.glb"]]
+    for order in (["clips", "animate"], ["animate", "clips"]):   # either way round, both reach the export
+        exported.clear()
+        spec_path = write_spec(tmp_path / "-".join(order), rows=1,
+                               steps=["generate", "finish", "rig", *order, "export_unreal"])
+        spec = json.loads(spec_path.read_text())
+        spec["defaults"].update(kind="creature", size_cm=200, animate={"presets": ["wave"]})
+        spec_path.write_text(json.dumps(spec))
+        report = batch.run_batch(batch.load_batch(spec_path))
+        assert report.exit_code == 0, report.failed
+        assert exported == [["SM_row01_digitigrade-idle.glb", "SM_row01_digitigrade-walk.glb",
+                             "SM_row01_rigged_wave.glb"]], order
 
 
 def test_a_clips_row_that_is_not_a_creature_is_told(monkeypatch):
