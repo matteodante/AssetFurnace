@@ -516,3 +516,38 @@ def test_a_creature_that_is_not_a_humanoid_is_checked_for_facing_by_its_own_bone
     expect = json.loads(Path(result["sidecar"]).read_text(encoding="utf-8"))["expect"]
     assert expect["facing"] == "+Y" and expect["facing_bones"] == ["pelvis", "head"]
 
+
+
+
+def test_a_vertex_alpha_mask_sets_the_material_to_mask_and_is_checked_in_unreal():
+    import numpy as np
+
+    from image_to_3dlab import unreal_profile as up
+    from image_to_3dlab.glb_turn import build_glb, parse_glb
+
+    positions = np.zeros((3, 3), np.float32)
+    colours = np.array([[1, 1, 1, 1], [1, 1, 1, 0], [1, 1, 1, 1]], np.float32)
+    binary = positions.tobytes() + colours.tobytes()
+    document = {
+        "asset": {"version": "2.0"}, "buffers": [{"byteLength": len(binary)}],
+        "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 36}, {"buffer": 0, "byteOffset": 36, "byteLength": 48}],
+        "accessors": [{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3"},
+                      {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC4"}],
+        "materials": [{"name": "MI_Body"}],
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0, "COLOR_0": 1}, "material": 0}]}],
+    }
+    data, changed = up.mask_from_vertex_alpha(build_glb(document, binary))
+    assert changed == ["MI_Body"]
+    assert parse_glb(data)[0]["materials"][0] == {"name": "MI_Body", "alphaMode": "MASK", "alphaCutoff": 0.5}
+    opaque = colours.copy()
+    opaque[:, 3] = 1.0
+    same, none = up.mask_from_vertex_alpha(build_glb(document, positions.tobytes() + opaque.tobytes()))
+    assert none == []  # an ordinary vertex colour is left alone
+
+    expected = {"kind": "creature", "mesh": "SK_Body", "lods": 1, "orm": False, "opacity_mask": "vertex_alpha",
+                "expect": {"size_cm": None, "base_z_cm": 0.0, "facing": None, "manny_compatible": False}}
+    results = {r["check"]: r["ok"] for r in up.evaluate_unreal({"names": ["SK_Body"], "lods": 1,
+                                                                 "opacity_mask": "masked by vertex alpha"}, expected)}
+    assert results["opacity_mask"] is True
+    results = {r["check"]: r["ok"] for r in up.evaluate_unreal({"names": ["SK_Body"], "lods": 1}, expected)}
+    assert results["opacity_mask"] is False

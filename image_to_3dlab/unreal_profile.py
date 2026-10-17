@@ -500,6 +500,36 @@ def _repack(document: dict, binary: bytes, new_images: dict[int, bytes]) -> byte
     return bytes(out)
 
 
+def mask_from_vertex_alpha(data: bytes, cutoff: float = 0.5) -> tuple[bytes, list[str]]:
+    """Every material on a primitive whose COLOR_0 alpha drops below `cutoff` set to glTF's MASK.
+
+    A base body fitted with armour carries white vertex colours with alpha 0 under the pieces
+    (feature 4). glTF multiplies the base colour's alpha by COLOR_0's, so in MASK mode the skin
+    under the armour is cut away by any viewer that follows the format, and Unreal's importer
+    makes the material Masked. Returns the GLB and the names of the materials changed.
+    """
+    from image_to_3dlab.edit_glb import EditGLB
+
+    document, binary = parse_glb(data)
+    reader = EditGLB(data)
+    materials = document.get("materials", [])
+    changed = []
+    for mesh in document.get("meshes", []):
+        for prim in mesh.get("primitives", []):
+            index = prim.get("material")
+            colour = prim.get("attributes", {}).get("COLOR_0")
+            if colour is None or index is None or index >= len(materials):
+                continue
+            alpha = np.asarray(reader.accessor(colour), float)
+            if alpha.ndim != 2 or alpha.shape[1] != 4 or alpha[:, 3].min() >= 0.5:
+                continue  # no alpha, or nothing to hide: an ordinary vertex colour
+            material = materials[index]
+            if material.get("alphaMode") != "MASK" or material.get("alphaCutoff") != cutoff:
+                material["alphaMode"], material["alphaCutoff"] = "MASK", cutoff
+                changed.append(material.get("name", f"material_{index}"))
+    return (build_glb(document, binary) if changed else data), changed
+
+
 def finalize_glb(data: bytes, stamp: Mapping[str, Any] | None = None) -> tuple[bytes, dict]:
     """Pack each material's ORM texture and give every texture its Unreal name.
 
@@ -612,8 +642,13 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
             lods: int, collision: str | None, humanoid: bool, skeleton_from: str | None,
             animations: list[str], tint: str | None, problems: list[str],
             facing_bones: list[str] | None = None,
-            orm: bool = True) -> dict[str, Any]:
-    """`<mesh>.unreal.json`: what Unreal must do with the GLB, and what to expect."""
+            orm: bool = True, opacity_mask: str | None = None) -> dict[str, Any]:
+    """`<mesh>.unreal.json`: what Unreal must do with the GLB, and what to expect.
+
+    `opacity_mask="vertex_alpha"`: a fitted base body; Unreal's glTF import does not read
+    vertex alpha, so the import gives the body a Masked material with Vertex Color alpha
+    in Opacity Mask (`unreal_import_check.py` does it, and checks it).
+    """
     skinned = kind != "prop"
     return {
         "schema": SIDECAR_SCHEMA,
@@ -625,6 +660,7 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
         "textures": {"base_color": names["base_color"], "normal": names["normal"], "orm": names["orm"]},
         "orm": orm,  # False when every material is plain factors: no ORM texture to find
         "tint": tint,
+        "opacity_mask": opacity_mask,
         "lods": lods,
         "collision": collision,
         "skeleton": None if not skinned else (f"{skeleton_from}_Skeleton" if skeleton_from else names["skeleton"]),
@@ -682,6 +718,10 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
     if expected.get("orm", True):
         srgb = measured.get("orm_srgb", [])
         results.append(_check("orm", bool(srgb) and not any(srgb), f"ORM textures sRGB: {srgb}"))
+    if expected.get("opacity_mask"):
+        got = measured.get("opacity_mask")
+        results.append(_check("opacity_mask", got == "masked by vertex alpha",
+                              f"body material: {got or 'not set'}, wanted masked by vertex alpha"))
     if expected.get("tint"):
         srgb = measured.get("tint_srgb")
         results.append(_check("tint", srgb is False, "tint mask imported as linear data" if srgb is False else

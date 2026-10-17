@@ -418,16 +418,22 @@ def run(job):
     out = Path(job["out"])
     out.parent.mkdir(parents=True, exist_ok=True)
     exported_animations = bool(skinned and report["animations"])
-    # A base body fitted with armour carries a `covered` vertex colour (alpha 0 under the
-    # pieces) that the game's material reads as an opacity mask; Blender exports colours only
-    # when a material uses them, so it is asked for by name here and for nothing else.
+    # A base body fitted with armour carries a vertex colour with alpha 0 under the pieces (the
+    # fit step's `covered`; reimported, glTF calls it Color), read by the game's material as an
+    # opacity mask. Blender exports colours only when a material uses them, so a colour whose
+    # alpha drops below one half somewhere is asked for here, and nothing else.
     colours = {}
-    if any(o.type == "MESH" and o.data.color_attributes.get("covered") for o in bpy.context.scene.objects):
-        for o in bpy.context.scene.objects:
-            if o.type == "MESH" and o.data.color_attributes.get("covered"):
-                o.data.color_attributes.active_color = o.data.color_attributes["covered"]
-        colours = {"export_vertex_color": "ACTIVE"}
-        report["vertex_colour"] = "covered"
+    for o in bpy.context.scene.objects:
+        if o.type != "MESH":
+            continue
+        for attr in o.data.color_attributes:
+            values = [0.0] * (len(attr.data) * 4)
+            attr.data.foreach_get("color", values)
+            if values and min(values[3::4]) < 0.5:
+                o.data.color_attributes.active_color = attr
+                colours = {"export_vertex_color": "ACTIVE"}
+                report["vertex_colour"] = attr.name
+                break
     bpy.ops.export_scene.gltf(
         filepath=str(out), export_format="GLB", export_yup=True,
         export_animations=exported_animations,

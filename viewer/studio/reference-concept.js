@@ -78,6 +78,21 @@ export function seedsFor(attempts, random = Math.random) {
   return Array.from({ length: count }, (_, i) => first + i);
 }
 
+/**
+ * Everything one press of Draw asks for, fixed when it is pressed: the maps, the seeds and
+ * the request. The controls stay live while the map is prepared and the tries run, so
+ * reading them later would mix two requests (the back's depth with a side prompt).
+ */
+export function planDraw(state) {
+  const asked = { ...state, styleRefs: [...(state.styleRefs || [])] };
+  return { maps: mapsFor(asked.way, asked.source, asked), seeds: seedsFor(asked.attempts), request: (shape, seed) => requestFor(asked, shape, seed) };
+}
+
+/** The error line, kept in the state so redrawing the sheet does not wipe it. */
+export function errorLine(state) {
+  return state.error ? `<p class="error" data-error>${esc(state.error)}</p>` : '<p class="error" data-error hidden></p>';
+}
+
 /** How the IoU reads under a result. */
 export function iouText(record, measuring) {
   if (measuring) return 'measuring the outline…';
@@ -110,7 +125,7 @@ export function openReferenceConcept({ stage, assets = [], base = '/output/', on
   const sheet = document.createElement('div');
   sheet.className = 'sheet reference-concept';
   stage.appendChild(sheet);
-  const state = { way: 'redraw', source: '', model: '', guide: 'body', view: 'side', attempts: 1, style: '', styleRefs: [], uploads: [], runs: [], busy: false, info: null };
+  const state = { way: 'redraw', source: '', model: '', guide: 'body', view: 'side', attempts: 1, style: '', styleRefs: [], uploads: [], runs: [], busy: false, info: null, error: '', note: '' };
   const close = () => { if (!state.busy) sheet.remove(); };
   fetch('/api/concept').then((r) => r.json()).then((info) => { state.info = info; render(); }).catch(() => {});
 
@@ -146,7 +161,7 @@ export function openReferenceConcept({ stage, assets = [], base = '/output/', on
         <div class="row"><select data-k="styleRef">${options((p) => PICTURE.test(p), '')}</select><button type="button" class="ghost" data-clear-style ${state.styleRefs.length ? '' : 'disabled'}>Clear</button></div>
       </details>
       <label class="field">Tries<select data-k="attempts">${[1, 2, 3, 4].map((n) => `<option value="${n}" ${n === Number(state.attempts) ? 'selected' : ''}>${n}</option>`).join('')}</select><span class="hint">Each try takes about half a minute; pick the best below.</span></label>
-      <p class="error" data-error hidden></p>
+      ${state.note ? `<p class="hint" data-note>${esc(state.note)}</p>` : ''}${errorLine(state)}
       <div class="row end"><span class="hint">Qwen-Image 2.1 in edit mode, on this machine</span><button type="submit" class="primary" ${state.busy ? 'disabled' : ''}>${state.busy ? 'Drawing…' : 'Draw it'}</button></div>
       <div class="rc-results">${state.runs.map(runCard).join('')}</div>
     </form>`;
@@ -161,7 +176,7 @@ export function openReferenceConcept({ stage, assets = [], base = '/output/', on
         ${run.picture ? `<span class="rc-judge"><button type="button" data-judge="keep" ${run.verdict === 'keep' ? 'aria-pressed="true"' : ''}>Keep</button><button type="button" data-judge="discard" ${run.verdict === 'discard' ? 'aria-pressed="true"' : ''}>Discard</button></span>` : ''}
       </figcaption></figure>`;
 
-  const fail = (message) => { const box = sheet.querySelector('[data-error]'); box.textContent = message; box.hidden = !message; };
+  const fail = (message) => { state.error = message; sheet.querySelector('[data-error]').outerHTML = errorLine(state); };
 
   async function upload(file) {
     if (!file || !PICTURE.test(file.name)) return fail('Choose a PNG, JPG or WebP picture.');
@@ -176,18 +191,20 @@ export function openReferenceConcept({ stage, assets = [], base = '/output/', on
   async function draw() {
     const problems = problemsOf(state);
     if (problems.length) return fail(problems.join(' '));
-    state.busy = true; fail(''); render();
+    const plan = planDraw(state);
+    state.busy = true; state.error = ''; render();
     try {
       const shape = [];
-      for (const map of mapsFor(state.way, state.source, state)) {
-        fail(map.kind === 'picture' ? '' : 'Preparing the map… the first time a model is rendered takes about 20 seconds.');
+      for (const map of plan.maps) {
+        state.note = map.kind === 'picture' ? '' : 'Preparing the map… the first time a model is rendered takes about 20 seconds.';
+        render();
         shape.push((await send('/api/concept/prepare', map)).path);
       }
-      fail('');
-      for (const seed of seedsFor(state.attempts)) {
+      state.note = '';
+      for (const seed of plan.seeds) {
         const run = { id: `${seed}`, seed, shape, status: 'waiting', progress: '', picture: null, record: null };
         state.runs.unshift(run); render();
-        const started = await send('/api/concept/jobs', requestFor(state, shape, seed));
+        const started = await send('/api/concept/jobs', plan.request(shape, seed));
         const final = await followJob(started.status_url, { onUpdate: ({ percent, log }) => {
           run.status = 'drawing'; run.progress = percent == null ? readableLog(log, 1) : `${Math.round(percent)}%`; render();
         } }).done;
@@ -202,8 +219,8 @@ export function openReferenceConcept({ stage, assets = [], base = '/output/', on
         }
         onDone?.();
       }
-    } catch (error) { fail(plainError(error.message)); }
-    state.busy = false; render();
+    } catch (error) { state.error = plainError(error.message); }
+    state.busy = false; state.note = ''; render();
   }
 
   function wire() {

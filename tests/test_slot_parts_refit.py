@@ -33,7 +33,9 @@ def _fit_dir(tmp_path):
 
 def test_refit_job_carries_every_fitted_piece(tmp_path):
     folder = _fit_dir(tmp_path)
-    job = cli.refit_job(folder, tmp_path / "first.json", tmp_path / "second.json", tmp_path / "out")
+    second, *_ = _body(tmp_path)
+    job = cli.refit_job(folder, tmp_path / "first.json", second, tmp_path / "out")
+    assert job["clips"] == []
     assert [(p["slot"], Path(p["glb"]).name) for p in job["pieces"]] == [
         ("helmet", "helmet.glb"), ("gloves", "gloves_R.glb"), ("gloves", "gloves_L.glb")]
     assert all(p["transfer"] for p in job["pieces"]) and job["source_body"].endswith("first.json")

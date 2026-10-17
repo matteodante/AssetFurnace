@@ -150,3 +150,8 @@ def test_a_helmet_the_size_of_the_head_grows_to_hold_it():
     assert moved.mean(0) == pytest.approx(head.mean(0))
     big = _cube(size=(0.3, 0.3, 0.3), centre=(0.0, 0.0, 1.6))
     assert fit.enclose(big, head)[1] == 1.0  # never shrunk
+
+
+def test_pose_frames_spread_over_the_clip():
+    assert fit.pose_frames(1, 30, 4) == [1, 11, 20, 30]
+    assert fit.pose_frames(5, 5, 8) == [5]
