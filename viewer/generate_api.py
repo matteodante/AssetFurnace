@@ -2775,6 +2775,9 @@ class Handler(SimpleHTTPRequestHandler):
             chosen = str((form.get("model") or {}).get("value", "")).strip()
             try:
                 family = creature_family_api.parse_family((form.get("family") or {}).get("value"))
+                # the clips after the rig, and their longer takes: on unless the page says "0"
+                clips = (form.get("clips") or {}).get("value") not in ("0", "false")
+                variations = (form.get("variations") or {}).get("value") not in ("0", "false")
             except ValueError as exc:
                 self._send_json(422, {"error": str(exc)})
                 return
@@ -2792,7 +2795,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json(422, {"error": "send a .glb in 'asset' or a listed 'model'"})
                 return
             try:
-                job = ANIMATE_JOBS.create_rig(name, data, record, origin, family)
+                job = ANIMATE_JOBS.create_rig(name, data, record, origin, family, clips, variations)
             except RuntimeError as exc:
                 self._send_json(409, {"error": str(exc)})
                 return

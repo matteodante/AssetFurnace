@@ -40,5 +40,8 @@ def run(ctx: StepContext) -> StepResult:
     except (RuntimeError, ValueError, OSError) as exc:
         return StepResult(ok=False, reason=str(exc))
     files = [path for clip in clips for path in (clip, clip.with_suffix(".provenance.json"))]
-    return StepResult(files=[*files, ctx.step_dir / "animate.log"], clips=clips,
+    # added to the clips this rig already has (a `clips` step's), not in their place
+    made = {clip.name for clip in clips}
+    return StepResult(files=[*files, ctx.step_dir / "animate.log"],
+                      clips=[*(clip for clip in ctx.clips or [] if clip.name not in made), *clips],
                       record={"clips": [clip.name for clip in clips]})
