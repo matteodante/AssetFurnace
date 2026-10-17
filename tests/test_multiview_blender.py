@@ -149,3 +149,20 @@ def test_a_world_light_lights_the_same_side_from_every_camera(tmp_path):
         up_facing = shown & (view.normal[..., 2] > 0.5)
         down_facing = shown & (view.normal[..., 2] < -0.5)
         assert view.lit[up_facing].mean() > view.lit[down_facing].mean() + 20
+
+
+@needs_blender
+def test_a_model_a_centimetre_wide_is_seen_from_every_side(tmp_path):
+    # Blender's default near clip is 0.1 m; the cameras stand closer than that to a 1 cm model.
+    from image_to_3dlab.glb_turn import build_glb, parse_glb
+
+    asset = make_glb(tmp_path / "ring.glb", banded_albedo())
+    document, binary = parse_glb(asset.read_bytes())
+    document["nodes"][0]["scale"] = [0.005, 0.005, 0.005]
+    asset.write_bytes(build_glb(document, binary))
+    views = mv.render_views(asset, tmp_path / "views", size=48, around=4, blender=BLENDER)
+    for view in views:
+        shown = view.material >= 0
+        assert shown.sum() > 200
+        # Seen from outside: the surface faces the camera. A clipped front shows the inside of the back.
+        assert mv.facing_weight(view.normal[shown], view.direction).mean() > 0.5

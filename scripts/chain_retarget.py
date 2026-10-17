@@ -226,8 +226,11 @@ def retarget(rig: Rig, roles: dict, source: Source) -> list[tuple[dict, np.ndarr
             heads[b] = root if p is None else heads[p] + total[p] @ (rig.heads[b] - rig.heads[p])
             if b in limbs:
                 kind, mine, theirs = limbs[b]
+                # the body's middle runs through its hips, not a helper root that stays still
+                # while the body rolls over (a dying fox)
+                hub = next((h for h in (roles.get("spine") or [])[:1] if h in heads), rig.order[0])
                 rest_left = np.asarray(roles["frame"]["left"], float)
-                midline = (heads[rig.order[0]], total[rig.order[0]] @ rest_left, rest_left)
+                midline = (hub, heads[hub], total[hub] @ rest_left, rest_left)
                 total.update(_limb(rig, kind, mine, theirs, heads[b], inherited, source, src_rest, posed, delta,
                                    convert, scale, s_up, locks, midline))
             if b not in total:
@@ -335,18 +338,34 @@ def approach(current: np.ndarray, wanted: np.ndarray, step: float) -> np.ndarray
 
 
 def own_side(foot: np.ndarray, rest_offset: np.ndarray, centre: np.ndarray, left: np.ndarray,
-             rest_left: np.ndarray) -> np.ndarray:
-    """`foot` kept on its own side of the body, at least a third as far out as at rest. The
+             rest_left: np.ndarray, kept: float = 1 / 3) -> np.ndarray:
+    """`foot` kept on its own side of the body, at least `kept` as far out as at rest. The
     same tuck that keeps a drake's front feet apart crossed them on a rig whose feet stand
-    closer together."""
+    closer together. `kept` is how far out the source's own foot is (`kept_out`): a foot
+    the source puts across the middle (a spider's, reaching under its head) is not held."""
     out = float(rest_offset @ rest_left)
-    if abs(out) < 1e-9:
+    if abs(out) < 1e-9 or kept <= 0:
         return foot
-    margin = np.sign(out) * abs(out) / 3
+    margin = np.sign(out) * abs(out) * min(kept, 1 / 3)
     lateral = float((foot - centre) @ left)
     if np.sign(out) * (lateral - margin) >= 0:
         return foot
     return foot + (margin - lateral) * left
+
+
+def kept_out(source: Source, tip: str, posed, delta, src_rest) -> float:
+    """How far out from the body's middle the source's foot is now, as a fraction of how far
+    it is at rest: 1 where it stands, 0 on the middle, below 0 across it."""
+    spine = source.roles.get("spine") or []
+    hub = spine[0] if spine else next((b for b, p in source.parents.items() if p is None and b in src_rest), None)
+    if hub is None:
+        return 1.0
+    left = np.asarray(source.roles["frame"]["left"], float)
+    rest = float((src_rest[tip] - src_rest[hub]) @ left)
+    if abs(rest) < 1e-9:
+        return 1.0
+    now = float((posed[tip] - posed[hub]) @ (delta.get(hub, np.eye(3)) @ left))
+    return now / rest
 
 
 def contact(lift: float, length: float) -> float:
@@ -370,9 +389,13 @@ def _limb(rig, kind, mine, theirs, start, inherited, source, src_rest, posed, de
     hub = source.parents.get(theirs[0])
     while hub is not None and hub not in on_body:  # a limb's anchor swings with the limb, not the body
         hub = source.parents.get(hub)
+    # The limb's motion in the body's own frame (L = body^T limb), turned to the rig's
+    # heading, then put under the rig's body: total = body @ H L H^T. The other order (the
+    # world-frame motion turned, the body put on afterwards) bent an arm 22.7 degrees wrong
+    # under a 45-degree body roll.
     base = delta.get(hub, np.eye(3)).T
-    own = {b: d @ base for b, d in delta.items()}
-    out = {b: r @ inherited for b, r in _body(rig, mine, source, theirs, src_rest, own, convert, True).items()}
+    own = {b: base @ d for b, d in delta.items()}
+    out = {b: inherited @ r for b, r in _body(rig, mine, source, theirs, src_rest, own, convert, True).items()}
     if kind != "leg":
         return out
     pts = [np.asarray(start, float)]
@@ -402,7 +425,9 @@ def _limb(rig, kind, mine, theirs, start, inherited, source, src_rest, posed, de
         lock, wanted = None, offset * RELEASE
     offset = approach(offset, wanted, STEP * _chain_length(rig.heads, mine))
     locks[mine[0]] = (offset, lock)
-    tip = own_side(turned + offset, rig.heads[mine[-1]] - rig.heads[rig.order[0]], *midline)
+    hub, *line = midline
+    tip = own_side(turned + offset, rig.heads[mine[-1]] - rig.heads[hub], *line,
+                   kept=kept_out(source, theirs[-1], posed, delta, src_rest))
     tip = above_ground(tip, height, scale * lift, t_up)
     solved = fabrik(pts, tip)
     for j, (a, b) in enumerate(pairwise(mine)):

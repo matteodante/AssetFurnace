@@ -80,3 +80,28 @@ def test_a_varied_clip_is_a_valid_pose_sequence_of_the_same_skeleton():
         assert abs(pose["root"][1, 3] - 1.0) < 1e-6  # the height is kept
     forward = out[-1]["root"][2, 3] - out[0]["root"][2, 3]
     assert 0.02 * 95 * 0.7 < forward < 0.02 * 95 * 1.3  # and so is the pace
+
+
+def test_a_bone_that_moves_under_a_still_helper_root_keeps_moving():
+    """Mesh2Motion keeps its root still and moves the bone below it: the fox's hips bounce
+    as it runs, the snake's head sweeps from side to side. Rebuilt from rest offsets, the
+    longer take lost all of it."""
+    parents = {"root": None, "hips": "root", "tail": "hips"}
+
+    def world(k):
+        out = {"root": np.eye(4)}
+        hips = np.eye(4)
+        hips[:3, 3] = [0.3 * np.sin(2 * np.pi * k / 12), 1.0 + 0.1 * np.cos(2 * np.pi * k / 12), 0.0]
+        out["hips"] = out["root"] @ hips
+        tail = np.eye(4)
+        tail[:3, 3] = [0, 0, -0.5]
+        out["tail"] = out["hips"] @ tail
+        return out
+
+    rest, poses = world(0), [world(k) for k in range(36)]
+    out = mv.vary(parents, rest, poses, up=np.array([0, 1.0, 0]), length=72, seed=0, loop=True)
+    side = np.array([p["hips"][0, 3] for p in out])
+    height = np.array([p["hips"][1, 3] for p in out])
+    assert np.ptp(side) > 0.5 and np.ptp(height) > 0.15  # the source sweeps 0.6 and bobs 0.2
+    tail = [np.linalg.norm(p["tail"][:3, 3] - p["hips"][:3, 3]) for p in out]
+    assert np.allclose(tail, 0.5)  # a bone that does not move keeps its length

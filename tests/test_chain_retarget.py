@@ -316,8 +316,8 @@ def test_feet_stay_on_their_own_side_of_the_body():
     """A drake tucks its front legs in flight; on a rig whose feet stand closer together the
     same turn crossed them through each other."""
     src_rig, src_roles = _quadruped()
-    frames = [({"frontL0": cm.axis_angle(FORWARD, -40.0 * k / 5), "frontR0": cm.axis_angle(FORWARD, 40.0 * k / 5)},
-               src_rig.heads["hips"] + UP * 0.5) for k in range(6)]  # up in the air, legs swinging inwards
+    frames = [({"frontL0": cm.axis_angle(FORWARD, -10.0 * k / 5), "frontR0": cm.axis_angle(FORWARD, 10.0 * k / 5)},
+               src_rig.heads["hips"] + UP * 0.5) for k in range(6)]  # up in the air, legs swinging in, not across
     rig, roles = _quadruped(prefix="t_")
     for leg in roles["legs"]:  # the rig's feet stand nearer the middle
         for b in leg["bones"][1:]:
@@ -325,3 +325,63 @@ def test_feet_stay_on_their_own_side_of_the_body():
     for turn, root in cr.retarget(rig, roles, _source(src_rig, src_roles, frames)):
         posed = _posed(rig, (turn, root))
         assert posed["t_frontL3"][0] > 0 > posed["t_frontR3"][0]
+
+
+def test_a_foot_the_source_puts_across_the_middle_goes_across_too():
+    """A spider's front feet reach under its head in the library's walk; held on their own
+    side, the walk carried onto the spider's own skeleton moved a foot by 10% of its size."""
+    src_rig, src_roles = _quadruped()
+    frames = [({"frontL0": cm.axis_angle(FORWARD, -40.0 * k / 5)}, src_rig.heads["hips"] + UP * 0.5)
+              for k in range(6)]  # the left front foot swings over to the right
+    source = _source(src_rig, src_roles, frames)
+    for want, got in zip(frames, cr.retarget(src_rig, src_roles, source)):
+        a, b = _posed(src_rig, want)["frontL3"], _posed(src_rig, got)["frontL3"]
+        assert np.allclose(a, b, atol=1e-6)
+
+
+
+def test_a_body_rolling_over_under_a_still_root_keeps_its_feet():
+    """Mesh2Motion's creatures die by rolling over at the hips, under a root that stays
+    still: measuring the body's middle from that root pushed a dying fox's feet by a third
+    of its size."""
+    src_rig, src_roles = _quadruped()
+    src_rig.parents = {**src_rig.parents, "hips": "root", "root": None}
+    src_rig.heads = {**src_rig.heads, "root": np.zeros(3)}
+    src_rig.order = ["root", *src_rig.order]
+    frames = [({"hips": cm.axis_angle(FORWARD, 18.0 * k)}, np.zeros(3)) for k in range(6)]  # onto its side
+    source = _source(src_rig, src_roles, frames)
+    for want, got in zip(frames, cr.retarget(src_rig, src_roles, source)):
+        a, b = _posed(src_rig, want), _posed(src_rig, got)
+        for leg in src_roles["legs"]:
+            assert np.allclose(a[leg["bones"][-1]], b[leg["bones"][-1]], atol=1e-6)
+
+
+def test_a_limb_bends_in_the_body_frame_when_the_body_has_rolled():
+    """Body rolled 45 degrees, arm swung 30 degrees within it, the rig's arm pointing another
+    way at rest: the heading turn belongs inside the body's frame. Applied outside it, the
+    arm came out 22.7 degrees off."""
+    def creature(prefix, heading):
+        rows = [(f"{prefix}body", None, (0, 1.0, 0)), (f"{prefix}chest", f"{prefix}body", (0, 1.0, 0.4))]
+        arms = []
+        for side, x in (("L", 1.0), ("R", -1.0)):
+            d = np.array([x * heading[0], 0, heading[1]])
+            names = [f"{prefix}arm{side}{k}" for k in range(3)]
+            for k, n in enumerate(names):
+                rows.append((n, names[k - 1] if k else f"{prefix}chest", tuple(np.array([0, 1.0, 0.4]) + 0.3 * k * d)))
+            arms.append({"bones": names, "side": side})
+        roles = {"family": "x", "legs": [], "arms": arms, "wings": [], "spine": [f"{prefix}body", f"{prefix}chest"],
+                 "neck": [], "tail": [], "body": [], "frame": FRAME, "ground": 0.0}
+        return _rig(rows), roles
+
+    src, src_roles = creature("", (1.0, 0.0))  # arms straight out
+    heading = np.array([0.3, 0.0, 0.95]) / np.linalg.norm([0.3, 0.0, 0.95])
+    tgt, roles = creature("t_", (heading[0], heading[2]))  # arms reaching forward
+    body, swing = cm.axis_angle(FORWARD, 45.0), cm.axis_angle(UP, 30.0)
+    frames = [({"body": body, "armL0": body @ swing @ body.T}, src.heads["body"])]  # arm total: body @ swing
+    turn, root = cr.retarget(tgt, roles, _source(src, src_roles, frames))[0]
+    yaw = np.arctan2(np.cross(LEFT, heading) @ UP, LEFT @ heading)
+    h = cm.axis_angle(UP, np.degrees(yaw))
+    want = body @ h @ swing @ h.T @ heading
+    posed = _posed(tgt, (turn, root))
+    got = (posed["t_armL1"] - posed["t_armL0"]) / np.linalg.norm(posed["t_armL1"] - posed["t_armL0"])
+    assert np.degrees(np.arccos(np.clip(got @ want, -1, 1))) < 0.5

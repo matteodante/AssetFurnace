@@ -134,6 +134,22 @@ def is_complete(labels: dict) -> bool:
             and bool(labels.get("points")))
 
 
+def still_labelled(rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    """(rows whose file is still the version labelled, rows whose file changed or is gone).
+
+    Labels belong to a version: a GLB regenerated at the same path must not be scored against
+    what the user said about the one before.
+    """
+    import hashlib
+
+    kept, changed = [], []
+    for row in rows:
+        path = Path(row.get("asset") or "")
+        same = path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == row.get("asset_sha256")
+        (kept if same else changed).append(row)
+    return kept, changed
+
+
 def dataset(events: list[dict]) -> list[dict]:
     """The complete labels, one per asset at its latest version: what a check is scored on."""
     return [labels for labels in fold(events).values() if is_complete(labels)]

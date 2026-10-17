@@ -225,3 +225,13 @@ def test_fine_painted_detail_survives_when_the_model_flattens_it(tmp_path):
     out = base_colour(result.glb_path).astype(int)
     assert (out[:, 60::8] - out[:, 63::8]).mean() > 0.6 * (230 - LIT)
     assert np.abs(out[:, :30] - LIT).max() <= 6               # the broad shadow still comes out
+
+
+def test_a_delit_concept_never_overwrites_its_sources_licence_record(tmp_path):
+    concept = tmp_path / "concept.jpg"
+    Image.fromarray(painted()).save(concept)
+    concept.with_suffix(".provenance.json").write_text('{"license": "theirs"}', encoding="utf-8")
+    with pytest.raises(ValueError, match="provenance"):
+        dl.delight_image(concept, tmp_path / "concept.png", intrinsics=fake_marigold(flat_albedo))
+    assert json.loads(concept.with_suffix(".provenance.json").read_text(encoding="utf-8")) == {"license": "theirs"}
+    dl.delight_image(concept, tmp_path / "concept_albedo.png", intrinsics=fake_marigold(flat_albedo))

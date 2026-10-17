@@ -63,11 +63,37 @@ def test_yes_proceeds_without_asking(monkeypatch):
     assert calls == ["weights"]
 
 
-def test_without_sd_cli_nothing_is_fetched(monkeypatch, capsys):
+def test_a_fresh_install_gets_the_shared_sd_cli_first(monkeypatch, capsys):
+    """Set up on a machine without sd-cli used to stop at "install Qwen-Image first": the
+    studio's button for FLUX did nothing until another route had been installed."""
+    calls = []
     monkeypatch.setattr(boot, "binary_present", lambda: False)
+    monkeypatch.setattr(boot.qwen, "target", lambda: "windows-nvidia")
+    monkeypatch.setattr(boot.qwen, "install_binary", lambda: calls.append("sd-cli"))
+    monkeypatch.setattr(boot, "install_weights", lambda: calls.append("weights"))
+    assert boot.main(["--yes"]) == 0
+    assert calls == ["sd-cli", "weights"]
+    out = capsys.readouterr().out
+    assert "prebuilt sd-cli" in out and "~850 MB" in out  # announced before anything moved
+
+
+def test_without_sd_cli_and_no_prebuilt_for_this_machine_nothing_is_fetched(monkeypatch, capsys):
+    monkeypatch.setattr(boot, "binary_present", lambda: False)
+    monkeypatch.setattr(boot.qwen, "target", lambda: "some-other-machine")
+    monkeypatch.setattr(boot.qwen, "install_binary", lambda: (_ for _ in ()).throw(AssertionError))
     monkeypatch.setattr(boot, "install_weights", lambda: (_ for _ in ()).throw(AssertionError))
     assert boot.main(["--yes"]) == 1
-    assert "Qwen-Image route" in capsys.readouterr().out
+    assert "Nothing downloaded" in capsys.readouterr().out
+
+
+def test_without_a_yes_not_even_sd_cli_is_fetched(monkeypatch, capsys):
+    monkeypatch.setattr(boot, "binary_present", lambda: False)
+    monkeypatch.setattr(boot.qwen, "target", lambda: "windows-nvidia")
+    monkeypatch.setattr(boot.sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda _: "n")
+    monkeypatch.setattr(boot.qwen, "install_binary", lambda: (_ for _ in ()).throw(AssertionError))
+    monkeypatch.setattr(boot, "install_weights", lambda: (_ for _ in ()).throw(AssertionError))
+    assert boot.main([]) == 1
 
 
 def test_every_file_fetched_is_one_the_catalogue_counts_at_its_exact_size():

@@ -680,7 +680,7 @@ CATALOG: tuple[Backend, ...] = (
         caveat=("The weights come with use restrictions (no medical advice, no law "
                 "enforcement, no harassment...), and anyone you pass them on to is bound "
                 "by them too. Your results are yours."),
-        build_probes=(_material_models.env_python(),),
+        build_probes=(_material_models.env_marker(),),
         upstream=("prs-eth Marigold", "https://github.com/prs-eth/Marigold"),
         weights=(
             WeightSet(_material_models.MARIGOLD_LIGHTING.label,
@@ -710,7 +710,7 @@ CATALOG: tuple[Backend, ...] = (
                 "or warfare, nuclear, espionage, developing or using guns or illegal weapons "
                 "(section 1.b.v). Meta may change it at any time (section 8)."),
         gated_repo=_material_models.SAM3.repo,
-        build_probes=(_material_models.env_python(),),
+        build_probes=(_material_models.env_marker(),),
         upstream=("Meta SAM 3", "https://github.com/facebookresearch/sam3"),
         weights=(
             WeightSet(_material_models.QWEN35.label, _material_models.QWEN35.repo, _material_models.QWEN35.size,

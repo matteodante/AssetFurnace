@@ -196,6 +196,7 @@ def main(plan_path: Path) -> int:
         camera.location = location
         camera.data.ortho_scale = scale
         camera.data.clip_end = far
+        camera.data.clip_start = far / 3000.0       # the default 0.1 m cuts away models a few cm wide
         right, up, forward = basis(direction)
         # Blender cameras look down their local -Z, with local +Y up the picture.
         camera.rotation_euler = Matrix((right, up, [-f for f in forward])).transposed().to_euler()

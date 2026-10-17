@@ -248,6 +248,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Game materials, from Codex's review: an interrupted `bootstrap_materials.py` no longer counts
+  as installed (a marker is written after the last package); `pbr_trial.py` tries failed assets
+  again; the label trials leave out a GLB regenerated since it was labelled; zone mean colours
+  include `baseColorFactor`; a delit concept never overwrites its source's provenance; the views'
+  near clip follows the model's size, so models a few centimetres wide are no longer cut away.
+- Creature clips: `-long` takes keep the motion of a bone that moves under a still root (a
+  snake's head, a fox's bounce), with windows at most half a short clip; a foot is held on
+  its side of the body only as much as the source's own foot is, measured from the hips;
+  and a limb's motion is turned to its heading inside the body's frame (a 45-degree body
+  roll bent an arm 22 degrees wrong).
+- Setting up FLUX.2 klein on a fresh install fetches the shared prebuilt sd-cli first,
+  instead of stopping until Qwen-Image had been installed.
 - Draw from a reference: a Keep or Discard pressed while the outline was still being measured
   is no longer overwritten by the IoU; a wide or tall picture's lineart keeps its proportions
   (fitted on white paper, not stretched to a square); changing the controls while a draw runs
