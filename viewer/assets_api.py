@@ -277,6 +277,9 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
         if match is not None:
             join(index_of[id(rig)], match)
     rig_by_sha = {hashes.of(rig["file"]): index_of[id(rig)] for rig in rigs}
+    for rig in rigs:   # a version of one of the rig's moves comes from that rig too
+        for clip in rig["clips"]:
+            rig_by_sha.setdefault(hashes.of(clip["file"]), index_of[id(rig)])
     for version in versions:   # a version joins the file it was made from, a version too
         parent_sha = version["parent_sha"]
         match = next((found[parent_sha] for found in (model_by_sha, finished_by_sha, rig_by_sha, version_by_sha)
@@ -328,7 +331,14 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
         else:
             kind = "picture" if model is None and fin is None else "model"
             stage = "finished" if fin else "model" if model else "picture"
-        first = picture or model or (prop_set if prop_set and prop_set.get("file") else None) or fin or rig
+        def oldest(*kinds: str) -> dict[str, Any] | None:
+            items = [n for kind in kinds for n in by_kind.get(kind, []) if n.get("file") is not None]
+            return min(items, key=lambda n: n["file"].stat().st_mtime) if items else None
+
+        # the id is the first node of the chain, which a later finish or rig (from a Blender
+        # version, say) never replaces: hidden flags, names and versions keep their asset
+        first = (picture or model or (prop_set if prop_set and prop_set.get("file") else None)
+                 or oldest("finished", "rigged"))
         # A person-given name ("rune_knight" at the finish or rig step) beats the prompt the
         # picture was named after; it is the shortest name in the chain.
         stems = [n["stem"] for n in (rig, fin, prop_set, model, picture) if n is not None]
