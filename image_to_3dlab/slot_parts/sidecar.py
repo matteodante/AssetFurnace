@@ -41,6 +41,14 @@ def models(matte: str | None = None) -> list[dict]:
     return out
 
 
+def classification() -> str:
+    """The set's licence class: the strictest of the models every set goes through (Qwen's
+    research-only since its licence was read, 2026-10-17)."""
+    from image_to_3dlab.unreal_profile import strictest_class
+
+    return strictest_class(m.get("classification") for m in models()) or "commercial-conditional"
+
+
 def body_entry(body: dict, body_json: Path) -> dict:
     """The base body a set is on, as its record names it."""
     return {"name": body["name"], "record": str(Path(body_json).resolve()),
@@ -67,7 +75,7 @@ def parts_record(*, mode: str, set_name: str, body: dict, body_json: Path, conce
         "fit": {k: fit[k] for k in ("covered_share", "files") if k in fit} if fit else None,
         "checks": checks,
         "models": models(matte),
-        "classification": "commercial-conditional",
+        "classification": classification(),
     }
 
 
@@ -96,7 +104,7 @@ def fit_provenance(out: Path, job: dict, report: dict) -> list[Path]:
             "schema": "slot_parts.fit/1",
             "output": {"path": name, "sha256": _sha(glb)},
             "license": LICENSES["pixal3d"].license_name,
-            "classification": "commercial-conditional",
+            "classification": classification(),
             "components": [{"role": m["role"], "name": m["id"], "license": m["license"]} for m in models()],
             "source": {"path": str(source), "sha256": _sha(source) if source else None},
             "body": str(job["body"]),
