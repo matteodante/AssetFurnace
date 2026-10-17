@@ -23,7 +23,6 @@ never run Kimodo: no Llama download, no 24 GB text encoder.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -40,58 +39,39 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from image_to_3dlab import processes
+from image_to_3dlab import processes, rigging
+# The commands and records are shared with scripts/autorig.py and the batch steps.
+from image_to_3dlab.rigging import (  # noqa: F401 - the studio's names for them
+    CLEAN_WEIGHTS,
+    KIMODO_LICENSE,
+    MAX_ARM_SPREAD,
+    MOTIONS,
+    PRESET_ID,
+    RETARGET,
+    SKINTOKENS,
+    SKINTOKENS_LICENSE,
+    SPEED_RANGE,
+    animate_command,
+    animation_record,
+    clamp_speed,
+    clamp_spread,
+    installed,
+    presets,
+    rig_record,
+    source_record_for,
+    venv_python,
+)
 
 import creature_family_api  # noqa: E402 - viewer/ sibling, after the path is set
 
 OUTPUT_ROOT = REPO / "output" / "animate"
-SKINTOKENS = REPO / "vendor" / "SkinTokens"
-RETARGET = REPO / "scripts" / "kimodo_retarget.py"
-CLEAN_WEIGHTS = REPO / "scripts" / "clean_skin_weights.py"
-MOTIONS = REPO / "image_to_3dlab" / "motions"
 JOB_ID = re.compile(r"^[0-9a-f]{32}$")
 RUN_DIRECTORY = re.compile(r"^[A-Za-z0-9_-]{1,80}__rig__\d{8}-\d{6}(?:-\d+)?$")
-PRESET_ID = re.compile(r"^[a-z0-9_]{1,40}$")
 TERMINAL = {"done", "error", "cancelled"}
 # Measured on an M-series Mac (2026-10-05): 64 s for a 200k-face knight. Only drives the
 # progress bar's estimate, which says "about" for that reason.
 RIG_SECONDS = 70.0
 ANIMATE_SECONDS = 12.0
-MAX_ARM_SPREAD = 30.0
-SPEED_RANGE = (0.5, 2.0)
-
-SKINTOKENS_LICENSE = {
-    "name": "MIT",
-    "url": "https://github.com/VAST-AI-Research/SkinTokens/blob/main/LICENSE",
-    "model": "VAST-AI/SkinTokens",
-}
-KIMODO_LICENSE = {
-    "name": "NVIDIA Open Model License",
-    "url": "https://www.nvidia.com/en-us/agreements/enterprise-software/"
-           "nvidia-open-model-license/",
-    "model": "nvidia/Kimodo-SOMA-RP-v1.1",
-    "note": "Clip pre-generated with Kimodo. NVIDIA claims no ownership of outputs.",
-}
-
-
-def venv_python(root: Path = SKINTOKENS) -> Path:
-    if os.name == "nt":
-        return root / ".venv" / "Scripts" / "python.exe"
-    return root / ".venv" / "bin" / "python"
-
-
-def installed(root: Path = SKINTOKENS) -> bool:
-    return venv_python(root).exists() and (root / "demo.py").is_file()
-
-
-# ---------------------------------------------------------------------------- presets
-
-
-def presets(root: Path = MOTIONS) -> list[dict[str, Any]]:
-    """The shipped clips, in the order `presets.json` lists them, that exist on disk."""
-    index = _read_json(root / "presets.json") or {}
-    return [dict(p) for p in index.get("presets", [])
-            if PRESET_ID.fullmatch(str(p.get("id", ""))) and (root / f"{p['id']}.npz").is_file()]
 
 
 # ----------------------------------------------------------------------------- models
@@ -161,94 +141,14 @@ def rig_run_of(glb: Path) -> Path | None:
 # ------------------------------------------------------------------------- provenance
 
 
-def source_record_for(glb: Path) -> dict[str, Any] | None:
-    """A licence record kept beside a model: a provenance sidecar, a run manifest, or a
-    finish record. The first that names a licence wins."""
-    for sidecar in (glb.with_suffix(".provenance.json"), glb.with_suffix(".json"),
-                    glb.with_suffix(".retopo-repaint.json")):
-        record = _read_json(sidecar)
-        if isinstance(record, dict) and record.get("license"):
-            return record
-    return None
-
-
-def rig_record(name: str, data: bytes, source: dict[str, Any] | None,
-               origin: str) -> dict[str, Any]:
-    """Provenance for a rigged model: the source's licence carries over, and the rigger's
-    is listed beside it rather than mixed in."""
-    return {
-        "schema_version": 1,
-        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "tool": "viewer Animate tab: SkinTokens auto-rig",
-        "input": {"name": name, "sha256": hashlib.sha256(data).hexdigest(),
-                  "source": origin},
-        "license": (source or {}).get("license"),
-        "classification": ((source or {}).get("output") or {}).get("classification")
-        or (source or {}).get("classification"),
-        "rig": {"tool": "SkinTokens", "license": SKINTOKENS_LICENSE},
-        "source_record": source,
-    }
-
-
-def animation_record(rig: dict[str, Any] | None, preset: dict[str, Any],
-                     arm_spread: float) -> dict[str, Any]:
-    record = dict(rig or {})
-    record.update({
-        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "tool": "viewer Animate tab: scripts/kimodo_retarget.py",
-        "motion": {"preset": preset["id"], "label": preset.get("label"),
-                   "made_with": "Kimodo", "license": KIMODO_LICENSE,
-                   "arm_spread_degrees": arm_spread},
-    })
-    return record
-
-
 # ----------------------------------------------------------------------------- jobs
 
 
 def rig_commands(source: Path, result: Path, family: str = "auto") -> list[tuple[list[str], Path]]:
-    """SkinTokens, then a skin-weight clean-up: it sometimes weights fingertips to a toe,
-    which stretches them into spikes once the hand moves (scripts/clean_skin_weights.py).
-    Last, the creature's family and its test clips (viewer/creature_family_api.py)."""
-    return [
-        ([str(venv_python()), "demo.py", "--input", str(source), "--output", str(result),
-          "--use_transfer"], SKINTOKENS),
-        ([str(venv_python()), str(CLEAN_WEIGHTS), "--in", str(result), "--out", str(result)], REPO),
-        creature_family_api.clip_command(venv_python(), result, family),
-    ]
-
-
-def animate_command(rigged: Path, motion: Path, result: Path, arm_spread: float,
-                    speed: float = 1.0) -> list[str]:
-    return [str(venv_python()), str(RETARGET), "--rig", str(rigged), "--motion", str(motion),
-            "--out", str(result), "--arm-spread", f"{arm_spread:g}", "--speed", f"{speed:g}"]
-
-
-def clamp_speed(value: Any, preset: dict[str, Any]) -> float:
-    """The playback speed: the caller's, else the preset's own default, else 1.
-
-    Kimodo's strikes are slow next to real ones, so kick and punch presets ship faster.
-    """
-    if value is None or value == "":
-        value = preset.get("speed", 1.0)
-    try:
-        speed = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("speed must be a number") from exc
-    low, high = SPEED_RANGE
-    if not low <= speed <= high:
-        raise ValueError(f"speed must be between {low:g} and {high:g}")
-    return speed
-
-
-def clamp_spread(value: Any) -> float:
-    try:
-        spread = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("arm_spread must be a number of degrees") from exc
-    if not 0 <= spread <= MAX_ARM_SPREAD:
-        raise ValueError(f"arm_spread must be between 0 and {MAX_ARM_SPREAD:g} degrees")
-    return spread
+    """SkinTokens and the skin-weight clean-up (image_to_3dlab/rigging.py), then the
+    creature's family and its test clips (viewer/creature_family_api.py)."""
+    return [*rigging.rig_commands(source, result),
+            creature_family_api.clip_command(venv_python(), result, family)]
 
 
 def _slug(value: str) -> str:

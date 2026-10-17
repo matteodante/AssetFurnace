@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Rig and animate outside the studio: `scripts/autorig.py rig|animate|presets` and the batch
+  steps `rig` (SkinTokens, under the GPU lock) and `animate` (preset clips, which the
+  Unreal export of a creature then carries). The commands and records moved from the
+  studio to `image_to_3dlab/rigging.py`, which the Animate tab now uses too.
 - One material per piece (game materials, `image_to_3dlab/piece_materials.py`): each piece of a
   character in pieces, and each single asset, gets one material (metal, leather, cloth...).
   A readable rule proposes it from the piece's words, the outfit clause that names the piece,

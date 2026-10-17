@@ -3,7 +3,9 @@
 The same `export_unreal()` that `scripts/export_unreal.py` and the studio's Unreal export
 run (feature 5, `docs/plans/2026-10-15-unreal-profile-design.md`), with the row's `kind`,
 `size_cm` and `measure`. It writes into the step's folder and leaves the row's asset as it
-was: the export is an extra output, listed under `unreal` in `outputs.json`.
+was: the export is an extra output, listed under `unreal` in `outputs.json`. A creature
+takes the clips the steps before made (`animate`) as its animations, unless the row names
+its own.
 
 Options (`"export_unreal": {...}` in the spec), described in `step_catalog`: name (default
 the row's id), collision, lods, tint, forward, body, body_name, animations, material. Files are
@@ -53,6 +55,8 @@ def run(ctx: StepContext) -> StepResult:
     options = ctx.options
     paths = {key: [Path(item) for item in options[key]] if options.get(key) is not None else None
              for key in ("lods", "animations")}
+    if paths["animations"] is None and ctx.row.kind == "creature" and ctx.clips:
+        paths["animations"] = list(ctx.clips)   # the clips the steps before made
     forward = options.get("forward")
     try:
         result = export_unreal(

@@ -78,6 +78,8 @@ step needs installed. A bad batch does not start, rather than stopping at row 7.
 | `picture` | Draws the row's picture from its `prompt` with Qwen-Image 2.1 Turbo, the studio's Create engine (`scripts/text_image.py`); comes first. With `"count": 4` it draws four (seeds `seed`, `seed`+1...) and the row **waits for a pick** |
 | `generate` | Writes the row's run manifest and runs it, exactly as `pipeline.py --run-manifest` would |
 | `finish` | The studio's Finish (`scripts/retopo_repaint.py`) at the row's face budget, with Pixel Match when the model kept its camera |
+| `rig` | A skeleton and skin weights (SkinTokens and the weight clean-up, as the studio's Animate tab; `scripts/autorig.py rig`). The rigged GLB becomes the row's asset. Holds the GPU lock while SkinTokens runs |
+| `animate` | Preset clips played on the rig (`"animate": {"presets": ["idle", "walk"]}`, `speed`, `arm_spread`; `scripts/autorig.py animate`). CPU only. The row's asset stays the rig; `export_unreal` takes the clips as a creature's animations |
 | `export_unreal` | The row's asset as Unreal 5.8 files (`scripts/export_unreal.py`), into `rows/<id>/export_unreal/`. Needs `size_cm`. The row's asset stays the finished model |
 | `checks` | The automatic checks of the review queue (`scripts/check_asset.py`): the row reaches the queue with its report and can be approved there |
 | `materials` | Reserved name: skipped with a warning until it exists |

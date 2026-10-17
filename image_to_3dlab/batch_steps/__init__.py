@@ -52,6 +52,7 @@ class StepContext:
     options: dict[str, Any]  # the spec's settings for this step
     log: Callable[[str], None]
     picture: Path | None = None   # the row's current picture: its first image, or a drawn one
+    clips: list[Path] = field(default_factory=list)   # animated GLBs a step before made
 
 
 @dataclass
@@ -63,6 +64,7 @@ class StepResult:
     ok: bool = True
     reason: str | None = None
     picture: Path | None = None     # the new current picture (a step that draws one)
+    clips: list[Path] = field(default_factory=list)   # animated GLBs made (animate, clips)
     # several results to pick from, and no pick yet: {"candidates": [{"choice", "file"}]};
     # the row waits until a pick is given
     waiting: dict[str, Any] | None = None

@@ -56,7 +56,7 @@ REPO = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = REPO / "output" / "batches"
 
 # Stable names: functions 5, 7 and 8 plug in under these. Order here is only for listing.
-STEP_NAMES = ("picture", "generate", "finish", "materials", "export_unreal", "checks")
+STEP_NAMES = ("picture", "generate", "finish", "rig", "animate", "materials", "export_unreal", "checks")
 STEP_PACKAGE = "image_to_3dlab.batch_steps"
 # Steps installed by hand, over the modules: tests use this for fakes.
 STEPS: dict[str, Any] = {}
@@ -81,7 +81,7 @@ REPAINT_BACKEND = "hunyuan-comfyui"
 STATE_FILE = "batch-state.json"
 INDEX_FILE = "outputs.json"
 SPEC_COPY = "spec.json"
-PICKS_FILE = "picks.json"   # {row id: {step: choice}}, written by pick_candidate
+PICKS_FILE = "picks.json"   # {row id: {step: {"choice", "key"}}}, written by pick_candidate
 # Steps that make the row's picture: they come before generate.
 PICTURE_STEPS = ("picture",)
 LOCK_FILE = ".batch.lock"   # in the batches folder, not in one batch: one GPU, one batch
@@ -744,9 +744,14 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
             if step in step_catalog.CATALOG and step != "generate":
                 problems += [f"{label}: {problem}"
                              for problem in step_catalog.check(step, merged, files=False)]
-    for step, choice in ((picks or {}).get(row_id) or {}).items():
-        if step in STEP_NAMES and "pick" not in options.get(step, {}):
-            options[step] = {**options.get(step, {}), "pick": choice}
+    for step, made in ((picks or {}).get(row_id) or {}).items():
+        # only for the candidates it was made among: new words or settings wait again
+        module = load_step(step) if step in STEP_NAMES else None
+        if (module is None or not hasattr(module, "candidate_key") or "pick" in options.get(step, {})
+                or not isinstance(made, dict)):
+            continue
+        if made.get("key") == module.candidate_key({"prompt": value.get("prompt"), "options": options.get(step, {})}):
+            options[step] = {**options.get(step, {}), "pick": made.get("choice")}
     concept = None
     if asset is not None and asset.is_file() and not images:
         concept = recorded_image(asset) or next(
@@ -1353,6 +1358,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     # the row's picture: its first image, the one its asset's record leads to, or what a
     # step that draws one (`picture`) leaves
     picture = row.images[0] if row.images else row.concept
+    clips: list[Path] = []   # animated GLBs a step made, for the export
     steps = entry.setdefault("steps", {})
     for name in [name for name in steps if name not in row.steps]:
         del steps[name]   # a step taken out of the row is no longer part of its result
@@ -1366,6 +1372,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             asset = _absolute(done.get("asset"), directory) or asset
             sidecar = _absolute(done.get("sidecar"), directory) or sidecar
             picture = _absolute(done.get("picture"), directory) or picture
+            clips = [directory / clip for clip in done.get("clips", [])] or clips
             continue
         rerun = True
         step = load_step(name)
@@ -1389,7 +1396,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
         ctx = StepContext(row=row, row_dir=row_dir, step_dir=step_dir, asset=asset,
                           sidecar=sidecar, intent=spec.intent,
                           license_policy=spec.license_policy,
-                          options=row.options.get(name, {}), log=log, picture=picture)
+                          options=row.options.get(name, {}), log=log, picture=picture, clips=clips)
         try:
             result = step.run(ctx)
         except KeyboardInterrupt:
@@ -1406,7 +1413,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             candidates = [{**candidate, "file": _relative(Path(candidate["file"]), directory)}
                           for candidate in result.waiting["candidates"]]
             steps[name] = {"status": "waiting", "fingerprint": fingerprints[name],
-                           "candidates": candidates, "finished_at": now()}
+                           "candidates": candidates, "key": result.waiting.get("key"), "finished_at": now()}
             entry.update(status="waiting", finished_at=now(),
                          note=f"{name}: pick one of {len(candidates)} "
                               f"({', '.join(str(c['choice']) for c in candidates)})")
@@ -1415,6 +1422,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             return
         asset = result.asset or asset
         picture = result.picture or picture
+        clips = result.clips or clips
         sidecar = result.sidecar if result.asset else sidecar
         steps[name] = {
             "status": "done", "finished_at": now(), "fingerprint": fingerprints[name],
@@ -1423,6 +1431,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             "asset": _relative(result.asset, directory) if result.asset else None,
             "sidecar": _relative(result.sidecar, directory) if result.sidecar else None,
             **({"picture": _relative(result.picture, directory)} if result.picture else {}),
+            **({"clips": [_relative(clip, directory) for clip in result.clips]} if result.clips else {}),
             **({"record": result.record} if result.record else {}),
         }
         save()
