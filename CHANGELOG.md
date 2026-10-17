@@ -356,6 +356,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- The studio's jobs talk UTF-8 on Windows: their Python children run with `PYTHONUTF8=1`
+  and their output is read as UTF-8, so a Chinese prompt or a name outside cp1252 no longer
+  stops the script that prints it, or the loop that reads it.
 - The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
   Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
   only text to image took it.
