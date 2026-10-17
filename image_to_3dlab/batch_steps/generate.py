@@ -57,11 +57,18 @@ def run(ctx: StepContext) -> StepResult:
     inputs = ctx.row_dir / "input"
     inputs.mkdir(parents=True, exist_ok=True)
     images = []
-    for image in ctx.row.images:
+    # the row's images, or the picture a step before drew (with its licence record)
+    given = ctx.row.images or ((ctx.picture,) if ctx.picture else ())
+    for image in given:
         copy = inputs / image.name
         if image.resolve() != copy.resolve():   # a resume may read the staged copy itself
             shutil.copyfile(image, copy)
         images.append(copy)
+    records = []
+    drawn = ctx.picture.with_suffix(".provenance.json") if ctx.picture and not ctx.row.images else None
+    if drawn is not None and drawn.is_file():
+        shutil.copyfile(drawn, inputs / drawn.name)
+        records.append(inputs / drawn.name)
     manifest = ctx.row_dir / MANIFEST
     manifest.write_text(json.dumps(row_manifest(ctx, images), indent=2) + "\n",
                         encoding="utf-8")
@@ -79,5 +86,5 @@ def run(ctx: StepContext) -> StepResult:
                         if path not in (glb, sidecar))
     # the copied inputs too: changed before a resume, they make the generation run again
     return StepResult(asset=glb, sidecar=sidecar,
-                      files=[glb, sidecar, *companions, manifest, *images, *logs],
+                      files=[glb, sidecar, *companions, manifest, *images, *records, *logs],
                       record={"manifest": manifest.name})

@@ -40,6 +40,7 @@ the spec file**, like in a run manifest.
 |---|---|
 | `id` | Your name for the asset, unique in the batch. Letters, digits, `_ . -`: it names the row's folder and files |
 | `images` | The first is what the generator sees; the rest are kept as references for later steps |
+| `prompt` | Words to draw the picture from, for a row whose first step is `picture` (instead of `images`) |
 | `asset` | An existing GLB, for a row that skips `generate` |
 | `kind` | `prop` (default), `creature` or `equipment` |
 | `faces` | Face budget for `finish`, 1,000 to 200,000 (default 40,000) |
@@ -74,6 +75,7 @@ step needs installed. A bad batch does not start, rather than stopping at row 7.
 
 | Step | What it does |
 |---|---|
+| `picture` | Draws the row's picture from its `prompt` with Qwen-Image 2.1 Turbo, the studio's Create engine (`scripts/text_image.py`); comes first. With `"count": 4` it draws four (seeds `seed`, `seed`+1...) and the row **waits for a pick** |
 | `generate` | Writes the row's run manifest and runs it, exactly as `pipeline.py --run-manifest` would |
 | `finish` | The studio's Finish (`scripts/retopo_repaint.py`) at the row's face budget, with Pixel Match when the model kept its camera |
 | `export_unreal` | The row's asset as Unreal 5.8 files (`scripts/export_unreal.py`), into `rows/<id>/export_unreal/`. Needs `size_cm`. The row's asset stays the finished model |
@@ -97,6 +99,15 @@ height), `stop_on_fail` (a failed check fails the row; by default the reviewer d
 Every step's settings are described once, with their types and ranges, in
 `image_to_3dlab/step_catalog.py`; a misspelt or out-of-range one stops the batch before
 its first row.
+
+`picture` settings: `seed` (default 42), `count` (1 to 8), `pick` (the seed to keep),
+`width`, `height`, `cfg_scale`, `sampler`, `negative_prompt`.
+
+**Picking.** A step that made several candidates leaves its row `waiting`; the rest of the
+batch goes on and the run ends with exit code 3. Pick with `"pick": <seed>` in the step's
+settings, or with the MCP tool `pick_candidate` (it writes `picks.json` in the batch
+folder and resumes). The candidates are kept in `rows/<id>/picture.candidates/`, so a pick,
+or another pick later, draws nothing again; it only reruns what follows.
 
 Adding a step is one file in `image_to_3dlab/batch_steps/`; its docstring has the
 contract. A done row whose skipped step later exists runs that step (and the ones after
@@ -174,8 +185,8 @@ atomically, so two submissions at once cannot both start; one left by a dead pro
 taken over. The studio does not check for running batches, so
 do not generate there at the same time.
 
-Exit codes: 0 every row done, 1 some rows failed, 2 the batch cannot start, 130
-interrupted.
+Exit codes: 0 every row done, 1 some rows failed, 2 the batch cannot start, 3 some rows
+wait for a pick (none failed), 130 interrupted.
 
 ## The Batches page
 
@@ -223,6 +234,10 @@ Then, in that repository's `.mcp.json`:
 | `pieces_run(body, set, mode, slots, outfit, concept, weapon, shield, style, seeds, choose)` | A set on a body, in the background, as the studio's Pieces page starts it; `choose` stops after the pictures |
 | `pieces_status()`, `pieces_pick(body, set, picks)` | The run's log and the pictures waiting (paths and scores); go on with your picks |
 | `pieces_fit`, `pieces_refit(body, set, to)`, `pieces_unreal(body, set, size_cm)`, `pieces_cancel()` | Fit again, carry a set to another body, export it for Unreal, stop the run |
+| `describe_steps()` | Every step with its settings (types, defaults, ranges), what can be skipped or replaced, what makes candidates, and whether it is installed |
+| `run_steps(name, steps, prompt, images, asset, ..., options)` | One asset through some steps: a batch of one row, written to `output/batches/.agent/<name>.json` and started. Call it again with other settings to rerun from the first changed step |
+| `pick_candidate(batch_ref, row_id, step, choice)` | Pick one of the candidates a waiting row offers (`batch_status` lists them under `waiting`), or change a pick; resumes the batch |
+| `rerun_step(batch_ref, row_id, step)` | Run one step of a row again, and what follows, with the same settings |
 
 `validate_batch` and `submit_batch` also take `use_case`, `distribution` and `commercial`
 for a CSV spec. The review and pieces tools call the same code as the studio and the

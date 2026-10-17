@@ -24,7 +24,7 @@ def test_the_catalogue_is_plain_json_for_the_studio_and_agents():
     described = step_catalog.describe()
     assert json.loads(json.dumps(described)) == described
     names = [step["name"] for step in described]
-    assert names[:2] == ["generate", "finish"]
+    assert names[:3] == ["picture", "generate", "finish"]
     finish = next(step for step in described if step["name"] == "finish")
     faces = next(param for param in finish["params"] if param["name"] == "faces")
     assert faces == {"name": "faces", "type": "int", "default": 40000, "range": [1000, 200000],
@@ -106,6 +106,21 @@ def test_every_export_param_is_a_flag_of_the_export_script():
         assert f"--{param.name.replace('_', '-')}" in flags, param.name
 
 
+# Flags that are about where and how a script runs, not settings of the step.
+NOT_SETTINGS = {"-h", "--help", "--out", "--blender", "--check-in-unreal", "--json", "--no-queue", "--log",
+                "--key", "--provenance"}
+
+
+@pytest.mark.parametrize("step, script", [("export_unreal", "export_unreal"), ("checks", "check_asset"),
+                                          ("picture", "text_image")])
+def test_every_setting_of_the_script_is_in_the_catalogue(step, script):
+    """The other way round: a flag added to the script and not to the catalogue would be
+    out of reach of the batches, the agents and the studio's forms."""
+    described = {f"--{param.name.replace('_', '-')}" for param in step_catalog.CATALOG[step].params}
+    missing = sorted(flag for flag in _flags(script) - NOT_SETTINGS - described if flag.startswith("--"))
+    assert missing == [], f"{script} has settings the catalogue does not describe: {missing}"
+
+
 def test_every_checks_param_is_a_flag_of_the_checks_script():
     flags = _flags("check_asset")
     for param in step_catalog.CATALOG["checks"].params:
@@ -115,3 +130,20 @@ def test_every_checks_param_is_a_flag_of_the_checks_script():
             assert "--reference" in flags
             continue
         assert f"--{param.name.replace('_', '-')}" in flags, param.name
+
+
+def test_every_picture_param_is_a_flag_of_the_picture_script():
+    flags = _flags("text_image")
+    for param in step_catalog.CATALOG["picture"].params:
+        if param.name in ("prompt", "pick"):   # the script's words, and its pictures are the pick
+            continue
+        assert f"--{param.name.replace('_', '-')}" in flags, param.name
+
+
+def test_the_picture_settings_match_the_engine():
+    from image_to_3dlab import text_image
+
+    spec = step_catalog.CATALOG["picture"]
+    assert spec.param("sampler").choices == text_image.SAMPLERS
+    assert spec.param("seed").default == text_image.DEFAULTS["seed"]
+    assert spec.param("width").range == (text_image.MIN_SIZE, text_image.MAX_SIZE)

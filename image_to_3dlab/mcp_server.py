@@ -29,7 +29,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from . import batch
+from . import batch, step_catalog
 from .processes import group_popen_kwargs, terminate_group
 
 REPO = Path(__file__).resolve().parents[1]
@@ -166,7 +166,8 @@ def batch_status(batch_ref: str) -> dict[str, Any]:
              "note": entry.get("note"),
              "steps": {name: step.get("status")
                        for name, step in entry.get("steps", {}).items()},
-             "finished_at": entry.get("finished_at")}
+             "finished_at": entry.get("finished_at"),
+             **({"waiting": _waiting(directory, entry)} if entry.get("status") == "waiting" else {})}
             for row_id, entry in batch.rows_as_seen(state, active is not None).items()]
     return {"name": state.get("name", directory.name), "directory": str(directory),
             "active": active, "counts": batch.summary(state, active is not None),
@@ -212,6 +213,129 @@ def cancel_batch(batch_ref: str) -> dict[str, Any]:
         return {"cancelled": False, "reason": "the batch is starting; stop it in a moment"}
     terminate_group(holder)
     return {"cancelled": True, "pid": holder}
+
+
+def _waiting(directory: Path, entry: dict[str, Any]) -> dict[str, Any] | None:
+    """The step a row waits on and its candidates, with absolute paths to look at."""
+    for name, step in entry.get("steps", {}).items():
+        if step.get("status") == "waiting":
+            return {"step": name, "candidates": [
+                {"choice": candidate["choice"], "picture": str((directory / candidate["file"]).resolve())}
+                for candidate in step.get("candidates", [])]}
+    return None
+
+
+def _offered(entry: dict[str, Any], step: str) -> list[Any]:
+    """What a row's step offered to pick from: the candidates it waits on, or those a
+    finished pick was made among (another pick changes it)."""
+    done = entry.get("steps", {}).get(step, {})
+    if done.get("status") == "waiting":
+        return [candidate["choice"] for candidate in done.get("candidates", [])]
+    return list((done.get("record") or {}).get("candidates", []))
+
+
+def pick_candidate(batch_ref: str, row_id: str, step: str, choice: int) -> dict[str, Any]:
+    """Choose one of the candidates a row's step made (batch_status lists them under
+    `waiting`), and go on: the batch is resumed, and the step uses the pick without
+    drawing again. A pick on a finished row changes it and reruns what follows. A pick
+    written in the spec (`"pick"` in the step's settings) wins over this one."""
+    directory = _directory(batch_ref)
+    state = batch.read_json(directory / batch.STATE_FILE) or {}
+    entry = state.get("rows", {}).get(row_id)
+    if entry is None:
+        return {"picked": False, "problem": f"{row_id} is not a row of {directory.name}"}
+    offered = _offered(entry, step)
+    if not offered:
+        return {"picked": False, "problem": f"{row_id}'s {step} has nothing to pick from"}
+    if choice not in offered:
+        return {"picked": False,
+                "problem": f"{choice} is not one of {row_id}'s {step} candidates: "
+                           f"{', '.join(map(str, offered))}"}
+    picks_path = directory / batch.PICKS_FILE
+    picks = batch.read_json(picks_path)
+    picks = picks if isinstance(picks, dict) else {}
+    picks.setdefault(row_id, {})[step] = choice
+    batch.write_json(picks_path, picks)
+    spec = (state.get("spec") or {}).get("path")
+    try:
+        loaded = batch.load_batch(Path(spec)) if spec and Path(spec).suffix.lower() == ".json" else None
+    except batch.BatchError:
+        loaded = None
+    row = next((row for row in (loaded.rows if loaded else []) if row.id == row_id), None)
+    if row is not None and row.options.get(step, {}).get("pick") != choice:
+        return {"picked": False, "problem": f"the spec sets {step}'s pick for {row_id}; "
+                                            f"change it there ({spec})"}
+    if batch.lock_holder(directory) is not None:
+        return {"picked": True, "resumed": None,
+                "note": "the batch is running: the pick is used when it runs next "
+                        "(resume_batch once it ends)"}
+    return {"picked": True, "resumed": resume_batch(str(directory))}
+
+
+def rerun_step(batch_ref: str, row_id: str, step: str) -> dict[str, Any]:
+    """Run one step of a row again, and every step after it, with the same settings (to
+    change settings, edit the spec: the row reruns from its first changed step). The
+    steps before keep their results. Refused while the batch runs."""
+    directory = _directory(batch_ref)
+    if batch.lock_holder(directory) is not None:
+        return {"started": False, "problems": [f"{directory.name} is running; cancel it or wait"]}
+    state_path = directory / batch.STATE_FILE
+    state = batch.read_json(state_path) or {}
+    entry = state.get("rows", {}).get(row_id)
+    if entry is None or step not in entry.get("steps", {}):
+        return {"started": False, "problems": [f"{row_id} has no {step} step in {directory.name}"]}
+    entry["steps"][step] = {"status": "queued", "note": "rerun asked"}
+    entry.update(status="queued", note=f"{step} asked to run again")
+    batch.write_json(state_path, state)
+    return resume_batch(str(directory))
+
+
+def describe_steps() -> dict[str, Any]:
+    """Every step a batch row can run, in chain order: what it takes and makes, its
+    settings (type, default, range or choices), whether it can be skipped or replaced
+    with a file of your own, what makes several to pick from, its command line, and
+    whether it is installed in this repository yet."""
+    available = batch.available_steps()
+    steps = [{**described, "available": available.get(described["name"], False)}
+             for described in step_catalog.describe()]
+    listed = {described["name"] for described in steps}
+    steps += [{"name": name, "available": available[name], "described": False}
+              for name in batch.STEP_NAMES if name not in listed]
+    return {"steps": steps}
+
+
+AGENT_SPECS = batch.DEFAULT_OUTPUT / ".agent"
+
+
+def run_steps(name: str, steps: list[str], prompt: str | None = None, images: list[str] | None = None,
+              asset: str | None = None, kind: str = "prop", faces: int | None = None,
+              size_cm: float | None = None, measure: str | None = None, backend: str | None = None,
+              parameters: dict[str, Any] | None = None, options: dict[str, dict[str, Any]] | None = None,
+              use_case: str = "showcase", distribution: str = "private", commercial: bool = False,
+              allow_conditional: bool = True) -> dict[str, Any]:
+    """Run one asset through some steps, from words (`prompt`, with "picture" first),
+    pictures (`images`) or a GLB (`asset`). It is a batch of one row named `name`, written
+    to output/batches/.agent/<name>.json and started like submit_batch: calling it again
+    with other settings reruns from the first changed step. steps: as describe_steps
+    lists them, e.g. ["picture", "generate", "finish", "checks"]. options: each step's
+    settings under its name, e.g. {"picture": {"count": 4}, "finish": {"paint": false}}.
+    Paths are absolute, on this machine."""
+    row: dict[str, Any] = {"id": name, "steps": list(steps), "kind": kind}
+    for key, value in (("prompt", prompt), ("images", images), ("asset", asset), ("faces", faces),
+                       ("size_cm", size_cm), ("measure", measure), ("backend", backend),
+                       ("parameters", parameters)):
+        if value is not None:
+            row[key] = value
+    row.update(options or {})
+    spec = {"schema_version": 1, "name": name, "use_case": use_case, "distribution": distribution,
+            "commercial_intent": commercial, "license_policy": {"allow_conditional": allow_conditional},
+            "output": {"directory": str(batch.DEFAULT_OUTPUT)}, "rows": [row]}
+    if not batch.ID_PATTERN.fullmatch(name):
+        return {"started": False, "problems": [f"name {name!r}: letters, digits, '_', '.', '-'"]}
+    AGENT_SPECS.mkdir(parents=True, exist_ok=True)
+    path = AGENT_SPECS / f"{name}.json"
+    batch.write_json(path, spec)
+    return {**submit_batch(str(path)), "spec": str(path)}
 
 
 def list_steps() -> dict[str, Any]:
@@ -411,7 +535,8 @@ def pieces_cancel() -> dict[str, Any]:
 
 TOOLS = (validate_batch, submit_batch, resume_batch, batch_status, list_outputs, cancel_batch,
          list_steps, review_queue, review_item, check_asset, review_decide, pieces_list, pieces_add_body,
-         pieces_run, pieces_pick, pieces_fit, pieces_refit, pieces_unreal, pieces_status, pieces_cancel)
+         pieces_run, pieces_pick, pieces_fit, pieces_refit, pieces_unreal, pieces_status, pieces_cancel,
+         describe_steps, run_steps, pick_candidate, rerun_step)
 
 
 def build_server():

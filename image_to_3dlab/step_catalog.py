@@ -74,7 +74,30 @@ def _profiles() -> tuple[str, ...]:
     return tuple(profile_names())
 
 
+SAMPLERS = ("euler", "euler_a", "heun", "dpm2", "dpmpp2m", "lcm")   # text_image.SAMPLERS
+
 CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
+    StepSpec(
+        name="picture", label="Picture", takes=(), makes="picture",
+        params=(
+            Param("prompt", "text", None, row=True, help="what to draw"),
+            Param("seed", "int", 42, range=(0, 2**31 - 1), help="same seed, same picture"),
+            Param("count", "int", 1, range=(1, 8), help="pictures to pick from, seeds seed, seed+1..."),
+            Param("pick", "int", None, range=(0, 2**31 - 1),
+                  help="the seed of the picture to keep, when there are several"),
+            Param("width", "int", 1024, range=(256, 1536), help="rounded to a multiple of 32"),
+            Param("height", "int", 1024, range=(256, 1536)),
+            Param("cfg_scale", "float", 1.0, range=(0.0, 20.0)),
+            Param("sampler", "choice", "euler", choices=SAMPLERS),
+            Param("negative_prompt", "text", None, help="what to keep out"),
+        ),
+        row_fields=(),
+        skip="give the row its picture as images instead", replace=("png", "jpg"),
+        cli="scripts/text_image.py", run="image_to_3dlab.batch_steps.picture:run",
+        candidates="count", gpu=True,
+        note="Qwen-Image 2.1 Turbo, the studio's Create engine. With count above 1 the row "
+             "waits for a pick; the candidates are kept, so picking draws nothing again.",
+    ),
     StepSpec(
         name="generate", label="3D model", takes=("picture",), makes="asset",
         params=(
@@ -137,6 +160,9 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
             Param("body", "file", None, help="equipment: the rigged body it belongs to"),
             Param("body_name", "text", None, help="equipment: the body's export name"),
             Param("animations", "files", None, help="creatures: more animated GLBs"),
+            Param("material", "choice", None, choices=None,
+                  help="the one material of a piece (metal, leather, cloth...): its roughness "
+                       "and metal in the ORM"),
         ),
         row_fields=("kind", "size_cm", "measure", "profile"),
         skip="no Unreal files are written", replace=(),
@@ -173,6 +199,10 @@ def get(name: str) -> StepSpec:
 def choices(param: Param) -> tuple[str, ...] | None:
     if param.name == "profile" and param.type == "choice" and param.choices is None:
         return _profiles()   # read from the checks' profile files, so a new one needs no edit
+    if param.name == "material" and param.type == "choice" and param.choices is None:
+        from image_to_3dlab.piece_materials import MATERIALS
+
+        return tuple(MATERIALS)   # the game materials' own list
     return param.choices
 
 
