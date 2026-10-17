@@ -336,7 +336,7 @@ questa lista prima del resoconto finale.
 | MCP 6: nome del server "assetfurnace", istruzioni, documentazione degli strumenti per funzione | unito (#109) |
 | MCP 7: Streamable HTTP facoltativo su 127.0.0.1 con token, uso via tunnel SSH | unito (#109; provato davvero: 401 senza token, 200 con) |
 | Pixal3D secondo la scheda ufficiale (12 passi, campo visivo stimato con MoGe-2) | unito (#104; MoGe-2 installato e provato: 23 s su GPU) |
-| Review finale con Codex di tutto il lavoro, correzioni, resoconto | PR #110: review per aree (lotti, MCP, studio, pezzi, Unreal, motori), 19 difetti veri corretti con un test ciascuno; due di #103 (altra sessione) segnalati, non toccati |
+| Review finale con Codex di tutto il lavoro, correzioni, resoconto | unito (#110): review per aree (lotti, MCP, studio, pezzi, Unreal, motori), 19 difetti veri corretti con un test ciascuno; due di #103 (altra sessione) segnalati, non toccati |
 
 ## Seguiti
 
