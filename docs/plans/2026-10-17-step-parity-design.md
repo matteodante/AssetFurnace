@@ -283,15 +283,15 @@ Tutte le PR hanno avuto una revisione indipendente con un agente; i P1 trovati s
 | b2 | Unita (#66): testo-immagine nel pacchetto e `scripts/text_image.py`; passo `picture` con candidati, attesa (`waiting`, uscita 3) e scelta (`pick`, `picks.json`); MCP `describe_steps`, `run_steps`, `pick_candidate`, `rerun_step`; test di parità nei due sensi |
 | b3a | Unita (#67): `image_to_3dlab/rigging.py` condiviso con lo studio, `scripts/autorig.py`, passi `rig` e `animate`; le clip arrivano all'export Unreal |
 | b3b | Unita (#68): passo `concept` (funzione 2) con candidati; `concept/requests.py` condiviso con lo studio; chiave dei candidati = impronta del passo senza la scelta; flag della riga di comando nel catalogo |
-| b3c | #69: `replace` nei lotti e in `run_steps` (sostituire l'uscita di un passo con un proprio file, versione Blender compresa) |
+| b3c | Unita (#69): `replace` nei lotti e in `run_steps` (sostituire l'uscita di un passo con un proprio file, versione Blender compresa) |
 | c1 | Unita (#70): "Redo…" su 3D, Finish e Rig con i valori usati; passi "fatti da una versione precedente"; seme del 3D in Create e nel passo; triangoli del Finish in Create |
 | c2 | Unita (#71): opzioni dell'export Unreal nello studio; soglie dei controlli nel foglio di revisione (le condizioni di licenza no) |
 | c3 | Unita (#72, seguito #76): pagina Batches, scelta dei candidati e "rifai un passo"; righe che disegnano soltanto |
 | d1 | Unita (#73, seguito #78): passo `clips`, interruttori nel Rig, `creature_clips.py --no-clips`, riga di comando di `chain_retarget.py` |
 | d2 | Unita (#74): bibbia dello stile su tre strade, spenta di base |
-| d3 | #75: scelta del vestito (`--stop-at-concept`), arma e scudo fra i candidati, "Fit again", "Carry to body", "Export for Unreal" nei pezzi |
+| d3 | Unita (#75): scelta del vestito (`--stop-at-concept`), arma e scudo fra i candidati, "Fit again", "Carry to body", "Export for Unreal" nei pezzi |
 | d4 | Unita (#77, seguito #82): una versione Blender va avanti a Finish, Rig e Animate, e quello che se ne fa resta nel suo asset con il suo id |
-| e | #81: passo `materials`, un materiale per asset o pezzo (scelto o proposto), `pieces_materials`, "Keep its own maps" nello studio. #79 (zone proprie) chiusa: contro la decisione dell'utente |
+| e | Unita (#81): passo `materials`, un materiale per asset o pezzo (scelto o proposto), `pieces_materials`, "Keep its own maps" nello studio. #79 (zone proprie) chiusa: contro la decisione dell'utente |
 
 ## 14. Backlog (aggiornato a ogni PR)
 
@@ -305,7 +305,7 @@ questa lista prima del resoconto finale.
 | Parità: testo-immagine, `picture`, candidati, MCP dei passi (b2) | unito (#66) |
 | Parità: `rig`, `animate` (b3a) | unito (#67) |
 | Parità: passo `concept` (b3b) | unito (#68) |
-| Parità: `replace` (b3c) | PR #69 |
+| Parità: `replace` (b3c) | unito (#69) |
 | Parità: studio, Redo, seme, triangoli (c1) | unito (#70) |
 | Parità: opzioni Unreal e soglie nello studio (c2) | unito (#71) |
 | Parità: pagina Batches, scelte e "rifai un passo" (c3) | unito (#72, #76) |
@@ -315,18 +315,18 @@ questa lista prima del resoconto finale.
 | Parità: versioni Blender nella catena (d4) | unito (#77, #82) |
 | Parità: materiali, un materiale per asset o pezzo (e) | unito (#81); #79 chiusa |
 | Documento finale e tabella di parità | PR #80 (per ultima) |
-| Set vero 1: spada presa per la lama | PR #83, da rifare dentro la decisione C (la review ha trovato P1 nella regola geometrica) |
-| Set vero 2: concept senza i pezzi scelti non nominati | PR #84 |
-| Set vero 3: UV sovrapposte del Finish | PR #85 |
-| Set vero 4: lucchetto GPU (Pixal3D, giudice, sd-cli) | PR #86 |
+| Set vero 1: spada presa per la lama | PR #108 (decisione C): l'immagine chiede il manico in basso e il giudice la gira se lo vede in alto; #83 chiusa (P1 nella regola geometrica) |
+| Set vero 2: concept senza i pezzi scelti non nominati | unito (#84) |
+| Set vero 3: UV sovrapposte del Finish | unito (#85) |
+| Set vero 4: lucchetto GPU (Pixal3D, giudice, sd-cli) | unito (#86) |
 | Set vero 5: arma senza candidati | unito (#75) |
-| Set vero 6: frammenti staccati | PR #87 |
-| Set vero 7: giudice mancante senza avviso | PR #88 |
-| Decisione A: come è vestito il corpo base (tutina, abiti semplici, intimo, testo libero), scelto alla registrazione su tre strade, in `body.json` | PR #93 |
-| Decisione B: nello studio un set si ferma dopo le immagini, scelta automatica evidenziata, un clic per il 3D; CLI e agenti con un flag | era già così; fissato con un test: PR #89 |
-| Decisione C: arma e scudo come static mesh su un socket della mano in Unreal (`hand_r` / `hand_l`), non pezzi skinnati | aperto |
-| C, collegato: l'arma segue l'osso del dito `middle_02_r` (i diti ereditano il ruolo "hand"); test sull'osso padre | aperto |
-| Decisione D: giudice (llama.cpp + Qwen3-VL) installato nel checkout principale con il bootstrap; Setup lo mostra; il lavoro avvisa | installato il 17/10 (bootstrap_style.py --only llama, provato: risponde in 13 s); avviso e Setup: PR #88 |
+| Set vero 6: frammenti staccati | unito (#87) |
+| Set vero 7: giudice mancante senza avviso | unito (#88) |
+| Decisione A: come è vestito il corpo base (tutina, abiti semplici, intimo, testo libero), scelto alla registrazione su tre strade, in `body.json` | unito (#93) |
+| Decisione B: nello studio un set si ferma dopo le immagini, scelta automatica evidenziata, un clic per il 3D; CLI e agenti con un flag | era già così; fissato con un test: unito (#89) |
+| Decisione C: arma e scudo come static mesh su un socket della mano in Unreal (`hand_r` / `hand_l`), non pezzi skinnati | PR #108: socket fatti all'import dallo scheletro importato, presa misurata (0,8 cm sul set vero in UE 5.8); "Held" nello studio, `--socket`, opzione `socket` dei lotti |
+| C, collegato: l'arma segue l'osso del dito `middle_02_r` (i diti ereditano il ruolo "hand"); test sull'osso padre | PR #108 (segue la radice della catena della mano) |
+| Decisione D: giudice (llama.cpp + Qwen3-VL) installato nel checkout principale con il bootstrap; Setup lo mostra; il lavoro avvisa | installato il 17/10 (bootstrap_style.py --only llama, provato: risponde in 13 s); avviso e Setup: unito (#88) |
 | Decisione E: mantello (nuovo slot con fisica della stoffa) rimandato | scritto nei seguiti del progetto dei pezzi (#80) |
 | MCP 1: annotazioni degli strumenti (readOnly, destructive, idempotent, title) | aperto |
 | MCP 2: risultati tipizzati (outputSchema, structuredContent) | aperto |
@@ -335,7 +335,7 @@ questa lista prima del resoconto finale.
 | MCP 5: solo percorsi sotto il repo, `output/` o le roots del client | aperto |
 | MCP 6: nome del server "assetfurnace", istruzioni, documentazione degli strumenti per funzione | aperto |
 | MCP 7: Streamable HTTP facoltativo su 127.0.0.1 con token, uso via tunnel SSH | aperto |
-| Pixal3D secondo la scheda ufficiale (12 passi, campo visivo stimato con MoGe-2) | PR #104 (MoGe-2 installato e provato: 23 s su GPU) |
+| Pixal3D secondo la scheda ufficiale (12 passi, campo visivo stimato con MoGe-2) | PR #104 (MoGe-2 installato e provato: 23 s su GPU; conflitti con main risolti il 17/10) |
 | Review finale con Codex di tutto il lavoro, correzioni, resoconto | aperto |
 
 ## Seguiti
