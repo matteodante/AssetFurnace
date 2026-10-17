@@ -456,6 +456,7 @@ def generate(prompt: str, raw_settings: dict[str, Any], output_path: Path, *,
         raise ValueError("the prompt is empty")
     if len(prompt) > MAX_PROMPT:
         raise ValueError(f"the prompt is longer than {MAX_PROMPT} characters")
+    output_path = Path(output_path).resolve()   # sd-cli runs from the repository, not the caller's folder
     settings = clean_settings(raw_settings)
     if settings["negative_prompt"] and not negative_applies(settings):
         log(f"negative prompt {NEGATIVE_AT_CFG_1}")

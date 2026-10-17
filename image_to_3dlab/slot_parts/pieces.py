@@ -131,11 +131,11 @@ def concept_box(piece_alpha: np.ndarray, placement: cuts.Placement) -> list[floa
 
 
 def parse_picks(text: str) -> dict[str, int]:
-    """"helmet=7,boots=3" -> {"helmet": 7, "boots": 3}."""
+    """"helmet=7,boots=3" -> {"helmet": 7, "boots": 3}; `concept=4` picks the outfit."""
     picks = {}
     for item in filter(None, (p.strip() for p in (text or "").split(","))):
         slot, _, seed = item.partition("=")
-        if slot not in slots.CATALOGUE or not seed.strip().lstrip("-").isdigit():
+        if (slot not in slots.CATALOGUE and slot != "concept") or not seed.strip().lstrip("-").isdigit():
             raise ValueError(f"a pick is slot=seed, e.g. helmet=7; got {item!r}")
         picks[slot] = int(seed)
     return picks

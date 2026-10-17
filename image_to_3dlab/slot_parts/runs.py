@@ -237,12 +237,27 @@ def _fitted(output: Path, payload: dict) -> tuple[Path, Path, Path]:
     return folder, body_json, folder / "fit"
 
 
+def _carried_from(folder: Path) -> str | None:
+    """The body a set was carried from, as its `.parts.json` says."""
+    for record in sorted(Path(folder).glob("*.parts.json")):
+        try:
+            carried = json.loads(record.read_text(encoding="utf-8")).get("carried_from")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(carried, str) and carried:
+            return carried
+    return None
+
+
 def fit_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     """Fit a set's pieces on its body again (after a piece was changed), no new pictures or 3D."""
     body_json = _body_json(output, payload.get("body"))
     folder = output / "sets" / _set_name(payload.get("set")) / body_mod.load(body_json)["name"]
     pieces_json = folder / "pieces" / "pieces.json"
     if not pieces_json.is_file():
+        carried = _carried_from(folder)
+        if carried:   # its pieces were made on another body: fitting again is carrying them again
+            return refit_command(output, {"body": carried, "set": payload.get("set"), "to": payload.get("body")})
         raise ValueError(f"{payload.get('set')} has no pieces on {payload.get('body')}")
     return [sys.executable, str(SCRIPT), "fit", "--pieces", str(pieces_json), "--body", str(body_json),
             "--out", str(folder / "fit")], folder / "fit.log"

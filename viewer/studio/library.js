@@ -72,12 +72,18 @@ export function canRedo(asset, stepId) {
  * step it was made from (a 3D model, a finished one, a rig when it kept its skeleton), so the
  * steps after it run on the version's file. Null for a prop set, which has no steps after it.
  */
-export function versionAsset(asset, version) {
+export function versionAsset(asset, version, seen = new Set()) {
   if (!asset || !version || asset.kind === 'prop set') return null;
   const parent = String(version.parent_file || '');
-  const from = parent === asset.finished || parent.startsWith('finish/') ? 'finished'
-    : parent === asset.rigged || parent.startsWith('animate/') ? 'finished'   // a rig whose skeleton was dropped
-      : 'model';
+  // a version of a version: what its parent version stood in for (a rig without its skeleton is finished)
+  const above = (asset.blender_versions || []).find((v) => v.id !== version.id
+    && (v.id === version.parent_version || v.file === parent));
+  seen.add(version.id);
+  const aboveStage = above && !seen.has(above.id) ? versionAsset(asset, above, seen)?.stage : null;
+  const from = aboveStage ? (aboveStage === 'model' ? 'model' : 'finished')
+    : parent === asset.finished || parent.startsWith('finish/') ? 'finished'
+      : parent === asset.rigged || parent.startsWith('animate/') ? 'finished'   // a rig whose skeleton was dropped
+        : 'model';
   const stage = version.facts?.skins ? 'rigged' : from;
   // the steps before it keep their own files; the version's step and those after it start here
   return {

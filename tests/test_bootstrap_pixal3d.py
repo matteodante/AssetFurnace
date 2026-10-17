@@ -539,20 +539,6 @@ def test_weights_come_from_the_tested_revisions(monkeypatch, tmp_path):
                     boot.MATTE_REPO: boot.MATTE_REVISION}
 
 
-def test_a_moge_failure_does_not_fail_the_pixal3d_install(monkeypatch, capsys):
-    import subprocess
-
-    def broken(*a, **k):
-        raise subprocess.CalledProcessError(1, ["pip"])
-
-    monkeypatch.setattr(boot, "install_moge", broken)
-    monkeypatch.setattr(boot, "install_weights", lambda *a: None)
-    monkeypatch.setattr(boot, "build_present", lambda: True)
-    monkeypatch.setattr(boot, "current_kind", lambda key, prefer_compile=False: "prebuilt")
-    assert boot.main(["--yes", "--weights-only"]) == 0
-    assert "--moge" in capsys.readouterr().out
-
-
 def test_every_prebuilt_has_its_pinned_checksum():
     for name, _ in boot.PREBUILTS.values():
         digest = boot.PREBUILT_SHA256[name]

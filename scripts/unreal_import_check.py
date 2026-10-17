@@ -170,6 +170,15 @@ def load_exports(folders: list[Path]) -> list[dict]:
     if twice:
         # They would import into one folder and share one set of measurements.
         raise SystemExit(f"two exports are both called {', '.join(twice)}; export one with another --name")
+    # A socket is one bone: a second held object naming it on another bone would move the first.
+    bones: dict[tuple, str] = {}
+    for export in exports:
+        socket = export["sidecar"].get("socket")
+        if socket:
+            key = (socket.get("on"), socket["name"])
+            if bones.setdefault(key, socket["bone"]) != socket["bone"]:
+                raise SystemExit(f"{socket['name']} on {socket.get('on')} would be on {bones[key]} and on "
+                                 f"{socket['bone']}: give one of the held objects another socket")
     return ordered(exports)
 
 

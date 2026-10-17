@@ -46,7 +46,10 @@ def preflight(rows) -> list[str]:
 
 
 def _reference(ctx: StepContext):
-    """The row's picture, from its staged copy when there is one, or the one a step drew."""
+    """The picture the model was made from: the one a step drew (picture, concept), else the
+    row's own, from its staged copy when there is one."""
+    if ctx.picture is not None and (not ctx.row.images or ctx.picture != ctx.row.images[0]):
+        return ctx.picture
     if ctx.row.images:
         copy = ctx.row_dir / "input" / ctx.row.images[0].name
         return copy if copy.is_file() else ctx.row.images[0]
