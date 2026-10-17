@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -35,11 +36,32 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from image_to_3dlab import host
+from image_to_3dlab.provenance import sha256_file
 from image_to_3dlab.sdcpp import NO_AMD_GPU_HELP, NO_GPU_HELP, gpu_found
 
 VENDOR = REPO / "vendor" / "sdcpp"
 BINARY = host.executable(VENDOR, "sd-cli")
-RELEASES = "https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/latest"
+# Pinned, not `latest`: the release this route was measured with (2026-10-13). It must be
+# master-959 (d637cfb, 2026-10-12) or newer, where `--sigmas qwen-image-2.1-turbo` exists;
+# master-962 (d763dae) changed how flash attention is chosen, so a newer one is a new
+# measurement, not a free upgrade. Changing the pin reinstalls sd-cli on the next setup.
+RELEASE_TAG = "master-961-60423ab"
+RELEASE_COMMIT = RELEASE_TAG.rsplit("-", 1)[1]
+RELEASES = f"https://api.github.com/repos/leejet/stable-diffusion.cpp/releases/tags/{RELEASE_TAG}"
+# SHA-256 of every archive a supported machine downloads from that release, as GitHub
+# lists them (the release's asset digests, read 2026-10-17).
+ASSET_SHA256 = {
+    "sd-master-60423ab-bin-Darwin-macOS-26.6.2-arm64.zip":
+        "9c9d71ce25cb3abc2d02f762fa3c492b3cb95e719a4b3a533fe24114833c1c96",
+    "sd-master-60423ab-bin-win-cuda12-x64.zip":
+        "bdb66ec5d095d34bd24ba5b73e6844eeb77c09cd392ef64497898de7792b68ea",
+    "cudart-sd-bin-win-cu12-x64.zip":
+        "fe20366827d357c00797eebb58244dddab7fd9a348d70090c3871004c320f38d",
+    "sd-master-60423ab-bin-Linux-Ubuntu-24.04-x86_64-vulkan.zip":
+        "7eb9b45966fbbf921b61a9054166f0746f7f1a3bce25347395cf8af20349495a",
+    "sd-master-60423ab-bin-Linux-Ubuntu-24.04-x86_64-rocm-10.1.0.zip":
+        "72d3ce045d0b5d673f5079a5b6c96751fbeea8d4ab6e032f93985911053ff64d",
+}
 
 # (repo, filename, approximate gigabytes). These are the files the upstream Qwen-Image 2.1
 # guide names, at the quantisations that were measured to be worth it: Q8 for the image
@@ -54,6 +76,13 @@ WEIGHTS = [
     ("Qwen/Qwen3-VL-8B-Instruct-GGUF", "mmproj-Qwen3VL-8B-Instruct-F16.gguf", 1.16),
     ("Comfy-Org/Qwen-Image-2.1", "vae/qwen_image_2.1_vae_bf16.safetensors", 0.68),
 ]
+# The exact Hugging Face revisions measured with (2026-10-13): unsloth re-uploads its
+# GGUFs, and a fresh install must get the quantisations that were tried.
+REVISIONS = {
+    "unsloth/Qwen-Image-2.1-Turbo-GGUF": "5d1f9f759ea877ae556cda88dbec958b62ad3809",
+    "Qwen/Qwen3-VL-8B-Instruct-GGUF": "f982a07559d4a2f6c8744d840bf6fccab30eea96",
+    "Comfy-Org/Qwen-Image-2.1": "a8342359c61979b06a8dafb1a47991fe1f30e994",
+}
 
 LICENCE = (
     "Qwen Research License: non-commercial use only, research or evaluation\n"
@@ -77,7 +106,7 @@ def announcement(build: bool = True, weights: bool = True) -> str:
     lines = ["", "About to install:", "", "  backend: Qwen-Image 2.1 Turbo (text to image)",
              f"  route:   GGUF via stable-diffusion.cpp, {route}"]
     if build and build_for:
-        lines.append(f"  build:   prebuilt sd-cli release ({build_for.size}) -> vendor/sdcpp/")
+        lines.append(f"  build:   prebuilt sd-cli {RELEASE_TAG} ({build_for.size}) -> vendor/sdcpp/")
     if weights:
         lines.append(f"  weights: {total_gb():.1f} GB total ->  Hugging Face cache")
         for repo, filename, size in WEIGHTS:
@@ -90,6 +119,18 @@ def binary_present() -> bool:
     """Whether sd-cli is already installed. A function rather than an inline
     `BINARY.exists()` so the idempotence check is testable without touching the disk."""
     return BINARY.exists()
+
+
+def installed_commit(command: list[str] | None = None) -> str | None:
+    """The commit the installed sd-cli was built from, as `sd-cli --version` says it
+    ("stable-diffusion.cpp version unknown, commit 60423ab"); None when it cannot say."""
+    try:
+        result = subprocess.run(command or [str(BINARY), "--version"], capture_output=True,
+                                text=True, timeout=60, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = re.search(r"commit ([0-9a-f]{7,40})", (result.stdout or "") + (result.stderr or ""))
+    return found[1] if found else None
 
 
 @dataclass(frozen=True)
@@ -153,7 +194,7 @@ def install_binary(destination: Path = VENDOR) -> Path:
             "Apple Silicon Mac, or Linux/Windows with an NVIDIA card, or Linux with an "
             f"AMD card and ROCm. Otherwise build it from source and put sd-cli in {destination}."
         )
-    print("Finding the latest stable-diffusion.cpp release...")
+    print(f"Finding stable-diffusion.cpp release {RELEASE_TAG}...")
     try:
         with urllib.request.urlopen(RELEASES, timeout=30) as response:
             release = json.loads(response.read())
@@ -171,6 +212,12 @@ def install_binary(destination: Path = VENDOR) -> Path:
         print(f"Downloading {asset['name']} ({asset.get('size', 0) / 1e6:.0f} MB)...",
               flush=True)
         urllib.request.urlretrieve(asset["browser_download_url"], archive)
+        wanted = ASSET_SHA256.get(asset["name"])
+        got = sha256_file(archive)
+        if got != wanted:
+            archive.unlink(missing_ok=True)
+            raise SystemExit(f"{asset['name']} does not match its pinned checksum "
+                             f"(expected {wanted}, got {got}). Nothing was installed.")
         with zipfile.ZipFile(archive) as bundle:
             bundle.extractall(destination)
             restore_symlinks(bundle, destination)
@@ -265,7 +312,7 @@ def install_weights() -> None:
         ) from exc
     for repo, filename, size in WEIGHTS:
         print(f"\nFetching {filename} ({size:.2f} GB) from {repo}...", flush=True)
-        path = hf_hub_download(repo_id=repo, filename=filename)
+        path = hf_hub_download(repo_id=repo, filename=filename, revision=REVISIONS[repo])
         print(f"  {path}")
 
 
@@ -295,9 +342,13 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
     if build:
-        if binary_present():
-            print(f"\nsd-cli is already installed at {BINARY}, leaving it alone.")
+        commit = installed_commit() if binary_present() else None
+        if commit == RELEASE_COMMIT:
+            print(f"\nsd-cli {RELEASE_TAG} is already installed at {BINARY}, leaving it alone.")
         else:
+            if binary_present():
+                print(f"\nsd-cli at {BINARY} is commit {commit or 'unknown'}; installing the "
+                      f"pinned {RELEASE_TAG} over it.")
             install_binary()
         # The Linux/Windows builds load their GPU backend at run time and fall back to
         # the CPU without a word if it cannot reach the driver. Catch that now, not
