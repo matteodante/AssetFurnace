@@ -22,8 +22,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
-import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
@@ -31,9 +29,7 @@ from urllib.parse import unquote, urlsplit
 import batch_api
 
 from image_to_3dlab import processes
-from image_to_3dlab.slot_parts import body as body_mod
-from image_to_3dlab.slot_parts import candidates as candidates_mod
-from image_to_3dlab.slot_parts import slots
+from image_to_3dlab.slot_parts import runs
 
 REPO = Path(__file__).resolve().parents[1]
 HEADER = "slot-parts"
@@ -51,163 +47,57 @@ def _inside(output: Path, relative: str | None) -> Path:
     return path
 
 
-def rel(output: Path, path: Path) -> str:
-    return Path(path).resolve().relative_to(output.resolve()).as_posix()
-
-
-def list_bodies(output: Path) -> list[dict[str, Any]]:
-    found = []
-    for path in sorted((output / "bodies").glob("*/body.json")):
-        try:
-            record = body_mod.load(path)
-        except (OSError, ValueError):
-            continue
-        image = Path(record["image"])
-        found.append({"name": record["name"], "labels": record.get("labels", {}), "clips": sorted(record.get("clips", {})),
-                      "picture": rel(output, image) if output.resolve() in image.resolve().parents else None})
-    return found
-
-
-def list_sets(output: Path) -> list[dict[str, Any]]:
-    found = []
-    for path in sorted((output / "sets").glob("*/*/*.parts.json")):
-        try:
-            parts = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        preview = path.parent / "fit" / "preview.glb"
-        checks = parts.get("checks") or {}
-        found.append({"set": parts.get("set"), "body": (parts.get("body") or {}).get("name"), "mode": parts.get("mode"),
-                      "pieces": sorted(parts.get("pieces") or {}), "created": parts.get("created"),
-                      "covered": (parts.get("fit") or {}).get("covered_share"),
-                      "statuses": {k: v.get("status") for k, v in checks.items()},
-                      "preview": rel(output, preview) if preview.is_file() else None, "record": rel(output, path)})
-    found.sort(key=lambda s: s["created"] or "", reverse=True)
-    return found
-
-
-def catalogue() -> list[dict[str, Any]]:
-    return [{"name": s.name, "paired": s.paired, "drawn": bool(s.roles), "held": s.name in ("weapon", "shield")}
-            for s in slots.CATALOGUE.values()]
+# The pure parts are shared with the MCP server: one place builds the commands.
+rel = runs.rel
+list_bodies = runs.list_bodies
+list_sets = runs.list_sets
+catalogue = runs.catalogue
+waiting_picks = runs.waiting_picks
 
 
 def register_body(output: Path, payload: dict) -> dict:
-    picture = _inside(output, payload.get("picture"))
-    model = _inside(output, payload.get("model"))
-    rigged = _inside(output, payload.get("rigged"))
     clips = {str(c["name"]): _inside(output, c["file"]) for c in payload.get("clips") or [] if c.get("file")}
-    labels = {str(k): str(v) for k, v in (payload.get("labels") or {}).items() if str(k).strip()}
-    path = body_mod.register(str(payload.get("name", "")), picture, rigged, model.with_suffix(".svviews"), None,
-                             labels, output / "bodies", clips)
-    return {"name": body_mod.load(path)["name"], "record": rel(output, path)}
+    return runs.register_body(output, str(payload.get("name", "")), _inside(output, payload.get("picture")),
+                              _inside(output, payload.get("model")), _inside(output, payload.get("rigged")),
+                              clips, payload.get("labels") or {})
+
+
+def _checked(output: Path, payload: dict) -> dict:
+    """The page's request with its concept, if any, found inside the output folder."""
+    if int(payload.get("mode", 3)) == 2 and not payload.get("resume"):
+        return {**payload, "concept": _inside(output, payload.get("concept"))}
+    return payload
 
 
 def resume_command(output: Path, payload: dict) -> tuple[list[str], Path]:
-    """The run that goes on from the pictures, with the person's picks."""
-    body_json = output / "bodies" / str(payload.get("body", "")) / "body.json"
-    if not body_mod.NAME.match(str(payload.get("body", ""))) or not body_json.is_file():
-        raise ValueError("choose a registered base body")
-    set_name = str(payload.get("set", ""))
-    if not body_mod.NAME.match(set_name):
-        raise ValueError("give the set a name: letters, digits, '.', '_' or '-'")
-    folder = output / "sets" / set_name / body_mod.load(body_json)["name"]
-    if not (folder / "run_state.json").is_file():
-        raise ValueError(f"{set_name} has no pictures waiting for picks")
-    offered = candidates_mod.load(folder / "pieces")["slots"]
-    picks = {}
-    for slot, seed in (payload.get("picks") or {}).items():
-        if slot not in offered or str(seed) not in {str(s) for s in offered[slot]["candidates"]}:
-            raise ValueError(f"{slot}: {seed} is not one of its pictures")
-        picks[slot] = int(seed)
-    command = [sys.executable, str(REPO / "scripts" / "slot_parts.py"), "run", "--body", str(body_json),
-               "--set", set_name, "--slots-json", str(folder / "slots.json"), "--root", str(output / "sets"),
-               "--resume"]
-    if picks:
-        command += ["--pick", ",".join(f"{slot}={seed}" for slot, seed in picks.items())]
-    return command, folder / "run.log"
-
-
-def waiting_picks(output: Path, folder: Path) -> dict[str, Any] | None:
-    """The candidates a stopped run waits on, for the page: every slot's pictures and scores."""
-    if not (folder / "run_state.json").is_file():
-        return None
-    out = {}
-    for slot, entry in candidates_mod.load(folder / "pieces")["slots"].items():
-        out[slot] = {"auto": entry["auto"], "picked": entry["picked"], "doubt": bool(entry.get("doubt")),
-                     "candidates": [{"seed": int(seed), "picture": rel(output, Path(c["picture"])),
-                                     "score": c["score"], "is_piece": c.get("is_piece"), "shape": c["shape"]["score"]}
-                                    for seed, c in sorted(entry["candidates"].items(), key=lambda kv: int(kv[0]))]}
-    return out
+    return runs.resume_command(output, payload)
 
 
 def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     """The `slot_parts.py run` command for a page request, and its log file."""
-    if payload.get("resume"):
-        return resume_command(output, payload)
-    mode = int(payload.get("mode", 3))
-    if mode not in (2, 3):
+    if not payload.get("resume") and int(payload.get("mode", 3)) not in (2, 3):
         raise ValueError("mode 1 (one piece) is + Create; this page makes modes 2 and 3")
-    body_json = output / "bodies" / str(payload.get("body", "")) / "body.json"
-    if not body_mod.NAME.match(str(payload.get("body", ""))) or not body_json.is_file():
-        raise ValueError("choose a registered base body")
-    set_name = str(payload.get("set", ""))
-    if not body_mod.NAME.match(set_name):
-        raise ValueError("give the set a name: letters, digits, '.', '_' or '-'")
-    raw = {k: v for k, v in (payload.get("slots") or {}).items() if k in slots.DRAWN}
-    chosen = slots.choose(raw) if raw else {}
-    seeds = [int(s) for s in str(payload.get("seeds", "3")).split(",") if s.strip()][:5] or [3]
-    folder = output / "sets" / set_name / body_mod.load(body_json)["name"]
-    folder.mkdir(parents=True, exist_ok=True)
-    spec = folder / "slots.json"
-    spec.write_text(json.dumps(chosen, indent=1) + "\n", encoding="utf-8")
-    command = [sys.executable, str(REPO / "scripts" / "slot_parts.py"), "run", "--body", str(body_json),
-               "--set", set_name, "--slots-json", str(spec), "--seeds", ",".join(map(str, seeds)),
-               "--concept-seeds", str(seeds[0]), "--root", str(output / "sets")]
-    if mode == 2:
-        command += ["--concept", str(_inside(output, payload.get("concept")))]
-    else:
-        outfit = str(payload.get("outfit", "")).strip()
-        if not outfit:
-            raise ValueError("describe the outfit to draw on the body")
-        command += ["--outfit", outfit[:600]]
-    for held in ("weapon", "shield"):
-        words = str(payload.get(held) or "").strip()
-        if words:
-            command += [f"--{held}", words[:300]]
-    if str(payload.get("style") or "").strip():
-        command += ["--style", str(payload["style"]).strip()[:300]]
-    if not chosen and not any(f"--{h}" in command for h in ("weapon", "shield")):
-        raise ValueError("choose at least one slot, a weapon or a shield")
-    if payload.get("choose") and len(seeds) > 1 and chosen:
-        command.append("--stop-at-pictures")
-    return command, folder / "run.log"
+    return runs.run_command(output, _checked(output, payload))
 
 
 def job_status(output: Path) -> dict[str, Any]:
     if not _JOB:
         return {"running": False}
-    process = _JOB["process"]
-    code = process.poll()
-    log = Path(_JOB["log"])
-    tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-12:] if log.is_file() else []
-    parts = Path(_JOB["folder"]) / f"{_JOB['set']}.parts.json"
-    return {"running": code is None, "returncode": code, "set": _JOB["set"], "body": _JOB["body"],
-            "started": _JOB["started"], "log": tail,
-            "parts": rel(output, parts) if parts.is_file() and parts.stat().st_mtime >= _JOB["started"] else None,
+    code = _JOB["process"].poll()
+    return {**runs.status(output, _JOB["record"], running=code is None), "returncode": code,
             "picks": waiting_picks(output, Path(_JOB["folder"])) if code == 0 else None}
 
 
 def start_run(output: Path, payload: dict, popen=subprocess.Popen) -> dict[str, Any]:
     if _JOB and _JOB["process"].poll() is None:
         raise ValueError(f"a set is already being made ({_JOB['set']}); wait or stop it")
-    command, log = run_command(output, payload)
-    handle = log.open("w", encoding="utf-8")
-    # its own process group: Stop must reach the edits, Pixal3D and Blender it starts, not
-    # only the script that starts them
-    process = popen(command, stdout=handle, stderr=subprocess.STDOUT, cwd=str(REPO), **processes.group_popen_kwargs())
+    action = "resume" if payload.get("resume") else "run"
+    if action == "run" and int(payload.get("mode", 3)) not in (2, 3):
+        raise ValueError("mode 1 (one piece) is + Create; this page makes modes 2 and 3")
+    process, record = runs.start(output, action, _checked(output, payload), popen=popen)
     _JOB.clear()
-    _JOB.update(process=process, log=str(log), folder=str(log.parent), set=payload["set"], body=payload["body"],
-                started=time.time())
+    _JOB.update(process=process, record=record, log=record["log"], folder=record["folder"], set=payload["set"],
+                body=payload["body"], started=record["started"])
     return job_status(output)
 
 
