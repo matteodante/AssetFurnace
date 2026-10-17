@@ -250,7 +250,9 @@ def prepare_prompt(prompt: str, settings: dict[str, Any], *, weights: dict[str, 
             sent = found.pop("prompt")
             notes["prompt_rewrite"] = {"applied": True, **found}
         else:
-            notes["prompt_rewrite"] = {"applied": False, "reason": "the rewriter is not installed or gave no answer"}
+            gap = prompt_rewrite.missing()
+            notes["prompt_rewrite"] = {"applied": False, "reason": f"{gap} is not installed ({prompt_rewrite.SETUP_HINT})"
+                                       if gap else "the rewriter gave no usable answer"}
     if settings.get("transparent"):
         sent = rgba_prompt(sent)
     return sent, notes

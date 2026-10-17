@@ -203,3 +203,25 @@ def test_a_downloaded_system_prompt_with_another_checksum_is_refused(tmp_path, m
     good = b"the prompt"
     monkeypatch.setattr(pr, "SYSTEM_PROMPT_SHA256", __import__("hashlib").sha256(good).hexdigest())
     assert pr.install_system_prompt(fetch=lambda url: good).read_bytes() == good
+
+
+# ---- what a fresh install has (code read, 18/10/2026) ----------------------------------
+
+def test_the_rewriter_says_what_is_missing_and_where_to_install_it(monkeypatch, tmp_path):
+    """Rewriting is on by default; with only Qwen-Image installed llama.cpp was missing and
+    only the job's log said so. The studio now reads what is missing and where to get it."""
+    monkeypatch.setattr(pr, "system_prompt_path", lambda: tmp_path / "system.txt")
+    monkeypatch.setattr(pr, "llama_completion", lambda repo=pr.REPO: None)
+    assert pr.missing() == "llama.cpp"
+    assert pr.state() == {"ready": False, "missing": "llama.cpp", "setup": pr.SETUP_HINT}
+    assert "Qwen-Image" in pr.SETUP_HINT
+    monkeypatch.setattr(pr, "llama_completion", lambda repo=pr.REPO: tmp_path / "llama-completion")
+    assert pr.state() == {"ready": True, "missing": None, "setup": None}
+
+
+def test_a_picture_drawn_without_the_rewriter_records_what_to_install(monkeypatch):
+    monkeypatch.setattr(pr, "rewrite", lambda *a, **k: None)
+    monkeypatch.setattr(pr, "missing", lambda repo=pr.REPO: "llama.cpp")
+    settings = text_image.clean_settings(text_image.T2I_DEFAULTS)
+    _, notes = text_image.prepare_prompt("a wolf", settings, weights={"llm": Path("m")})
+    assert "llama.cpp" in notes["prompt_rewrite"]["reason"] and "Qwen-Image" in notes["prompt_rewrite"]["reason"]

@@ -298,7 +298,7 @@ def text_command(prompt: str, picture: Path, seed: int) -> list[str]:
     settings = text_image.clean_settings({**text_image.T2I_DEFAULTS, "seed": seed})
     weights = text_image.resolve_weights()
     sent, _ = text_image.prepare_prompt(prompt, settings, weights=weights, references=False,
-                                        lock_path=text_image.GPU_LOCK)
+                                        lock_path=text_image.GPU_LOCK, log=lambda line: print(line, flush=True))
     return text_image.build_command(sent, settings, Path(picture), weights)
 
 

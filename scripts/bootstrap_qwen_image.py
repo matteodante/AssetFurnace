@@ -4,8 +4,10 @@
 Two halves, the same way the viewer tracks every other backend. The **build** is a
 prebuilt `stable-diffusion.cpp` release binary. Nothing is compiled: upstream publishes a
 Metal build for Apple Silicon, a CUDA build for Windows, a Vulkan build for Linux that
-runs on NVIDIA cards, and a ROCm build for AMD cards on Linux. The **weights** are three
-files totalling about 14.5 GB.
+runs on NVIDIA cards, and a ROCm build for AMD cards on Linux. The **weights** are four
+files totalling about 14.5 GB. Text to image rewrites its prompt the official way, on the text
+encoder with llama.cpp: its pinned release (about 30 MB, MIT, checked against its SHA-256)
+comes along when it is not already in vendor/llama-cpp/, with QwenLM's system prompt.
 
 `AGENTS.md`: a download path must name the backend, name the route, state the size, and
 require an affirmative answer. This prints all of that and stops, unless `--yes` is given
@@ -38,6 +40,7 @@ sys.path.insert(0, str(REPO))
 from image_to_3dlab import host, prompt_rewrite
 from image_to_3dlab.provenance import sha256_file
 from image_to_3dlab.sdcpp import NO_AMD_GPU_HELP, NO_GPU_HELP, gpu_found
+from image_to_3dlab.style import models as style_models
 
 VENDOR = REPO / "vendor" / "sdcpp"
 BINARY = host.executable(VENDOR, "sd-cli")
@@ -114,8 +117,39 @@ def announcement(build: bool = True, weights: bool = True) -> str:
         lines.append(f"  prompt rewriting: QwenLM's t2i system prompt ({prompt_rewrite.SYSTEM_PROMPT_BYTES // 1000} KB, "
                      f"{prompt_rewrite.SYSTEM_PROMPT_LICENSE}) -> vendor/qwen-image-pe/")
         lines.append(f"             {prompt_rewrite.SYSTEM_PROMPT_URL}")
+        llama = llama_to_install()
+        if llama is not None:
+            lines.append(f"  llama.cpp {style_models.LLAMA_TAG} ({style_models.LLAMA_LICENSE}, "
+                         f"{llama.size / 1024 ** 2:.0f} MB), runs the prompt rewriting -> vendor/llama-cpp/")
+            lines.append(f"             {style_models.LLAMA_RELEASES}{llama.archive}")
     lines += ["", "  licence: " + LICENCE, ""]
     return "\n".join(lines)
+
+
+def llama_to_install() -> style_models.LlamaBuild | None:
+    """llama.cpp's pinned build for this machine when the prompt rewriting still needs it."""
+    if prompt_rewrite.llama_completion() is not None:
+        return None
+    return style_models.llama_build()
+
+
+def install_rewriter(fetch=None) -> None:
+    """QwenLM's system prompt, then llama.cpp when it is not there yet (the picture judge's
+    setup installs the same build in the same folder)."""
+    print("\nFetching the prompt rewriting's system prompt (10 KB)...", flush=True)
+    print(f"  {prompt_rewrite.install_system_prompt()}")
+    build = llama_to_install()
+    if build is None:
+        if prompt_rewrite.llama_completion() is None:
+            print("\nllama.cpp has no prebuilt release for this machine: pictures are drawn without prompt "
+                  "rewriting until it is built into vendor/llama-cpp/ (https://github.com/ggml-org/llama.cpp)")
+        return
+    if fetch is None:
+        sys.path.insert(0, str(REPO / "scripts"))
+        from bootstrap_style import fetch_llama as fetch
+    print(f"\nFetching llama.cpp {style_models.LLAMA_TAG} ({build.size / 1024 ** 2:.0f} MB) for the prompt "
+          "rewriting...", flush=True)
+    fetch(build)
 
 
 def binary_present() -> bool:
@@ -318,8 +352,7 @@ def install_weights() -> None:
         path = hf_hub_download(repo_id=repo, filename=filename, revision=REVISIONS[repo])
         print(f"  {path}")
     # the official prompt rewriting runs on the text encoder just fetched (prompt_rewrite.py)
-    print("\nFetching the prompt rewriting's system prompt (10 KB)...", flush=True)
-    print(f"  {prompt_rewrite.install_system_prompt()}")
+    install_rewriter()
 
 
 def main(argv: list[str] | None = None) -> int:

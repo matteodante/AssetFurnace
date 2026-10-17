@@ -34,7 +34,8 @@ Poi usare Setup nell'interfaccia, oppure gli script originali del progetto:
 Il validatore glTF di Khronos (circa 2 MB, anche da Setup) serve al controllo `gltf.valid`:
 senza, i report degli asset lo segnalano come non eseguito.
 
-Questi comandi scaricano i modelli: Pixal3D circa 8,4 GB, Qwen circa 14,6 GB e
+Questi comandi scaricano i modelli: Pixal3D circa 8,4 GB, Qwen circa 14,5 GB (con llama.cpp,
+circa 30 MB, che riscrive il prompt come chiede la scheda del modello) e
 SkinTokens circa 1,6 GB, oltre a programmi e dipendenze. Blender 4.2 o successivo
 deve essere installato su Windows.
 
