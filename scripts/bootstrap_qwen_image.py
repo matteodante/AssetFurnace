@@ -85,8 +85,8 @@ REVISIONS = {
 }
 
 LICENCE = (
-    "Qwen Research License. The pictures you generate are yours (Qwen confirmed it);\n"
-    "  the weights stay on this machine. Built with Qwen.\n"
+    "Qwen Research License: non-commercial use only, research or evaluation\n"
+    "  (sections 1(i), 2(a)); the weights stay on this machine. Built with Qwen.\n"
     "  https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE"
 )
 

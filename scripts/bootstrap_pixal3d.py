@@ -58,6 +58,9 @@ BUILD = VENDOR / "build"
 MODELS = VENDOR / "models" / "pixal3d-sv"
 UPSTREAM = "https://github.com/raven38/pixal3d.cpp.git"
 WEIGHTS_REPO = "raven38/pixal3d-sv-q8_0-v1"
+# A third-party GGUF conversion of BiRefNet: its card says "license: other ... see the
+# source model" and does not name which BiRefNet checkpoint was converted (revision
+# a57397bd, read 2026-10-17). Record it as such, not as plain MIT BiRefNet.
 MATTE_REPO = "ilintar/trellis2-gguf"
 WEIGHTS_GB = 8.4
 # Exact Hugging Face revisions, so a fresh install gets the files that were tested

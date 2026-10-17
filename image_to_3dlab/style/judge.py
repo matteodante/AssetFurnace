@@ -123,18 +123,33 @@ def _free_port() -> int:
 class LlamaServer:
     """llama.cpp's server with Qwen3-VL, for as long as the `with` block lasts."""
 
-    def __init__(self, hub: Path | None = None, startup_seconds: float = 300.0, log: Path | None = None):
+    def __init__(self, hub: Path | None = None, startup_seconds: float = 300.0, log: Path | None = None,
+                 lock_path: Path | None = None):
         self.parts = find_parts(hub)
         self.port = _free_port()
         self.startup_seconds = startup_seconds
         self.log = log
         self.process: subprocess.Popen | None = None
+        self.lock_path = lock_path
+        self._lock = None
 
     @property
     def url(self) -> str:
         return f"http://127.0.0.1:{self.port}"
 
     def __enter__(self) -> LlamaServer:
+        # the model sits on the GPU for as long as the server runs: the shared lock is held as long
+        from image_to_3dlab import gpu_lock
+
+        self._lock = gpu_lock.gpu("qwen3-vl judge", path=self.lock_path or gpu_lock.LOCK)
+        self._lock.__enter__()
+        try:
+            return self._start()
+        except BaseException:
+            self._release()
+            raise
+
+    def _start(self) -> LlamaServer:
         out = open(self.log, "wb") if self.log else subprocess.DEVNULL  # noqa: SIM115 - closed with the process
         self.process = subprocess.Popen(server_command(self.parts["server"], self.parts["model"],
                                                        self.parts["mmproj"], self.port),
@@ -151,16 +166,27 @@ class LlamaServer:
             except OSError:
                 pass
             time.sleep(1)
-        self.__exit__(None, None, None)
+        self._stop()
         raise RuntimeError(f"llama-server did not become ready in {self.startup_seconds:.0f} s")
 
-    def __exit__(self, *exc) -> None:
+    def _stop(self) -> None:
         if self.process and self.process.poll() is None:
             self.process.terminate()
             try:
                 self.process.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+
+    def _release(self) -> None:
+        lock, self._lock = self._lock, None
+        if lock is not None:
+            lock.__exit__(None, None, None)
+
+    def __exit__(self, *exc) -> None:
+        try:
+            self._stop()
+        finally:
+            self._release()
 
     def post(self, body: dict) -> dict:
         request = urllib.request.Request(f"{self.url}/v1/chat/completions", data=json.dumps(body).encode(),

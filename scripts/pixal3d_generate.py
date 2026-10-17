@@ -349,6 +349,30 @@ def readiness(cli: Path = CLI, models: Path = MODELS) -> dict[str, object]:
     }
 
 
+def run_trellis(command: list[str], steps, lock_path: Path | None = None, cwd: Path | None = None) -> int:
+    """trellis-cli, holding the shared GPU lock while it computes (AGENTS.md): the studio,
+    batches and characters in pieces all run Pixal3D through here."""
+    from image_to_3dlab import gpu_lock
+
+    with gpu_lock.gpu("pixal3d", path=lock_path or gpu_lock.LOCK):
+        process = subprocess.Popen(
+            command, cwd=str(cwd or PIXAL3D_ROOT), stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, text=True, bufsize=1, env=run_env(steps),
+        )
+        assert process.stdout is not None
+        seen_override = False
+        for raw in process.stdout:
+            line = raw.rstrip("\n")
+            seen_override = seen_override or f"{STEPS_ENV}=" in line
+            if steps_not_applied(line, steps, seen_override):
+                process.kill()
+                raise SystemExit(f"trellis-cli ignored {STEPS_ENV}; stopped before wasting "
+                                 "the run. Re-apply scripts/patch_pixal3d_steps.py and rebuild")
+            if not kernel_noise(line):
+                print(line, flush=True)
+        return process.wait()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("image", type=Path)
@@ -431,22 +455,7 @@ def main() -> int:
           flush=True)
     print(f"[pixal3d] {steps_note}", flush=True)
 
-    process = subprocess.Popen(
-        command, cwd=str(PIXAL3D_ROOT), stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT, text=True, bufsize=1, env=run_env(steps),
-    )
-    assert process.stdout is not None
-    seen_override = False
-    for raw in process.stdout:
-        line = raw.rstrip("\n")
-        seen_override = seen_override or f"{STEPS_ENV}=" in line
-        if steps_not_applied(line, steps, seen_override):
-            process.kill()
-            raise SystemExit(f"trellis-cli ignored {STEPS_ENV}; stopped before wasting "
-                             "the run. Re-apply scripts/patch_pixal3d_steps.py and rebuild")
-        if not kernel_noise(line):
-            print(line, flush=True)
-    code = process.wait()
+    code = run_trellis(command, steps)
     if code != 0:
         raise SystemExit(f"trellis-cli exited with code {code}")
     if not args.output.is_file():
