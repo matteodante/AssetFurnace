@@ -46,6 +46,12 @@ def preflight(rows) -> list[str]:
         if not options.get("mode"):
             problems.append(f'row {row.id}: concept needs a mode, e.g. "concept": {{"mode": "redraw"}}')
             continue
+        try:
+            from image_to_3dlab.style import apply
+
+            apply.resolve(options.get("bible"), row.kind)
+        except ValueError as exc:
+            problems.append(f"row {row.id}: concept: {exc}")
         # the words each way needs, checked now on a stand-in picture count
         shape = options.get("shape") or [Path(f"shape{i}.png") for i in range(4)]
         try:
@@ -67,11 +73,14 @@ def shape_of(ctx: StepContext) -> list[Path]:
 
 
 def run(ctx: StepContext) -> StepResult:
+    from image_to_3dlab.style import apply
+
     options = ctx.options
     try:
+        style = apply.resolve(options.get("bible"), ctx.row.kind, references=3)
         plan = requests.plan(options.get("mode"), shape_of(ctx),
-                             [Path(p) for p in options.get("style_refs") or []], options)
-    except ValueError as exc:
+                             [Path(p) for p in options.get("style_refs") or []], options, bible=style)
+    except ValueError as exc:   # a request that does not hold, or an unknown bible
         return StepResult(ok=False, reason=str(exc))
 
     def draw(seed: int, path: Path) -> None:

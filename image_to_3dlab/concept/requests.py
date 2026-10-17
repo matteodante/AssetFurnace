@@ -38,12 +38,19 @@ def _text(fields: dict, key: str, label: str | None = None) -> str:
     return value
 
 
-def plan(mode: str, shape: list[Path], style_refs: list[Path], fields: dict[str, Any]) -> dict[str, Any]:
+def plan(mode: str, shape: list[Path], style_refs: list[Path], fields: dict[str, Any],
+         bible=None) -> dict[str, Any]:
     """The prompt, the pictures in order (shape first, then style), the picture the IoU
     is measured against and how. `fields`: subject, colours, parts, structure, outfit,
-    guide, piece, view, style, depth, as the mode needs them."""
+    guide, piece, view, style, depth, as the mode needs them. `bible`: a style bible
+    (`image_to_3dlab.style.apply.resolve`), whose words join the style words and whose
+    pictures join the style pictures, as many as there is room for."""
     if mode not in prompts.MODES:
         raise ValueError(f"the way is one of {', '.join(prompts.MODES)}")
+    if bible is not None:
+        fields = {**fields, "style": ", ".join(w for w in (str(fields.get("style") or "").strip(), bible.words) if w)}
+        room = max(0, edit.MAX_REFERENCES - len(shape) - len(style_refs))
+        style_refs = [*style_refs, *bible.references[:room]]
     depth = bool(fields.get("depth"))
     needed = prompts.shape_pictures(mode, depth=depth)
     if len(shape) != needed:
@@ -73,10 +80,13 @@ def plan(mode: str, shape: list[Path], style_refs: list[Path], fields: dict[str,
         prompt = prompts.other_view(view, depth=depth, style=style)
         name, against, fit = f"{view} view", shape[1] if depth else None, True
     prompt += prompts.style_sentence(len(shape) + 1, len(style_refs))
+    from image_to_3dlab.style import apply
+
     return {"mode": mode, "prompt": prompt, "name": f"concept {mode.replace('_', ' ')} {name}",
             "references": [(p, "shape") for p in shape] + [(p, "style") for p in style_refs],
             "iou_against": against, "fit": fit,
-            "inputs": {k: fields[k] for k in ("structure", "guide", "view", "depth") if k in fields}}
+            "inputs": {k: fields[k] for k in ("structure", "guide", "view", "depth") if k in fields},
+            **({"style_record": apply.record(bible)} if bible is not None else {})}
 
 
 # --------------------------------------------------------------------- the IoU
@@ -152,7 +162,8 @@ def draw(plan_: dict[str, Any], seed: int, output_path: Path, *, settings: dict[
     text_image.generate(plan_["prompt"], {**(settings or {}), "seed": seed}, output_path, weights=weights,
                         extra_args=edit.edit_args(paths, eye),
                         extra_provenance={"concept": {"mode": plan_["mode"],
-                                                      "references": reference_names(plan_["references"])}},
+                                                      "references": reference_names(plan_["references"])},
+                                          **({"style": plan_["style_record"]} if plan_.get("style_record") else {})},
                         log=log, session=session)
     command = edit.with_references(text_image.build_command(plan_["prompt"], text_image.clean_settings(
         {**(settings or {}), "seed": seed}), output_path, weights), paths, eye)

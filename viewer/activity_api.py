@@ -82,6 +82,7 @@ class Chain:
     picture_settings: dict[str, Any] = field(default_factory=dict)  # size, steps, seed (the image job checks them)
     model_seed: int | None = None                                    # a fresh 3D try each time; None = engine default
     finish_settings: dict[str, Any] = field(default_factory=dict)    # faces, texture_size, skip_photo (Finish checks them)
+    bible: str | None = None                                         # the style bible for the picture: "-" or a name
     keep_everything: bool = False                                    # the 3D step keeps its textures, meshes, caches
     made: dict[str, str | None] = field(default_factory=dict)       # picture/model/finished/rigged paths
     upload: tuple[str, bytes] | None = None                          # (file name, bytes) when the user gave a file
@@ -251,7 +252,10 @@ class ChainRunner:
     def _start(self, chain: Chain, step: str) -> tuple[str, dict[str, Any]]:
         kind = KIND[step]
         if step == "picture":
-            body = json.dumps({"prompt": chain.prompt or chain.title, "settings": chain.picture_settings}).encode()
+            request = {"prompt": chain.prompt or chain.title, "settings": chain.picture_settings}
+            if chain.bible:
+                request.update(bible=chain.bible, kind=chain.want)
+            body = json.dumps(request).encode()
             return kind, self._post("/api/image", body, "application/json")
         if step == "model":
             settings = {"backend": chain.engine} if chain.engine else {}
@@ -381,6 +385,7 @@ def chain_from_form(form: dict[str, dict[str, Any]]) -> Chain:
         picture_settings={k: picture[k] for k in ("width", "height", "steps", "seed") if k in picture}
         if isinstance(picture, dict) else {},
         model_seed=int(text("model_seed")) if (text("model_seed") or "").isdigit() else None,
+        bible=text("bible"),
         finish_settings={k: finish[k] for k in ("faces", "texture_size", "skip_photo") if k in finish}
         if isinstance(finish, dict) else {},
         keep_everything=text("keep_everything") in ("1", "true"),

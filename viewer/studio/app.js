@@ -26,6 +26,7 @@ let assets = [];
 let filter = 'all', query = '', showHidden = false, limit = 30;
 let current = null;
 let engines = [], presets = [], recipes = null, busy = false, playNext = null;
+let styleBible = null;   // the active style bible's name, offered (never forced) where pictures are drawn
 let making = null, viewingMaking = false;  // the asset Create is making right now
 let redo = null;   // the finished step being made again with other values, on the current asset
 const selectedVersions = new Map();
@@ -261,17 +262,18 @@ async function loadTools() {
   engines = readyEngines(catalog);
   presets = animate?.installed ? animate.presets : [];
   recipes = await fetch('/api/recipes').then((r) => r.json()).catch(() => null);
+  styleBible = (await fetch('/api/style-bible').then((r) => r.json()).catch(() => null))?.active || null;
 }
 
 // ------------------------------------------------------------------ Create
 function openCreateSheet() {
   closeSheet($('stage'));
-  openCreate({ stage: $('stage'), recipes, engines, presets, onStart: (plan) => startChain(plan), onReference: openReferenceSheet });
+  openCreate({ stage: $('stage'), recipes, engines, presets, styleBible, onStart: (plan) => startChain(plan), onReference: openReferenceSheet });
 }
 
 function openReferenceSheet() {
   closeSheet($('stage'));
-  openReferenceConcept({ stage: $('stage'), assets, base, onDone: () => refreshAssets() });
+  openReferenceConcept({ stage: $('stage'), assets, base, styleBible, onDone: () => refreshAssets() });
 }
 
 $('createBtn').addEventListener('click', () => {
@@ -504,7 +506,7 @@ function showSet(file, title) {
   viewer.load(url(file), { label: title, turntable: true });
 }
 $('piecesBtn').addEventListener('click', () => openSlotParts($('stage'), { assets: () => assets, open: showSet,
-  create: () => openCreateSheet() }));
+  create: () => openCreateSheet(), styleBible }));
 
 // ------------------------------------------------------------------ Review
 function setReviewCount(payload) {

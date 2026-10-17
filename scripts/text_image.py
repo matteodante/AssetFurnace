@@ -4,6 +4,7 @@
     python scripts/text_image.py "a wooden barrel with iron bands, game asset, plain background"
     python scripts/text_image.py "a wolf, side view" --seed 7 --count 4      # four to pick from
     python scripts/text_image.py "a crate" --width 768 --height 768 --out output/images/crates
+    python scripts/text_image.py "a barrel" --bible - --kind prop     # with the active style bible
 
 Qwen-Image 2.1 Turbo through `vendor/sdcpp/sd-cli` (`image_to_3dlab/text_image.py`), the
 same engine and settings as the studio. Each picture gets a `.provenance.json` beside it
@@ -45,14 +46,23 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cfg-scale", type=float, default=text_image.DEFAULTS["cfg_scale"])
     parser.add_argument("--sampler", choices=text_image.SAMPLERS, default=text_image.DEFAULTS["sampler"])
     parser.add_argument("--negative-prompt", default="", help="what to keep out")
+    parser.add_argument("--bible", help="add a style bible's words: - for the active one, or its name")
+    parser.add_argument("--kind", help="the bible's words for this kind too: prop, creature, character, "
+                                       "equipment_part, map_object")
     parser.add_argument("--json", action="store_true", help="print the result as JSON")
     return parser
 
 
-def make(prompt: str, out: Path | None, settings: dict, count: int = 1, log=print) -> list[Path]:
-    """The pictures, one per seed from settings["seed"]; each with its provenance."""
+def make(prompt: str, out: Path | None, settings: dict, count: int = 1, log=print, bible: str | None = None,
+         kind: str | None = None) -> list[Path]:
+    """The pictures, one per seed from settings["seed"]; each with its provenance (and the
+    style bible's words after the prompt, when one is named)."""
+    from image_to_3dlab.style import apply
+
     if not 1 <= count <= MAX_COUNT:
         raise ValueError(f"--count must be from 1 to {MAX_COUNT}")
+    style = apply.resolve(bible, kind)
+    extra = {"style": apply.record(style)} if style else None
     name = f"{text_image.slug(prompt)}__{time.strftime('%Y%m%d-%H%M%S')}"
     folder = out or text_image.OUTPUT_ROOT / name
     made = []
@@ -60,7 +70,8 @@ def make(prompt: str, out: Path | None, settings: dict, count: int = 1, log=prin
         seed = int(settings.get("seed", text_image.DEFAULTS["seed"])) + offset
         path = folder / (f"{name}.png" if count == 1 else f"{name}_s{seed}.png")
         log(f"text_image: seed {seed} -> {path}")
-        made.append(text_image.generate(prompt, {**settings, "seed": seed}, path, log=log))
+        made.append(text_image.generate(apply.styled(prompt, style), {**settings, "seed": seed}, path, log=log,
+                                        extra_provenance=extra))
     return made
 
 
@@ -71,8 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     quiet = args.json
     try:
         made = make(args.prompt, args.out, settings, args.count,
-                    log=(lambda line: None) if quiet else print)
-    except (ValueError, RuntimeError) as exc:   # MissingWeights is a RuntimeError
+                    log=(lambda line: None) if quiet else print, bible=args.bible, kind=args.kind)
+    except (ValueError, RuntimeError) as exc:   # MissingWeights and BibleError are these
         print(f"text_image: {exc}", file=sys.stderr)
         return 1
     if args.json:

@@ -110,6 +110,7 @@ export function runPayload(state = {}) {
     payload.outfit = outfit;
   }
   if (String(state.style || '').trim()) payload.style = String(state.style).trim();
+  if (state.useBible) payload.bible = '-';
   return payload;
 }
 
@@ -156,7 +157,7 @@ const STYLE = `
 `;
 
 /** Open the Characters in pieces sheet. `assets()` is the Library; `open(file, title)` shows a GLB. */
-export async function openSlotParts(stage, { assets = () => [], open = () => {}, create = () => {} } = {}) {
+export async function openSlotParts(stage, { assets = () => [], open = () => {}, create = () => {}, styleBible = null } = {}) {
   closeSheet(stage);
   const el = document.createElement('div');
   el.className = 'sheet';
@@ -204,6 +205,7 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
       <div class="row"><label title="One picture of each piece per seed; the best-scored goes to 3D">Pictures per piece (seeds) <input type="text" name="seeds" value="1,2,3" size="8"></label>
         <label><input type="checkbox" name="choose" checked> let me check the pictures before the 3D</label>
         <label>Style <input type="text" name="style" placeholder="optional, e.g. hand-painted"></label>
+        ${styleBible ? `<label title="Its words for every piece"><input type="checkbox" name="useBible"> style bible: ${escape(styleBible)}</label>` : ''}
         <button type="submit" class="primary">Make the set</button></div>`;
   }
 
@@ -227,7 +229,8 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
         prompt: form.querySelector(`[data-prompt="${s.name}"]`)?.value, material: form.querySelector(`[data-material="${s.name}"]`)?.value };
     }
     return { mode: mode(), body: value('body'), set: value('set'), concept: value('concept'), outfit: value('outfit'),
-      seeds: value('seeds'), style: value('style'), choose: form.querySelector('[name=choose]')?.checked, slots };
+      seeds: value('seeds'), style: value('style'), choose: form.querySelector('[name=choose]')?.checked, slots,
+      useBible: form.querySelector('[name=useBible]')?.checked };
   }
 
   function drawLists() {
