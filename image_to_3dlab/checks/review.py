@@ -135,6 +135,27 @@ def fold(events: list[dict]) -> dict[str, dict]:
     return items
 
 
+def overview(log: Path = LOG, recent: int = 10) -> dict[str, list[dict]]:
+    """What waits for a person, and the latest approvals: what the studio's review sheet
+    and the agents' `review_queue` both show."""
+    events = load(log)
+    approved = [i for i in fold(events).values() if i["state"] == "approved"]
+    approved.sort(key=lambda i: i.get("updated_at") or "", reverse=True)
+    return {"items": queue(events), "approved": approved[:recent]}
+
+
+def item_with_report(log: Path, key: str) -> dict:
+    """One asset's state, notes and history, with its checks report read in (None when it
+    has none or the file is gone). KeyError for a key the log does not have."""
+    item = fold(load(log)).get(safe_key(key))
+    if item is None:
+        raise KeyError(key)
+    report = None
+    if item.get("report") and Path(item["report"]).is_file():
+        report = json.loads(Path(item["report"]).read_text(encoding="utf-8"))
+    return {**item, "report": report, "report_file": item.get("report")}
+
+
 def queue(events: list[dict]) -> list[dict]:
     """What waits for a person: to review first, then sent back; newest first in each."""
     items = [i for i in fold(events).values() if i["state"] in ("to_review", "sent_back")]

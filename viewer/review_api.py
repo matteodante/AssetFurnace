@@ -64,23 +64,18 @@ def _brief(item: dict) -> dict:
 def queue_payload(output: Path) -> dict:
     from image_to_3dlab.checks import review
 
-    events = review.load(_log(output))
-    decided = [i for i in review.fold(events).values() if i["state"] == "approved"]
-    decided.sort(key=lambda i: i.get("updated_at") or "", reverse=True)
-    return {"items": [_brief(i) for i in review.queue(events)], "approved": [_brief(i) for i in decided[:RECENT]]}
+    view = review.overview(_log(output), RECENT)
+    return {"items": [_brief(i) for i in view["items"]], "approved": [_brief(i) for i in view["approved"]]}
 
 
 def item_payload(output: Path, key: str) -> dict:
     from image_to_3dlab.checks import review
 
-    item = review.fold(review.load(_log(output))).get(review.safe_key(key))
-    if item is None:
-        raise KeyError(key)
-    out = _brief(item) | {"history": item["history"], "report_url": url_for(item.get("report"))}
-    report = None
-    if item.get("report") and Path(item["report"]).is_file():
-        report = json.loads(Path(item["report"]).read_text(encoding="utf-8"))
-        folder = Path(item["report"]).parent
+    item = review.item_with_report(_log(output), key)
+    out = _brief(item) | {"history": item["history"], "report_url": url_for(item.get("report_file"))}
+    report = item["report"]
+    if report is not None:
+        folder = Path(item["report_file"]).parent
         for found in report.get("results", []):
             overlays = found.get("details", {}).get("overlays")
             if overlays:

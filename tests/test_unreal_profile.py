@@ -736,3 +736,38 @@ def test_a_gltf_direction_becomes_a_blender_one():
     assert up.gltf_to_blender([0, 0, 1]) == pytest.approx([0, -1, 0])  # glTF's front is Blender's -Y
     assert up.gltf_to_blender([0, 1, 0]) == pytest.approx([0, 0, 1])
     assert up.gltf_to_blender([1, 0, 0]) == pytest.approx([1, 0, 0])
+
+
+def _orm_pixels(out: bytes) -> np.ndarray:
+    document, binary = parse_glb(out)
+    texture = document["materials"][0]["pbrMetallicRoughness"]["metallicRoughnessTexture"]["index"]
+    view = document["bufferViews"][document["images"][document["textures"][texture]["source"]]["bufferView"]]
+    return np.array(Image.open(io.BytesIO(binary[view["byteOffset"]:view["byteOffset"] + view["byteLength"]])))
+
+
+def test_finalize_with_a_material_sets_roughness_and_metal_from_it():
+    ao = np.full((4, 4), 100, np.uint8)
+    data = _glb([{"name": "MI_Helmet", "pbrMetallicRoughness": {"metallicRoughnessTexture": {"index": 0},
+                                                                "roughnessFactor": 0.5, "metallicFactor": 0.2},
+                  "occlusionTexture": {"index": 1}}],
+                [("mr", _png(_mr_image())), ("ao", _png(ao))])
+    out, info = up.finalize_glb(data, material="leather")
+    assert _orm_pixels(out)[0, 0].tolist() == [100, round(0.6 * 255), 0]
+    pbr = parse_glb(out)[0]["materials"][0]["pbrMetallicRoughness"]
+    assert (pbr["roughnessFactor"], pbr["metallicFactor"]) == (1.0, 1.0)
+    assert info["material"] == "leather"
+    assert info["materials"]["MI_Helmet"]["material"] == "leather"
+
+
+def test_finalize_with_a_material_and_no_map_sets_the_factors():
+    data = _glb([{"name": "MI_Plain", "pbrMetallicRoughness": {"metallicFactor": 0.0}}], [])
+    out, info = up.finalize_glb(data, material="metal")
+    pbr = parse_glb(out)[0]["materials"][0]["pbrMetallicRoughness"]
+    assert (pbr["roughnessFactor"], pbr["metallicFactor"]) == (0.35, 1.0)
+    assert info["materials"]["MI_Plain"]["orm"] is None
+
+
+def test_finalize_refuses_a_word_outside_the_vocabulary():
+    data = _glb([{"name": "MI_Plain", "pbrMetallicRoughness": {}}], [])
+    with pytest.raises(ValueError, match="one of"):
+        up.finalize_glb(data, material="adamantium")

@@ -264,9 +264,12 @@ Stato reale, aggiornato a ogni PR: [sezione 13](#13-stato).
 
 | PR | Stato |
 |---|---|
-| a | in corso |
+| a | Unita (#60): impronte per passo, passi `export_unreal` e `checks`, catalogo |
+| b1 | In revisione: strumenti MCP per la coda di revisione e per i pezzi (`slot_parts/runs.py` condiviso con lo studio) |
 
 ## Seguiti
+
+- Codex non ha revisionato #60 (limite d'uso raggiunto); al suo posto una revisione indipendente con un agente.
 
 - Lo studio non usa il lucchetto della GPU e non vede i lotti in corso (`docs/batches.md`): resta così finché lo
   studio non ha un gestore di lavori unico. Fuori da questo lavoro.

@@ -11,6 +11,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
+from image_to_3dlab import piece_materials
+
 ROUTES = ("C", "B0")  # one clean picture per piece; or cut from the whole character in 3D
 
 
@@ -44,7 +46,7 @@ def label(name: str) -> int:
 
 
 def choose(raw: Mapping[str, Mapping] | Iterable[str]) -> dict[str, dict]:
-    """The chosen slots in catalogue order, each as {"route", "split", "prompt"}."""
+    """The chosen slots in catalogue order, each as {"route", "split", "prompt"}, and "material" if asked."""
     items = dict(raw) if isinstance(raw, Mapping) else {name: {} for name in raw}
     if not items:
         raise ValueError("choose at least one slot")
@@ -63,4 +65,6 @@ def choose(raw: Mapping[str, Mapping] | Iterable[str]) -> dict[str, dict]:
         if split and name != "shoulders":
             raise ValueError(f"{name}: only the shoulders can be split into two pieces")
         chosen[name] = {"route": route, "split": split, "prompt": str(options.get("prompt", ""))}
+        if options.get("material"):
+            chosen[name]["material"] = piece_materials.check(options["material"])
     return chosen

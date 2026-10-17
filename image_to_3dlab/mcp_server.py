@@ -20,6 +20,7 @@ Each tool is a plain function, testable without MCP; `build_server` only exposes
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -219,8 +220,198 @@ def list_steps() -> dict[str, Any]:
     return {"steps": batch.available_steps()}
 
 
+# ------------------------------------------------------------- the review queue (7)
+# The same calls as the studio's review sheet and scripts/review_queue.py.
+
+OUTPUT = REPO / "output"
+
+
+def _scripts() -> None:
+    if str(REPO / "scripts") not in sys.path:
+        sys.path.insert(0, str(REPO / "scripts"))
+
+
+def _review_log(log: str | None) -> Path:
+    from .checks import review
+
+    return Path(log) if log else review.LOG
+
+
+def review_queue(log: str | None = None) -> dict[str, Any]:
+    """What waits for review (to review first, then sent back, newest first) and the latest
+    approvals. Each item: key, state, checks status and the checks that failed or warned,
+    the asset's path and its version (asset_sha256), the notes of earlier send-backs."""
+    from .checks import review
+
+    return review.overview(_review_log(log))
+
+
+def review_item(key: str, log: str | None = None) -> dict[str, Any]:
+    """One asset in the queue: its state, notes, history and full checks report."""
+    from .checks import review
+
+    try:
+        return review.item_with_report(_review_log(log), key)
+    except KeyError:
+        return {"problem": f"{key} is not in the review queue"}
+
+
+def check_asset(glb: str, key: str | None = None, profile: str | None = None,
+                set: dict[str, Any] | None = None, reference: str | None = None,
+                height: float | None = None, width: float | None = None, depth: float | None = None,
+                log: str | None = None) -> dict[str, Any]:
+    """Run the automatic checks on a GLB, write <name>.checks.json beside it and put it in
+    the review queue, as scripts/check_asset.py does. profile: prop (default), creature,
+    equipment_part. set: thresholds, e.g. {"budget.faces.max": 20000}. reference: a GLB or
+    picture for size and silhouette; height/width/depth: wanted size in metres. Returns the
+    item as review_item does."""
+    _scripts()
+    from check_asset import parse_overrides
+
+    from .checks import Asset, profile_names, review
+
+    try:
+        if not Path(glb).is_file():
+            raise ValueError(f"{glb} does not exist")
+        profile = profile or "prop"
+        if profile not in profile_names():
+            raise ValueError(f"profile must be one of {', '.join(profile_names())}")
+        overrides = parse_overrides([f"{name}={json.dumps(value)}" for name, value in (set or {}).items()])
+        numbers = {axis: value for axis, value in (("height", height), ("width", width), ("depth", depth))
+                   if value is not None}
+        asset = Asset(glb=Path(glb), key=key, reference=Path(reference) if reference else None,
+                      reference_numbers=numbers or None)
+        report, _ = review.check_and_enqueue(asset, log=_review_log(log), profile=profile,
+                                             overrides=overrides, key=key)
+    except (ValueError, TypeError) as exc:
+        return {"problem": str(exc)}
+    return review_item(report["asset_key"], log)
+
+
+def review_decide(key: str, decision: str, asset_sha256: str, note: str = "",
+                  log: str | None = None) -> dict[str, Any]:
+    """Approve the version waiting for review (decision "approved") or send it back with a
+    note saying what to change ("sent_back"). asset_sha256 is the version you looked at,
+    as review_queue gives it: a newer one in the meantime refuses the decision. Also
+    written as a verdict in verdicts.jsonl, beside the log, as the studio does."""
+    _scripts()
+    import review_queue as review_cli
+
+    from .checks.review import ReviewConflict
+
+    path = _review_log(log)
+    try:
+        item, problem = review_cli.decide(key, decision, note, log=path, register=path.parent / "verdicts.jsonl",
+                                          asset_sha256=asset_sha256)
+    except (ReviewConflict, ValueError, KeyError) as exc:
+        return {"decided": False, "problem": str(exc.args[0] if isinstance(exc, KeyError) else exc)}
+    return {"decided": True, "item": item, "verdict_problem": problem}
+
+
+# ----------------------------------------------------- characters in pieces (4)
+# scripts/slot_parts.py, started with the arguments the studio's pieces page uses.
+
+PIECES_POPEN = subprocess.Popen
+
+
+def _pieces(action: str, payload: dict[str, Any]) -> dict[str, Any]:
+    from .slot_parts import runs
+
+    try:
+        process, record = runs.start(OUTPUT, action, payload, popen=PIECES_POPEN)
+    except (ValueError, OSError, LookupError) as exc:
+        return {"started": False, "problems": [str(exc)]}
+    return {"started": True, "pid": process.pid, "action": action, "log": record["log"],
+            "folder": record["folder"]}
+
+
+def pieces_list() -> dict[str, Any]:
+    """The registered base bodies, the sets made so far and the slots a set can have."""
+    from .slot_parts import runs
+
+    return {"output": str(OUTPUT), "bodies": runs.list_bodies(OUTPUT), "sets": runs.list_sets(OUTPUT),
+            "slots": runs.catalogue()}
+
+
+def pieces_add_body(name: str, picture: str, model: str, rigged: str, clips: dict[str, str] | None = None,
+                    labels: dict[str, str] | None = None) -> dict[str, Any]:
+    """Register a rigged humanoid as a base body: its front picture, the Pixal3D model it
+    was made from (its saved camera puts the bones on the picture), the rigged GLB, and its
+    own animated clips ({"walk": "body_walk.glb"}) and labels ({"race": "elf"})."""
+    from .slot_parts import runs
+
+    files = [picture, model, rigged, *(clips or {}).values()]
+    missing = next((path for path in files if not Path(path).is_file()), None)
+    if missing:
+        return {"problem": f"{missing} does not exist"}
+    try:
+        return runs.register_body(OUTPUT, name, Path(picture), Path(model), Path(rigged),
+                                  {k: Path(v) for k, v in (clips or {}).items()}, labels)
+    except (ValueError, OSError) as exc:
+        return {"problem": str(exc)}
+
+
+def pieces_run(body: str, set: str, mode: int = 3, slots: list[str] | dict[str, Any] | None = None,
+               outfit: str = "", concept: str | None = None, weapon: str = "", shield: str = "",
+               style: str = "", seeds: str = "3", choose: bool = False) -> dict[str, Any]:
+    """Make a set of pieces on a base body, in the background (one run at a time).
+    mode 3 draws the outfit from `outfit` words; mode 2 cuts a `concept` already drawn on
+    the body. slots: names (["helmet", "torso", "boots"]) or {slot: {"route": "C"|"B0",
+    "split": bool, "prompt": "..."}}. weapon/shield: words. seeds: "3,7,11" makes one
+    picture per seed per piece; choose stops after the pictures so pieces_pick can choose."""
+    if isinstance(slots, list):
+        slots = {name: {} for name in slots}
+    return _pieces("run", {"mode": mode, "body": body, "set": set, "slots": slots or {}, "outfit": outfit,
+                           "concept": concept, "weapon": weapon, "shield": shield, "style": style,
+                           "seeds": seeds, "choose": choose})
+
+
+def pieces_pick(body: str, set: str, picks: dict[str, int] | None = None) -> dict[str, Any]:
+    """Go on from the pictures a stopped run made, with your picks ({"boots": 7}); slots
+    you leave out keep the best-scored picture. pieces_status lists them."""
+    return _pieces("resume", {"body": body, "set": set, "picks": picks or {}})
+
+
+def pieces_fit(body: str, set: str) -> dict[str, Any]:
+    """Fit a set's pieces on its body again (no new pictures or 3D)."""
+    return _pieces("fit", {"body": body, "set": set})
+
+
+def pieces_refit(body: str, set: str, to: str) -> dict[str, Any]:
+    """Carry a set fitted on `body` over to another registered body `to`."""
+    return _pieces("refit", {"body": body, "set": set, "to": to})
+
+
+def pieces_unreal(body: str, set: str, size_cm: float = 180.0) -> dict[str, Any]:
+    """Export a fitted set for Unreal 5.8: the masked body and every piece on its Skeleton.
+    size_cm is the body's real height."""
+    return _pieces("unreal", {"body": body, "set": set, "size_cm": size_cm})
+
+
+def pieces_status() -> dict[str, Any]:
+    """The last run: running or not, the end of its log, the set's record when done, and
+    the pictures waiting for a pick (absolute paths, with their scores)."""
+    from .slot_parts import runs
+
+    status = runs.status(OUTPUT)
+    if status.get("parts"):
+        status["parts"] = str((OUTPUT / status["parts"]).resolve())
+    for entry in (status.get("picks") or {}).values():
+        for candidate in entry["candidates"]:
+            candidate["picture"] = str((OUTPUT / candidate["picture"]).resolve())
+    return status
+
+
+def pieces_cancel() -> dict[str, Any]:
+    """Stop the run in progress and everything it started."""
+    from .slot_parts import runs
+
+    return runs.cancel(OUTPUT, stop=terminate_group)
+
+
 TOOLS = (validate_batch, submit_batch, resume_batch, batch_status, list_outputs, cancel_batch,
-         list_steps)
+         list_steps, review_queue, review_item, check_asset, review_decide, pieces_list, pieces_add_body,
+         pieces_run, pieces_pick, pieces_fit, pieces_refit, pieces_unreal, pieces_status, pieces_cancel)
 
 
 def build_server():
@@ -231,7 +422,10 @@ def build_server():
     server = MCPServer(
         "assetfurnace-batches",
         instructions="Run AssetFurnace asset batches: validate a spec, submit it, follow "
-                     "its state, collect its files. Paths are on this machine.",
+                     "its state, collect its files. Review the queue: check an asset, "
+                     "approve it or send it back. Make characters in pieces: a set on a base "
+                     "body, pick its pictures, fit, refit, export for Unreal. Paths are on "
+                     "this machine.",
     )
     for tool in TOOLS:
         server.tool()(tool)

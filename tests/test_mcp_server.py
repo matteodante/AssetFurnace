@@ -152,8 +152,9 @@ def test_the_sdk_serves_every_tool():
         return tools, result
 
     tools, result = asyncio.run(talk())
-    assert tools == {"validate_batch", "submit_batch", "resume_batch", "batch_status",
-                     "list_outputs", "cancel_batch", "list_steps"}
+    assert tools == {tool.__name__ for tool in mcp_server.TOOLS}
+    assert {"validate_batch", "submit_batch", "resume_batch", "batch_status", "list_outputs",
+            "cancel_batch", "list_steps", "review_decide", "pieces_run"} <= tools
     assert json.loads(result.content[0].text)["steps"]["finish"] is True
 
 
