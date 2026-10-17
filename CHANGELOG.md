@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- The Unreal export passes the glTF validator without warnings: it writes a normal map's
+  tangents, and a skinned mesh is a root node as the glTF spec asks (on the first real set
+  the validator warned of both). The knight's body and helmet export with 0 errors and 0
+  warnings, and still import and retarget in UE 5.8.
 - Pixal3D leaves less behind (the first real set kept 811 MB of it): the `.ply` trellis-cli
   writes beside the GLB, which nothing reads, is removed once the run ends (`--keep-ply` keeps
   it), and the cut-out it made is kept only as the subject's outline, which a body's or a

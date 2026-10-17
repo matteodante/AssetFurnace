@@ -305,6 +305,30 @@ def _hull(bmesh, mesh, points):
     bm.free()
 
 
+def _normal_maps_on_first_uv(bpy) -> bool:
+    """Whether every normal map reads its mesh's first UV map, the one Blender's glTF exporter
+    makes tangents from (a glTF normalTexture on TEXCOORD_1 comes in on the second)."""
+    for obj in bpy.context.scene.objects:
+        if obj.type != "MESH" or not obj.data.uv_layers:
+            continue
+        first = obj.data.uv_layers[0].name
+        for slot in obj.material_slots:
+            material = slot.material
+            if material is None or not material.use_nodes:
+                continue
+            for node in material.node_tree.nodes:
+                if node.type != "NORMAL_MAP":
+                    continue
+                if node.uv_map and node.uv_map != first:
+                    return False
+                for link in node.inputs["Color"].links:   # the image, and the UV map it is read through
+                    image = link.from_node
+                    for vector in (image.inputs["Vector"].links if "Vector" in image.inputs else []):
+                        if vector.from_node.type == "UVMAP" and vector.from_node.uv_map not in ("", first):
+                            return False
+    return True
+
+
 def _collision(bpy, target, kind, name):
     import bmesh
 
@@ -463,10 +487,25 @@ def run(job):
             if slot.material is not None:
                 slot.material.use_backface_culling = not two_sided
     report["two_sided"] = two_sided
+    # glTF asks for a skinned mesh as a root node, the joints alone placing it (the validator's
+    # NODE_SKINNED_MESH_NON_ROOT on the first real set): out from under its armature, where it is,
+    # still deformed by it through its modifier. At frame 0, the one the exporter writes: at the
+    # scene's frame an armature moving as an object would leave the mesh where it was then.
+    bpy.context.scene.frame_set(0)
+    for o in bpy.context.scene.objects:
+        if (o.type == "MESH" and o.parent is not None and o.parent.type == "ARMATURE"
+                and any(m.type == "ARMATURE" for m in o.modifiers)):
+            world = o.matrix_world.copy()
+            o.parent = None
+            o.matrix_world = world
+    bpy.context.view_layer.update()
     bpy.ops.export_scene.gltf(
         filepath=str(out), export_format="GLB", export_yup=True,
         export_animations=exported_animations,
         **({"export_animation_mode": "NLA_TRACKS"} if exported_animations else {}),
+        # a normal map's tangents written, not left to each reader (MESH_PRIMITIVE_GENERATED_TANGENT_SPACE),
+        # but only from the UV map the normal map reads: the exporter makes them from the first one
+        export_tangents=_normal_maps_on_first_uv(bpy),
         export_skins=skinned, export_cameras=False, export_lights=False, export_extras=False, **colours)
     report["blender"] = bpy.app.version_string
     return report
