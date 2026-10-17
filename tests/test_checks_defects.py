@@ -36,7 +36,9 @@ def failing(report):
 def test_the_clean_asset_passes_every_check(tmp_path, reference):
     report = run(fx.clean(tmp_path / "clean.glb"), reference)
     assert failing(report) == set()
-    assert {r["status"] for r in report["results"]} == {"pass"}, report["results"]
+    # gltf.valid warns when the validator is not installed here, and that is not a defect
+    measured = [r for r in report["results"] if not (r["check"] == "gltf.valid" and r["value"] is None)]
+    assert {r["status"] for r in measured} == {"pass"}, report["results"]
     ran = {r["check"] for r in report["results"]} | {s["check"] for s in report["skipped"]}
     assert ran >= set(checks.REGISTRY) - {"gltf.valid"}
 
