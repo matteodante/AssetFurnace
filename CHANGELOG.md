@@ -383,6 +383,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helmet the outfit's words left out was not drawn, so its cut was the face and the piece
   edit invented a helmet; the concept now adds the chosen pieces the outfit does not name,
   in their own words when they have them.
+- A Studio request refused before its body was read gets its 403: the reference concept
+  and Blender edit APIs now read the body first, as the batch and export APIs did, instead of
+  closing on it (Windows then reset the connection and the page saw a network error).
 - glTF validity is never silently unchecked: without Khronos' glTF-Validator the `gltf.valid`
   check warns that it did not run (it was skipped, and no report said so), and the validator
   can be installed from Setup & Status (about 2 MB) as well as from its script.
