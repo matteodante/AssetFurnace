@@ -22,7 +22,7 @@ WEIGHT_FLAGS = {"--diffusion-model": "diffusion_model", "--llm": "llm", "--vae":
                 "--llm_vision": "llm_vision"}
 
 
-def _sha256(path: Path) -> str:
+def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1 << 20), b""):
@@ -52,11 +52,11 @@ def write(image: Path, *, mode: str, prompt: str, seed: int, command: list[str],
         if role not in ROLES:
             raise ValueError(f"a reference's role is one of {', '.join(ROLES)}, got {role!r}")
     record = {
-        "image": {"name": Path(image).name, "sha256": _sha256(image)},
+        "image": {"name": Path(image).name, "sha256": sha256(image)},
         "mode": mode,
         "prompt": prompt,
         "seed": seed,
-        "references": [{"name": Path(p).name, "role": role, "sha256": _sha256(p)} for p, role in references],
+        "references": [{"name": Path(p).name, "role": role, "sha256": sha256(p)} for p, role in references],
         "inputs": inputs or {},
         "models": _models(command),
         "iou": iou,

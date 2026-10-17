@@ -39,7 +39,7 @@ from urllib.parse import unquote, urlsplit
 import batch_api
 
 from image_to_3dlab import piece_materials, processes
-from image_to_3dlab.slot_parts import runs
+from image_to_3dlab.slot_parts import runs, slots
 
 REPO = Path(__file__).resolve().parents[1]
 HEADER = "slot-parts"
@@ -74,8 +74,11 @@ def register_body(output: Path, payload: dict) -> dict:
 
 
 def _checked(output: Path, payload: dict, action: str = "run") -> dict:
-    """The page's request with its concept, if any, found inside the output folder."""
-    if action == "run" and int(payload.get("mode", 3)) == 2 and not payload.get("resume"):
+    """The page's request with its concept, if any, found inside the output folder. Mode 2
+    needs one only for pieces drawn on the body: weapons and shields alone have none."""
+    drawn = any(slot in slots.DRAWN for slot in payload.get("slots") or {})
+    if (action == "run" and int(payload.get("mode", 3)) == 2 and not payload.get("resume")
+            and (drawn or payload.get("concept"))):
         return {**payload, "concept": _inside(output, payload.get("concept"))}
     return payload
 

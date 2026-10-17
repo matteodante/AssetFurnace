@@ -14,10 +14,12 @@ are inside its output folder.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +31,8 @@ from image_to_3dlab.slot_parts import slots
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "slot_parts.py"
 RUN_FILE = ".run.json"   # in output/sets/
+STARTING = ".starting"   # in output/sets/: held while a run is being started
+STARTING_STALE = 120.0  # a start takes a moment; a reservation this old was left by a crash
 MAX_SEEDS = 5
 
 
@@ -383,9 +387,64 @@ def active_run(output: Path) -> dict[str, Any] | None:
     return record
 
 
+def _reserve(output: Path) -> tuple[Path, str]:
+    """Hold `output/sets/.starting` for one start: the studio and the MCP server start runs
+    from different threads and processes, and the running check and the launch must be
+    one step, or both pass the check and launch (and only the last stays cancellable)."""
+    path = output / "sets" / STARTING
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mine = f"{os.getpid()} {uuid.uuid4().hex}"
+    for _ in range(2):
+        try:
+            handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if _left_by_a_crash(path):
+                continue
+            raise ValueError("a set is being started; wait a moment") from None
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            out.write(mine)
+        return path, mine
+    raise ValueError("a set is being started; wait a moment")
+
+
+def _left_by_a_crash(path: Path) -> bool:
+    """Remove a reservation whose server died, or that is far older than any start; True when
+    it was one. Only the reservation read is removed, never one taken meanwhile."""
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+        age = time.time() - path.stat().st_mtime
+    except OSError:
+        return True                                    # gone meanwhile: try again
+    pid = text.split(maxsplit=1)[0] if text else ""
+    if not (age > STARTING_STALE or (pid.isdigit() and not processes.process_alive(int(pid)))):
+        return False
+    try:
+        if path.read_text(encoding="utf-8").strip() == text:
+            path.unlink()
+    except OSError:
+        pass
+    return True
+
+
+def _let_go(path: Path, mine: str) -> None:
+    try:
+        if path.read_text(encoding="utf-8").strip() == mine:
+            path.unlink()
+    except OSError:
+        pass
+
+
 def start(output: Path, action: str, payload: dict, popen=subprocess.Popen) -> tuple[Any, dict[str, Any]]:
     """Start one action (`COMMANDS`) in the background, in its own process group; refuse
-    while another run is alive. Returns the process and its record."""
+    while another run is alive or being started. Returns the process and its record."""
+    reservation, mine = _reserve(output)
+    try:
+        return _start(output, action, payload, popen)
+    finally:
+        _let_go(reservation, mine)
+
+
+def _start(output: Path, action: str, payload: dict, popen) -> tuple[Any, dict[str, Any]]:
     running = active_run(output)
     if running:
         raise ValueError(f"a set is already being made ({running.get('set')}); wait or stop it")
