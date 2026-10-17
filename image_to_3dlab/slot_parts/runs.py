@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from image_to_3dlab import processes
+from image_to_3dlab import piece_materials, processes
 from image_to_3dlab.slot_parts import body as body_mod
 from image_to_3dlab.slot_parts import candidates as candidates_mod
 from image_to_3dlab.slot_parts import slots
@@ -60,11 +60,16 @@ def list_sets(output: Path) -> list[dict[str, Any]]:
             continue
         preview = path.parent / "fit" / "preview.glb"
         checks = parts.get("checks") or {}
+        try:
+            materials = piece_materials.set_materials(path.parent)
+        except (OSError, ValueError):
+            materials = {}
         found.append({"set": parts.get("set"), "body": (parts.get("body") or {}).get("name"), "mode": parts.get("mode"),
                       "pieces": sorted(parts.get("pieces") or {}), "created": parts.get("created"),
                       "covered": (parts.get("fit") or {}).get("covered_share"),
                       "statuses": {k: v.get("status") for k, v in checks.items()},
-                      "preview": rel(output, preview) if preview.is_file() else None, "record": rel(output, path)})
+                      "preview": rel(output, preview) if preview.is_file() else None, "record": rel(output, path),
+                      "materials": materials})
     found.sort(key=lambda s: s["created"] or "", reverse=True)
     return found
 
@@ -111,7 +116,7 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     """`slot_parts.py run` for a whole set, and its log file.
 
     payload: mode (2: the outfit already drawn, `concept`; 3: drawn from `outfit` words),
-    body, set, slots ({slot: {route, split, prompt}}), weapon, shield, style, seeds ("3,7"),
+    body, set, slots ({slot: {route, split, prompt, material}}), weapon, shield, style, seeds ("3,7"),
     choose (stop after the pictures to pick, when there are several seeds). `concept` is a
     path, already checked by the caller.
     """
@@ -124,6 +129,11 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     set_name = _set_name(payload.get("set"))
     raw = {k: v for k, v in (payload.get("slots") or {}).items() if k in slots.DRAWN}
     chosen = slots.choose(raw) if raw else {}
+    for held in ("weapon", "shield"):
+        # a weapon's or shield's material goes beside its words, only when it is being made
+        asked = ((payload.get("slots") or {}).get(held) or {}).get("material")
+        if asked and str(payload.get(held) or "").strip():
+            chosen[held] = {"material": piece_materials.check(asked)}
     seeds = [int(s) for s in str(payload.get("seeds", "3")).split(",") if s.strip()][:MAX_SEEDS] or [3]
     folder = output / "sets" / set_name / body_mod.load(body_json)["name"]
     folder.mkdir(parents=True, exist_ok=True)

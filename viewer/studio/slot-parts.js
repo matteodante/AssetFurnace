@@ -56,6 +56,24 @@ export function setLine(set = {}) {
   return parts.join(' · ');
 }
 
+/** A material menu's options: "Auto" (the rule decides) first unless `auto` is null, then the words. */
+export function materialOptions(materials = [], value = '', auto = 'Auto') {
+  const words = (materials || []).map((m) => `<option value="${escape(m)}"${m === value ? ' selected' : ''}>${escape(m)}</option>`);
+  return (auto === null ? '' : `<option value=""${value ? '' : ' selected'}>${escape(auto)}</option>`) + words.join('');
+}
+
+/** A made set's pieces, each with a menu on its material and why it has it. */
+export function materialRows(pieces = {}, materials = []) {
+  return Object.entries(pieces || {}).map(([slot, entry]) => `<tr><td>${escape(slotLabel(slot))}</td>
+    <td><select data-set-material="${escape(slot)}" data-was="${escape(entry.material)}" aria-label="${escape(slotLabel(slot))} material">${materialOptions(materials, entry.material, null)}</select></td>
+    <td class="meta">${escape(entry.reason || '')}</td></tr>`).join('');
+}
+
+/** Only the pieces whose menu a person changed: {slot: material}. */
+export function changedMaterials(menus = []) {
+  return Object.fromEntries(menus.filter((m) => m.value !== m.was).map((m) => [m.slot, m.value]));
+}
+
 /** The run request from the form's state; throws with what is missing, in words. */
 export function runPayload(state = {}) {
   const mode = Number(state.mode);
@@ -69,13 +87,20 @@ export function runPayload(state = {}) {
     if (!options || !options.on || slot === 'weapon' || slot === 'shield') continue;
     slots[slot] = { route: options.route === 'B0' ? 'B0' : 'C', split: slot === 'shoulders' && Boolean(options.split),
       prompt: String(options.prompt || '').trim() };
+    if (options.material) slots[slot].material = String(options.material);
+  }
+  for (const held of ['weapon', 'shield']) {
+    const options = (state.slots || {})[held];
+    if (options && options.on && options.material) slots[held] = { material: String(options.material) };
   }
   const payload = { mode, body: state.body, set: name, slots, seeds: String(state.seeds || '3'), choose: Boolean(state.choose) };
   for (const held of ['weapon', 'shield']) {
     const options = (state.slots || {})[held];
     if (options && options.on) payload[held] = String(options.prompt || '').trim() || (held === 'weapon' ? 'a one-handed sword' : 'a round shield');
   }
-  if (!Object.keys(slots).length && !payload.weapon && !payload.shield) throw new Error('Choose at least one piece.');
+  if (!Object.keys(slots).some((s) => s !== 'weapon' && s !== 'shield') && !payload.weapon && !payload.shield) {
+    throw new Error('Choose at least one piece.');
+  }
   if (mode === 2) {
     if (!state.concept) throw new Error('Give the concept of the dressed character (a picture under output/, drawn on the body).');
     payload.concept = state.concept;
@@ -124,6 +149,10 @@ const STYLE = `
 .sp-cand.sp-auto img { border-color: var(--flame); }
 .sp-cand:has(input:checked) img { outline: 2px solid var(--ember); }
 .sp-log { white-space: pre-wrap; font-size: 12px; color: var(--ash); max-height: 9em; overflow: auto; }
+[data-sets] .act-what { grid-column: 1 / 3; }
+.sp-materials { margin: 4px 0 8px; grid-column: 1 / -1; }
+.sp-materials table { border-collapse: collapse; font-size: 13px; }
+.sp-materials td { padding: 3px 6px; }
 `;
 
 /** Open the Characters in pieces sheet. `assets()` is the Library; `open(file, title)` shows a GLB. */
@@ -170,7 +199,8 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
         <td><label><input type="checkbox" data-on="${escape(s.name)}"> ${escape(slotLabel(s.name))}</label></td>
         <td>${s.drawn ? `<select data-route="${escape(s.name)}" aria-label="How to make it"><option value="C">own picture</option><option value="B0">cut from the whole</option></select>` : '<span class="meta">made on its own</span>'}</td>
         <td>${s.name === 'shoulders' ? `<label><input type="checkbox" data-split="shoulders"> two pieces</label>` : ''}</td>
-        <td><input type="text" data-prompt="${escape(s.name)}" placeholder="${s.held ? 'what it is, e.g. a longsword' : 'optional words for this piece'}"></td></tr>`).join('')}</tbody></table>
+        <td><input type="text" data-prompt="${escape(s.name)}" placeholder="${s.held ? 'what it is, e.g. a longsword' : 'optional words for this piece'}"></td>
+        <td><select data-material="${escape(s.name)}" aria-label="${escape(slotLabel(s.name))} material" title="One material for the whole piece: Auto lets the rule pick it from the words">${materialOptions(info.materials)}</select></td></tr>`).join('')}</tbody></table>
       <div class="row"><label title="One picture of each piece per seed; the best-scored goes to 3D">Pictures per piece (seeds) <input type="text" name="seeds" value="1,2,3" size="8"></label>
         <label><input type="checkbox" name="choose" checked> let me check the pictures before the 3D</label>
         <label>Style <input type="text" name="style" placeholder="optional, e.g. hand-painted"></label>
@@ -194,7 +224,7 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
     for (const s of info.slots || []) {
       slots[s.name] = { on: form.querySelector(`[data-on="${s.name}"]`)?.checked,
         route: form.querySelector(`[data-route="${s.name}"]`)?.value, split: form.querySelector(`[data-split="${s.name}"]`)?.checked,
-        prompt: form.querySelector(`[data-prompt="${s.name}"]`)?.value };
+        prompt: form.querySelector(`[data-prompt="${s.name}"]`)?.value, material: form.querySelector(`[data-material="${s.name}"]`)?.value };
     }
     return { mode: mode(), body: value('body'), set: value('set'), concept: value('concept'), outfit: value('outfit'),
       seeds: value('seeds'), style: value('style'), choose: form.querySelector('[name=choose]')?.checked, slots };
@@ -208,7 +238,10 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
     el.querySelector('[data-sets]').innerHTML = info.sets.length
       ? `<ul class="act-list">${info.sets.map((s) => `<li class="act"><span class="act-what"><b>${escape(s.set)}</b> on ${escape(s.body)}
           <span class="meta">${escape(setLine(s))}</span></span>
-          ${s.preview ? `<button type="button" class="ghost small" data-preview="${escape(s.preview)}" data-title="${escape(`${s.set} on ${s.body}`)}">Show</button>` : ''}</li>`).join('')}</ul>`
+          ${s.preview ? `<button type="button" class="ghost small" data-preview="${escape(s.preview)}" data-title="${escape(`${s.set} on ${s.body}`)}">Show</button>` : ''}
+          ${Object.keys(s.materials || {}).length ? `<details class="sp-materials" data-materials="${escape(s.set)}" data-body="${escape(s.body)}"><summary>Materials</summary>
+            <table><tbody>${materialRows(s.materials, info.materials)}</tbody></table>
+            <button type="button" class="ghost small" data-save-materials>Save materials</button> <span class="meta" data-materials-result></span></details>` : ''}</li>`).join('')}</ul>`
       : '<p class="meta">No sets yet.</p>';
     const candidates = bodyCandidates(assets());
     el.querySelector('[data-register]').innerHTML = candidates.length
@@ -285,7 +318,19 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
       result.innerHTML = `<p class="sp-problems">${escape(error.message)}</p>`;
     }
   });
-  el.addEventListener('click', (event) => {
+  el.addEventListener('click', async (event) => {
+    const save = event.target.closest('[data-save-materials]');
+    if (save) {
+      const box = save.closest('[data-materials]');
+      const pieces = changedMaterials([...box.querySelectorAll('select[data-set-material]')]
+        .map((m) => ({ slot: m.dataset.setMaterial, value: m.value, was: m.dataset.was })));
+      const result = box.querySelector('[data-materials-result]');
+      if (!Object.keys(pieces).length) { result.textContent = 'Nothing changed.'; return; }
+      const { ok, body } = await post('/api/slot-parts/materials', { set: box.dataset.materials, body: box.dataset.body, pieces });
+      result.textContent = ok ? 'Saved: the Unreal export uses these.' : body.error;
+      if (ok) refresh();
+      return;
+    }
     const button = event.target.closest('[data-preview]');
     if (button) { open(button.dataset.preview, button.dataset.title); close(); }
   });
