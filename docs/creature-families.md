@@ -60,10 +60,24 @@ From the command line, after rigging:
 ```sh
 python scripts/creature_clips.py --rig out/wolf_rigged.glb            # recognise, then write the clips
 python scripts/creature_clips.py --rig out/wolf_rigged.glb --family quadruped
+python scripts/creature_clips.py --rig out/wolf_rigged.glb --no-variations          # no -long takes
+python scripts/creature_clips.py --rig out/wolf_rigged.glb --no-library             # procedural only
+python scripts/creature_clips.py --rig out/wolf_rigged.glb --no-clips               # the family file alone
+python scripts/creature_clips.py --rig out/wolf_rigged.glb --variation-factor 3 --variation-seed 7
+python scripts/chain_retarget.py --list                                             # the library's clips
+python scripts/chain_retarget.py --rig out/wolf_rigged.glb --source fox --clip walk --longer
 ```
 
-Run it with the Python that runs SkinTokens (`vendor/SkinTokens/.venv`), which has Blender's
-`bpy`.
+Run them with the Python that runs SkinTokens (`vendor/SkinTokens/.venv`), which has Blender's
+`bpy` (`--list` needs none). `chain_retarget.py` carries one library clip onto the rig.
+
+**Switching them off.** In the studio, the Rig step has "Family test clips" and "Longer
+takes", both on by default: untick the first for no clips (the family file is still written,
+for the Unreal export's facing), the second to leave out the GenMM takes. In a batch, the
+clips are a step of their own, `clips`, after `rig` (`"clips": {"family": "quadruped",
+"variations": false}`; settings `family`, `clips`, `library`, `variations`,
+`variation_factor`, `variation_seed`), and leaving it out of the row's steps skips them; an
+`animate` step after it adds its clips to the family's. Agents reach it through `run_steps`.
 
 ## Into Unreal
 

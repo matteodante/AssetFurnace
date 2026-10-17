@@ -12,6 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"replace": {"finish": "my.glb"}` in a row, or `run_steps(..., replace=...)`. The step
   does not run, the file (a Blender version, a model made elsewhere, your own rig or clips)
   goes on with its own licence record, held to the batch's policy.
+- Creature families can be switched: the studio's Rig step has "Family test clips" and
+  "Longer takes" (GenMM), `creature_clips.py` takes `--no-clips` (the family alone),
+  `--no-library`, `--no-variations`, `--variation-factor` and `--variation-seed`,
+  `chain_retarget.py` has a command line
+  (`--list`, one library clip onto a rig), and batches have a `clips` step after `rig`.
+- Studio Batches page: a row waiting for a pick shows its candidates and picks with a click;
+  every row can run one of its steps again. The page uses the MCP server's own
+  `pick_candidate` and `rerun_step`. A batch row that only draws (`picture`, `concept`)
+  needs no model, and its picture is in `outputs.json`.
+- Studio: Export for Unreal has "More options" (name, collision and detail levels for
+  objects, tint mask auto or none, facing), and the review sheet's "Check an asset" can
+  change the profile's thresholds for that run, as `--set` does. `export_unreal.py --tint
+  none` and a batch's `"tint": false` ship no tint mask.
 - Studio: every finished step (3D model, Finish, Rig) has "Redo…", which opens it with the
   values it was made with and makes only that step again; the steps before stay, the old
   result stays in the Library, and a later step made from the old one says so. The 3D seed

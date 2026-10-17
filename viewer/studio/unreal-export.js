@@ -63,15 +63,25 @@ export function sizeLabel(kind) {
   return kind === 'equipment' ? "Wearer's height (cm)" : 'Real size (cm)';
 }
 
-export function requestBody({ source, kind, size, measure, body, moves, check, material }) {
+export function requestBody({ source, kind, size, measure, body, moves, check, material,
+  name = '', collision = 'auto', lods = 'auto', tint = 'auto', forward = 'auto' }) {
   // Equipment is checked in Unreal together with its body's export, which the panel does
   // not have, so only from the command line.
   const data = { file: source.file, kind, size_cm: Number(size), measure, check: Boolean(check) && kind !== 'equipment' };
   if (kind === 'creature' && moves) data.animations = source.moves;
   if (kind === 'equipment') data.body = body;
   if (material) data.material = material; // empty: the rule picks it from the model's prompt
+  // the export's own settings; "auto" (the default) is left to the export
+  if (String(name).trim()) data.name = String(name).trim();
+  if (kind === 'prop' && collision !== 'auto') data.collision = collision;
+  if (kind === 'prop' && lods !== 'auto') data.lods = lods;
+  if (tint !== 'auto') data.tint = tint;
+  if (forward !== 'auto') data.forward = forward;
   return data;
 }
+
+export const COLLISIONS = [['auto', 'Auto (box)'], ['box', 'Box'], ['convex', 'Convex hull'], ['unreal', "Unreal's own"]];
+export const FACINGS = [['auto', 'Auto'], ['-y', 'Front (-Y)'], ['y', 'Back (+Y)'], ['x', 'Right (+X)'], ['-x', 'Left (-X)']];
 
 // "Auto: leather (the prompt says 'leather')": what the rule would pick, as the menu's first entry.
 export function autoLabel(proposal) {
@@ -112,6 +122,17 @@ export function createUnrealPanel({ root, url, assets }) {
     <label class="field" data-body-label hidden>Worn by<select data-body></select></label>
     <label class="field" title="One material for the whole model: it sets roughness and metal in Unreal">Material<select data-material><option value="">Auto</option></select></label>
     <label class="check" data-moves-label hidden><input type="checkbox" data-moves checked> Include its moves</label>
+    <details class="adv" data-more><summary>More options</summary>
+      <label class="field">Name in Unreal<input data-name type="text" maxlength="40" placeholder="from the file name"></label>
+      <div class="pair" data-prop-only>
+        <label class="field">Collision<select data-collision>${COLLISIONS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
+        <label class="field">Detail levels<select data-lods><option value="auto" title="the _LOD files beside the model">Auto</option><option value="none">None</option></select></label>
+      </div>
+      <div class="pair">
+        <label class="field">Tint mask<select data-tint><option value="auto" title="the mask the material step left beside the model">Auto</option><option value="none">None</option></select></label>
+        <label class="field" title="Which way the model faces in Blender; Auto reads a creature's family">Facing<select data-forward>${FACINGS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
+      </div>
+    </details>
     <label class="check" data-check-label hidden><input type="checkbox" data-check> Check it in Unreal too (about two minutes)</label>
     <p class="hint" data-source></p>
     <button class="primary" data-export disabled>Export for Unreal</button>
@@ -135,7 +156,9 @@ export function createUnrealPanel({ root, url, assets }) {
     const blocked = !context || working || !capabilities?.blender || sizeProblem(el('size').value)
       || (kind === 'equipment' && !el('body').value);
     el('export').disabled = Boolean(blocked);
-    for (const key of ['kind', 'size', 'measure', 'body', 'moves', 'check', 'material']) el(key).disabled = working;
+    for (const key of ['kind', 'size', 'measure', 'body', 'moves', 'check', 'material', 'name', 'collision', 'lods',
+      'tint', 'forward']) el(key).disabled = working;
+    el('prop-only').hidden = kind !== 'prop';
     el('measure').disabled = working || kind === 'equipment';
   }
   async function load() {
@@ -186,6 +209,8 @@ export function createUnrealPanel({ root, url, assets }) {
     el('source').textContent = `From ${basename(source.file)}${source.moves.length ? ` and ${source.moves.length} move(s)` : ''}`;
     el('result').hidden = true;
     el('material').value = '';
+    for (const key of ['collision', 'lods', 'tint', 'forward']) el(key).value = 'auto';
+    el('name').value = '';
     message('');
     load();
     controls();
@@ -306,7 +331,8 @@ export function createUnrealPanel({ root, url, assets }) {
         body: JSON.stringify(requestBody({
           source: ctx.source, kind: el('kind').value, size: el('size').value, measure: el('measure').value,
           body: el('body').value, moves: el('moves').checked, check: el('check').checked && capabilities?.unreal,
-          material: el('material').value,
+          material: el('material').value, name: el('name').value, collision: el('collision').value,
+          lods: el('lods').value, tint: el('tint').value, forward: el('forward').value,
         })),
       });
       await poll(job.id, ctx);

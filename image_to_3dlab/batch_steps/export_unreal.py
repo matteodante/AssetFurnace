@@ -65,7 +65,7 @@ def run(ctx: StepContext) -> StepResult:
             out_dir=ctx.step_dir, lods=paths["lods"], collision=options.get("collision"),
             body=Path(options["body"]) if options.get("body") else None,
             animations=paths["animations"],
-            tint=Path(options["tint"]) if options.get("tint") else None,
+            tint=False if options.get("tint") is False else Path(options["tint"]) if options.get("tint") else None,
             forward=tuple(float(value) for value in forward) if forward else None,
             body_name=options.get("body_name"), material=options.get("material"), log=ctx.log)
     except (ValueError, RuntimeError) as exc:

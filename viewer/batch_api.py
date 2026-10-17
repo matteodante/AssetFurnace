@@ -7,6 +7,8 @@
                                         validate without starting
     POST /api/batches/<name>/resume     {"retry_failed": bool}
     POST /api/batches/<name>/cancel
+    POST /api/batches/<name>/pick       {"row", "step", "choice"}: pick a waiting row's candidate, resume
+    POST /api/batches/<name>/rerun      {"row", "step"}: run a row's step again, and what follows
 
 Starting, resuming and stopping are the MCP server's own functions
 (`image_to_3dlab/mcp_server.py`), so the page and an agent do exactly the same thing: the
@@ -89,8 +91,28 @@ def batch_detail(output: Path, name: str) -> dict[str, Any] | None:
         row["file"] = _from_output(directory / asset, output) if asset else None
         row["review"] = (batch.review_in(reviews, row["id"], batch.asset_sha(entry, directory))
                          if asset else None)
+        for candidate in (row.get("waiting") or {}).get("candidates", []):
+            candidate["picture"] = _from_output(Path(candidate["picture"]), output)   # served under /output/
     status["directory"] = _from_output(directory, output)
     return status
+
+
+def row_action(directory: Path, action: str, body: dict) -> tuple[int, dict[str, Any]]:
+    """A pick or a rerun from the page: the MCP server's own pick_candidate and rerun_step,
+    so the page and an agent do the same thing."""
+    row, step = body.get("row"), body.get("step")
+    if not isinstance(row, str) or not isinstance(step, str) or step not in batch.STEP_NAMES:
+        raise ValueError("name the row and one of its steps")
+    if action == "rerun":
+        result = mcp_server.rerun_step(str(directory), row, step)
+        return (202 if result.get("started") else 422), result
+    choice = body.get("choice")
+    if isinstance(choice, bool) or not isinstance(choice, int):
+        raise ValueError("the choice is one of the candidates' numbers")
+    result = mcp_server.pick_candidate(str(directory), row, step, choice)
+    if not result.get("picked"):
+        raise ValueError(result.get("problem") or "the pick was not taken")
+    return 200, result
 
 
 def _from_output(path: Path, output: Path) -> str | None:
@@ -248,6 +270,12 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
             handler._send_json(200 if detail else 404, detail or {"error": "No such batch"})
         elif mutation and parts == ["api", "batches"]:
             handler._send_json(*submit(output, _body(handler)))
+        elif mutation and len(parts) == 4 and parts[3] in ("pick", "rerun"):
+            directory = _directory(output, parts[2])
+            if directory is None:
+                handler._send_json(404, {"error": "No such batch"})
+            else:
+                handler._send_json(*row_action(directory, parts[3], _body(handler)))
         elif mutation and len(parts) == 4 and parts[3] in ("resume", "cancel"):
             directory = _directory(output, parts[2])
             lock = batch.live_lock(batches_root(output))

@@ -217,8 +217,9 @@ def base_motion(motion: str) -> str:
     return motion.removesuffix(LONGER)
 
 
-def motion_record(name: str, motion: str) -> dict:
-    """What a clip's provenance says about where its motion came from."""
+def motion_record(name: str, motion: str, factor: float = LONGER_FACTOR, seed: int = LONGER_SEED) -> dict:
+    """What a clip's provenance says about where its motion came from (`factor` and `seed`:
+    what a longer take was varied with)."""
     src = SOURCES[name]
     clip, _ = src["clips"][base_motion(motion)]
     sha, _ = MESH2MOTION["files"][f"static/animations/{src['file']}"]
@@ -228,5 +229,5 @@ def motion_record(name: str, motion: str) -> dict:
               "license": {"name": MESH2MOTION["license"], "url": MESH2MOTION["license_url"]}}
     if motion != base_motion(motion):
         record["varied_with"] = (f"GenMM patch synthesis (AssetFurnace's numpy port, Apache-2.0), "
-                                 f"{LONGER_FACTOR:g}x as long, seed {LONGER_SEED}")
+                                 f"{factor:g}x as long, seed {seed}")
     return record

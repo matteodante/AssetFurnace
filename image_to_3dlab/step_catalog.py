@@ -36,6 +36,7 @@ class Param:
     choices: tuple[str, ...] | None = None
     row: bool = False          # a batch row field, not an option under the step's name
     help: str = ""
+    off: bool = False          # a file option that `false` turns off (no file, not the default)
     # its flag on the step's command line when it is not --<name with dashes>; "" for none
     # (a positional argument, or a choice the command line makes another way)
     flag: str | None = None
@@ -87,6 +88,8 @@ MODES = ("redraw", "dress", "add_piece", "other_view", "complete_piece")
 STRUCTURES = ("depth", "lineart")
 GUIDES = ("body", "pose")
 VIEWS = ("side", "back")
+# image_to_3dlab.creature_family.FAMILIES, with "auto" first
+FAMILIES = ("auto", "humanoid", "digitigrade", "quadruped", "multileg", "winged", "serpent", "plant")
 
 CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
     StepSpec(
@@ -191,6 +194,24 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
              "rigged GLB becomes the row's asset.",
     ),
     StepSpec(
+        name="clips", label="Family clips", feature=6, takes=("asset",), makes="clips",
+        params=(
+            Param("family", "choice", "auto", choices=FAMILIES, help="the creature's family; auto: recognised"),
+            Param("clips", "bool", True, flag="--no-clips",
+                  help="the test clips; off: the family alone (the Unreal export's facing)"),
+            Param("library", "bool", True, flag="--no-library", help="the CC0 library's clips, carried by chains"),
+            Param("variations", "bool", True, flag="--no-variations",
+                  help="the library's loops also as longer varied takes (GenMM)"),
+            Param("variation_factor", "float", 2.0, range=(1.0, 8.0), help="how much longer a varied take is"),
+            Param("variation_seed", "int", 0, range=(0, 2**31 - 1), help="the variation's seed"),
+        ),
+        row_fields=(),
+        skip="no test clips; the rig goes on as it is", replace=(),
+        cli="scripts/creature_clips.py", run="image_to_3dlab.batch_steps.clips:run",
+        note="After rig. The clips reach a creature's Unreal export; the family file beside "
+             "the rig gives it its facing.",
+    ),
+    StepSpec(
         name="animate", label="Animate", takes=("asset",), makes="clips",
         params=(
             Param("presets", "choices", None, help="the preset clips to play, e.g. [\"idle\", \"walk\"]"),
@@ -216,8 +237,8 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
                   help="objects only; default box"),
             Param("lods", "files", None, help="detail levels; default the _LODn files beside "
                                               "the model, [] for none"),
-            Param("tint", "file", None, help="tint mask; default the material step's, beside "
-                                             "the model"),
+            Param("tint", "file", None, off=True, help="tint mask; default the material step's, beside "
+                                                       "the model; false for none"),
             Param("forward", "vector3", None, help="which way the model faces, in Blender axes; "
                                                    "default from the creature family, else 0 -1 0"),
             Param("body", "file", None, help="equipment: the rigged body it belongs to"),
@@ -324,6 +345,8 @@ def value_problem(param: Param, value: Any, files: bool = True) -> str | None:
         if not isinstance(value, dict):
             return f"{name} must be an object, not {value!r}"
     elif kind == "file":
+        if value is False and param.off:
+            return None
         if not isinstance(value, str):
             return f"{name} must be a file path, not {value!r}"
         if files and not Path(value).is_file():

@@ -19,6 +19,8 @@ export const FAMILIES = [
 export function familyPicker(label = 'Rig it', chosen = 'auto') {
   return `<label class="field" data-tip="Picks which test clips the rig gets. Recognising it reads the skeleton: legs, arms, wings, tail.">What is it?
       <select data-k="family">${FAMILIES.map(([id, name]) => `<option value="${id}"${id === chosen ? ' selected' : ''}>${esc(name)}</option>`).join('')}</select></label>
+    <label class="check"><input type="checkbox" data-k="clips" checked><span>Family test clips <span class="hint">walk, attack… made after the rig, to check it moves well</span></span></label>
+    <label class="check"><input type="checkbox" data-k="variations" checked><span>Longer takes <span class="hint">each looping library clip also twice as long, varied (GenMM)</span></span></label>
     <div class="row"><button class="primary" data-run="rigged">${esc(label)}</button></div>`;
 }
 

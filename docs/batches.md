@@ -81,6 +81,7 @@ step needs installed. A bad batch does not start, rather than stopping at row 7.
 | `generate` | Writes the row's run manifest and runs it, exactly as `pipeline.py --run-manifest` would |
 | `finish` | The studio's Finish (`scripts/retopo_repaint.py`) at the row's face budget, with Pixel Match when the model kept its camera |
 | `rig` | A skeleton and skin weights (SkinTokens and the weight clean-up, as the studio's Animate tab; `scripts/autorig.py rig`). The rigged GLB becomes the row's asset. Holds the GPU lock while SkinTokens runs |
+| `clips` | A rigged creature's family and its test clips (feature 6, `scripts/creature_clips.py`): the CC0 library's carried by chains, procedural ones for the rest, longer GenMM takes unless `"variations": false`. After `rig`; the clips reach a creature's Unreal export |
 | `animate` | Preset clips played on the rig (`"animate": {"presets": ["idle", "walk"]}`, `speed`, `arm_spread`; `scripts/autorig.py animate`). CPU only. The row's asset stays the rig; `export_unreal` takes the clips as a creature's animations |
 | `export_unreal` | The row's asset as Unreal 5.8 files (`scripts/export_unreal.py`), into `rows/<id>/export_unreal/`. Needs `size_cm`. The row's asset stays the finished model |
 | `checks` | The automatic checks of the review queue (`scripts/check_asset.py`): the row reaches the queue with its report and can be approved there |
@@ -94,7 +95,7 @@ default), `atlas`, `texture_size`, `metallic`, `roughness`, `ior`, `voxel`, `ski
 
 `export_unreal` settings: `name` (default the row's id), `collision` (`box`, `convex`,
 `unreal`; objects), `lods` (files, `[]` for none; default the `_LODn` files beside the
-model), `tint`, `forward` (three numbers, Blender axes), `body` and `body_name`
+model), `tint` (`false` for none), `forward` (three numbers, Blender axes), `body` and `body_name`
 (equipment, which needs its body), `animations` (creatures). File paths are relative to
 the spec. `checks` settings: `profile` (default from `kind`), `set` (thresholds, as
 `--set`: `{"budget.faces.max": 20000}`), `reference` (compare with the row's picture,
@@ -128,7 +129,11 @@ others make nothing a file can stand in for.
 batch goes on and the run ends with exit code 3. Pick with `"pick": <seed>` in the step's
 settings, or with the MCP tool `pick_candidate` (it writes `picks.json` in the batch
 folder and resumes). The candidates are kept in `rows/<id>/picture.candidates/`, so a pick,
-or another pick later, draws nothing again; it only reruns what follows.
+or another pick later, draws nothing again; it only reruns what follows. On the studio's
+Batches page a waiting row shows its candidates with a Pick button, and every row has
+"Run again…" to rerun one of its steps (`rerun_step`). A row whose steps only draw
+(`["picture"]`, `["picture", "concept"]`) needs no model: its picture is listed in
+`outputs.json` under `picture`.
 
 Adding a step is one file in `image_to_3dlab/batch_steps/`; its docstring has the
 contract. A done row whose skipped step later exists runs that step (and the ones after
