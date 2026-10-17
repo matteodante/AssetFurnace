@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Characters in pieces, from the second final review:
+  - two sets started at the same moment (the studio and an agent) no longer both start: one
+    start at a time holds `output/sets/.starting`, and the second is refused;
+  - an outfit already drawn is kept only for the same words on the same body picture: a body
+    registered again under its name gets its outfit drawn again;
+  - the studio makes weapons and shields alone in mode 2 without asking for a concept;
+  - a link to a file on a network share (`file://server/share/...`) is read with MCP's
+    `resources/read`, through the same check as any other.
 - Batches, from the second final review:
   - a batch with commercial intent is refused when it draws with Qwen-Image (research-only),
     as the licence asks;

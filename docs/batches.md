@@ -264,8 +264,9 @@ official Python SDK (`MCPServer`, version 2.x):
   (`structuredContent`), with the same JSON as text for clients that read only text.
 - Files a result names (models, pictures, reports, logs) under `output/` or a root the client
   shares also come back as resource links, with their `mimeType` (`model/gltf-binary` for a
-  GLB). `resources/read` hands each one out by its `file:` URI, and nothing else: the
-  repository's own files stay out of reach.
+  GLB). `resources/read` hands each one out by its `file:` URI (`file://server/share/...`
+  for a root on a Windows share), and nothing else: the repository's own files stay out of
+  reach.
 - `wait_batch` sends progress notifications while it follows a batch: rows settled out of
   all of them.
 - Paths must be inside this repository, its `output/` folder, or a root the client shares

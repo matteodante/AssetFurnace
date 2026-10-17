@@ -1054,18 +1054,32 @@ def _serve_files(server) -> None:
     from mcp.server.mcpserver import Context
     from mcp.server.mcpserver.resources.templates import ResourceSecurity
 
-    async def read_file(path, ctx):
-        # already decoded by the SDK: read as a URL again, "asset#1.glb" would lose "#1.glb"
-        found = Path(path if re.match(r"[A-Za-z]:", path) else "/" + path)
+    async def read_found(found: Path, path: str, ctx) -> bytes:
         if not _readable(found, await _client_roots(ctx)):
             raise ValueError(f"{path}: not a file AssetFurnace hands out (only under output/ or a root you share)")
         return found.read_bytes()
 
+    async def read_file(path, ctx):
+        # already decoded by the SDK: read as a URL again, "asset#1.glb" would lose "#1.glb"
+        return await read_found(Path(path if re.match(r"[A-Za-z]:", path) else "/" + path), path, ctx)
+
+    async def read_shared(host, path, ctx):
+        # file://server/share/model.glb, the link of a file on a Windows share (RFC 8089
+        # E.3.1); file://localhost/... is this machine's
+        if host.lower() == "localhost":
+            return await read_file(path, ctx)
+        return await read_found(Path(f"//{host}/{path}"), f"//{host}/{path}", ctx)
+
     # real objects, not this module's postponed strings: the SDK finds the context by its type
     read_file.__annotations__ = {"path": str, "ctx": Context, "return": bytes}
+    read_shared.__annotations__ = {"host": str, "path": str, "ctx": Context, "return": bytes}
     server.resource("file:///{+path}", name="file", title="A file AssetFurnace made",
                     description="A model, picture or report a tool named, by the link it gave",
                     mime_type="application/octet-stream", security=ResourceSecurity(exempt_params={"path"}))(read_file)
+    server.resource("file://{host}/{+path}", name="shared-file", title="A file AssetFurnace made, on a share",
+                    description="A model, picture or report a tool named on a network share, by the link it gave",
+                    mime_type="application/octet-stream",
+                    security=ResourceSecurity(exempt_params={"host", "path"}))(read_shared)
 
 
 # ------------------------------------------------------------- Streamable HTTP (optional)
