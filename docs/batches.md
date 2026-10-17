@@ -216,7 +216,17 @@ Then, in that repository's `.mcp.json`:
 | `list_outputs(batch_ref, row_id)` | Finished rows and their files, as absolute paths on this machine |
 | `cancel_batch(batch_ref)` | Stops the runner; the row in progress goes back in the queue |
 | `list_steps()` | Step names and which exist yet |
+| `review_queue()`, `review_item(key)` | What waits for review, the latest approvals; one item with its notes, history and checks report |
+| `check_asset(glb, key, profile, set, reference, height, width, depth)` | The checks on a GLB, as `scripts/check_asset.py`: report beside it, item in the queue. `set` takes thresholds: `{"budget.faces.max": 20000}` |
+| `review_decide(key, decision, asset_sha256, note)` | `approved`, or `sent_back` with a note; the version you looked at, as the queue gives it. Also a verdict in `verdicts.jsonl` |
+| `pieces_list()`, `pieces_add_body(...)` | Characters in pieces: base bodies, sets, slots; register a rigged humanoid as a body |
+| `pieces_run(body, set, mode, slots, outfit, concept, weapon, shield, style, seeds, choose)` | A set on a body, in the background, as the studio's Pieces page starts it; `choose` stops after the pictures |
+| `pieces_status()`, `pieces_pick(body, set, picks)` | The run's log and the pictures waiting (paths and scores); go on with your picks |
+| `pieces_fit`, `pieces_refit(body, set, to)`, `pieces_unreal(body, set, size_cm)`, `pieces_cancel()` | Fit again, carry a set to another body, export it for Unreal, stop the run |
 
 `validate_batch` and `submit_batch` also take `use_case`, `distribution` and `commercial`
-for a CSV spec. It speaks stdio, uses the official MCP Python SDK (`MCPServer`, version 2.x) and never
+for a CSV spec. The review and pieces tools call the same code as the studio and the
+command line (`checks/review.py`, `scripts/review_queue.py`, `slot_parts/runs.py`); one set
+is made at a time on the machine, whether the studio or an agent started it
+(`output/sets/.run.json`). It speaks stdio, uses the official MCP Python SDK (`MCPServer`, version 2.x) and never
 downloads weights: a spec that needs a missing install comes back with the problems.
