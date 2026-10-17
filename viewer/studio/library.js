@@ -59,6 +59,30 @@ export function stepFile(asset, stepId) {
   return { model: asset.model, finished: asset.finished, rigged: asset.rigged }[stepId] || null;
 }
 
+/** Whether a finished step can be made again with other values, keeping the ones before:
+ *  the 3D model, Finish and Rig. Animate adds moves instead; a picture is remade in Create. */
+export function canRedo(asset, stepId) {
+  if (asset.kind === 'prop set') return false;
+  const has = { model: asset.model && asset.picture, finished: asset.finished && asset.picture, rigged: asset.rigged }[stepId];
+  return Boolean(has);
+}
+
+const EARLIER = { finished: 'an earlier 3D model', rigged: 'an earlier Finish' };
+
+/** Said beside a step made from an earlier version of the step before it, else null. */
+export function staleNote(asset, stepId) {
+  return asset.stale?.[stepId] ? `made from ${EARLIER[stepId]}` : null;
+}
+
+/** What a step was made with, in a few words, or ''. */
+export function madeWith(asset, stepId) {
+  const made = asset.made?.[stepId];
+  if (!made) return '';
+  if (stepId === 'model') return made.seed != null ? `seed ${made.seed}` : '';
+  if (stepId === 'finished') return [made.texture_size && `${made.texture_size} px textures`, made.photo === false && 'no Pixel Match'].filter(Boolean).join(', ');
+  return '';
+}
+
 /** A served URL for a path the assets API gave, relative to its base. */
 export function servedUrl(base, relative) {
   if (!relative) return null;

@@ -16,10 +16,10 @@ export const FAMILIES = [
 ];
 
 /** The Rig step's controls: what kind of creature this is, then one button. */
-export function familyPicker() {
+export function familyPicker(label = 'Rig it', chosen = 'auto') {
   return `<label class="field" data-tip="Picks which test clips the rig gets. Recognising it reads the skeleton: legs, arms, wings, tail.">What is it?
-      <select data-k="family">${FAMILIES.map(([id, label]) => `<option value="${id}">${esc(label)}</option>`).join('')}</select></label>
-    <div class="row"><button class="primary" data-run="rigged">Rig it</button></div>`;
+      <select data-k="family">${FAMILIES.map(([id, name]) => `<option value="${id}"${id === chosen ? ' selected' : ''}>${esc(name)}</option>`).join('')}</select></label>
+    <div class="row"><button class="primary" data-run="rigged">${esc(label)}</button></div>`;
 }
 
 /** A line for the Animate step about the rig's family and its test clips, or ''. */
