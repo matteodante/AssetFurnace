@@ -269,6 +269,13 @@ Dalla review di Codex della PR #9 (secondo giro, P2 rimandati: non sono errori v
 - `sd-cli` riempie la VRAM (15,6 GB su 16) e cade se un altro programma ne prende durante la corsa. Per lo studio:
   passare un margine con `--max-vram` in `image_api.py`, misurando quanto rallenta.
 
+Review di Codex sul lavoro unito (17/10/2026): 4 punti, verificati uno per uno sulle righe citate, tutti veri e
+corretti con un test ciascuno. Nessuno scartato.
+- La scelta Keep/Discard data mentre si misurava il contorno veniva cancellata dalla scrittura dell'IoU.
+- La lineart di un'immagine non quadrata veniva stirata.
+- Cambiare i controlli durante un disegno mescolava due richieste.
+- L'errore della preparazione della mappa spariva subito.
+
 Dalla costruzione (16/10/2026).
 - Senza parole di stile il ridisegno ha un aspetto da render 3D. Quando la bibbia dello stile (funzione 3) avrà
   un'API, il pannello potrà proporne la descrizione e le immagini di stile invece del campo libero.

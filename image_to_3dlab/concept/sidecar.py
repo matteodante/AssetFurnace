@@ -67,6 +67,16 @@ def write(image: Path, *, mode: str, prompt: str, seed: int, command: list[str],
     return path
 
 
+def update(image: Path, **fields: Any) -> dict[str, Any]:
+    """Change some fields of an existing record and keep the rest (a judgement, an IoU)."""
+    data = read(image)
+    if data is None:
+        raise ValueError(f"{Path(image).name} has no concept record")
+    data.update(fields)
+    path_for(image).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    return data
+
+
 def read(image: Path) -> dict[str, Any] | None:
     path = path_for(image)
     if not path.is_file():
