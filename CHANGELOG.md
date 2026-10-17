@@ -356,6 +356,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Library names and hidden flags are never lost: two changes at once (a rename and a hide)
+  no longer write over each other, the file is replaced whole so a crash cannot truncate it,
+  and a damaged one is kept aside as `.bad-<time>` instead of being overwritten.
 - Game materials record a choice they make against glTF: an asset with no metallic map
   and no `metallicFactor` (which the spec defaults to 1, metal) is packed as not metal, and
   `maps.metallic` now says "assumed 0" instead of "factor".
@@ -369,6 +372,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   lock file (a writer that died) is taken over after a minute instead of blocking every GPU
   job for an hour; a live process that started after its lock was written is a reused pid;
   and a stale lock is only removed if it is still the one judged stale.
+- The Windows installer installs what was tested, from this repository: packages from
+  `requirements.lock` as `install.sh` does (CUDA PyTorch at the lock's own versions), the
+  default repository is github.com/matteodante/AssetFurnace, the newest release is the
+  repository's own (a clone that once fetched the upstream's tags no longer goes back to
+  its v0.4.3), and run as `.\install.ps1` from a clone it updates that clone. WINDOWS.md,
+  the README and the studio's update command run the clone's installer instead of the
+  upstream's one-liner; the update check asks this repository's releases.
 - Library: an asset with no picture or 3D model of its own keeps its id when a later finish
   or rig joins it (one from a Blender version, say), so its versions, name and hidden flag
   stay with it; and what is made from a Blender version of one of its moves joins it too.
@@ -462,6 +472,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names safely, and prop metadata uses portable paths on Windows.
 
 ### Security
+- Downloads are pinned: stable-diffusion.cpp is release `master-961-60423ab` (the one the
+  Turbo recipe was measured with, after the `--sigmas qwen-image-2.1-turbo` preset landed)
+  with the SHA-256 of each archive, and an sd-cli at another commit is replaced on the next
+  setup instead of being left alone; the Qwen-Image weights download at fixed Hugging Face
+  revisions; the Pixal3D CUDA prebuilt is checked against its SHA-256. An archive that does
+  not match is deleted, never unpacked.
 - The Studio server refuses what a web page could forge. Every older endpoint that changes
   something (setup and weight removal, the Hugging Face sign-in, generate, image, finish,
   props, rig, plans, Library names) now needs the Studio's own origin and request header,

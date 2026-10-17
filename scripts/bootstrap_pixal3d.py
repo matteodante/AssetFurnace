@@ -86,6 +86,12 @@ PREBUILTS = {
     "linux-nvidia": ("trellis-cuda12-linux-x64.tar.gz", "~640 MB"),
     "windows-nvidia": ("trellis-cuda12-windows-x64.zip", "~610 MB"),
 }
+# SHA-256 of each prebuilt in PREBUILT_RELEASE, as GitHub lists the release's asset digests
+# (read 2026-10-17). A download that does not match is deleted, never unpacked.
+PREBUILT_SHA256 = {
+    "trellis-cuda12-linux-x64.tar.gz": "7d7a32fd56ff64c949232602f87ac2d5b0edc84b7bf8b5ce04f2ddf4c6723ac9",
+    "trellis-cuda12-windows-x64.zip": "c4b6a1e80858f964d5692ce23c697d2127615b281471e9eac6f51274386c81d4",
+}
 
 # What the "Building (...)" line says, so a compile that runs for 20 minutes names the
 # backend it is on.
@@ -286,6 +292,13 @@ def install_prebuilt(key: str) -> Path:
     archive = VENDOR / asset["name"]
     print(f"Downloading {asset['name']} ({asset.get('size', 0) / 1e6:.0f} MB)...", flush=True)
     urllib.request.urlretrieve(asset["browser_download_url"], archive)
+    from image_to_3dlab.provenance import sha256_file
+
+    wanted, got = PREBUILT_SHA256.get(asset["name"]), sha256_file(archive)
+    if got != wanted:
+        archive.unlink(missing_ok=True)
+        raise SystemExit(f"{asset['name']} does not match its pinned checksum "
+                         f"(expected {wanted}, got {got}). Nothing was installed.")
     try:
         cli = unpack_prebuilt(archive, BUILD)
     finally:

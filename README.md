@@ -85,14 +85,17 @@ Prop sheets were built and contributed by [@AdrielSantana](https://github.com/Ad
 
 ## Install
 
+This copy (github.com/matteodante/AssetFurnace) installs from a clone; the
+assetfurnace.com one-liners install the upstream project instead.
+
 **Mac (Apple Silicon) or Linux:**
 ```bash
-curl -fsSL https://assetfurnace.com/install.sh | bash
+git clone https://github.com/matteodante/AssetFurnace.git && AssetFurnace/install.sh --dir AssetFurnace
 ```
 
-**Windows** (limited testing, more testers wanted: tell us how it goes):
+**Windows** (limited testing, see [WINDOWS.md](WINDOWS.md)):
 ```powershell
-irm https://assetfurnace.com/install.ps1 | iex
+git clone https://github.com/matteodante/AssetFurnace.git; cd AssetFurnace; .\install.ps1
 ```
 
 The installer is short, so [read it](install.sh) before you run it
