@@ -146,7 +146,11 @@ class LlamaServer:
         try:
             return self._start()
         except BaseException:
-            self._release()
+            # llama-server may be up and loading the model: stopped before the lock goes
+            try:
+                self._stop()
+            finally:
+                self._release()
             raise
 
     def _start(self) -> LlamaServer:
