@@ -328,20 +328,24 @@ questa lista prima del resoconto finale.
 | C, collegato: l'arma segue l'osso del dito `middle_02_r` (i diti ereditano il ruolo "hand"); test sull'osso padre | unito (#108; segue la radice della catena della mano) |
 | Decisione D: giudice (llama.cpp + Qwen3-VL) installato nel checkout principale con il bootstrap; Setup lo mostra; il lavoro avvisa | installato il 17/10 (bootstrap_style.py --only llama, provato: risponde in 13 s); avviso e Setup: unito (#88) |
 | Decisione E: mantello (nuovo slot con fisica della stoffa) rimandato | scritto nei seguiti del progetto dei pezzi (#80) |
-| MCP 1: annotazioni degli strumenti (readOnly, destructive, idempotent, title) | PR #109 |
-| MCP 2: risultati tipizzati (outputSchema, structuredContent) | PR #109 |
-| MCP 3: file prodotti come resource link con mimeType | PR #109 (leggibili con `resources/read`, solo sotto `output/` o le roots) |
+| MCP 1: annotazioni degli strumenti (readOnly, destructive, idempotent, title) | unito (#109) |
+| MCP 2: risultati tipizzati (outputSchema, structuredContent) | unito (#109) |
+| MCP 3: file prodotti come resource link con mimeType | unito (#109; leggibili con `resources/read`, solo sotto `output/` o le roots) |
 | MCP 4: notifiche di avanzamento; valutare i "tasks" dell'SDK | PR #109: `wait_batch` con avanzamento; i tasks restano fuori (l'SDK 2.3 li esclude di proposito, i lavori in background fanno già il loro lavoro) |
-| MCP 5: solo percorsi sotto il repo, `output/` o le roots del client | PR #109 (anche i percorsi dentro uno spec) |
-| MCP 6: nome del server "assetfurnace", istruzioni, documentazione degli strumenti per funzione | PR #109 |
-| MCP 7: Streamable HTTP facoltativo su 127.0.0.1 con token, uso via tunnel SSH | PR #109 (provato davvero: 401 senza token, 200 con) |
+| MCP 5: solo percorsi sotto il repo, `output/` o le roots del client | unito (#109; anche i percorsi dentro uno spec) |
+| MCP 6: nome del server "assetfurnace", istruzioni, documentazione degli strumenti per funzione | unito (#109) |
+| MCP 7: Streamable HTTP facoltativo su 127.0.0.1 con token, uso via tunnel SSH | unito (#109; provato davvero: 401 senza token, 200 con) |
 | Pixal3D secondo la scheda ufficiale (12 passi, campo visivo stimato con MoGe-2) | unito (#104; MoGe-2 installato e provato: 23 s su GPU) |
-| Review finale con Codex di tutto il lavoro, correzioni, resoconto | aperto |
+| Review finale con Codex di tutto il lavoro, correzioni, resoconto | PR #110: review per aree (lotti, MCP, studio, pezzi, Unreal, motori), 19 difetti veri corretti con un test ciascuno; due di #103 (altra sessione) segnalati, non toccati |
 
 ## Seguiti
 
-- Codex non ha revisionato le PR di questo lavoro (limite d'uso raggiunto): ognuna ha avuto una revisione indipendente
-  con un agente. Una revisione di Codex, quando torna disponibile, è facoltativa.
+- Codex ha revisionato #108 e #109 (un giro ciascuna) e poi tutto il lavoro, per aree, su main (#110). Le PR di
+  prima avevano avuto una revisione indipendente con un agente.
+- Da #103 (testo-immagine Qwen-Image 2.1, altra sessione), trovati dalla review finale e lasciati a chi l'ha scritta:
+  `negative_applies` scarta il prompt negativo anche sotto cfg 1, mentre il suo commento dice che
+  stable-diffusion.cpp lo usa quando la guida non è 1; nello studio un'immagine che sta riscrivendo il prompt non si
+  può annullare mentre aspetta la GPU.
 - Lo studio non usa il lucchetto della GPU e non vede i lotti in corso (`docs/batches.md`): resta così finché lo
   studio non ha un gestore di lavori unico. Fuori da questo lavoro.
 - Piccole cose trovate dalle revisioni e lasciate (P2, nessuna cambia un risultato):
