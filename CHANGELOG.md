@@ -356,7 +356,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
-- A Studio request refused before its body was read gets its 403: the reference concept, review
+- A Studio request refused before its body was read gets its 403: the reference concept
   and Blender edit APIs now read the body first, as the batch and export APIs did, instead of
   closing on it (Windows then reset the connection and the page saw a network error).
 - Library names and hidden flags are never lost: two changes at once (a rename and a hide)
