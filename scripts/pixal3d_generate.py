@@ -413,9 +413,8 @@ def main() -> int:
     )
     parser.add_argument(
         "--steps", type=int, default=None,
-        help=f"sampling steps per flow. Default: {FAST_STEPS} when trellis-cli is patched "
-             f"(scripts/patch_pixal3d_steps.py + rebuild), else {DEFAULT_STEPS}. An explicit "
-             "value the build cannot honour is refused",
+        help=f"sampling steps per flow. Default: the official {DEFAULT_STEPS}. {FAST_STEPS} is faster "
+             "on a build patched by scripts/patch_pixal3d_steps.py; a value the build cannot honour is refused",
     )
     parser.add_argument(
         "--matte", dest="matte", action="store_true", default=None,

@@ -11,7 +11,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
+from PIL import Image
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
@@ -37,7 +39,8 @@ def test_the_estimate_runs_the_worker_and_holds_the_gpu(tmp_path, monkeypatch):
     seen = {}
 
     def run(command, **kwargs):
-        seen["command"] = command
+        seen["command"], seen["timeout"] = command, kwargs.get("timeout")
+        seen["crop"] = Image.open(command[2]).size   # the cropped picture, while it exists
         return subprocess.CompletedProcess(command, 0, json.dumps({"fx_normalized": 0.5}), "")
 
     import contextlib
@@ -48,9 +51,39 @@ def test_the_estimate_runs_the_worker_and_holds_the_gpu(tmp_path, monkeypatch):
         yield
 
     monkeypatch.setattr(moge_fov, "installed", lambda: True)
-    fov = moge_fov.estimate(tmp_path / "a.png", run=run, lock=lock)
+    monkeypatch.setattr(moge_fov, "on_gpu", lambda: True)
+    picture = tmp_path / "a.png"
+    Image.new("RGBA", (400, 200), (0, 0, 0, 0)).save(picture)
+    fov = moge_fov.estimate(picture, run=run, lock=lock)
     assert fov == pytest.approx(math.pi / 2) and seen["lock"] == "moge-2 fov"
-    assert seen["command"][1].endswith("moge_worker.py") and seen["command"][2].endswith("a.png")
+    assert seen["command"][1].endswith("moge_worker.py") and seen["timeout"] == moge_fov.TIMEOUT
+    assert not Path(seen["command"][2]).exists()   # the crop is cleaned up
+
+
+def test_the_estimate_is_on_the_recipes_crop(tmp_path):
+    """As preprocess_image: the alpha's box, a square 1.1 times its size, on black."""
+    picture = tmp_path / "sword.png"
+    rgba = np.zeros((1000, 800, 4), np.uint8)
+    rgba[100:900, 380:420] = (200, 200, 200, 255)          # a tall thin subject
+    Image.fromarray(rgba).save(picture)
+    crop = moge_fov.preprocessed(picture, tmp_path / "crop.png")
+    with Image.open(crop) as opened:
+        assert opened.mode == "RGB" and opened.size[0] == opened.size[1] == pytest.approx(int(799 * 1.1), abs=2)
+        assert opened.getpixel((0, 0)) == (0, 0, 0)          # the background is black
+
+
+def test_an_answer_trellis_cli_could_not_take_is_not_used(tmp_path, monkeypatch):
+    monkeypatch.setattr(moge_fov, "installed", lambda: True)
+    monkeypatch.setattr(moge_fov, "on_gpu", lambda: False)
+    picture = tmp_path / "a.png"
+    Image.new("RGBA", (64, 64), (255, 255, 255, 255)).save(picture)
+    wide = lambda command, **kw: subprocess.CompletedProcess(command, 0, json.dumps({"fx_normalized": 0.01}), "")
+    assert moge_fov.estimate(picture, run=wide) is None
+
+    def hung(command, **kw):
+        raise subprocess.TimeoutExpired(command, kw["timeout"])
+
+    assert moge_fov.estimate(picture, run=hung) is None
 
 
 def test_without_moge_the_old_gauge_is_used_and_said(monkeypatch, capsys):
@@ -84,8 +117,9 @@ def test_moge_is_pinned_and_set_up_with_pixal3d():
     sys.path.insert(0, str(REPO / "viewer"))
     import backend_catalog
 
-    labels = [w.label for w in backend_catalog.BY_ID["pixal3d"].weights]
-    assert any("MoGe-2" in label for label in labels)
+    moge = backend_catalog.BY_ID["moge"]   # optional: a card of its own, Pixal3D is ready without it
+    assert moge.kind == "tool" and moge.install == "scripts/bootstrap_pixal3d.py --moge"
+    assert not any("MoGe" in w.label for w in backend_catalog.BY_ID["pixal3d"].weights)
 
 
 def test_moge_gets_the_pytorch_for_the_machine():

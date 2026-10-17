@@ -20,11 +20,18 @@ def main(argv: list[str] | None = None) -> int:
     from PIL import Image
 
     image_path, weights = (argv or sys.argv[1:])[:2]
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
     model = MoGeModel.from_pretrained(weights).to(device).eval()
+    # the caller (moge_fov.preprocessed) already cropped it and put it on black, as the recipe does
     picture = np.asarray(Image.open(image_path).convert("RGB"), dtype=np.float32) / 255.0
     with torch.no_grad():
-        output = model.infer(torch.from_numpy(picture).permute(2, 0, 1).to(device))
+        # half precision only on CUDA: on the CPU it is what made one estimate take 8 minutes
+        output = model.infer(torch.from_numpy(picture).permute(2, 0, 1).to(device), use_fp16=device == "cuda")
     intrinsics = output["intrinsics"].squeeze().cpu().numpy()
     print(json.dumps({"fx_normalized": float(intrinsics[0, 0])}))
     return 0

@@ -205,7 +205,8 @@ def announcement(build: bool = True, weights: bool = True,
         lines.append(f"             {WEIGHTS_REPO}, plus BiRefNet matting ({MATTE_REPO})")
         lines.append(f"  and:     BiRefNet-lite background remover, "
                      f"{matte.LITE_BYTES / 1e6:.0f} MB -> {matte.model_file(matte.LITE_MODEL)}")
-        lines.append("  and:     MoGe-2 (Ruicheng/moge-2-vitl, MIT), 1.3 GB, with PyTorch -> vendor/moge/: "
+        lines.append("  and:     MoGe-2 (Ruicheng/moge-2-vitl, MIT), 1.3 GB, with PyTorch (about 2.5 GB with CUDA, "
+                     "0.2 GB on the CPU) -> vendor/moge/: "
                      "the official recipe's camera estimate")
     note = old_driver_note(target(), prefer_compile)
     if note:
@@ -540,7 +541,8 @@ def moge_commands(python: str = sys.executable, platform: str | None = None,
     return [[python, "-m", "venv", str(env)],
             [py, "-m", "pip", "install", "--upgrade", "pip"],
             *([[py, "-m", "pip", "uninstall", "-y", "torch", "torchvision"]] if wrong_torch else []),
-            [py, "-m", "pip", "install", "--upgrade", "torch", "torchvision", *(["--index-url", index] if index else [])],
+            [py, "-m", "pip", "install", f"torch=={moge_fov.TORCH_VERSION}",
+             f"torchvision=={moge_fov.TORCHVISION_VERSION}", *(["--index-url", index] if index else [])],
             [py, "-m", "pip", "install", moge_fov.CODE_URL]]
 
 
@@ -634,7 +636,11 @@ def main(argv: list[str] | None = None) -> int:
             install_build(key, kind)
     if weights:
         install_weights()
-        install_moge()   # the official recipe's camera estimate
+        try:   # the official recipe's camera estimate: Pixal3D works without it (the 20 degree gauge)
+            install_moge()
+        except (subprocess.CalledProcessError, OSError) as exc:
+            print(f"\nMoGe-2 could not be set up ({exc}); Pixal3D will use the 20 degree gauge. "
+                  "Try again with: python scripts/bootstrap_pixal3d.py --moge")
     print("\nDone. Generate with:\n"
           "    python scripts/pixal3d_generate.py input.png output.glb --res 1024")
     return 0
