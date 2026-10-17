@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A version made in Blender goes on through Finish, Rig and Animate. The studio shows the
+  steps on a chosen version, Rig and Animate list versions among their models (a version
+  that kept its skeleton is animated as a rig, copied once and not rigged again), and what
+  is made from a version stays in its asset in the Library.
 - The style bible can be applied, opt-in, wherever pictures are drawn: `--bible` on
   `text_image.py`, `reference_concept.py make` and `slot_parts.py run`; `bible` in the
   batch steps `picture` and `concept` and in `pieces_run`; a "Style bible" box in Create,
