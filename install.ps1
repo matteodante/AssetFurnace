@@ -88,8 +88,17 @@ $Py = Join-Path $Dir ".venv\Scripts\python.exe"
 # PyPI had that day.
 $Reqs = Join-Path $Dir "requirements.lock"
 if (-not (Test-Path $Reqs)) { $Reqs = Join-Path $Dir "requirements.txt" }
-$TorchVersion = (Select-String -Path $Reqs -Pattern '^torch==([^ ;]+)' | Select-Object -First 1).Matches.Groups[1].Value
-$VisionVersion = (Select-String -Path $Reqs -Pattern '^torchvision==([^ ;]+)' | Select-Object -First 1).Matches.Groups[1].Value
+
+# The version a requirements file pins for a package; "" when it only bounds it, as
+# requirements.txt does in a checkout older than the lock.
+function Get-Pin([string]$Path, [string]$Name) {
+    $found = Select-String -Path $Path -Pattern "^$Name==([^ ;]+)" | Select-Object -First 1
+    if ($found) { $found.Matches[0].Groups[1].Value } else { "" }
+}
+
+$Install = $Reqs
+$TorchVersion = Get-Pin $Reqs "torch"
+$VisionVersion = Get-Pin $Reqs "torchvision"
 
 # PyPI only has CPU-only PyTorch for Windows, so on an NVIDIA machine install the CUDA
 # build from PyTorch's own index first, at the lock's versions: the lock then finds torch
@@ -105,6 +114,17 @@ if ($HasGpu) {
     if (-not $TorchIndex) {
         Say "Your NVIDIA driver is too old for PyTorch's CUDA builds (they need CUDA 12.8 or newer). Update the driver, then run this again. Until then PyTorch will use the CPU."
     } else {
+        # An index that stops at an older torch than the lock's (cu128 has up to 2.11.0, the
+        # lock's is on cu130 only) has a lock of its own, compiled from the same requirements
+        # with that torch: requirements-cu128.lock.
+        $Tag = ($TorchIndex -split "/")[-1]
+        $Own = Join-Path $Dir "requirements-$Tag.lock"
+        if (Test-Path $Own) {
+            $Install = $Own
+            $TorchVersion = Get-Pin $Own "torch"
+            $VisionVersion = Get-Pin $Own "torchvision"
+            Say "Your driver runs PyTorch's $Tag build, which goes up to torch $($TorchVersion): installing that (a driver for CUDA 13 gets the newest)."
+        }
         $Torch = if ($TorchVersion) { @("torch==$TorchVersion", "torchvision==$VisionVersion") } else { @("torch", "torchvision") }
         if (-not $TorchHasCuda) {
             Say "Installing PyTorch with CUDA from $TorchIndex"
@@ -116,8 +136,9 @@ if ($HasGpu) {
         if ($LASTEXITCODE -ne 0) { Die "PyTorch ($($Torch -join ', ')) with CUDA could not be installed from $TorchIndex. Nothing else was changed in the packages." }
     }
 }
-# (falls back to "requirements.txt" only in a checkout older than the lock)
-& uv pip install --quiet --python $Py -r $Reqs
+# (falls back to "requirements.txt" only in a checkout older than the lock; the driver's
+# own lock when its PyTorch index has another torch)
+& uv pip install --quiet --python $Py -r $Install
 
 # 5. Blender: Finish needs it, and it is the user's to install. Same finder Finish uses.
 if (Test-Path $Py) {

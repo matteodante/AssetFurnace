@@ -49,7 +49,7 @@ from typing import Any
 
 from . import manifest_run, step_catalog
 from .batch_steps import StepContext
-from .processes import group_alive, process_alive
+from .processes import group_alive, process_alive, sigterm_as_interrupt
 from .provenance import validate_run_policy
 
 REPO = Path(__file__).resolve().parents[1]
@@ -163,10 +163,21 @@ class BatchRow:
         """The step options, with the files they name by content: a body or a LOD
         replaced in place is a change, the same files reached by another path are not."""
         out = {}
-        for name, options in self.options.items():
+        # an export with no options of its own still depends on the detail levels it finds
+        steps = {**({"export_unreal": {}} if "export_unreal" in self.steps else {}), **self.options}
+        for name, options in steps.items():
             options = dict(options)
             for key in step_catalog.file_options(name, options):
                 options[key] = _file_digests(options[key])
+            if name == "export_unreal" and "lods" not in options and self.asset is not None:
+                # the _LODn files beside the model, found by the export itself when none are named
+                from image_to_3dlab.unreal_profile import sibling_lods
+
+                found = sibling_lods(self.asset)
+                if found:
+                    options["found_lods"] = _file_digests([str(p) for p in found])
+            if not options and name not in self.options:
+                continue   # nothing it depends on beyond what every step does: as before
             if options.get("bible"):   # the bible by what it says (for this kind): edited, or another active one, is a change
                 options["bible"] = {"bible": _bible_digest(options["bible"]), "kind": self.kind}
             out[name] = options
@@ -598,7 +609,8 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
             try:
                 validate_run_policy(backend, resolved_intent["use_case"],
                                     resolved_intent["distribution"],
-                                    policy.get("allow_conditional", True))
+                                    policy.get("allow_conditional", True),
+                                    commercial_intent=bool(resolved_intent.get("commercial_intent")))
             except ValueError as exc:
                 problems.append(f"row {row.id}: license policy for {what}: {exc}")
         for step, files in row.replace.items():
@@ -1904,8 +1916,11 @@ def run_from_cli(spec_path: Path, intent: dict[str, Any], retry_failed: bool) ->
     3 some rows wait for a pick (none failed),
     130 interrupted (run the same command again to resume)."""
     try:
-        spec = load_batch(spec_path, intent=intent)
-        report = run_batch(spec, retry_failed=retry_failed)
+        # cancel_batch stops the batch's group with SIGTERM: unwound like Ctrl+C, the row in
+        # progress goes back in the queue and its children stop before the GPU lock goes
+        with sigterm_as_interrupt():
+            spec = load_batch(spec_path, intent=intent)
+            report = run_batch(spec, retry_failed=retry_failed)
     except BatchError as exc:
         for problem in exc.problems:
             print(f"error: {problem}", file=sys.stderr)

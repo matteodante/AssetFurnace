@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- The Windows installer, from the second final review:
+  - on a driver for CUDA 12.8 or 12.9 it installs `requirements-cu128.lock`, with torch
+    2.11.0, the newest PyTorch's cu128 index has (the main lock's 2.14.1 is only on cu130, so
+    the install stopped there). That lock is compiled from the same `requirements.txt`, from
+    the main lock, and differs from it only in torch's own packages;
+  - an older checkout without the lock (`requirements.txt`, no exact pins) installs instead
+    of failing on "Cannot index into a null array".
+- Characters in pieces, from the second final review:
+  - two sets started at the same moment (the studio and an agent) no longer both start: one
+    start at a time holds `output/sets/.starting`, and the second is refused;
+  - an outfit already drawn is kept only for the same words on the same body picture: a body
+    registered again under its name gets its outfit drawn again;
+  - the studio makes weapons and shields alone in mode 2 without asking for a concept;
+  - a link to a file on a network share (`file://server/share/...`) is read with MCP's
+    `resources/read`, through the same check as any other.
+- Batches, from the second final review:
+  - a batch with commercial intent is refused when it draws with Qwen-Image (research-only),
+    as the licence asks;
+  - the checks measure the size on the model as exported, never the source at its own size;
+  - a reference named like the staged concept no longer overwrites it;
+  - a row that starts from a concept passes Finish's preflight;
+  - an edited detail level found beside the model reruns its export.
+- Whatever stops a GPU job stops what it started before the shared GPU lock is let go: a
+  batch or a rig cancelled with SIGTERM (macOS and Linux) unwinds as on Ctrl+C, so SkinTokens
+  no longer runs on; an interrupted Pixal3D run ends trellis-cli, and a judge that fails to
+  start ends llama-server. A stale lock is removed by one waiter at a time, and only while it
+  is still the one judged stale, so two jobs can no longer hold the GPU together. In the
+  studio, a picture cancelled while its prompt rewriting waits for the GPU stops there.
 - The Unreal export passes the glTF validator without warnings: it writes a normal map's
   tangents, and a skinned mesh is a root node as the glTF spec asks (on the first real set
   the validator warned of both). The knight's body and helmet export with 0 errors and 0

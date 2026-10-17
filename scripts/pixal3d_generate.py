@@ -30,6 +30,7 @@ texture flow.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import shutil
 import math
@@ -397,18 +398,25 @@ def run_trellis(command: list[str], steps, lock_path: Path | None = None, cwd: P
             command, cwd=str(cwd or PIXAL3D_ROOT), stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, bufsize=1, env=run_env(steps),
         )
-        assert process.stdout is not None
-        seen_override = False
-        for raw in process.stdout:
-            line = raw.rstrip("\n")
-            seen_override = seen_override or f"{STEPS_ENV}=" in line
-            if steps_not_applied(line, steps, seen_override):
-                process.kill()
-                raise SystemExit(f"trellis-cli ignored {STEPS_ENV}; stopped before wasting "
-                                 "the run. Re-apply scripts/patch_pixal3d_steps.py and rebuild")
-            if not kernel_noise(line):
-                print(line, flush=True)
-        return process.wait()
+        try:
+            assert process.stdout is not None
+            seen_override = False
+            for raw in process.stdout:
+                line = raw.rstrip("\n")
+                seen_override = seen_override or f"{STEPS_ENV}=" in line
+                if steps_not_applied(line, steps, seen_override):
+                    raise SystemExit(f"trellis-cli ignored {STEPS_ENV}; stopped before wasting "
+                                     "the run. Re-apply scripts/patch_pixal3d_steps.py and rebuild")
+                if not kernel_noise(line):
+                    print(line, flush=True)
+            return process.wait()
+        except BaseException:
+            # stopped (Ctrl+C, a cancelled job, a broken pipe): trellis-cli would go on
+            # computing after the lock is let go, so it is ended first
+            process.kill()
+            with contextlib.suppress(Exception):       # already stopping; the interrupt goes on
+                process.wait(timeout=30)
+            raise
 
 
 def main() -> int:

@@ -40,7 +40,8 @@ def generator(monkeypatch):
 
 def _spec(tmp_path: Path, rows: list[dict], **top) -> Path:
     spec = {"schema_version": 1, "name": "words", "use_case": "game", "distribution": "private",
-            "commercial_intent": True, "license_policy": {"allow_conditional": True},
+            # Qwen-Image is research-only: a picture is drawn for a non-commercial run
+            "commercial_intent": False, "license_policy": {"allow_conditional": True},
             "output": {"directory": "out"},
             "defaults": {"backend": "fake", "steps": ["picture", "generate"], "parameters": {"seed": 1}},
             "rows": rows, **top}
