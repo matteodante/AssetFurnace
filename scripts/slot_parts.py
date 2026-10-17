@@ -171,6 +171,7 @@ def score_candidates(record: dict, cuts_dir: Path, folder: Path, seeds: list[int
     """Every slot's pictures scored, with Qwen3-VL when it is there; (scores, judge used)."""
     from image_to_3dlab.style import judge, models
 
+    Path(folder).mkdir(parents=True, exist_ok=True)
     try:
         server = judge.LlamaServer(log=Path(folder) / "judge.log")
     except models.MissingModel as missing:
@@ -203,10 +204,13 @@ def make_pieces(cuts_json: Path, seeds: list[int], picks: dict[str, int] | None 
             run(command)
             sidecar.write(job.picture, mode="complete_piece", prompt=job.prompt, seed=job.seed, command=command,
                           references=[(job.canvas, "shape")], inputs={"slot": job.slot})
-        if len(seeds) > 1:
+        if len(seeds) > 1 and jobs:  # every piece cut from the whole (B0): no pictures to score
             scored, judge_used = score(record, cuts_json.parent, folder, list(seeds))
             candidates.write(folder, scored, judge_used)
-    chosen = {**candidates.picks(folder), **picks}
+        elif candidates.path(folder).is_file():
+            candidates.path(folder).unlink()  # an earlier run's picks are not this run's pictures
+    # only picks among this run's seeds: an older candidates.json must not choose an old picture
+    chosen = {**{slot: seed for slot, seed in candidates.picks(folder).items() if seed in seeds}, **picks}
     result = {"cuts": str(cuts_json.resolve()), "seeds": list(seeds), "slots": {}}
     if models:
         for slot in dict.fromkeys(job.slot for job in jobs):
@@ -343,23 +347,30 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
     for slot, words in (("weapon", weapon), ("shield", shield)):
         if words is not None:
             raw[slot] = {"prompt": words}
-    chosen = slots.choose(raw)
     folder = Path(root) / set_name / record["name"]
     state_path = folder / "run_state.json"
-    drawn = {k: v for k, v in chosen.items() if k in slots.DRAWN}
+    state = None
     if resume:
         if not state_path.is_file():
             raise ValueError(f"nothing to resume for {set_name} on {record['name']}: no pictures waiting")
         state = json.loads(state_path.read_text(encoding="utf-8"))
+        # the run as it was asked for: a weapon, shield, style or seeds given apart from the slots
+        raw.update({slot: dict(options) for slot, options in state.get("held", {}).items() if slot not in raw})
+        style = style or state.get("style", "")
+        seeds = state.get("seeds") or seeds
+    chosen = slots.choose(raw)
+    drawn = {k: v for k, v in chosen.items() if k in slots.DRAWN}
+    if resume:
         concept, concept_info, mode = Path(state["concept"]), state["concept_info"], state["mode"]
         cut = {"subject_from": state.get("subject_from")}
         if picks:
             candidates.choose(folder / "pieces", picks)
         made = make_pieces(folder / "cuts" / "cuts.json", list(seeds), images=False, style=style, run=run,
                            edit=edit)["slots"] if drawn else {}
-        state_path.unlink()
-        return _finish_set(body_json, record, set_name, folder, chosen, drawn, made, concept, concept_info, mode,
+        path = _finish_set(body_json, record, set_name, folder, chosen, drawn, made, concept, concept_info, mode,
                            cut, seeds, style, run, generate, fitter, checker)
+        state_path.unlink()  # only now: a fit that fails or is stopped can be resumed again
+        return path
     if concept is None:
         if not outfit.strip():
             raise ValueError("give the outfit in words (--outfit) or a concept drawn on the body (--concept)")
@@ -372,8 +383,10 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
     if stop_at_pictures and drawn:
         make_pieces(folder / "cuts" / "cuts.json", list(seeds), models=False, style=style, run=run, edit=edit,
                     score=score)
+        held = {slot: {"prompt": chosen[slot]["prompt"]} for slot in ("weapon", "shield") if slot in chosen}
         state_path.write_text(json.dumps({"waiting": "picks", "concept": str(concept), "concept_info": concept_info,
-                                          "mode": mode, "subject_from": cut.get("subject_from")}, indent=1) + "\n",
+                                          "mode": mode, "subject_from": cut.get("subject_from"), "held": held,
+                                          "style": style, "seeds": list(seeds)}, indent=1) + "\n",
                               encoding="utf-8")
         return candidates.path(folder / "pieces")
     made = make_pieces(folder / "cuts" / "cuts.json", list(seeds), style=style, run=run, edit=edit,

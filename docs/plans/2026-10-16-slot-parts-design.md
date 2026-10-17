@@ -465,6 +465,16 @@ donna con `add_piece`. In tutto 18 slot e 4 semi ciascuno, 72 immagini, etichett
 
 ![Il flusso per pezzo sul ranger di cuoio: immagine intera, taglio e 4 immagini per pezzo, la scelta automatica in arancione](img/slot-parts/6-candidates-leather.jpg)
 
+### Seconda review di Codex (17/10/2026, main dopo #56)
+
+Sei punti, tutti veri sulle righe citate, ognuno corretto con un test che fallisce sul codice di prima:
+- la ripresa perdeva arma, scudo, stile e semi;
+- lo stato d'attesa spariva prima dell'adattamento;
+- un `candidates.json` vecchio sceglieva l'immagine di un giro precedente;
+- un set tutto B0 apriva il log del giudice in una cartella mai creata;
+- in Unreal un solo materiale mascherato per tutti gli slot del corpo;
+- il test delle copie UV ordinava U e V separatamente.
+
 ## Seguiti
 
 - Mantello: prova a parte, con la vista di schiena (funzione 2, caso 4) e la stoffa in Unreal.

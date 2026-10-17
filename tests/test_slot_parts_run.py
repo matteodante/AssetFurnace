@@ -155,6 +155,43 @@ def test_a_run_can_wait_for_the_person_to_pick_the_pictures(tmp_path):
         cli.run_set(body_json, "given", "torso", resume=True, **common)
 
 
+def test_a_resumed_run_keeps_the_weapon_and_can_be_resumed_again_after_a_failed_fit(tmp_path):
+    """Codex review: the weapon given apart from the slots was lost on resume, and the waiting
+    state went before the fit, so a fit that failed could not be resumed."""
+    body_json, cam, heads, _ = _body(tmp_path)
+    source = _concept(tmp_path, cam, heads)
+    calls = []
+    edit, generate, run = _fakes(source, calls)
+
+    def score(record, cuts_dir, folder, seeds):
+        return ({"torso": {"candidates": {s: {"score": 0.5} for s in seeds}, "auto": 2, "picked": 2, "by": "auto"}},
+                "fake judge")
+
+    common = dict(concept=source, root=tmp_path / "sets", run=run, edit=edit, generate=generate, score=score)
+    cli.run_set(body_json, "given", "torso", weapon="a longsword", seeds=(1, 2), style="hand-painted",
+                stop_at_pictures=True, **common)
+    folder = tmp_path / "sets" / "given" / "stick"
+
+    def broken(job):
+        raise ValueError("Blender failed")
+
+    with pytest.raises(ValueError, match="Blender failed"):
+        cli.run_set(body_json, "given", "torso", resume=True, fitter=broken, checker=lambda *a: {}, **common)
+    assert (folder / "run_state.json").is_file()  # still waiting: the pictures and 3D are there
+
+    jobs = []
+
+    def fitter(job):
+        jobs.append(job)
+        return {"covered_share": 0.5, "files": []}
+
+    path = cli.run_set(body_json, "given", "torso", resume=True, fitter=fitter, checker=lambda *a: {}, **common)
+    parts = json.loads(path.read_text())
+    assert "weapon" in parts["pieces"] and "a longsword" in parts["pieces"]["weapon"]["prompt"]
+    assert "hand-painted" in parts["pieces"]["weapon"]["prompt"]  # the style came back too
+    assert any(p["slot"] == "weapon" for p in jobs[0]["pieces"]) and not (folder / "run_state.json").exists()
+
+
 def test_run_needs_words_or_a_concept_and_a_plain_set_name(tmp_path):
     body_json, *_ = _body(tmp_path)
     with pytest.raises(ValueError, match="outfit"):

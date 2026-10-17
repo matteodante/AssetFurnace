@@ -239,3 +239,31 @@ def test_b0_slots_are_cut_from_the_whole_model(tmp_path):
 def test_the_default_words_name_what_is_drawn_and_no_pauldrons_on_the_breastplate():
     assert "pauldrons" in pieces.WORDS["torso"] and "no shoulder pauldrons" in pieces.WORDS["torso"]
     assert "closed" not in pieces.WORDS["helmet"] and "hood" in pieces.WORDS["helmet"]
+
+
+def test_a_later_single_seed_run_does_not_take_an_earlier_runs_pick(tmp_path):
+    """Codex review: picks stayed in candidates.json and the 3D came from the old seed's picture."""
+    path, _ = _cut_record(tmp_path)
+    calls = []
+    edit, run = _fakes(calls)
+
+    def score(record, cuts_dir, folder, seeds):
+        return ({"helmet": {"candidates": {s: {"score": 0.5} for s in seeds}, "auto": 7, "picked": 7, "by": "auto"}},
+                "fake judge")
+
+    cli.make_pieces(path, [3, 7], run=run, edit=edit, score=score)
+    folder = tmp_path / "set" / "pieces"
+    assert (folder / "candidates.json").is_file()
+    result = cli.make_pieces(path, [5], run=run, edit=edit, score=score)
+    assert result["slots"]["helmet"]["seed"] == 5 and not (folder / "candidates.json").exists()
+
+
+def test_every_piece_cut_from_the_whole_has_no_pictures_to_score(tmp_path):
+    """Codex review: with only B0 slots and three seeds the judge's log went into a folder never made."""
+    path, _ = _cut_record(tmp_path, routes={"helmet": "B0", "boots": "B0"})
+
+    def score(*args):
+        raise AssertionError("nothing to score")
+
+    result = cli.make_pieces(path, [1, 2, 3], models=False, run=lambda c: None, edit=lambda *a: [], score=score)
+    assert result["slots"] == {}
