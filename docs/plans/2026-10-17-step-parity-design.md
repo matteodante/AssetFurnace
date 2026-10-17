@@ -209,15 +209,20 @@ Passi di lotto nuovi in questa PR, per arrivare a testo-immagine, concept e rig/
 
 ## 9. Materiali (PR e), come deciso dall'utente
 
-Niente strumento per dipingere le zone ("quello che ha fatto ha fatto"). Il passo `materials` si può saltare,
-lanciare e sostituire con un proprio file sulle tre strade:
+L'utente ha chiuso la funzione 8 con **un materiale per pezzo o per asset**, proposto da una regola e scelto da una
+persona (`image_to_3dlab/piece_materials.py`, PR #61, #64, #65): niente zone automatiche, niente maschere di zone,
+niente strumento per dipingerle ("quello che ha fatto ha fatto"). Il passo `materials` (#81) è questo materiale:
 
-- passo di lotto `materials` che chiama `materials.make_game_materials` con le zone di `material_zones.find_zones`,
-  oppure con `zones_file`;
-- `zones_file` accetta un JSON `{zona: materiale}` con una maschera PNG di indici di zona nello spazio UV, oppure il
-  `.materials.json` di un'esecuzione precedente corretto a mano; viene letto in `ZoneMap` e salta `find_zones`;
-- `scripts/game_materials.py --zones-file`; pannello Materiali nello studio con "Usa un mio file"; opzione nei lotti e
-  in `run_steps`.
+- nei lotti e in `run_steps`: `"materials": {"material": "leather"}`, oppure la proposta della regola dalle parole da
+  cui il modello è nato (la sua provenienza, o quella del modello della riga) e dal `kind`; scritto in
+  `rows/<id>/materials/material.json` e passato a `export_unreal`, che lo mette nell'ORM (la sua opzione `material`
+  vince); senza il passo il modello tiene le sue mappe; deve venire prima di `export_unreal`;
+- i pezzi di un set: `slot_parts.py materials SET_DIR --set helmet=leather`, i menu della pagina Pieces e, per gli
+  agenti, `pieces_materials(body, set, {pezzo: materiale | null})`; l'export del set li legge;
+- un asset singolo nello studio: il menu "Material" di Export for Unreal (Auto, i materiali, "Keep its own maps");
+  da riga di comando `export_unreal.py --material`.
+
+Una prima versione con zone e maschere proprie (#79) è stata chiusa senza unirla: andava contro questa decisione.
 
 ## 10. GPU condivisa
 
@@ -257,7 +262,7 @@ strumenti MCP dei pezzi e della revisione.
 | 6 Clip della famiglia | sì/sì/sì: "Family test clips" e "Longer takes" nel Rig | sì/sì/sì: `creature_clips.py --no-clips/--no-library/--no-variations`, `chain_retarget.py` | sì/sì/sì: passo `clips`, `replace` |
 | Animazione | sì/sì/sì: le mosse si aggiungono, una per volta | sì/sì/sì: `autorig.py animate` | sì/sì/sì: passo `animate`, `replace` con una lista di GLB |
 | 4 Pezzi (concept, pezzi, arma/scudo, fit, refit, Unreal) | sì/sì/sì: scelta del vestito, dei pezzi, di arma e scudo; "Fit again", "Carry to body", "Export for Unreal"; materiale per pezzo | sì/sì/sì: `slot_parts.py run --stop-at-concept/--stop-at-pictures/--resume --pick`, `fit`, `refit`, `unreal`, `materials` | sì/sì/sì: `pieces_run`, `pieces_pick`, `pieces_fit`, `pieces_refit`, `pieces_unreal` |
-| 8 Materiali | sì/sì/sì: pannello "Game materials" (zone facoltative, "From my own file…") | sì/sì/sì: `game_materials.py --zones/--zones-file --zones-mask` | sì/sì/sì: passo `materials` con `zones_file` e `zones_mask` |
+| 8 Materiali (uno per pezzo o asset) | sì/sì/sì: menu "Material" dell'export (Auto, un materiale, "Keep its own maps") e menu dei pezzi | sì/sì/sì: `export_unreal.py --material`, `slot_parts.py materials --set` | sì/sì/sì: passo `materials` (`material`), `pieces_materials` |
 | 5 Esportazione Unreal | sì/sì/sì: "More options" (nome, collisione, LOD, maschera di tinta, direzione) | sì/sì/sì: `export_unreal.py` | sì/sì/sì: passo `export_unreal` |
 | 7 Controlli e revisione | sì/sì/sì: soglie per esecuzione nel foglio di revisione, decisione della persona | sì/sì/sì: `check_asset.py --set` | sì/sì/sì: passo `checks`, `review_queue`, `review_item`, `review_decide` in MCP |
 | 1 Lotti | sì/sì/sì: pagina Batches con scelta dei candidati e "rifai un passo" | sì/sì/sì: `pipeline.py --run-batch` con ripresa e `--retry-failed` | sì/sì/sì: `submit_batch`, `run_steps`, `pick_candidate`, `rerun_step` |
@@ -285,8 +290,8 @@ Tutte le PR hanno avuto una revisione indipendente con un agente; i P1 trovati s
 | d1 | Unita (#73, seguito #78): passo `clips`, interruttori nel Rig, `creature_clips.py --no-clips`, riga di comando di `chain_retarget.py` |
 | d2 | Unita (#74): bibbia dello stile su tre strade, spenta di base |
 | d3 | #75: scelta del vestito (`--stop-at-concept`), arma e scudo fra i candidati, "Fit again", "Carry to body", "Export for Unreal" nei pezzi |
-| d4 | Unita (#77): una versione Blender va avanti a Finish, Rig e Animate, e quello che se ne fa resta nel suo asset |
-| e | #79: passo `materials` sulle tre strade, zone proprie (`zones_file` e `zones_mask`), pannello "Game materials" |
+| d4 | Unita (#77, seguito #82): una versione Blender va avanti a Finish, Rig e Animate, e quello che se ne fa resta nel suo asset con il suo id |
+| e | #81: passo `materials`, un materiale per asset o pezzo (scelto o proposto), `pieces_materials`, "Keep its own maps" nello studio. #79 (zone proprie) chiusa: contro la decisione dell'utente |
 
 ## Seguiti
 
