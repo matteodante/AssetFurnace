@@ -43,7 +43,7 @@ def test_rig_record_nests_its_sources(tmp_path):
                      "source_record": {"models": [{"id": "qwen-image-2.1", "license": "Qwen Research License Agreement",
                                                    "attribution": "Built with Qwen"}]}})
     found = check(glb)
-    assert found["status"] == "pass"
+    assert found["status"] == "warn"           # Qwen's licence: non-commercial only
     assert "Attribution: say 'Built with Qwen'." in found["value"]["conditions"]
 
 
@@ -143,10 +143,18 @@ def test_an_explicit_record_for_another_file_is_not_trusted(tmp_path):
     assert found["status"] == "fail" and "does not match" in found["message"]
 
 
-def test_a_research_only_model_is_blocked(tmp_path):
-    """Codex review 2: research-only is non-commercial in this repo's policy (provenance.py)."""
+def test_a_research_only_model_warns_and_says_it_is_non_commercial(tmp_path):
+    """Research-only is non-commercial. AssetFurnace is never commercial, so it warns and
+    says so (it reaches the credits and the review) instead of failing (user, 2026-10-17)."""
     glb = fx.clean(tmp_path / "a.glb")
     fx.sidecar(glb, {"license": "MIT", "classification": "research-only"})
+    found = check(glb)
+    assert found["status"] == "warn" and "non-commercial" in found["message"]
+
+
+def test_a_research_only_model_with_a_blocked_one_still_fails(tmp_path):
+    glb = fx.clean(tmp_path / "a.glb")
+    fx.sidecar(glb, {"license": "Tencent Hunyuan 3D 2.1 Community License", "classification": "research-only"})
     assert check(glb)["status"] == "fail"
 
 
@@ -197,7 +205,7 @@ def test_a_props_run_whose_source_changed_is_not_trusted(tmp_path):
 @pytest.mark.parametrize("name, status", [
     ("MIT + Proprietary Research License", "warn"),
     ("MIT (code + flow weights); DINOv3 License (bundled encoder)", "pass"),
-    ("MIT + DINOv3 License + Qwen Research License Agreement", "pass"),
+    ("MIT + DINOv3 License + Qwen Research License Agreement", "warn"),
     ("MIT code / Apache-2.0 U-2-Net", "pass"),
 ])
 def test_every_part_of_a_composite_licence_is_classified(tmp_path, name, status):

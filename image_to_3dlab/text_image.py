@@ -25,9 +25,10 @@ subject (pauldrons around a sword, a mask for a helmet), so the default is 1024 
 3D generators downstream read about 518 px anyway. The step count is the length of the
 sigma list, so `steps` is recorded but not taken from the form.
 
-**The licence travels with the image.** The pictures Qwen-Image makes are yours, per Qwen's
-own statement. Every run writes a sidecar saying so, with the licence, because
-a PNG in a folder six months from now remembers nothing on its own.
+**The licence travels with the image.** Qwen-Image's licence allows it for non-commercial
+use only, research or evaluation (Qwen Research License 1(i), 2(a)). Every run writes a
+sidecar saying so, with the licence, because a PNG in a folder six months from now
+remembers nothing on its own.
 """
 
 from __future__ import annotations
