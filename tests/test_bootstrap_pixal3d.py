@@ -15,6 +15,14 @@ import bootstrap_pixal3d as boot
 import pytest
 
 
+
+@pytest.fixture(autouse=True)
+def no_moge(monkeypatch):
+    """Never a real MoGe-2 install from a test: it makes an environment and fetches gigabytes."""
+    calls = []
+    monkeypatch.setattr(boot, "install_moge", lambda *a, **k: calls.append("moge"))
+    return calls
+
 def test_weight_size_matches_the_catalogue():
     """The Setup page and this script must not quote different numbers for one download."""
     pixal = next(b for b in backend_catalog.CATALOG if b.id == "pixal3d")
@@ -529,6 +537,20 @@ def test_weights_come_from_the_tested_revisions(monkeypatch, tmp_path):
     boot.install_weights(tmp_path)
     assert seen == {boot.WEIGHTS_REPO: boot.WEIGHTS_REVISION,
                     boot.MATTE_REPO: boot.MATTE_REVISION}
+
+
+def test_a_moge_failure_does_not_fail_the_pixal3d_install(monkeypatch, capsys):
+    import subprocess
+
+    def broken(*a, **k):
+        raise subprocess.CalledProcessError(1, ["pip"])
+
+    monkeypatch.setattr(boot, "install_moge", broken)
+    monkeypatch.setattr(boot, "install_weights", lambda *a: None)
+    monkeypatch.setattr(boot, "build_present", lambda: True)
+    monkeypatch.setattr(boot, "current_kind", lambda key, prefer_compile=False: "prebuilt")
+    assert boot.main(["--yes", "--weights-only"]) == 0
+    assert "--moge" in capsys.readouterr().out
 
 
 def test_every_prebuilt_has_its_pinned_checksum():
