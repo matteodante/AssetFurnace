@@ -434,6 +434,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Background-job cleanup rejects invalid process IDs. Update commands quote folder
   names safely, and prop metadata uses portable paths on Windows.
 
+### Security
+- The Studio server refuses what a web page could forge. Every older endpoint that changes
+  something (setup and weight removal, the Hugging Face sign-in, generate, image, finish,
+  props, rig, plans, Library names) now needs the Studio's own origin and request header,
+  as the newer pages already did; a page or file is only served to a loopback Host, so DNS
+  rebinding cannot read the repository. On any address other than loopback (RunPod, a LAN)
+  the server asks for an access token, which the printed link carries.
+
 ## [0.4.3] - 2026-10-10
 
 ### Added

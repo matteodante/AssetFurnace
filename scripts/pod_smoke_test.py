@@ -27,6 +27,7 @@ import argparse
 import getpass
 import json
 import os
+import secrets
 import shlex
 import signal
 import subprocess
@@ -145,13 +146,15 @@ def install_command(ref: str) -> str:
             "--yes --no-start")
 
 
-def lab_command(pod_id: str) -> str:
+def lab_command(pod_id: str, token: str = "") -> str:
     """./lab listens on all interfaces when it sees RUNPOD_POD_ID, which an SSH session
-    does not always inherit from the container, so it is passed explicitly.
+    does not always inherit from the container, so it is passed explicitly. A lab on all
+    interfaces wants an access token; the run picks its own and sends it on every call.
 
     `;`, not `&&`: with `&&` the trailing `&` backgrounds the whole list, whose stdout is
     still the SSH channel, so ssh never returns."""
-    return (f"cd ~/image-to-3dlab; RUNPOD_POD_ID={shlex.quote(pod_id)} "
+    secret = f"ASSETFURNACE_TOKEN={shlex.quote(token)} " if token else ""
+    return (f"cd ~/image-to-3dlab; RUNPOD_POD_ID={shlex.quote(pod_id)} {secret}"
             "nohup ./lab > lab.log 2>&1 < /dev/null &")
 
 
@@ -298,14 +301,16 @@ USER_AGENT = "image-to-3dlab pod smoke test (+https://github.com/Bingeljell/imag
 
 
 class Viewer:
-    def __init__(self, base: str):
+    def __init__(self, base: str, token: str = ""):
         self.base = base
+        self.token = token
 
     def call(self, method: str, path: str, body: bytes | None = None,
              content_type: str = "application/json", timeout: float = 120) -> tuple[int, bytes]:
-        request = urllib.request.Request(self.base + path, data=body, method=method,
-                                         headers={"Content-Type": content_type,
-                                                  "User-Agent": USER_AGENT})
+        headers = {"Content-Type": content_type, "User-Agent": USER_AGENT}
+        if self.token:
+            headers["Authorization"] = f"Bearer {self.token}"
+        request = urllib.request.Request(self.base + path, data=body, method=method, headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 return response.status, response.read()
@@ -395,10 +400,11 @@ def run_smoke(pod: Pod, args, token: str, out: Path, results: list[dict]) -> lis
     ok, _ = step(results, "install", lambda: pod.ssh(install_command(args.ref), 1800)[-500:])
     if not ok:
         return results
-    viewer = Viewer(viewer_url(pod.id))
+    access = secrets.token_urlsafe(32)
+    viewer = Viewer(viewer_url(pod.id), access)
 
     def start_lab():
-        pod.ssh(lab_command(pod.id), 60)
+        pod.ssh(lab_command(pod.id, access), 60)
         last = None
         for _ in range(40):
             try:
