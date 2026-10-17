@@ -89,3 +89,10 @@ def test_a_held_weapon_has_no_holes_to_measure(tmp_path):
     body = write_skinned_glb(tmp_path / "body.glb")
     report = run_checks(Asset(glb=glb, body=body), profile="equipment_part", only=["fit.holes"])
     assert not report["results"] and "held in the hand" in report["skipped"][0]["reason"]
+
+
+def test_the_worn_set_is_the_pieces_beside_the_body(tmp_path):
+    for name in ("body_masked", "set", "preview", "body_trimmed", "weapon", "helmet", "torso", "gloves_L"):
+        (tmp_path / f"{name}.glb").write_bytes(b"glb")
+    found = fit_checks.worn_set(Asset(glb=tmp_path / "helmet.glb", body=tmp_path / "body_masked.glb"))
+    assert [p.name for p in found] == ["helmet.glb", "gloves_L.glb", "torso.glb"]

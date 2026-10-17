@@ -351,8 +351,64 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
             unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
         if side.get("tint"):
             import_tint(export, folder)
+        if side.get("opacity_mask") == "vertex_alpha":
+            mask_by_vertex_alpha(export, folder)
         name_animations(export)
         unreal.EditorAssetLibrary.save_directory(folder)
+
+    def mask_by_vertex_alpha(export, folder):
+        """The body under the armour hidden: a Masked material with Vertex Color alpha in Opacity
+        Mask, built in the body's folder from the body's own textures, on every slot of the mesh.
+        The textures are parameters, so a game can make instances of it for other bodies."""
+        side = export["sidecar"]
+        mesh = mesh_of(export)
+        if mesh is None:
+            return
+        mel = unreal.MaterialEditingLibrary
+        name = f"M_{side['mesh'].removeprefix('SK_')}_Masked"
+        if unreal.EditorAssetLibrary.does_asset_exist(f"{folder}/{name}"):
+            unreal.EditorAssetLibrary.delete_asset(f"{folder}/{name}")
+        material = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+            name, folder, unreal.Material, unreal.MaterialFactoryNew())
+        material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
+        textures = {t.get_name(): t for t in assets_in(folder) if isinstance(t, unreal.Texture2D)}
+        parameters = {"base_color": "BaseColor", "normal": "Normal", "orm": "ORM"}
+        nodes = {}
+        for row, (key, parameter) in enumerate(parameters.items()):
+            texture = textures.get(side["textures"].get(key) or "")
+            if texture is None:
+                continue
+            node = mel.create_material_expression(material, unreal.MaterialExpressionTextureSampleParameter2D, -600, row * 260)
+            node.set_editor_property("parameter_name", parameter)
+            node.set_editor_property("texture", texture)
+            # The sampler must match the texture, or the material does not compile.
+            if key == "normal":
+                sampler = unreal.MaterialSamplerType.SAMPLERTYPE_NORMAL
+            elif texture.get_editor_property("srgb"):
+                sampler = unreal.MaterialSamplerType.SAMPLERTYPE_COLOR
+            else:
+                sampler = unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR
+            node.set_editor_property("sampler_type", sampler)
+            nodes[key] = node
+        if "base_color" in nodes:
+            mel.connect_material_property(nodes["base_color"], "RGB", unreal.MaterialProperty.MP_BASE_COLOR)
+        if "normal" in nodes:
+            mel.connect_material_property(nodes["normal"], "RGB", unreal.MaterialProperty.MP_NORMAL)
+        if "orm" in nodes:
+            mel.connect_material_property(nodes["orm"], "R", unreal.MaterialProperty.MP_AMBIENT_OCCLUSION)
+            mel.connect_material_property(nodes["orm"], "G", unreal.MaterialProperty.MP_ROUGHNESS)
+            mel.connect_material_property(nodes["orm"], "B", unreal.MaterialProperty.MP_METALLIC)
+        colour = mel.create_material_expression(material, unreal.MaterialExpressionVertexColor, -600, 800)
+        mel.connect_material_property(colour, "A", unreal.MaterialProperty.MP_OPACITY_MASK)
+        mel.recompile_material(material)
+        unreal.EditorAssetLibrary.save_loaded_asset(material)
+        # The array hands out copies of its slots: each one changed is put back.
+        slots = list(mesh.get_editor_property("materials"))
+        for i, slot in enumerate(slots):
+            slot.set_editor_property("material_interface", material)
+            slots[i] = slot
+        mesh.set_editor_property("materials", slots)
+        unreal.EditorAssetLibrary.save_loaded_asset(mesh)
 
     def import_tint(export, folder):
         """The material step's tint mask: data, not colour, so linear and uncompressed in hue."""
@@ -396,6 +452,12 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
         tint = [bool(t.get_editor_property("srgb")) for t in textures if t.get_name().endswith("_Tint")]
         if tint:
             got["tint_srgb"] = any(tint)
+        if side.get("opacity_mask") == "vertex_alpha" and isinstance(mesh, unreal.SkeletalMesh):
+            used = [s.get_editor_property("material_interface") for s in mesh.get_editor_property("materials")]
+            masked = bool(used) and all(
+                isinstance(u, unreal.Material) and u.get_name().endswith("_Masked")
+                and u.get_editor_property("blend_mode") == unreal.BlendMode.BLEND_MASKED for u in used)
+            got["opacity_mask"] = "masked by vertex alpha" if masked else str([u.get_name() if u else None for u in used])
         if isinstance(mesh, unreal.StaticMesh):
             box = mesh.get_bounding_box()
             got["bounds_cm"] = [box.max.x - box.min.x, box.max.y - box.min.y, box.max.z - box.min.z]

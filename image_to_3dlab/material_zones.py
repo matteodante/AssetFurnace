@@ -7,7 +7,7 @@
    likely each pixel is to be that material. Two stand behind one interface (``SEGMENTERS``):
    ``sam3``, which segments "every region of this concept" from a phrase (gated: its owner
    fills in Meta's form on Hugging Face), and ``sam2``, SAM 2.1's automatic regions each named
-   by Qwen3.5, the all Apache-2.0 fallback.
+   by Qwen3.5, all Apache-2.0 and the default until SAM 3's access is granted.
 3. **The vote.** The scores go back to the atlas (``multiview.reproject``), weighted by how
    squarely each view saw the surface, smoothed inside each UV island so seams and shadows do
    not split a zone; the asset's own metallic map counts for "metal". Each texel takes the
@@ -289,7 +289,7 @@ def components(segmenter: str) -> list[dict]:
              "commercial_status": "commercial-conditional" if m is mm.SAM3 else "commercial-clear"} for m in used]
 
 
-def find_zones(asset: Path, work: Path, segmenter: str = "sam3", vocabulary: list[str] | None = None,
+def find_zones(asset: Path, work: Path, segmenter: str = "sam2", vocabulary: list[str] | None = None,
                size: int = 512, around: int = 16, render=mv.render_views, runner=_run,
                metal_hints: dict[int, np.ndarray] | None = None) -> tuple[dict[int, ZoneMap], dict]:
     """Zones for every textured material of `asset`, and a record of how they were found."""

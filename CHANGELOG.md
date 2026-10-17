@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Tint zones use SAM 2.1 by default (`game_materials.py --zones`); `--zones sam3` once its gated
+  access is granted. Game materials v2 is closed: what is on, what stays off and why is in design
+  section 11.
+- The fitted body hides itself under the armour in Unreal: `unreal_import_check.py` builds a
+  Masked material beside the body (`M_<Body>_Masked`, the body's textures as parameters,
+  Vertex Color alpha in Opacity Mask), puts it on every slot and checks it (`opacity_mask`),
+  since Unreal's glTF import ignores vertex alpha. The exporter keeps any vertex colour
+  whose alpha drops below one half and sets that material's glTF `alphaMode` to MASK.
+- The body mask of characters in pieces now follows the body's clips. Skin stays hidden only
+  where a piece covers it at rest and in 8 frames of every clip. `fit.holes` counts skin
+  left bare by every worn piece of the set, not only the one measured. On both pilot bodies,
+  every piece is now under 1% holes (shoulders were 6–10%).
 - Characters in pieces on more bodies and in Unreal: `slot_parts.py refit` carries a fitted
   set over to another base body (each piece moved from its slot's region on the first body
   to the same region on the second, then the same cage fit, weights and mask; no new images
@@ -224,6 +236,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the sheet prepares the map, runs each try through the image queue and shows the shape
   picture beside each result with its outline IoU. Keep or Discard is saved in the
   concept record and `output/concept/judgements.jsonl`.
+
+### Changed
+- Style bibles: new concepts take their style from the prompt alone. Style references stay
+  off unless asked for, because an image edit also copies their content, and the automatic
+  style judge is postponed; the second labelled sample and the reasons are in the style
+  bible design.
 
 ### Fixed
 - Draw from a reference: a Keep or Discard pressed while the outline was still being measured
