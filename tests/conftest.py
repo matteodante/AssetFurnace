@@ -37,6 +37,18 @@ for directory in ("viewer", "scripts"):
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _no_real_judge(monkeypatch):
+    """No test starts the real picture judge (llama.cpp on the GPU) because it happens to be
+    installed: a test that wants a judge gives its own."""
+    from image_to_3dlab.style import judge, models
+
+    def missing(hub=None):
+        raise models.MissingModel("the picture judge is not used in tests")
+
+    monkeypatch.setattr(judge, "find_parts", missing)
+
+
 @pytest.fixture(scope="session")
 def _suite_gpu_lock(tmp_path_factory):
     return tmp_path_factory.mktemp("gpu") / "assetfurnace-gpu.lock"

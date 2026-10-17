@@ -673,12 +673,17 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
             lods: int, collision: str | None, humanoid: bool, skeleton_from: str | None,
             animations: list[str], tint: str | None, problems: list[str],
             facing_bones: list[str] | None = None,
-            orm: bool = True, opacity_mask: str | None = None) -> dict[str, Any]:
+            orm: bool = True, opacity_mask: str | None = None, socket: Mapping[str, str] | None = None
+            ) -> dict[str, Any]:
     """`<mesh>.unreal.json`: what Unreal must do with the GLB, and what to expect.
 
     `opacity_mask="vertex_alpha"`: a fitted base body; Unreal's glTF import does not read
     vertex alpha, so the import gives the body a Masked material with Vertex Color alpha
     in Opacity Mask (`unreal_import_check.py` does it, and checks it).
+
+    `socket`: a static mesh held in a hand ({"name", "bone"}), in the body's own space; the
+    import makes that socket on the body's skeleton (`on`) so that the mesh, hung from it,
+    is where the fit put it.
     """
     skinned = kind != "prop"
     return {
@@ -695,7 +700,8 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
         "lods": lods,
         "collision": collision,
         "skeleton": None if not skinned else (f"{skeleton_from}_Skeleton" if skeleton_from else names["skeleton"]),
-        "skeleton_from": skeleton_from,
+        "skeleton_from": skeleton_from if skinned else None,
+        "socket": {**dict(socket), "on": skeleton_from} if socket else None,
         "humanoid": humanoid,
         "animations": animations,
         "problems": problems,
@@ -704,7 +710,7 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
             # Skeletal LODs are reduced by Unreal (gltfpack stalls on UV seams); static
             # LODs travel inside the GLB as LODn_ nodes.
             "generate_skeletal_lods": lods if skinned and kind != "equipment" else 0,
-            "reuse_skeleton": skeleton_from is not None,
+            "reuse_skeleton": skinned and skeleton_from is not None,
         },
         "expect": {
             "size_cm": size_cm,
@@ -729,7 +735,8 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
     if expected.get("problems"):
         results.append(_check("export", False, "the export itself reported: " + "; ".join(expected["problems"])))
     want = expected["expect"]
-    equipment = expected["kind"] == "equipment"
+    # a piece on a body (equipment) or hung from its socket: no size or floor of its own
+    equipment = expected["kind"] == "equipment" or bool(expected.get("socket"))
     bounds = measured.get("bounds_cm") or [0, 0, 0]
     if want.get("size_cm") and not equipment:
         got = bounds[2] if want["measure"] == "height" else max(bounds)
@@ -742,6 +749,18 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
     results.append(_check("names", expected["mesh"] in names, f"assets: {', '.join(names)}"))
     want_lods = expected["lods"]
     results.append(_check("lods", measured.get("lods", 0) >= want_lods, f"{measured.get('lods')} LODs, wanted {want_lods}"))
+    if expected.get("socket"):
+        got = measured.get("socket") or {}
+        wanted = expected["socket"]
+        if not got.get("made"):
+            results.append(_check("socket", False, f"{wanted['name']} was not made on {wanted['on']}: "
+                                  f"{got.get('error', 'no socket')}"))
+        else:
+            ok = got.get("bone_found") and got.get("grip_inside")
+            results.append(_check("socket", bool(ok),
+                                  f"{wanted['name']} on {wanted['bone']}: the hand is "
+                                  + ("inside the mesh, where the fit put it" if ok else
+                                     f"{got.get('grip_gap_cm', 0):.1f} cm from the mesh hung from it")))
     if expected.get("collision") in ("box", "convex", "unreal"):
         key = "box_elems" if expected["collision"] == "box" else "convex_elems"
         count = (measured.get("collision") or {}).get(key, 0)

@@ -79,7 +79,7 @@ import numpy as np
 from PIL import Image
 
 from image_to_3dlab.slot_parts import body as body_mod
-from image_to_3dlab.slot_parts import candidates, cuts, masks, pieces, slots
+from image_to_3dlab.slot_parts import candidates, cuts, masks, orient, pieces, slots
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -296,10 +296,15 @@ def text_command(prompt: str, picture: Path, seed: int) -> list[str]:
     return image_api.build_command(prompt, settings, picture, image_api.resolve_weights())
 
 
+def orient_held(pictures: list[Path], ask) -> dict[Path, bool | None]:
+    return orient.orient_held(pictures, ask)
+
+
 def held_pictures(slot: str, words: str, folder: Path, seeds: list[int], style: str = "", run=_run,
                   generate=text_command) -> dict[int, Path]:
     """A weapon's or shield's pictures, one per seed; those already made for these words are
-    kept (a resumed run draws nothing again)."""
+    kept (a resumed run draws nothing again). A weapon's are turned handle down where the
+    picture judge sees the handle at the top (slot_parts/orient.py)."""
     prompt = pieces.held_prompt(slot, words, style)
     made = {}
     for seed in seeds:
@@ -308,8 +313,11 @@ def held_pictures(slot: str, words: str, folder: Path, seeds: list[int], style: 
         marker = picture.with_name(picture.name + ".prompt")
         if not (picture.is_file() and marker.is_file() and marker.read_text(encoding="utf-8") == prompt):
             run(generate(prompt, picture, seed))
+            orient.record_path(picture).unlink(missing_ok=True)   # a new drawing is checked again
             marker.write_text(prompt, encoding="utf-8")
         made[seed] = picture
+    if slot == "weapon":
+        orient.with_judge(list(made.values()))
     return made
 
 
@@ -547,6 +555,11 @@ def refit_job(fit_dir: Path, source_body: Path, body_json: Path, out: Path) -> d
             "clips": list(body_mod.load(body_json).get("clips", {}).values())}
 
 
+# Where a held piece hangs in Unreal: a socket of the hand, made at import (the user's decision C).
+SOCKETS = {"weapon": {"name": "SOCKET_Weapon", "bone": "hand_r"},
+           "shield": {"name": "SOCKET_Shield", "bone": "hand_l"}}
+
+
 def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0, exporter=None) -> Path:
     """The body and every piece of a fitted set for Unreal 5.8, sharing one Skeleton, and a
     `<body>.unreal-set.json` saying how to put them together."""
@@ -573,15 +586,21 @@ def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0
         slot = piece_materials.piece_of(name)
         if slot is not None:
             materials[slot] = chosen.get(slot) or piece_materials.propose(slot=slot)
-        pieces_out[Path(name).stem] = exporter(Path(fit_dir) / name, kind="equipment", size_cm=size_cm,
-                                               name=f"{base}{piece}", body=body_glb, body_name=base,
-                                               out_dir=Path(out) / f"{base}{piece}",
-                                               material=materials[slot]["material"] if slot else None)
+        held = SOCKETS.get(slot)
+        # a weapon or shield: a static mesh hung from a socket of the hand (the user's decision,
+        # 17/10/2026), every other piece skinned to the body's skeleton
+        pieces_out[Path(name).stem] = exporter(Path(fit_dir) / name, kind="prop" if held else "equipment",
+                                               size_cm=size_cm, name=f"{base}{piece}", body=body_glb,
+                                               body_name=base, out_dir=Path(out) / f"{base}{piece}",
+                                               material=materials[slot]["material"] if slot else None,
+                                               **({"socket": held} if held else {}))
     summary = {
         "body": record["name"], "size_cm": size_cm, "skeleton": f"SK_{base}_Skeleton",
         "meshes": {"body": exported["body"]["glb"], **{k: v["glb"] for k, v in pieces_out.items()}},
         "problems": {k: v.get("problems", []) for k, v in {"body": exported["body"], **pieces_out}.items()},
         "materials": materials,
+        "sockets": {slot: SOCKETS[slot] for slot in SOCKETS
+                    if any(piece_materials.piece_of(n) == slot for n in report["files"])},
         "how": [
             "Import the body first, then each piece on the body's Skeleton (each .unreal.json says so).",
             ("Put every piece on a Skeletal Mesh Component under the body's and call SetLeaderPoseComponent(body) "
@@ -590,7 +609,10 @@ def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0
              "MASK. Unreal's glTF import ignores vertex alpha, so the body needs a Masked material with Vertex "
              "Color alpha in Opacity Mask; unreal_import_check.py makes it (M_<Body>_Masked, from the body's "
              "textures, which stay parameters) and checks it."),
-            "The weapon and shield are skinned to one bone (the hand, the forearm) at 100%: no socket needed.",
+            ("The weapon and shield are static meshes in the body's own space, hung from sockets of its hands "
+             f"({SOCKETS['weapon']['name']} on {SOCKETS['weapon']['bone']}, {SOCKETS['shield']['name']} on "
+             f"{SOCKETS['shield']['bone']}); unreal_import_check.py makes the sockets from the imported skeleton "
+             "and checks the grip. Attach each with AttachToComponent(body, socket) and no offset."),
         ],
     }
     path = Path(out) / f"{record['name']}.unreal-set.json"
