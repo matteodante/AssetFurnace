@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The style bible can be applied, opt-in, wherever pictures are drawn: `--bible` on
+  `text_image.py`, `reference_concept.py make` and `slot_parts.py run`; `bible` in the
+  batch steps `picture` and `concept` and in `pieces_run`; a "Style bible" box in Create,
+  the reference panel and the Pieces page. Its words follow the prompt, a concept also
+  takes up to three of its pictures, and the provenance names the bible and its version.
 - Studio: Export for Unreal has "More options" (name, collision and detail levels for
   objects, tint mask auto or none, facing), and the review sheet's "Check an asset" can
   change the profile's thresholds for that run, as `--set` does. `export_unreal.py --tint

@@ -329,6 +329,15 @@ def make_concept(body_json: Path, outfit: str, folder: Path, seeds: list[int], s
     return folder / f"s{seeds[0]}.png", {"prompt": prompt, "seed": seeds[0], "seeds": list(seeds)}
 
 
+def style_with_bible(style: str, bible: str | None) -> str:
+    """The style words for every piece: the person's, then a style bible's when one is named
+    ("-" for the active one); the bible's words for equipment pieces."""
+    from image_to_3dlab.style import apply
+
+    found = apply.resolve(bible, "equipment")
+    return ", ".join(part for part in ((style or "").strip(), found.words if found else "") if part)
+
+
 def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str = "", concept: Path | None = None,
             weapon: str | None = None, shield: str | None = None, concept_seeds=(3,), seeds=(3,), style: str = "",
             root: Path = Path("output/sets"), run=_run, edit=edit_command, generate=text_command,
@@ -529,7 +538,7 @@ def run_fit(job: dict, blender: Path | None = None, run=None) -> dict:
     return report
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="command", required=True)
     b = sub.add_parser("body", help="register a rigged base body")
@@ -554,6 +563,7 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--seeds", default="3", help="comma list of seeds, one picture each per slot")
     q.add_argument("--pick", default="", help="slot=seed for the picture to make in 3D (default the best scored)")
     q.add_argument("--style", default="", help="style words added to every piece's prompt")
+    q.add_argument("--bible", help="a style bible's words too: - for the active one, or its name")
     stage = q.add_mutually_exclusive_group()
     stage.add_argument("--images-only", action="store_true", help="stop after the pictures")
     stage.add_argument("--models-only", action="store_true", help="reuse the pictures, make the 3D")
@@ -574,6 +584,7 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--concept-seeds", default="3")
     r.add_argument("--seeds", default="3")
     r.add_argument("--style", default="")
+    r.add_argument("--bible", help="a style bible's words for every piece: - for the active one, or its name")
     r.add_argument("--root", type=Path, default=Path("output/sets"))
     r.add_argument("--stop-at-pictures", action="store_true",
                    help="stop once every piece's pictures are made and scored, for the person to pick")
@@ -595,6 +606,11 @@ def main(argv: list[str] | None = None) -> int:
     mt.add_argument("--set", action="append", default=[], metavar="SLOT=MATERIAL",
                     help="a person's material for a piece (repeatable)")
     mt.add_argument("--clear", action="append", default=[], metavar="SLOT", help="go back to the rule's proposal")
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = build_parser()
     args = p.parse_args(argv)
     try:
         if args.command == "materials":
@@ -617,7 +633,8 @@ def main(argv: list[str] | None = None) -> int:
             slot_text = json.loads(args.slots_json.read_text()) if args.slots_json else args.slots
             path = run_set(args.body, args.set_name, slot_text, args.outfit, args.concept, args.weapon, args.shield,
                            [int(s) for s in args.concept_seeds.split(",") if s.strip()],
-                           [int(s) for s in args.seeds.split(",") if s.strip()], args.style, args.root,
+                           [int(s) for s in args.seeds.split(",") if s.strip()],
+                           style_with_bible(args.style, args.bible), args.root,
                            stop_at_pictures=args.stop_at_pictures, resume=args.resume,
                            picks=pieces.parse_picks(args.pick))
             print(f"{'waiting for picks: ' if args.stop_at_pictures else 'wrote '}{path}")
@@ -628,7 +645,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "pieces":
             seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
             result = make_pieces(args.cuts, seeds, pieces.parse_picks(args.pick), images=not args.models_only,
-                                 models=not args.images_only, style=args.style)
+                                 models=not args.images_only, style=style_with_bible(args.style, args.bible))
             print(f"pieces: {', '.join(result['slots']) or 'pictures only'}")
         elif args.command == "body":
             labels = dict(item.split("=", 1) for item in args.label)

@@ -489,17 +489,18 @@ def pieces_add_body(name: str, picture: str, model: str, rigged: str, clips: dic
 
 def pieces_run(body: str, set: str, mode: int = 3, slots: list[str] | dict[str, Any] | None = None,
                outfit: str = "", concept: str | None = None, weapon: str = "", shield: str = "",
-               style: str = "", seeds: str = "3", choose: bool = False) -> dict[str, Any]:
+               style: str = "", seeds: str = "3", choose: bool = False, bible: str | None = None) -> dict[str, Any]:
     """Make a set of pieces on a base body, in the background (one run at a time).
     mode 3 draws the outfit from `outfit` words; mode 2 cuts a `concept` already drawn on
     the body. slots: names (["helmet", "torso", "boots"]) or {slot: {"route": "C"|"B0",
     "split": bool, "prompt": "..."}}. weapon/shield: words. seeds: "3,7,11" makes one
-    picture per seed per piece; choose stops after the pictures so pieces_pick can choose."""
+    picture per seed per piece; choose stops after the pictures so pieces_pick can choose.
+    bible: a style bible's words for every piece ("-" for the active one), off by default."""
     if isinstance(slots, list):
         slots = {name: {} for name in slots}
     return _pieces("run", {"mode": mode, "body": body, "set": set, "slots": slots or {}, "outfit": outfit,
                            "concept": concept, "weapon": weapon, "shield": shield, "style": style,
-                           "seeds": seeds, "choose": choose})
+                           "seeds": seeds, "choose": choose, "bible": bible})
 
 
 def pieces_pick(body: str, set: str, picks: dict[str, int] | None = None) -> dict[str, Any]:

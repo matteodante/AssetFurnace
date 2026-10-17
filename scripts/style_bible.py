@@ -14,6 +14,11 @@
 A bible is named by its registered name, by a folder, or by `-` for the active one.
 Pictures are named by the first characters of their hash (`list` shows them). Exit code
 0 means done, 2 means refused, with the reason on one line.
+
+Drawing with a bible is opt-in everywhere ("-" is the active one): `text_image.py --bible -`,
+`reference_concept.py make --bible -`, `slot_parts.py run --bible -`, a batch's
+`"picture": {"bible": "-"}` or `"concept": {...}`, the MCP tools' options, and in the
+studio a "Style bible" box in Create, the reference panel and the Pieces page.
 """
 
 from __future__ import annotations

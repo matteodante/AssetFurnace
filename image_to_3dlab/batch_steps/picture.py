@@ -3,7 +3,8 @@
 The engine and settings of the studio's Create and `scripts/text_image.py`
 (`image_to_3dlab/text_image.py`: Qwen-Image 2.1 Turbo through sd-cli), with the shared GPU
 lock held while it draws. Options (`"picture": {...}`, described in `step_catalog`): seed
-(default 42), count, pick, width, height, cfg_scale, sampler, negative_prompt.
+(default 42), count, pick, width, height, cfg_scale, sampler, negative_prompt, bible (a
+style bible's words after the prompt: "-" for the active one, or its name).
 
 **Several to pick from.** With `count` above 1 the step draws one picture per seed
 (`seed`, `seed`+1, ...) and the row waits for a pick: `"pick": <seed>` in the spec, or the
@@ -36,14 +37,22 @@ def readiness() -> list[str]:
 
 
 def preflight(rows) -> list[str]:
+    from image_to_3dlab.style import apply
+
     problems = [f"row {row.id}: {problem}" for row in rows
                 for problem in step_catalog.check("picture", row.options.get("picture", {}))]
+    for row in rows:
+        try:
+            apply.resolve(row.options.get("picture", {}).get("bible"), row.kind)
+        except ValueError as exc:
+            problems.append(f"row {row.id}: picture: {exc}")
     return problems + (readiness() if rows else [])
 
 
 def settings_of(options: dict) -> dict:
-    """The drawing settings, without the pick and the count."""
-    return {key: value for key, value in options.items() if key not in ("pick", "count")}
+    """The drawing settings, without the pick, the count and the bible (its words go in the
+    prompt)."""
+    return {key: value for key, value in options.items() if key not in ("pick", "count", "bible")}
 
 
 def seeds_of(options: dict) -> list[int]:
@@ -62,9 +71,14 @@ def legacy_key(prompt: str | None, options: dict) -> str:
 
 
 def run(ctx: StepContext) -> StepResult:
+    from image_to_3dlab.style import apply
+
+    style = apply.resolve(ctx.options.get("bible"), ctx.row.kind)
+    extra = {"style": apply.record(style)} if style else None
+
     def draw(seed, path):
-        text_image.generate(ctx.row.prompt or "", {**settings_of(ctx.options), "seed": seed}, path,
-                            log=ctx.log, session=f"batch picture {ctx.row.id}")
+        text_image.generate(apply.styled(ctx.row.prompt or "", style), {**settings_of(ctx.options), "seed": seed},
+                            path, log=ctx.log, session=f"batch picture {ctx.row.id}", extra_provenance=extra)
 
     pictures = _candidates.draw_all(ctx, "picture", seeds_of(ctx.options), draw,
                                     legacy=legacy_key(ctx.row.prompt, ctx.options))
