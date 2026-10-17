@@ -73,15 +73,6 @@ def parse(output: Path, data: dict) -> dict:
     request = {"source": resolve(output, data.get("file")), "kind": kind, "size_cm": size, "measure": measure,
                "animations": [resolve(output, a) for a in data.get("animations") or []] if kind == "creature" else [],
                "check": bool(data.get("check"))}
-    held = data.get("held") or ""
-    if held:
-        if kind != "prop" or held not in up.HELD_SOCKETS:
-            raise ValueError(f"held is for objects: {', '.join(up.HELD_SOCKETS)}")
-        request["body"] = resolve(output, data.get("body"))
-        request["socket"] = dict(up.HELD_SOCKETS[held])
-        if request["check"]:
-            raise ValueError("An object held by a body is checked in Unreal together with its body's export; run "
-                             "scripts/unreal_import_check.py BODY_EXPORT_DIR PART_EXPORT_DIR")
     if kind == "equipment":
         request["body"] = resolve(output, data.get("body"))
         if request["check"]:
@@ -133,7 +124,7 @@ def options(output: Path, data: dict, kind: str) -> dict:
         if forward not in FACINGS:
             raise ValueError(f"facing is auto or one of {', '.join(FACINGS)}")
         out["forward"] = FACINGS[forward]
-    if (kind == "equipment" or data.get("held")) and data.get("body_name"):
+    if kind == "equipment" and data.get("body_name"):
         out["body_name"] = up.base_name(str(data["body_name"]))
     return out
 

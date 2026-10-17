@@ -61,7 +61,7 @@ def load_job(path: Path) -> dict:
     for piece in job["pieces"]:
         if piece.get("slot") not in slots.CATALOGUE:
             raise ValueError(f"unknown slot {piece.get('slot')!r}")
-        if "concept_box" not in piece and piece["slot"] not in fit.HELD and not piece.get("transfer"):
+        if "concept_box" not in piece and not piece.get("transfer") and piece["slot"] not in slots.STANDALONE:
             raise ValueError(f"{piece['slot']}: give concept_box")
         if piece.get("transfer") and "source_body" not in job:
             raise ValueError("a transferred piece needs the job's source_body")
@@ -75,11 +75,10 @@ def slot_bones(roles: dict, slot: str, side: str | None) -> list[str]:
 
 
 def rigid_bone(roles: dict, slot: str, side: str | None = None, carried: dict | None = None) -> str | None:
-    """The one bone a rigid piece follows: the helmet a head bone, the weapon the right hand, the
-    shield the left forearm, unless `side` says otherwise. For the helmet, with `carried` (body
-    vertices each bone carries most), the bone carrying most wins: a rig can split the head over
-    two bones, and a helmet on the small one turned apart from the head (31% holes on a second
-    body). A hand or forearm is always the root of its chain, never a finger."""
+    """The one bone a rigid piece follows: the helmet a head bone (a weapon or shield is an asset
+    of its own, never fitted, so it follows none). With `carried` (body vertices each bone
+    carries most), the bone carrying most wins: a rig can split the head over two bones, and a
+    helmet on the small one turned apart from the head (31% holes on a second body)."""
     role = slots.CATALOGUE[slot].rigid
     side = side or ("L" if slot == "shield" else "R")
     if role is None:
@@ -89,10 +88,8 @@ def rigid_bone(roles: dict, slot: str, side: str | None = None, carried: dict | 
         found = [(i, b) for b, (r, i, _) in roles.items() if r == "neck"]
     if not found:
         return None
-    if carried and role == "head":
+    if carried:
         return max(found, key=lambda f: (carried.get(f[1], 0), -f[0]))[1]
-    # a hand or forearm: the root of its chain. The fingers inherit the hand's role, and one of
-    # them could carry more skin than the hand, which took the weapon on the first real set.
     return min(found)[1]
 
 
@@ -480,7 +477,7 @@ def main() -> None:  # pragma: no cover - runs inside Blender
         obj = join(import_glb(piece["glb"]), slot)
         info = {"faces": len(obj.data.polygons)}
         paired = slots.CATALOGUE[slot].paired
-        if piece.get("transfer") and slot not in fit.HELD:  # refit: carried over region to region
+        if piece.get("transfer"):  # refit: carried over region to region
             stem = Path(piece["glb"]).stem
             if paired and stem == slot:  # one file holding both shoulders: each side carried on its own
                 group = split_sides(obj, slot, float(np.median(source["co"][:, 0])))
@@ -502,16 +499,7 @@ def main() -> None:  # pragma: no cover - runs inside Blender
                 else:
                     merged[key] = value
             continue
-        if slot in fit.HELD and "concept_box" not in piece:  # made on its own: held, rigid, no cage
-            bone = rigid_bone(roles, slot, carried=carried)
-            if bone is None:
-                raise SystemExit(f"no bone to hold the {slot} on")
-            m, place = fit.held_placement(coords(obj), slot, heads[bone], float(np.ptp(body_co[:, 2])))
-            apply(obj, m)
-            one_bone(obj, bone, arm)
-            report["pieces"][slot] = {**info, "placement": {obj.name: place}, "deform": {obj.name: "rigid"},
-                                      "rigid_bone": bone}
-            fitted.append(obj)
+        if slot in slots.STANDALONE:   # an asset of its own: a job from before keeps it, the fit does not
             continue
         box = fit.concept_to_body(piece["concept_box"], job["concept_size"], body_size)
         if "frame" in piece:  # route B0: placed by the whole-character model's extent
@@ -551,7 +539,7 @@ def main() -> None:  # pragma: no cover - runs inside Blender
     # every sampled moment of the body's clips. Hidden by its rest pose alone, the skin a shoulder
     # piece lifts off in a swing showed through (holes of 6-10% in the acceptance); a weapon or
     # shield is held, and the hand under its grip must stay visible
-    worn = [o for o in fitted if o.name.split("_")[0] not in fit.HELD]  # a weapon-only set hides nothing
+    worn = fitted
     gap = job.get("cover_gap", 0.06)
 
     def covered_now(depsgraph=None):

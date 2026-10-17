@@ -185,32 +185,7 @@ def test_a_version_of_a_finished_version_is_finished_too():
     assert out["stage"] == "finished" and out["finished"] == "blender-edits/versions/v2/model.glb"
 
 
-def test_a_held_object_keeps_its_bodys_export_name(tmp_path):
-    sys.path.insert(0, str(REPO / "viewer"))
-    import unreal_export_api as api
-
-    root = tmp_path / "output"
-    (root / "a").mkdir(parents=True)
-    for name in ("sword.glb", "body_rigged.glb"):
-        (root / "a" / name).write_bytes(b"glb")
-    request = api.parse(root, {"file": "a/sword.glb", "kind": "prop", "size_cm": 180, "held": "weapon",
-                               "body": "a/body_rigged.glb", "body_name": "Knight", "material": "none"})
-    assert request["body_name"] == "Knight"
-
-
 # ------------------------------------------------------------------------- Unreal
-
-def test_two_held_objects_cannot_put_one_socket_on_two_bones(tmp_path):
-    import unreal_import_check as uc
-
-    from tests.test_unreal_import_check import _export
-
-    folders = [_export(tmp_path, "creature", "SK_Body")]
-    for mesh, bone in (("SM_Sword", "hand_r"), ("SM_Axe", "hand_l")):
-        folders.append(_export(tmp_path, "prop", mesh, socket={"name": "SOCKET_Weapon", "bone": bone, "on": "SK_Body"}))
-    with pytest.raises(SystemExit, match="SOCKET_Weapon"):
-        uc.load_exports(folders)
-
 
 # ------------------------------------------------------------------------ engines
 

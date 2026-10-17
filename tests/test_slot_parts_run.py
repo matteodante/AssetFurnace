@@ -106,9 +106,8 @@ def test_a_whole_set_on_a_stick_figure(tmp_path):
     assert set(parts["pieces"]) == {"helmet", "torso", "boots", "weapon"}
     assert parts["pieces"]["weapon"]["held"] is True and "a longsword" in parts["pieces"]["weapon"]["prompt"]
     job = jobs[0]
-    held = next(p for p in job["pieces"] if p["slot"] == "weapon")
-    assert "concept_box" not in held
-    assert all("concept_box" in p for p in job["pieces"] if p["slot"] != "weapon")
+    assert not any(p["slot"] == "weapon" for p in job["pieces"])   # an asset of its own, not fitted
+    assert all("concept_box" in p for p in job["pieces"])
     concept_record = tmp_path / "sets" / "red" / "stick" / "concept" / "s3.png.concept.json"
     assert json.loads(concept_record.read_text())["mode"] == "add_piece"
 
@@ -191,7 +190,8 @@ def test_a_resumed_run_keeps_the_weapon_and_can_be_resumed_again_after_a_failed_
     parts = json.loads(path.read_text())
     assert "weapon" in parts["pieces"] and "a longsword" in parts["pieces"]["weapon"]["prompt"]
     assert "hand-painted" in parts["pieces"]["weapon"]["prompt"]  # the style came back too
-    assert any(p["slot"] == "weapon" for p in jobs[0]["pieces"]) and not (folder / "run_state.json").exists()
+    # the weapon is made beside the set, never fitted to the body
+    assert not any(p["slot"] == "weapon" for p in jobs[0]["pieces"]) and not (folder / "run_state.json").exists()
 
 
 def test_run_needs_words_or_a_concept_and_a_plain_set_name(tmp_path):

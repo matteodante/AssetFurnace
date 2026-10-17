@@ -41,9 +41,26 @@ import pytest
 def _no_real_judge(monkeypatch):
     """No test starts the real picture judge (llama.cpp on the GPU) because it happens to be
     installed: a test that wants a judge gives its own."""
-    from image_to_3dlab.slot_parts import orient
+    import sys
+
+    from image_to_3dlab.slot_parts import grip, orient
 
     monkeypatch.setattr(orient, "with_judge", lambda pictures: orient.orient_held(pictures, None))
+    # scripts/slot_parts.py, under every name and copy the tests hold it by (a test module imported
+    # under two names loads it twice)
+    copies = {id(m): m for m in (sys.modules.get("slot_parts"), sys.modules.get("slot_parts_cli")) if m}
+    for name, module in list(sys.modules.items()):
+        if not name.rpartition(".")[2].startswith("test_"):   # test modules only: others may raise on any name
+            continue
+        held = getattr(module, "cli", None)
+        if held is not None and str(getattr(held, "__file__", "")).endswith("slot_parts.py"):
+            copies[id(held)] = held
+    for cli in copies.values():
+        # a weapon's grip and scores as without the judge (stand-in models have no camera)
+        monkeypatch.setattr(cli, "score_held", lambda slot, words, pictures: {})
+        monkeypatch.setattr(cli, "find_grip", lambda slot, words, picture, model: {
+            "slot": slot, "class": grip.weapon_class(slot, words), "size_cm": None, "picture": str(picture),
+            "model": str(model), "camera": None, "box": None, "point": None, "axis": None, "by": "none"})
 
 
 @pytest.fixture(scope="session")
