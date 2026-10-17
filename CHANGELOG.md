@@ -439,6 +439,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   names safely, and prop metadata uses portable paths on Windows.
 
 ### Security
+- Downloads are pinned: stable-diffusion.cpp is release `master-961-60423ab` (the one the
+  Turbo recipe was measured with, after the `--sigmas qwen-image-2.1-turbo` preset landed)
+  with the SHA-256 of each archive, and an sd-cli at another commit is replaced on the next
+  setup instead of being left alone; the Qwen-Image weights download at fixed Hugging Face
+  revisions; the Pixal3D CUDA prebuilt is checked against its SHA-256. An archive that does
+  not match is deleted, never unpacked.
 - The Studio server refuses what a web page could forge. Every older endpoint that changes
   something (setup and weight removal, the Hugging Face sign-in, generate, image, finish,
   props, rig, plans, Library names) now needs the Studio's own origin and request header,
