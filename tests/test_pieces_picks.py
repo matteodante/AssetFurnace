@@ -104,15 +104,15 @@ def test_a_weapon_alone_offers_only_its_own_pictures(tmp_path):
     assert set(candidates.load(folder / "pieces")["slots"]) == {"weapon"}
 
 
-def test_a_weapon_alone_can_be_fitted_again(tmp_path):
+def test_a_weapon_alone_is_never_fitted(tmp_path):
     body_json, source = _with_picture(tmp_path)
     folder = tmp_path / "sets" / "given" / "stick"
     (folder / "pieces").mkdir(parents=True)
     pieces_json = folder / "pieces" / "pieces.json"
     pieces_json.write_text(json.dumps({"cuts": str(folder / "cuts" / "cuts.json"), "seeds": [1],
                                        "slots": {"weapon": {"glb": str(folder / "pieces" / "weapon.glb")}}}))
-    job = cli.fit_job(pieces_json, body_json, folder / "fit")   # no cuts: nothing was drawn on the body
-    assert [p["slot"] for p in job["pieces"]] == ["weapon"]
+    with pytest.raises(ValueError, match="worn pieces"):   # an asset of its own (the user's decision, 17/10/2026)
+        cli.fit_job(pieces_json, body_json, folder / "fit")
 
 
 def test_a_carried_set_is_listed_on_its_new_body(tmp_path, monkeypatch):

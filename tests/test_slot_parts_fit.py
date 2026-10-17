@@ -122,25 +122,6 @@ def test_coverage_report_takes_worst_and_mean():
     assert report["holes"]["max"] == 0.02 and report["worst_frame"] == 1
 
 
-def test_a_weapon_is_held_by_its_grip_at_the_hand_bone():
-    sword = _cube(size=(0.1, 0.05, 1.0), centre=(3.0, 3.0, 3.5))
-    hand = np.array([0.4, 0.0, 0.6])
-    m, info = fit.held_placement(sword, "weapon", hand, body_height=1.0)
-    moved = sword @ m[:3, :3].T + m[:3, 3]
-    assert float(np.ptp(moved[:, 2])) == pytest.approx(0.42)
-    grip = [moved[:, 0].mean(), moved[:, 1].mean(), moved[:, 2].min() + 0.2 * np.ptp(moved[:, 2])]
-    assert grip == pytest.approx(hand)
-    assert info["scale"] == pytest.approx(0.42)
-
-
-def test_a_shield_is_held_by_its_middle():
-    shield = _cube(size=(0.6, 0.1, 0.8))
-    arm = np.array([0.3, 0.0, 1.0])
-    m, _ = fit.held_placement(shield, "shield", arm, body_height=2.0)
-    moved = shield @ m[:3, :3].T + m[:3, 3]
-    assert moved.mean(0) == pytest.approx(arm) and float(np.ptp(moved[:, 2])) == pytest.approx(0.6)
-
-
 def test_a_helmet_the_size_of_the_head_grows_to_hold_it():
     head = _cube(size=(0.1, 0.1, 0.12), centre=(0.0, 0.0, 1.6))
     helmet = _cube(size=(0.1, 0.1, 0.12), centre=(0.0, 0.0, 1.62))
@@ -189,4 +170,3 @@ def test_a_dent_pushed_off_the_skin_becomes_a_smooth_bulge():
     assert lift[1] < lift[2] and lift[0] < lift[1] and lift[0] > 0  # the rest follows, less with distance
     assert np.allclose(moved[:, :2], points[:, :2])  # nothing slides sideways
     assert np.allclose(fit.smooth_push(points, edges, np.zeros((5, 3))), points)
-
