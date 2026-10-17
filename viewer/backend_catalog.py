@@ -334,8 +334,10 @@ CATALOG: tuple[Backend, ...] = (
             WeightSet("Pixal3D single-view Q8_0, with BiRefNet matting",
                       "raven38/pixal3d-sv-q8_0-v1", int(8.4 * GB),
                       REPO / "vendor" / "pixal3d-cpp" / "models" / "pixal3d-sv",
-                      note="Includes the BiRefNet matting model (ilintar/trellis2-gguf), "
-                           "used to cut out a subject when the image has no alpha."),
+                      note="Includes a BiRefNet matting model, a third-party GGUF conversion "
+                           "(ilintar/trellis2-gguf, licence 'other'; its card does not say which "
+                           "BiRefNet checkpoint), for trellis-cli's own cut-out. The studio cuts "
+                           "pictures out with BiRefNet-lite first."),
             # Installed with Pixal3D since 0.3.5: without it the cut-out falls back to
             # u2net, which ate a white robot's upper arms on a fresh Linux install.
             WeightSet("BiRefNet-lite background remover", _matte.LITE_URL, _matte.LITE_BYTES,
@@ -463,7 +465,7 @@ CATALOG: tuple[Backend, ...] = (
         rank=5,
         best_for="Fastest of the lot, and the smallest download. Good for a quick look.",
         tradeoff="Lowest fidelity here, and it bakes lighting into the texture.",
-        license_name="Stability AI Community License (non-commercial under $1M revenue)",
+        license_name="Stability AI Community License (free incl. commercial under $1M annual revenue, registration required)",
         license_url="https://huggingface.co/stabilityai/stable-fast-3d",
         install="scripts/bootstrap_sf3d.py",
         # Not NVIDIA: SF3D's pins (old huggingface-hub, rembg) broke the lab's shared
@@ -562,9 +564,12 @@ CATALOG: tuple[Backend, ...] = (
         label="Qwen-Image 2.1 Turbo (text to image)",
         kind="image",
         best_for="Makes the source image when you do not have one. Prompt in, picture out.",
-        tradeoff="Runs on your machine, and the pictures you make are yours.",
+        tradeoff="Runs on your machine, 8 steps at cfg 1, about 15 s a picture on an RTX 5070 Ti.",
         license_name="Qwen Research License",
         license_url="https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE",
+        caveat=("Non-commercial only: the licence allows the model for research or evaluation "
+                "purposes only (sections 1(i), 2(a)); commercial use needs Qwen's separate "
+                "licence. Every picture's record says so."),
         install="Prebuilt stable-diffusion.cpp binary in vendor/sdcpp/",
         runs_on=(APPLE, NVIDIA, AMD),
         setup_minutes=15,
