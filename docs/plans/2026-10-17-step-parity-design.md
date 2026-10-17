@@ -314,7 +314,7 @@ questa lista prima del resoconto finale.
 | Parità: pezzi, scelta del vestito, arma e scudo, azioni sui set (d3) | unito (#75) |
 | Parità: versioni Blender nella catena (d4) | unito (#77, #82) |
 | Parità: materiali, un materiale per asset o pezzo (e) | unito (#81); #79 chiusa |
-| Documento finale e tabella di parità | PR #80 (per ultima) |
+| Documento finale e tabella di parità | PR #80, unita per ultima |
 | Set vero 1: spada presa per la lama | unito (#108, decisione C): l'immagine chiede il manico in basso e il giudice la gira se lo vede in alto; #83 chiusa (P1 nella regola geometrica) |
 | Set vero 2: concept senza i pezzi scelti non nominati | unito (#84) |
 | Set vero 3: UV sovrapposte del Finish | unito (#85) |
@@ -331,7 +331,7 @@ questa lista prima del resoconto finale.
 | MCP 1: annotazioni degli strumenti (readOnly, destructive, idempotent, title) | unito (#109) |
 | MCP 2: risultati tipizzati (outputSchema, structuredContent) | unito (#109) |
 | MCP 3: file prodotti come resource link con mimeType | unito (#109; leggibili con `resources/read`, solo sotto `output/` o le roots) |
-| MCP 4: notifiche di avanzamento; valutare i "tasks" dell'SDK | PR #109: `wait_batch` con avanzamento; i tasks restano fuori (l'SDK 2.3 li esclude di proposito, i lavori in background fanno già il loro lavoro) |
+| MCP 4: notifiche di avanzamento; valutare i "tasks" dell'SDK | unito (#109): `wait_batch` con avanzamento; i tasks restano fuori (l'SDK 2.3 li esclude di proposito, i lavori in background fanno già il loro lavoro) |
 | MCP 5: solo percorsi sotto il repo, `output/` o le roots del client | unito (#109; anche i percorsi dentro uno spec) |
 | MCP 6: nome del server "assetfurnace", istruzioni, documentazione degli strumenti per funzione | unito (#109) |
 | MCP 7: Streamable HTTP facoltativo su 127.0.0.1 con token, uso via tunnel SSH | unito (#109; provato davvero: 401 senza token, 200 con) |
