@@ -314,8 +314,8 @@ questa lista prima del resoconto finale.
 | Parità: pezzi, scelta del vestito, arma e scudo, azioni sui set (d3) | unito (#75) |
 | Parità: versioni Blender nella catena (d4) | unito (#77, #82) |
 | Parità: materiali, un materiale per asset o pezzo (e) | unito (#81); #79 chiusa |
-| Documento finale e tabella di parità | PR #80, unita per ultima |
-| Set vero 1: spada presa per la lama | unito (#108, decisione C): l'immagine chiede il manico in basso e il giudice la gira se lo vede in alto; #83 chiusa (P1 nella regola geometrica) |
+| Documento finale e tabella di parità | PR #80, da unire per ultima |
+| ~~Set vero 1: spada presa per la lama~~ | superato: le armi non si legano più al personaggio (decisione dell'utente, 17/10 sera); resta il buono, sotto "Armi e scudi come asset autonomi". #83 chiusa |
 | Set vero 2: concept senza i pezzi scelti non nominati | unito (#84) |
 | Set vero 3: UV sovrapposte del Finish | unito (#85) |
 | Set vero 4: lucchetto GPU (Pixal3D, giudice, sd-cli) | unito (#86) |
@@ -324,8 +324,8 @@ questa lista prima del resoconto finale.
 | Set vero 7: giudice mancante senza avviso | unito (#88) |
 | Decisione A: come è vestito il corpo base (tutina, abiti semplici, intimo, testo libero), scelto alla registrazione su tre strade, in `body.json` | unito (#93) |
 | Decisione B: nello studio un set si ferma dopo le immagini, scelta automatica evidenziata, un clic per il 3D; CLI e agenti con un flag | era già così; fissato con un test: unito (#89) |
-| Decisione C: arma e scudo come static mesh su un socket della mano in Unreal (`hand_r` / `hand_l`), non pezzi skinnati | unito (#108): socket fatti all'import dallo scheletro importato, presa misurata (0,8 cm sul set vero in UE 5.8); "Held" nello studio, `--socket`, opzione `socket` dei lotti |
-| C, collegato: l'arma segue l'osso del dito `middle_02_r` (i diti ereditano il ruolo "hand"); test sull'osso padre | unito (#108; segue la radice della catena della mano) |
+| ~~Decisione C: arma e scudo su un socket della mano del corpo in Unreal~~ | superata dalla decisione dell'utente: "non dobbiamo collegare il personaggio alla sua arma, non è lo scopo di AssetFurnace; dobbiamo però generarle bene". Quello che #108 ha messo in main per il corpo (socket sulle mani, "Held by", fit alla mano, controllo della presa) si toglie nella PR delle armi autonome |
+| ~~C, collegato: l'arma segue l'osso del dito `middle_02_r`~~ | superato: l'arma non si adatta più al corpo |
 | Decisione D: giudice (llama.cpp + Qwen3-VL) installato nel checkout principale con il bootstrap; Setup lo mostra; il lavoro avvisa | installato il 17/10 (bootstrap_style.py --only llama, provato: risponde in 13 s); avviso e Setup: unito (#88) |
 | Decisione E: mantello (nuovo slot con fisica della stoffa) rimandato | scritto nei seguiti del progetto dei pezzi (#80) |
 | MCP 1: annotazioni degli strumenti (readOnly, destructive, idempotent, title) | unito (#109) |
@@ -337,6 +337,21 @@ questa lista prima del resoconto finale.
 | MCP 7: Streamable HTTP facoltativo su 127.0.0.1 con token, uso via tunnel SSH | unito (#109; provato davvero: 401 senza token, 200 con) |
 | Pixal3D secondo la scheda ufficiale (12 passi, campo visivo stimato con MoGe-2) | unito (#104; MoGe-2 installato e provato: 23 s su GPU) |
 | Review finale con Codex di tutto il lavoro, correzioni, resoconto | unito (#110): review per aree (lotti, MCP, studio, pezzi, Unreal, motori), 19 difetti veri corretti con un test ciascuno; due di #103 (altra sessione) segnalati, non toccati |
+| Armi e scudi come asset autonomi, generati bene: posa canonica nel prompt (dritta, impugnatura in basso, punta in alto, fondo piatto) | aperto (in main da #108: da tenere) |
+| Armi: controllo dell'orientamento con il giudice Qwen3-VL, girata se l'impugnatura è in alto | aperto (in main da #108: da tenere) |
+| Armi: candidati con punteggio come gli altri pezzi, pausa per la scelta nello studio | aperto |
+| Armi: socket "grip" sull'SM_ dell'arma, trovato con il grounding di Qwen3-VL sull'immagine canonica e proiettato sul 3D; correggibile su tre strade (studio, CLI, MCP) | aperto |
+| Armi: export Unreal come SM_ con il socket grip, scala reale, pivot sull'impugnatura, collisione sensata; in un set fatte accanto, come asset separati, non agganciate | aperto |
+| Armi: togliere il legame al corpo messo da #108 (socket SOCKET_Weapon/SOCKET_Shield sul corpo, "Held by", altezza del portatore, fit alla mano, GRIP_REACH_CM) | aperto |
+| Armi: prova in UE di spada, ascia, arco e scudo come asset singoli (socket presente sull'impugnatura, pivot giusto, scala plausibile) | aperto |
+| Audit 1: `batch.class_problem` rifiuta research-only anche senza intento commerciale; allinearlo a validate_run_policy (rifiuta solo se commerciale, altrimenti avvisa e registra) | aperto |
+| Audit 2: `slot_parts/sidecar.py` scrive la classe di licenza fissa (commercial-conditional); prenderla dal catalogo | aperto |
+| Audit 3: catalogo dei passi: aiuto di negative_prompt ("solo con cfg sopra 1"), dimensioni del passo picture fino a 2048 con i preset ufficiali (2048 senza riferimenti, 1024 con), parametri transparent e rewrite di #103, opzione two_sided dell'export Unreal | aperto |
+| Audit 4: Create nello studio offre i preset della scheda, 2048 predefinito per il solo testo | aperto |
+| Audit 5: le immagini dei pezzi senza riferimenti usano T2I_DEFAULTS | aperto |
+| Audit 6: `pixal3d_generate.py` cancella anche .ply e __matted.png una volta usati (811 MB inutili nel set vero) | aperto |
+| Audit 7: export Unreal senza avvisi del validatore glTF: tangenti scritte (MESH_PRIMITIVE_GENERATED_TANGENT_SPACE), mesh skinnata come nodo radice (NODE_SKINNED_MESH_NON_ROOT) | aperto |
+| Lint F (ruff) entrato in main con #84, #87, #88 | aperto |
 
 ## Seguiti
 
