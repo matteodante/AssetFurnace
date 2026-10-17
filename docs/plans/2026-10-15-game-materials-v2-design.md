@@ -1,7 +1,7 @@
 # Funzione 8, materiali pronti per il gioco: progetto v2
 
 Data: 15 ottobre 2026 (aggiornato lo stesso giorno: SAM 3.1, lavori del 2026, video, Qwen3.5, togliere la luce, date).
-Stato: **costruita, in attesa delle etichette** (17/10/2026). Cosa è acceso, cosa aspetta la prova e perché: sezione 11; il lavoro rimasto: Seguiti.
+Stato: **chiusa con un materiale per pezzo** (17/10/2026): sezione 11, "Chiusura". Cosa è acceso, cosa aspetta la prova e perché: sezione 11; il lavoro rimasto: Seguiti.
 Sostituisce il metodo di [`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md) (v1), di cui
 tiene l'infrastruttura. La PR [#3](https://github.com/matteodante/AssetFurnace/pull/3) è in bozza e in pausa.
 
@@ -481,6 +481,49 @@ Download confermati dall'utente il 16/10/2026 ("permesso per tutto"): Qwen3.5-4B
   della pagina di installazione.
 
 ## 11. Stato (17/10/2026)
+
+### Chiusura: un materiale per pezzo (17/10/2026)
+
+Decisione dell'utente, dopo le prove: la divisione automatica in zone non funziona, quindi la funzione si chiude con
+**un materiale per pezzo**, senza segmentazione.
+
+- **Cosa riceve un materiale.** Ogni pezzo di un personaggio a pezzi (casco, torso, spalle, guanti, gambe, stivali,
+  arma, scudo) ha uno dei 16 materiali del vocabolario. Un oggetto o una creatura, che sono un pezzo solo, ne hanno uno.
+- **La proposta** è una regola leggibile (`image_to_3dlab/piece_materials.py`):
+  1. la prima parola di materiale nelle parole del pezzo ("a leather hood" -> leather);
+  2. altrimenti la frase dell'outfit che nomina il pezzo ("... and leather boots" -> stivali: leather);
+  3. altrimenti il predefinito:
+     - per lo slot: le armature metal, lo scudo wood;
+     - per un asset singolo, secondo il tipo: oggetto wood, creatura skin, equipaggiamento metal.
+  Per un asset singolo le parole sono il prompt trovato seguendo la provenienza del modello fino alla sua immagine.
+- **La correzione** la fa una persona, con lo stesso codice da ogni strada:
+  - Studio, pagina Pezzi: un menu per pezzo prima del lavoro, e per ogni set fatto la tabella *Materials*, con il
+    materiale e il motivo;
+  - Studio, pannello Export for Unreal: un menu solo, il cui "Auto" mostra la proposta;
+  - riga di comando e agenti: `slot_parts.py materials SET_DIR --set helmet=leather` (il file `materials.json` del
+    set), `export_unreal.py --material`, il campo `material` di `slots.json`.
+
+  Vince la correzione di una persona, poi il materiale chiesto prima del lavoro, poi la regola.
+- **L'effetto.** Il materiale dà rugosità e metallo (la tabella `PBR`), che l'export per Unreal scrive nell'ORM del
+  pezzo; `slot_parts.py unreal` lo fa per ogni pezzo del set.
+- **Verifica in UE 5.8.3** (`unreal_import_check.py`, lucchetto della GPU tenuto):
+  - `chest_finished.glb` con wood (regola) e `knight_finished.glb` con metal (persona) passano tutti i controlli;
+  - nell'ORM ci sono G 178 / B 0 e G 89 / B 255.
+
+  I GLB grezzi di Pixal3D del foglio di etichette non si esportano, con o senza materiale: le loro texture non hanno
+  `source`. È un limite che c'era già.
+- **Manca ancora la prova vera su un set**: su disco non c'è nessun set, quindi il set è coperto solo dai test. La
+  prova va fatta appena esiste un set (copiato prima, non modificato).
+- **Restano strumenti facoltativi da riga di comando, non affidabili, fuori dalla catena:**
+  - zone automatiche (Qwen3.5 + SAM 3.1, `game_materials.py --zones`): 72 % dei punti, 179 su 249, su 45 asset,
+    sotto la soglia del 75 %. Le etichette le ha messe a vista la sessione, non l'utente, su asset della stessa
+    pipeline: la misura è indicativa. Sbagliano soprattutto pelliccia, pelle e squame sulle creature;
+  - controllo della luce cotta: non passa né sul sintetico (sezione 10) né sulle etichette della sessione (AUC 0,70,
+    limite inferiore 0,36; puliti segnalati 75 %);
+  - PBR stimato (Marigold-IID Appearance): bocciato su Poly Haven (sezione 10);
+  - luce tolta (`delight_materials.py`): resta su richiesta, mai provata con l'utente.
+
+Il testo che segue è lo stato di prima della chiusura.
 
 L'utente farà le etichette (decisione del 17/10/2026, che annulla quella della stessa mattina di farne a meno): le prove
 della sezione 6 restano come scritte. Finché non ci sono:
