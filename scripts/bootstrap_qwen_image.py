@@ -35,7 +35,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from image_to_3dlab import host
+from image_to_3dlab import host, prompt_rewrite
 from image_to_3dlab.provenance import sha256_file
 from image_to_3dlab.sdcpp import NO_AMD_GPU_HELP, NO_GPU_HELP, gpu_found
 
@@ -111,6 +111,9 @@ def announcement(build: bool = True, weights: bool = True) -> str:
         lines.append(f"  weights: {total_gb():.1f} GB total ->  Hugging Face cache")
         for repo, filename, size in WEIGHTS:
             lines.append(f"             {size:>5.2f} GB  {filename}  ({repo})")
+        lines.append(f"  prompt rewriting: QwenLM's t2i system prompt ({prompt_rewrite.SYSTEM_PROMPT_BYTES // 1000} KB, "
+                     f"{prompt_rewrite.SYSTEM_PROMPT_LICENSE}) -> vendor/qwen-image-pe/")
+        lines.append(f"             {prompt_rewrite.SYSTEM_PROMPT_URL}")
     lines += ["", "  licence: " + LICENCE, ""]
     return "\n".join(lines)
 
@@ -314,6 +317,9 @@ def install_weights() -> None:
         print(f"\nFetching {filename} ({size:.2f} GB) from {repo}...", flush=True)
         path = hf_hub_download(repo_id=repo, filename=filename, revision=REVISIONS[repo])
         print(f"  {path}")
+    # the official prompt rewriting runs on the text encoder just fetched (prompt_rewrite.py)
+    print("\nFetching the prompt rewriting's system prompt (10 KB)...", flush=True)
+    print(f"  {prompt_rewrite.install_system_prompt()}")
 
 
 def main(argv: list[str] | None = None) -> int:

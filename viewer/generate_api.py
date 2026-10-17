@@ -207,7 +207,7 @@ def _job_env() -> dict[str, str]:
     value in this server's environment (e.g. SPARSE_CONV_BACKEND=none exported earlier)
     would otherwise be inherited and silently break the run.
     """
-    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    env = processes.child_env()
     for key in BACKEND_ENV_KEYS:
         env.pop(key, None)
     return env
@@ -2092,16 +2092,7 @@ class Handler(SimpleHTTPRequestHandler):
         return cls._chain_runner
 
     def _refuse(self, status: int, message: str) -> None:
-        # read a small body first: closing on unread bytes resets the connection, and the
-        # caller would see a broken pipe instead of the reason
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-        except ValueError:
-            length = 0
-        if 0 < length <= 1024 * 1024:
-            self.rfile.read(length)
-        else:
-            self.close_connection = True
+        blender_edit_api.drain(self)
         self._send_json(status, {"error": message})
 
     def _admitted(self) -> bool:
@@ -2540,7 +2531,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parts == ["api", "image", "defaults"]:
             self._send_json(200, {
-                "defaults": image_api.DEFAULTS,
+                "defaults": image_api.T2I_DEFAULTS,
                 "samplers": list(image_api.SAMPLERS),
                 "installed": image_api.is_installed(),
                 "license": {"name": image_api.LICENSE_NAME, "url": image_api.LICENSE_URL,

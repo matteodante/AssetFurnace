@@ -18,7 +18,6 @@ than left to look like slow progress, which is the failure people actually hit.
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
@@ -66,6 +65,7 @@ COMMANDS: dict[str, list[str]] = {
     "flux2-klein": [sys.executable, str(REPO / "scripts" / "bootstrap_flux2_klein.py"),
                     "--yes"],
     "matte": [sys.executable, str(REPO / "scripts" / "bootstrap_matte.py"), "--yes"],
+    "gltf-validator": [sys.executable, str(REPO / "scripts" / "bootstrap_gltf_validator.py"), "--yes"],
     "autorig": [sys.executable, str(REPO / "scripts" / "bootstrap_autorig.py"), "--yes"],
     "materials-light": [sys.executable, str(REPO / "scripts" / "bootstrap_materials.py"),
                         "--only", "env,marigold-lighting", "--yes"],
@@ -407,10 +407,9 @@ def _run(run: DownloadRun) -> None:
     try:
         run.process = subprocess.Popen(
             run.command, cwd=str(REPO),
-            env={**os.environ, "PYTHONUNBUFFERED": "1",
-                 # The bars are unreadable in a browser and the size watcher is the real
-                 # progress signal, so ask the downloader not to draw them at all.
-                 "HF_HUB_DISABLE_PROGRESS_BARS": "1"},
+            # The bars are unreadable in a browser and the size watcher is the real
+            # progress signal, so ask the downloader not to draw them at all.
+            env=processes.child_env(HF_HUB_DISABLE_PROGRESS_BARS="1"),
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0,
             # Its own process group, so cancelling kills the downloader's children too.
             **processes.group_popen_kwargs(),

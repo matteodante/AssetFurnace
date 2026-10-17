@@ -21,9 +21,21 @@ reference pictures were given. Compared on six subjects with the same prompts an
 Ti): base at 8 steps was blurred every time; base at 40 steps and cfg 6 was clean but took
 80 s, and 8 minutes with three references; the Turbo was as clean or cleaner in 15 s, 48 s
 with three references. At 1536 px the Turbo added things nobody asked for around the
-subject (pauldrons around a sword, a mask for a helmet), so the default is 1024 px; the
-3D generators downstream read about 518 px anyway. The step count is the length of the
-sigma list, so `steps` is recorded but not taken from the form.
+subject (pauldrons around a sword, a mask for a helmet), so the default was 1024 px.
+The step count is the length of the sigma list, so `steps` is recorded but not taken from
+the form.
+
+**Text to image runs as the model card says (user decision, 2026-10-17).** The Turbo's card
+and the Qwen-Image-2.1 README give the resolution presets (2048x2048 and six other ratios),
+a prompt template for a transparent background, and an official prompt rewriting step;
+`T2I_DEFAULTS` and `prepare_prompt()` apply all three to text to image (the studio's
+Create and `scripts/text_image.py`). Measured on an RTX 5070 Ti (16 GB, Q8_0, sd-cli
+master-961): 2048x2048 runs in 72 s against 14 s at 1024 (peak 14.7 GB; sd-cli retries the
+VAE decode tiled), and the template gives a real alpha (62 to 75% transparent) at no extra
+time. With reference pictures 2048 does not fit (the vision encoder fails), so runs that
+draw from references (concepts, the pieces of a character) keep `DEFAULTS`, 1024, and their
+prompt as written. `DEFAULTS` is also what the batches start from, through the step
+catalogue.
 
 **The licence travels with the image.** Qwen-Image's licence allows it for non-commercial
 use only, research or evaluation (Qwen Research License 1(i), 2(a)). Every run writes a
@@ -73,21 +85,37 @@ WEIGHT_FILES = {
 TURBO_SIGMAS = "qwen-image-2.1-turbo"
 TURBO_STEPS = 8
 
+# Qwen-Image-2.1's resolution presets: the Turbo's model card says "Use the same resolution
+# presets as Qwen-Image-2.1" and lists these (HF card and QwenLM/Qwen-Image-2.1 README,
+# read 2026-10-17).
+CARD_SIZES = {
+    "1:1": (2048, 2048), "4:3": (2400, 1792), "3:4": (1792, 2400), "3:2": (2528, 1696),
+    "2:3": (1696, 2528), "16:9": (2752, 1536), "9:16": (1536, 2752),
+}
+# 2048 with reference pictures does not fit 16 GB (2026-10-17: the vision encoder fails)
+REFERENCE_SIZE = 1024
+
 DEFAULTS: dict[str, Any] = {
-    "width": 1024,
-    "height": 1024,
+    "width": REFERENCE_SIZE,
+    "height": REFERENCE_SIZE,
     "steps": TURBO_STEPS,
     "cfg_scale": 1.0,
     "sampler": "euler",
     "seed": 42,
     "negative_prompt": "",
+    "transparent": False,
+    "rewrite": False,
 }
+# Text to image, as the card says: its default size, a transparent background, and the
+# official prompt rewriting (see the module docstring and prepare_prompt).
+T2I_DEFAULTS: dict[str, Any] = {**DEFAULTS, "width": CARD_SIZES["1:1"][0], "height": CARD_SIZES["1:1"][1],
+                                "transparent": True, "rewrite": True}
 
 SAMPLERS = ("euler", "euler_a", "heun", "dpm2", "dpmpp2m", "lcm")
 # sd.cpp requires both dimensions to be a multiple of 32; anything else fails deep in the
 # run rather than at the door.
 SIZE_STEP = 32
-MIN_SIZE, MAX_SIZE = 256, 1536
+MIN_SIZE, MAX_SIZE = 256, max(max(size) for size in CARD_SIZES.values())
 MAX_PROMPT = 2000
 
 # "  |=====>    | 7/10 - 13.38s/it"
@@ -171,7 +199,59 @@ def clean_settings(raw: dict[str, Any]) -> dict[str, Any]:
     sampler = str(raw.get("sampler", DEFAULTS["sampler"]))
     settings["sampler"] = sampler if sampler in SAMPLERS else DEFAULTS["sampler"]
     settings["negative_prompt"] = str(raw.get("negative_prompt", ""))[:MAX_PROMPT]
+    for key in ("transparent", "rewrite"):
+        settings[key] = _yes(raw.get(key, DEFAULTS[key]))
     return settings
+
+
+def _yes(value: Any) -> bool:
+    """A switch from a form or a JSON body: only a clear yes turns it on."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+# QwenLM/Qwen-Image-2.1 README, "Transparent image generation (RGBA)", and the same template
+# in stable-diffusion.cpp's docs/qwen_image_2.1.md ("Alpha channel"), read 2026-10-17.
+RGBA_HEAD = "This is an RGBA image with transparency."
+RGBA_TAIL = "The image has alpha channel and the background is transparent."
+
+
+def rgba_prompt(words: str) -> str:
+    """`words` in the official transparent-background template (once)."""
+    words = words.strip()
+    if words.startswith(RGBA_HEAD) and words.endswith(RGBA_TAIL):
+        return words
+    return f"{RGBA_HEAD} {words.rstrip('.').strip()}. {RGBA_TAIL}"
+
+
+def prepare_prompt(prompt: str, settings: dict[str, Any], *, weights: dict[str, Path] | None = None,
+                   references: bool = False, log: Callable[[str], None] = lambda line: None,
+                   lock_path: Path | None = None) -> tuple[str, dict[str, Any]]:
+    """The prompt sd-cli gets, and what the record should say about it.
+
+    Text to image with `rewrite`: QwenLM's rewriting (image_to_3dlab/prompt_rewrite.py) on a
+    brief that already asks for transparency when `transparent` is on, since the rewriter
+    keeps what a brief fixes and invents what it leaves open, a background included. Then
+    the transparent-background template. A run from reference pictures keeps its prompt."""
+    if references:
+        return prompt, {}
+    notes: dict[str, Any] = {}
+    sent = prompt
+    if settings.get("rewrite"):
+        from image_to_3dlab import prompt_rewrite
+
+        brief = rgba_prompt(prompt) if settings.get("transparent") else prompt
+        model = (weights or resolve_weights())["llm"]
+        found = prompt_rewrite.rewrite(brief, model=model, log=log, lock_path=lock_path)
+        if found is not None:
+            sent = found.pop("prompt")
+            notes["prompt_rewrite"] = {"applied": True, **found}
+        else:
+            notes["prompt_rewrite"] = {"applied": False, "reason": "the rewriter is not installed or gave no answer"}
+    if settings.get("transparent"):
+        sent = rgba_prompt(sent)
+    return sent, notes
 
 
 # stable-diffusion.cpp computes the negative branch only when the guidance is not 1
@@ -281,7 +361,7 @@ def weight_manifest() -> dict[str, dict[str, str]]:
 
 
 def provenance(prompt: str, settings: dict[str, Any], seconds: float,
-               output_path: Path) -> dict[str, Any]:
+               output_path: Path, prompt_sent: str | None = None) -> dict[str, Any]:
     """What this picture is, and what the licence lets you do with it. A negative prompt
     the run could not use is recorded as such, not among the settings that made it."""
     settings = dict(settings)
@@ -312,6 +392,12 @@ def provenance(prompt: str, settings: dict[str, Any], seconds: float,
     }
     if ignored:
         record["negative_prompt_not_applied"] = ignored
+    if prompt_sent is not None and prompt_sent != prompt:
+        record["prompt_sent"] = prompt_sent      # rewritten, or in the transparency template
+    if settings.get("transparent") or settings.get("rewrite") or (
+            settings.get("width"), settings.get("height")) in CARD_SIZES.values():
+        record["settings_source"] = ("Qwen-Image-2.1-Turbo model card and QwenLM/Qwen-Image-2.1 README "
+                                     "(resolution presets, RGBA template, prompt rewriting), read 2026-10-17")
     return record
 
 
@@ -374,7 +460,9 @@ def generate(prompt: str, raw_settings: dict[str, Any], output_path: Path, *,
     if settings["negative_prompt"] and not negative_applies(settings):
         log(f"negative prompt {NEGATIVE_AT_CFG_1}")
     weights = weights or resolve_weights()
-    command = build_command(prompt, settings, output_path, weights)
+    sent, notes = prepare_prompt(prompt, settings, weights=weights, references=bool(extra_args), log=log,
+                                 lock_path=GPU_LOCK)
+    command = build_command(sent, settings, output_path, weights)
     if extra_args:
         command = command[:1] + list(extra_args) + command[1:]
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -393,7 +481,7 @@ def generate(prompt: str, raw_settings: dict[str, Any], output_path: Path, *,
     if code != 0 or not output_path.is_file():
         reason = failure_reason(lines)
         raise RuntimeError(f"sd-cli exited with code {code}" + (f": {reason}" if reason else ""))
-    record = provenance(prompt, settings, elapsed, output_path)
+    record = provenance(prompt, settings, elapsed, output_path, prompt_sent=sent)
     output_path.with_suffix(".provenance.json").write_text(
-        json.dumps({**(extra_provenance or {}), **record}, indent=2), encoding="utf-8")
+        json.dumps({**(extra_provenance or {}), **notes, **record}, indent=2), encoding="utf-8")
     return output_path

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A base body says how it is dressed under its pieces, the person's choice when it is
+  registered on every route: a bodysuit, simple clothes (shirt, breeches, cloth shoes), minimal
+  underwear, or words of their own (`slot_parts.py body --dressing`, `pieces_add_body(dressing=)`,
+  the studio's register form). It is kept in body.json, and the outfit concept keeps those
+  clothes instead of a fixed bodysuit.
 - Batches and agents can replace a step's output with a file of their own:
   `"replace": {"finish": "my.glb"}` in a row, or `run_steps(..., replace=...)`. The step
   does not run, the file (a Blender version, a model made elsewhere, your own rig or clips)
@@ -349,6 +354,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sets MoGe-2 up with PyTorch for the machine (`--moge` for an existing install); without
   it the 20 degree gauge stays and the run says so. The manifest records where the field
   of view came from.
+- Text to image runs as Qwen-Image 2.1 Turbo's card says (docs/text-to-image.md): 2048x2048
+  by default with the card's presets, the official transparent-background prompt (a real
+  alpha, so the 3D step needs no cut-out), and the official prompt rewriting, run on this
+  machine with the text encoder already installed. The rewriting's system prompt comes with
+  the Qwen-Image setup; without it the picture is drawn from the prompt as written. Runs from
+  reference pictures stay at 1024: 2048 with references does not fit 16 GB.
 - Qwen-Image's licence class now says what its licence says: `research-only` (the Qwen
   Research License allows it "for research or evaluation purposes only", 1(i) and 2(a)),
   and the records cite the licence text instead of an unverified post about output rights.
@@ -381,9 +392,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helmet the outfit's words left out was not drawn, so its cut was the face and the piece
   edit invented a helmet; the concept now adds the chosen pieces the outfit does not name,
   in their own words when they have them.
+- The GPU lock is let go even when another job is reading it at that moment: Windows
+  refused to delete the open file, the release gave up without a word, and every other GPU
+  job then waited on a lock nobody held (the suite hung on it on 2026-10-17).
+- A Studio request refused before its body was read gets its 403: the reference concept
+  and Blender edit APIs now read the body first, as the batch and export APIs did, instead of
+  closing on it (Windows then reset the connection and the page saw a network error).
+- glTF validity is never silently unchecked: without Khronos' glTF-Validator the `gltf.valid`
+  check warns that it did not run (it was skipped, and no report said so), and the validator
+  can be installed from Setup & Status (about 2 MB) as well as from its script.
 - Library names and hidden flags are never lost: two changes at once (a rename and a hide)
   no longer write over each other, the file is replaced whole so a crash cannot truncate it,
   and a damaged one is kept aside as `.bad-<time>` instead of being overwritten.
+- Game materials record a choice they make against glTF: an asset with no metallic map
+  and no `metallicFactor` (which the spec defaults to 1, metal) is packed as not metal, and
+  `maps.metallic` now says "assumed 0" instead of "factor".
+- The studio's jobs talk UTF-8 on Windows: their Python children run with `PYTHONUTF8=1`
+  and their output is read as UTF-8, so a Chinese prompt or a name outside cp1252 no longer
+  stops the script that prints it, or the loop that reads it.
 - The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
   Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
   only text to image took it.

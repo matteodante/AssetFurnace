@@ -43,6 +43,7 @@ from image_to_3dlab.text_image import (  # noqa: F401 - re-exported for the stud
     OUTPUT_ROOT,
     SAMPLERS,
     SIZE_STEP,
+    T2I_DEFAULTS,
     TURBO_SIGMAS,
     TURBO_STEPS,
     WEIGHT_FILES,
@@ -53,6 +54,7 @@ from image_to_3dlab.text_image import (  # noqa: F401 - re-exported for the stud
     find_weight,
     is_installed,
     parse_progress,
+    prepare_prompt,
     provenance,
     resolve_weights,
     run_sdcli,
@@ -170,7 +172,11 @@ def run_job(job: ImageJob, manager: ImageJobManager,
     it the job stays queued, says whom it waits for, and can be cancelled."""
     try:
         weights = weights or resolve_weights()
-        command = build_command(job.prompt, job.settings, job.output_path, weights)
+        if job.settings.get("rewrite") and not job.extra_args:
+            job.set_status("queued", message="Rewriting the prompt (Qwen-Image's own recipe, on this machine)")
+        sent, notes = prepare_prompt(job.prompt, job.settings, weights=weights, references=bool(job.extra_args),
+                                     log=job.log_lines.append, lock_path=text_image.GPU_LOCK)
+        command = build_command(sent, job.settings, job.output_path, weights)
         if job.extra_args:
             command = command[:1] + job.extra_args + command[1:]
 
@@ -214,8 +220,8 @@ def run_job(job: ImageJob, manager: ImageJobManager,
                            log="\n".join(list(job.log_lines)[-12:]))
         else:
             sidecar = job.output_path.with_suffix(".provenance.json")
-            record = provenance(job.prompt, job.settings, elapsed, job.output_path)
-            sidecar.write_text(json.dumps({**job.extra_provenance, **record}, indent=2), encoding="utf-8")
+            record = provenance(job.prompt, job.settings, elapsed, job.output_path, prompt_sent=sent)
+            sidecar.write_text(json.dumps({**job.extra_provenance, **notes, **record}, indent=2), encoding="utf-8")
             job.set_status("done", result_url=f"/api/image/{job.id}/result.png",
                            elapsed_seconds=round(elapsed, 1))
     except _Cancelled:
@@ -242,8 +248,14 @@ def with_style(prompt: str, payload: dict[str, Any]) -> tuple[str, dict[str, Any
     return (apply.styled(prompt, style), {"style": apply.record(style)}) if style else (prompt, {})
 
 
+def t2i_settings(raw: dict[str, Any]) -> dict[str, Any]:
+    """Text to image as the model card says (size, transparency, rewriting), where the
+    request does not say otherwise."""
+    return {**{k: T2I_DEFAULTS[k] for k in ("width", "height", "transparent", "rewrite")}, **raw}
+
+
 def start(prompt: str, raw_settings: dict[str, Any], extra_provenance: dict[str, Any] | None = None) -> ImageJob:
-    settings = clean_settings(raw_settings)
+    settings = clean_settings(t2i_settings(raw_settings))
     job = MANAGER.create(prompt, settings, extra_provenance=extra_provenance)
     threading.Thread(target=run_job, args=(job, MANAGER), daemon=True).start()
     return job
