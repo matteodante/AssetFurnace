@@ -56,7 +56,7 @@ REPO = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = REPO / "output" / "batches"
 
 # Stable names: functions 5, 7 and 8 plug in under these. Order here is only for listing.
-STEP_NAMES = ("picture", "concept", "generate", "finish", "rig", "animate", "materials", "export_unreal",
+STEP_NAMES = ("picture", "concept", "generate", "finish", "rig", "clips", "animate", "materials", "export_unreal",
               "checks")
 STEP_PACKAGE = "image_to_3dlab.batch_steps"
 # Steps installed by hand, over the modules: tests use this for fakes.
