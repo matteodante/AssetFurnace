@@ -64,11 +64,12 @@ def test_blender_command_is_noninteractive_and_typed(tmp_path):
     job = manager.create("Creature.glb", b"glb", b"blend", valid_sidecar(b"glb", b"blend"))
     command = rig_api.build_command(job, Path("/Applications/Blender"))
 
-    assert command[:3] == [str(Path("/Applications/Blender")), "--background", str(job.scene_path)]
+    assert command[:5] == [str(Path("/Applications/Blender")), "--background", "--factory-startup",
+                           "--disable-autoexec", str(job.scene_path)]
     # Without this Blender exits 0 when the worker raises, so a crash reads as success.
     # It must come before --python: Blender applies arguments in order.
-    assert command[3:5] == ["--python-exit-code", "1"]
-    assert command[5:7] == ["--python", str(rig_api.WORKER)]
+    assert command[5:7] == ["--python-exit-code", "1"]
+    assert command[7:9] == ["--python", str(rig_api.WORKER)]
     assert command[-4:] == [
         str(job.result_glb), str(job.result_blend), str(job.result_sidecar), str(job.report_path)
     ]
@@ -86,3 +87,13 @@ def test_runner_records_a_pid_for_server_restart_reconciliation():
 
     assert 'joinpath("pid").write_text' in source
     assert 'joinpath("pid").unlink(missing_ok=True)' in source
+
+
+def test_an_uploaded_blend_opens_without_its_scripts_or_the_users_add_ons(tmp_path):
+    """The .blend is the user's upload: `--disable-autoexec` keeps its Python drivers and
+    startup scripts from running even when Auto Run is on in their preferences."""
+    manager = rig_api.RigJobManager(tmp_path)
+    job = manager.create("Creature.glb", b"glb", b"blend", valid_sidecar(b"glb", b"blend"))
+    command = rig_api.build_command(job, Path("/Applications/Blender"))
+    blend = command.index(str(job.scene_path))
+    assert command.index("--factory-startup") < blend and command.index("--disable-autoexec") < blend

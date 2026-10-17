@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install or update image-to-3dlab on a Mac (Apple Silicon) or Linux (NVIDIA or AMD).
 #
-#   curl -fsSL https://raw.githubusercontent.com/Bingeljell/image-to-3dlab/main/install.sh | bash
+#   git clone https://github.com/matteodante/AssetFurnace.git && AssetFurnace/install.sh --dir AssetFurnace
 #
 # Re-running it is how you update: it moves to the newest release and refreshes the
 # Python packages. It never downloads model weights. Those are chosen, sized and agreed
@@ -17,7 +17,7 @@
 #   --dry-run      say what would happen, change nothing
 set -euo pipefail
 
-REPO_URL="https://github.com/Bingeljell/image-to-3dlab.git"
+REPO_URL="https://github.com/matteodante/AssetFurnace.git"
 DIR="${HOME}/image-to-3dlab"
 REF=""
 YES=0

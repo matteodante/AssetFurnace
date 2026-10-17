@@ -172,3 +172,12 @@ def test_install_packages_on_amd_installs_the_rocm_torch(tmp_path, monkeypatch):
     ran = []
     ba.install_packages(root, runner=ran.append)
     assert ran[0][-1] == ba.host.TORCH_INDEX + "rocm7.2"
+
+
+def test_bpy_is_pinned_to_the_version_tested():
+    """bpy 5.0.1 is the last wheel for Python 3.11 (PyPI, 2026-10-17); upstream asks only
+    bpy>=4.2, which resolves to whatever is newest for the venv's Python."""
+    from image_to_3dlab.blender import SKINTOKENS_BPY
+
+    _, second = ba.pip_commands("uv", Path("python"), Path("root"), None)
+    assert f"bpy=={SKINTOKENS_BPY}" in second and SKINTOKENS_BPY == "5.0.1"
