@@ -6,6 +6,11 @@ across installs, downloads or waits. A lock whose process has died may be taken 
 
     with gpu("materials"):
         run_the_model()
+
+The file appears with its holder already written in it (written aside, then linked into
+place), so nobody reads a half-made lock. One that cannot be read anyway, left by a writer
+that died or by hand, is taken over after UNREADABLE_AFTER seconds rather than waited on
+for an hour; and a live pid that started after its lock was written is a reused number.
 """
 
 from __future__ import annotations
@@ -14,11 +19,15 @@ import os
 import sys
 import tempfile
 import time
+import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 LOCK = Path(tempfile.gettempdir()) / "assetfurnace-gpu.lock"
+
+# a lock with no pid in it this long is nobody's: a writer that died before writing it
+UNREADABLE_AFTER = 60.0
 
 
 class GpuBusy(RuntimeError):
@@ -51,6 +60,35 @@ def pid_alive(pid: int) -> bool:
     return True
 
 
+def process_started(pid: int) -> float | None:
+    """When the process `pid` started, in seconds since the epoch; None when unknown.
+    Windows and Linux only: elsewhere a reused pid is not detected."""
+    try:
+        if sys.platform == "win32":
+            import ctypes
+            from ctypes import wintypes
+
+            kernel = ctypes.windll.kernel32
+            handle = kernel.OpenProcess(0x1000, False, pid)      # PROCESS_QUERY_LIMITED_INFORMATION
+            if not handle:
+                return None
+            try:
+                times = [wintypes.FILETIME() for _ in range(4)]
+                if not kernel.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+                    return None
+                ticks = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+                return ticks / 1e7 - 11644473600.0               # 100 ns since 1601 -> epoch
+            finally:
+                kernel.CloseHandle(handle)
+        stat = Path(f"/proc/{pid}/stat").read_text()
+        since_boot = int(stat.rsplit(")", 1)[1].split()[19]) / os.sysconf("SC_CLK_TCK")
+        boot = next(int(line.split()[1]) for line in Path("/proc/stat").read_text().splitlines()
+                    if line.startswith("btime "))
+        return boot + since_boot
+    except (OSError, ValueError, AttributeError, IndexError, StopIteration):
+        return None
+
+
 def holder(path: Path = LOCK) -> tuple[int | None, str] | None:
     """(pid, text) of whoever holds the lock, or None when nobody does."""
     try:
@@ -62,6 +100,18 @@ def holder(path: Path = LOCK) -> tuple[int | None, str] | None:
 
 
 def _take(path: Path, mine: str) -> bool:
+    """Create the lock with `mine` already in it; False when someone holds it."""
+    aside = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    aside.write_text(mine, encoding="utf-8")
+    try:
+        os.link(aside, path)                           # exclusive, and the file is complete
+        return True
+    except FileExistsError:
+        return False
+    except OSError:
+        pass                                           # no hard links here (FAT, some shares)
+    finally:
+        aside.unlink(missing_ok=True)
     try:
         handle = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
@@ -71,29 +121,75 @@ def _take(path: Path, mine: str) -> bool:
     return True
 
 
+def _break(path: Path, judged: str) -> None:
+    """Remove the stale lock `judged`, and only that one: it is moved aside first, and if
+    what moved is someone's fresh lock taken a moment ago, it is put back."""
+    aside = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.stale")
+    try:
+        os.rename(path, aside)
+    except (FileNotFoundError, PermissionError):       # gone already, or open: look again
+        return
+    try:
+        moved = aside.read_text(encoding="utf-8").strip()
+    except OSError:
+        moved = judged
+    if moved != judged:
+        try:
+            os.link(aside, path)                       # theirs again, unless a third took it
+        except OSError:
+            pass
+    aside.unlink(missing_ok=True)
+
+
+def _stale(path: Path, pid: int | None, alive: Callable[[int], bool],
+           started: Callable[[int], float | None]) -> bool:
+    try:
+        written = path.stat().st_mtime
+    except FileNotFoundError:
+        return False
+    if pid is None:
+        return time.time() - written > UNREADABLE_AFTER
+    if not alive(pid):
+        return True
+    born = started(pid)
+    return born is not None and born > written + 2.0  # a newer process got the old number
+
+
 @contextmanager
-def gpu(session: str, *, wait: float = 3600.0, poll: float = 10.0, path: Path = LOCK,
-        alive: Callable[[int], bool] = pid_alive, sleep: Callable[[float], None] = time.sleep,
+def gpu(session: str, *, wait: float = 3600.0, poll: float = 10.0, path: Path | None = None,
+        alive: Callable[[int], bool] = pid_alive,
+        started: Callable[[int], float | None] | None = None,
+        sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic) -> Iterator[None]:
-    """Hold the shared GPU lock for the duration of the block, waiting up to `wait` seconds."""
-    path = Path(path)
+    """Hold the shared GPU lock for the duration of the block, waiting up to `wait` seconds.
+
+    `started` tells when a pid's process began (process_started when the real `alive` is
+    used; a test that fakes `alive` fakes it too, or no reused pid is seen)."""
+    path = Path(path or LOCK)
+    if started is None:
+        started = process_started if alive is pid_alive else (lambda pid: None)
     mine = f"{os.getpid()} {session}"
     start = clock()
     while not _take(path, mine):
-        found = holder(path)
+        try:
+            found = holder(path)
+        except OSError:                                # being moved or written: look again
+            sleep(min(poll, 1.0))
+            continue
         if found is None:
             continue                                   # released between the two calls
         pid, text = found
-        if pid is not None and not alive(pid):
-            # Re-read first: never remove a lock someone took over a moment ago.
-            if holder(path) == found:
-                path.unlink(missing_ok=True)
+        if _stale(path, pid, alive, started):
+            _break(path, text)
             continue
         if clock() - start > wait:
-            raise GpuBusy(f"the GPU is busy ({text}); try again when it is free")
+            raise GpuBusy(f"the GPU is busy ({text or 'an empty lock file'}); try again when it is free")
         sleep(poll)
     try:
         yield
     finally:
-        if holder(path) == (os.getpid(), mine):
-            path.unlink(missing_ok=True)
+        try:
+            if holder(path) == (os.getpid(), mine):
+                path.unlink(missing_ok=True)
+        except OSError:
+            pass
