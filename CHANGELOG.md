@@ -356,6 +356,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces: a piece made on its own loses the small bits floating away from it
+  (`scripts/drop_fragments.py`, after its finish). The first real set's glove carried a
+  56-face fragment that hung in the air next to the hand in Unreal; bits touching the piece
+  and parts of a fair size stay.
 - Finish: the retopology's UVs no longer paint texels twice. Smart UV Project at its wide
   angle stacked faces of one island on each other (the first real set's helmet and boots
   failed the uv.overlap check at 10.1% and 11.1%); its islands are now unwrapped
