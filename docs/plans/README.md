@@ -1,7 +1,7 @@
 # Piani di sviluppo
 
 I documenti in questa cartella descrivono funzionalità proposte. Lo stato di un piano non implica che il codice sia già implementato.
-Stato aggiornato al 16/10/2026. Le regole trasversali decise dall'utente (niente controlli sui pixel, controlli imparati
+Stato aggiornato al 17/10/2026. Le regole trasversali decise dall'utente (niente controlli sui pixel, controlli imparati
 validati sui suoi giudizi, motori in `vendor/` senza ComfyUI, turni sulla GPU, review di Codex facoltativa) sono nel
 [piano della pipeline](2026-10-15-auroconts-asset-pipeline.md#regole-trasversali-decise-dallutente-15-16102026).
 
@@ -18,3 +18,4 @@ validati sui suoi giudizi, motori in `vendor/` senza ComfyUI, turni sulla GPU, r
 | [Funzione 8: materiali pronti per il gioco, v2 (progetto)](2026-10-15-game-materials-v2-design.md) | Approvato il 16/10/2026. PR 1 e 2 implementate (PR #11 ORM e pezzo comune, PR #12 etichette). Prossime: zone per materiale (SAM 3), luce tolta, controllo imparato, PBR stimato. La [v1](2026-10-15-game-materials-design.md) è superata e resta per la storia e i Seguiti | Codex, 1 giro |
 | [Modifica manuale in Blender e nuove versioni](2026-10-15-blender-roundtrip.md) | Implementato: apertura, importazione, versioni e preview; [uso e limiti](../blender-editing.md) | [Revisione tecnica finale e test](2026-10-15-blender-roundtrip-review.md); Blender reale e revisione UI |
 | [Editor guidato dei modelli nella web app](2026-10-14-guided-model-editor.md) | Rimandato: la priorità corrente è il flusso Blender manuale. [Prove precedenti conservate](2026-10-14-guided-model-editor-progress.md) | [Revisione storica del piano: R1–R4 e S1–S3 risolti](2026-10-14-guided-model-editor-review.md) |
+| [Ogni passo saltabile, correggibile e rilanciabile da studio, riga di comando e agenti (progetto)](2026-10-17-step-parity-design.md) | Proposto il 17/10/2026; si costruisce in cinque PR (a-e), stato nella sezione 13 del documento | Codex, 1 giro facoltativo per PR |
