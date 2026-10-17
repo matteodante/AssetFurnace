@@ -156,3 +156,47 @@ def test_the_studio_shows_the_steps_on_a_version():
     assert out["fromFinish"]["picture"] == "p.png" and out["fromFinish"]["made"] == {}
     assert out["props"] is None
     assert out["redo"] == [False, False, False]   # a redo would draw over the edit
+
+
+def _rig_only(tmp_path):
+    """An asset that is only a rig (a GLB uploaded to Animate), with one move."""
+    run = tmp_path / "animate" / "knight__rig__20261017-100000"
+    run.mkdir(parents=True)
+    doc, binary = parse_glb(fixture())
+    doc["scenes"] = [{"nodes": [0, 1]}]
+    doc["scene"] = 0
+    data = build_glb(doc, binary)
+    (run / "knight_rigged.glb").write_bytes(data)
+    (run / "knight_rigged.provenance.json").write_text(json.dumps({"license": {"name": "source conditions"}}))
+    doc["asset"]["generator"] = "a walk"
+    (run / "knight_walk.glb").write_bytes(build_glb(doc, binary))
+    return run
+
+
+def test_a_rig_made_from_a_version_keeps_the_assets_id(tmp_path):
+    run = _rig_only(tmp_path)
+    (asset,) = assets_api.list_assets(tmp_path)
+    opened = bv.create_session(tmp_path, asset["id"], f"animate/{run.name}/knight_rigged.glb", "3" * 32)
+    made = bv.import_version(tmp_path, opened["id"], _edited((run / "knight_rigged.glb").read_bytes()), "edited.glb")
+    motions = tmp_path / "motions"
+    motions.mkdir()
+    (motions / "walk.npz").write_bytes(b"x")
+    (motions / "presets.json").write_text(json.dumps({"presets": [{"id": "walk", "label": "Walk"}]}))
+    aa.AnimateJobManager(tmp_path / "animate", motions).create_animation(tmp_path / made["file"], "walk", 0)
+    (listed,) = assets_api.list_assets(tmp_path)
+    assert listed["id"] == asset["id"] and listed["rigged"].endswith("edited_rigged.glb")
+    assert [v["id"] for v in listed["blender_versions"]] == [made["id"]]
+
+
+def test_what_is_made_from_a_version_of_a_move_stays_in_its_asset(tmp_path):
+    run = _rig_only(tmp_path)
+    (asset,) = assets_api.list_assets(tmp_path)
+    opened = bv.create_session(tmp_path, asset["id"], f"animate/{run.name}/knight_walk.glb", "4" * 32)
+    made = bv.import_version(tmp_path, opened["id"], _edited((run / "knight_walk.glb").read_bytes(), skin=False),
+                             "walk_edit.glb")
+    finish = tmp_path / "finish" / "knight__finish__20261017-150000"
+    (finish / "input").mkdir(parents=True)
+    (finish / "input" / "source.glb").write_bytes((tmp_path / made["file"]).read_bytes())
+    (finish / "knight_20k.glb").write_bytes(b"finished from the move's version")
+    (listed,) = assets_api.list_assets(tmp_path)
+    assert listed["id"] == asset["id"] and listed["finished"].endswith("knight_20k.glb")

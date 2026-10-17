@@ -82,9 +82,10 @@ def parse(output: Path, data: dict) -> dict:
     if name:
         request["name"] = up.base_name(str(name))
     request.update(options(output, data, kind))
-    # One material per piece: the person's choice, else the rule's from the model's prompt.
+    # One material per piece: the person's choice, else the rule's from the model's prompt;
+    # "none" leaves it out, and the model keeps its own roughness and metal.
     asked = data.get("material")
-    request["material"] = (piece_materials.check(asked) if asked
+    request["material"] = (None if asked == "none" else piece_materials.check(asked) if asked
                            else proposal(request["source"], kind)["material"])
     return request
 
