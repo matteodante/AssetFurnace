@@ -7,7 +7,7 @@ import { closeSheet } from './pages.js';
 
 const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const STATUS_LABELS = { queued: 'Waiting', running: 'Running', done: 'Done', failed: 'Failed' };
+const STATUS_LABELS = { queued: 'Waiting', running: 'Running', done: 'Done', failed: 'Failed', waiting: 'Pick one' };
 
 /** A row's status in words. */
 export function statusLabel(status) {
@@ -19,6 +19,7 @@ export function summaryLine({ total = 0, counts = {}, active = null }) {
   const left = (counts.queued || 0) + (counts.running || 0);
   const parts = [`${counts.done || 0} of ${total} done`];
   if (counts.failed) parts.push(`${counts.failed} failed`);
+  if (counts.waiting) parts.push(`${counts.waiting} to pick`);
   if (left) parts.push(`${left} to go`, active ? 'running now' : 'stopped');
   return parts.join(' · ');
 }
@@ -27,6 +28,17 @@ export function summaryLine({ total = 0, counts = {}, active = null }) {
 export function batchActions({ counts = {}, active = null }) {
   const left = (counts.queued || 0) + (counts.running || 0);
   return { stop: Boolean(active), resume: !active && left > 0, retry: !active && (counts.failed || 0) > 0 };
+}
+
+/** A waiting row's candidates, each a picture with a button that picks it. `base` is where
+ *  the studio serves output/ ('/output/'). */
+export function candidatesHtml(row, base) {
+  const waiting = row.waiting;
+  if (!waiting?.candidates?.length) return '';
+  return `<div class="batch-picks">${waiting.candidates.map((c) => `<figure>
+    <img src="${escape(base + c.picture)}" alt="${escape(row.id)}, seed ${escape(c.choice)}" loading="lazy">
+    <button class="ghost small" data-pick="${escape(c.choice)}" data-row="${escape(row.id)}" data-step="${escape(waiting.step)}">Pick ${escape(c.choice)}</button>
+  </figure>`).join('')}</div>`;
 }
 
 /** Where a finished row stands in the review queue of the checks. */
@@ -72,6 +84,11 @@ const STYLE = `
 .batch-table .why { white-space: pre-wrap; max-height: 7.5em; overflow: auto; display: block; color: var(--ash); }
 .batch-status.failed { color: var(--ember); }
 .batch-status.done { color: var(--ok, #7fd18b); }
+.batch-status.waiting { color: var(--flame, #ffb37a); }
+.batch-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; padding: 4px 0 8px; }
+.batch-picks figure { margin: 0; display: grid; gap: 4px; }
+.batch-picks img { width: 100%; aspect-ratio: 1; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; background: #1b1512; }
+.batch-rerun { margin-left: 6px; font-size: 12px; }
 `;
 
 /** Open the Batches sheet. `open(file)` shows a finished row's GLB, a path under output/. */
@@ -106,6 +123,7 @@ export async function openBatches(stage, { open = () => {} } = {}) {
   let selected = null;
   let timer = null;
   let following = 0;   // refreshes to keep doing after a start, while the runner starts up
+  const base = '/output/';   // where the studio serves output/ (the batches list says so too)
   const close = () => { clearTimeout(timer); el.remove(); };
   el.querySelector('[data-close]').addEventListener('click', close);
   el.addEventListener('keydown', (event) => { if (event.key === 'Escape') close(); });
@@ -173,16 +191,29 @@ export async function openBatches(stage, { open = () => {} } = {}) {
         <td><span class="batch-status ${escape(row.status)}">${escape(statusLabel(row.status))}</span>
           ${row.status === 'failed' && row.reason ? `<span class="why">${escape(row.reason)}</span>` : ''}</td>
         <td>${escape(reviewLabel(row.review))}</td>
-        <td>${row.file ? `<button class="ghost small" data-file="${escape(row.file)}">Open</button>` : ''}</td></tr>`).join('')}
+        <td>${row.file ? `<button class="ghost small" data-file="${escape(row.file)}">Open</button>` : ''}
+          ${Object.keys(row.steps || {}).length && !info.active ? `<select class="batch-rerun" data-rerun-step="${escape(row.id)}" aria-label="Run a step again">
+            <option value="">Run again…</option>${Object.keys(row.steps).map((s) => `<option value="${escape(s)}">${escape(s)}</option>`).join('')}</select>` : ''}</td></tr>
+        ${row.status === 'waiting' ? `<tr><td colspan="5">${candidatesHtml(row, base)}</td></tr>` : ''}`).join('')}
       </tbody></table>`;
+    detail.dataset.batch = info.name;
   }
 
   el.addEventListener('click', async (event) => {
     const target = event.target.closest('button');
     if (!target) return;
-    const { open: name, stop, resume, retry, file: glb } = target.dataset;
+    const { open: name, stop, resume, retry, file: glb, pick } = target.dataset;
     if (name) { selected = name; await showDetail(name); return; }
     if (glb) { open(glb); return; }
+    if (pick) {
+      target.disabled = true;
+      const { ok, body } = await post(`/api/batches/${encodeURIComponent(detail.dataset.batch)}/pick`,
+        { row: target.dataset.row, step: target.dataset.step, choice: Number(pick) });
+      if (!ok) result.innerHTML = `<ul class="batch-problems"><li>${escape(body.error)}</li></ul>`;
+      following = 5;
+      refresh();
+      return;
+    }
     if (!(stop || resume || retry)) return;
     target.disabled = true;
     const which = stop || resume || retry;
@@ -191,6 +222,17 @@ export async function openBatches(stage, { open = () => {} } = {}) {
     if (!ok) result.innerHTML = `<ul class="batch-problems">${(body.problems || [body.error]).map((p) => `<li>${escape(p)}</li>`).join('')}</ul>`;
     selected = which;
     following = stop ? 0 : 5;
+    refresh();
+  });
+
+  el.addEventListener('change', async (event) => {
+    const select = event.target.closest('[data-rerun-step]');
+    if (!select || !select.value) return;
+    select.disabled = true;
+    const { ok, body } = await post(`/api/batches/${encodeURIComponent(detail.dataset.batch)}/rerun`,
+      { row: select.dataset.rerunStep, step: select.value });
+    if (!ok) result.innerHTML = `<ul class="batch-problems">${(body.problems || [body.error]).map((p) => `<li>${escape(p)}</li>`).join('')}</ul>`;
+    following = 5;
     refresh();
   });
 

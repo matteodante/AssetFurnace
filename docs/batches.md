@@ -118,7 +118,11 @@ is the row's picture), the words the mode needs (`subject` and `colours` for red
 batch goes on and the run ends with exit code 3. Pick with `"pick": <seed>` in the step's
 settings, or with the MCP tool `pick_candidate` (it writes `picks.json` in the batch
 folder and resumes). The candidates are kept in `rows/<id>/picture.candidates/`, so a pick,
-or another pick later, draws nothing again; it only reruns what follows.
+or another pick later, draws nothing again; it only reruns what follows. On the studio's
+Batches page a waiting row shows its candidates with a Pick button, and every row has
+"Run again…" to rerun one of its steps (`rerun_step`). A row whose steps only draw
+(`["picture"]`, `["picture", "concept"]`) needs no model: its picture is listed in
+`outputs.json` under `picture`.
 
 Adding a step is one file in `image_to_3dlab/batch_steps/`; its docstring has the
 contract. A done row whose skipped step later exists runs that step (and the ones after

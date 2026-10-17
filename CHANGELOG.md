@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batch steps `picture` and `concept` and in `pieces_run`; a "Style bible" box in Create,
   the reference panel and the Pieces page. Its words follow the prompt, a concept also
   takes up to three of its pictures, and the provenance names the bible and its version.
+- Studio Batches page: a row waiting for a pick shows its candidates and picks with a click;
+  every row can run one of its steps again. The page uses the MCP server's own
+  `pick_candidate` and `rerun_step`. A batch row that only draws (`picture`, `concept`)
+  needs no model, and its picture is in `outputs.json`.
 - Studio: Export for Unreal has "More options" (name, collision and detail levels for
   objects, tint mask auto or none, facing), and the review sheet's "Check an asset" can
   change the profile's thresholds for that run, as `--set` does. `export_unreal.py --tint

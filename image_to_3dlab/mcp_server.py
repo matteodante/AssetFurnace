@@ -192,6 +192,7 @@ def list_outputs(batch_ref: str, row_id: str | None = None) -> dict[str, Any]:
     listed = [{**row, "asset": absolute(row.get("asset")),
                "sidecar": absolute(row.get("sidecar")),
                "references": [absolute(path) for path in row.get("references", [])],
+               **({"picture": absolute(row["picture"])} if row.get("picture") else {}),
                "files": [absolute(path) for path in row.get("files", [])],
                **({"unreal": {key: absolute(path) for key, path in row["unreal"].items()}}
                   if row.get("unreal") else {}),
