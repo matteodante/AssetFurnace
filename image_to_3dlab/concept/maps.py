@@ -56,8 +56,9 @@ def render_command(blender: str | Path, glb: Path, folder: Path, views=("front",
     unknown = [v for v in views if v not in VIEWS]
     if unknown or not views:
         raise ValueError(f"each view is one of {', '.join(VIEWS)}, got {list(views)!r}")
-    return [str(blender), "-b", "--factory-startup", "-P", str(SCRIPT), "--", str(glb), str(folder),
-            ",".join(views), str(size)]
+    # --python-exit-code first: without it a raised exception exits 0 (Blender --help)
+    return [str(blender), "-b", "--factory-startup", "--python-exit-code", "1", "-P", str(SCRIPT), "--",
+            str(glb), str(folder), ",".join(views), str(size)]
 
 
 def render(glb: Path, folder: Path, views=("front",), size: int = 1024, blender: Path | None = None,
@@ -67,9 +68,12 @@ def render(glb: Path, folder: Path, views=("front",), size: int = 1024, blender:
     if blender is None:
         raise RuntimeError(missing_help())
     folder = Path(folder)
+    files = {v: {"colour": folder / f"{v}_colour.png", "depth": folder / f"{v}_depth.png"} for v in views}
+    # a reused folder: what an earlier render left must not pass for this one's
+    for path in [p for v in views for p in files[v].values()] + [folder / "bones.json"]:
+        path.unlink(missing_ok=True)
     result = run(render_command(blender, glb, folder, views, size), capture_output=True, text=True,
                  errors="replace", check=False)
-    files = {v: {"colour": folder / f"{v}_colour.png", "depth": folder / f"{v}_depth.png"} for v in views}
     missing = [p.name for v in views for p in files[v].values() if not p.is_file()]
     if result.returncode != 0 or missing:
         tail = (result.stderr or result.stdout or "").strip().splitlines()[-3:]

@@ -175,3 +175,23 @@ def test_a_tall_figure_seen_from_the_front_fills_the_frame():
     assert scale == pytest.approx(1.8 * 1.05)
     assert location[0] == pytest.approx(0.0) and location[2] == pytest.approx(0.9)
     assert location[1] < -0.15 and far > 1.8 - location[1] - 0.15
+
+
+def test_blender_runs_with_a_failing_exit_code_and_without_old_views(tmp_path):
+    """A render that raises must fail, and the views a previous run left in a reused folder
+    must not be read back as this run's (audit 2026-10-17)."""
+    asset = make_glb(tmp_path / "ball.glb", banded_albedo())
+    folder = tmp_path / "views"
+    folder.mkdir()
+    (folder / "views.json").write_text(json.dumps({"views": [{"index": 0, "direction": [0, 1, 0]}]}))
+    (folder / "view_00_uv.npz").write_bytes(b"old")
+    seen = {}
+
+    def fake_run(args, **kwargs):
+        seen["args"] = args
+        seen["left"] = sorted(p.name for p in folder.iterdir())
+
+    with pytest.raises(FileNotFoundError):
+        mv.render_views(asset, folder, size=16, around=4, blender=Path("blender"), run=fake_run)
+    assert seen["args"][seen["args"].index("--python-exit-code") + 1] == "1"
+    assert "views.json" not in seen["left"] and "view_00_uv.npz" not in seen["left"]

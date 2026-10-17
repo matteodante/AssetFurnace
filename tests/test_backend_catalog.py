@@ -185,12 +185,20 @@ def test_a_single_file_counts_as_present_by_its_own_size(tmp_path):
     assert bc._dir_state(model) == (True, 5)
 
 
-def test_the_image_route_names_its_licence_and_says_the_pictures_are_yours():
-    """Qwen confirmed outputs are the user's; the card names the licence, with no warning box."""
+def test_the_image_route_names_its_licence_and_says_it_is_non_commercial():
+    """The licence's own words: research or evaluation only (1.i, 2.a)."""
     entry = next(b for b in bc.catalog_status()["backends"] if b["id"] == "qwen-image")
     assert entry["license"]["name"] == "Qwen Research License"
-    assert not entry.get("caveat")
-    assert "yours" in entry["tradeoff"]
+    assert "research or evaluation" in entry["caveat"]
+    assert "yours" not in entry["tradeoff"]
+
+
+def test_sf3d_is_labelled_free_including_commercial_under_the_revenue_cap():
+    """Stability AI Community License (2024-07-05): free, commercial use included, under
+    $1M annual revenue, with registration."""
+    entry = next(b for b in bc.catalog_status()["backends"] if b["id"] == "sf3d")
+    assert "non-commercial" not in entry["license"]["name"]
+    assert "commercial under $1M" in entry["license"]["name"]
 
 
 def test_sizes_are_stated_before_anything_is_fetched():
@@ -643,3 +651,10 @@ def test_readiness_keeps_one_row_per_weight_even_from_one_repo():
     """The encoder and its vision file share a repo; keyed by repo, one hid the other."""
     payload = bc.readiness("qwen-image")
     assert len(payload["weights"]) == len(bc.BY_ID["qwen-image"].weights)
+
+
+def test_the_autorig_card_names_its_bpy_beside_the_blender_app():
+    from image_to_3dlab.blender import SKINTOKENS_BPY
+
+    entry = next(b for b in bc.catalog_status()["backends"] if b["id"] == "autorig")
+    assert f"bpy {SKINTOKENS_BPY}" in entry["caveat"] and "Blender" in entry["caveat"]

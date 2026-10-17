@@ -233,3 +233,54 @@ def test_a_rename_changes_only_the_label_and_an_empty_name_restores_the_old_one(
     assert len(aa.set_name(output, knight["id"], "x" * 500)) == aa.NAME_LIMIT
     with pytest.raises(ValueError):
         aa.set_name(output, "../../etc", "nope")
+
+
+# ---- names and hidden flags are never lost (audit 2026-10-17) ---------------------------
+
+def _ids(monkeypatch, *ids):
+    monkeypatch.setattr(aa, "list_assets", lambda output: [{"id": i, "name": f"made {i}"} for i in ids])
+
+
+def test_two_quick_changes_at_once_both_land(tmp_path, monkeypatch):
+    """Rename and hide arrive together on the threaded server: both read the file, and the
+    second write used to drop the first one's change."""
+    import threading
+    import time
+
+    ids = [f"{n:012x}" for n in range(1, 9)]
+    _ids(monkeypatch, *ids)
+    real = aa._read_meta
+
+    def slow(output):
+        found = real(output)
+        time.sleep(0.05)
+        return found
+
+    monkeypatch.setattr(aa, "_read_meta", slow)
+    work = [threading.Thread(target=aa.set_name, args=(tmp_path, i, f"name {i}")) for i in ids[:4]]
+    work += [threading.Thread(target=aa.set_hidden, args=(tmp_path, i, True)) for i in ids[4:]]
+    for t in work:
+        t.start()
+    for t in work:
+        t.join()
+    meta = json.loads((tmp_path / aa.META_NAME).read_text(encoding="utf-8"))
+    assert set(meta["names"]) == set(ids[:4]) and set(meta["hidden"]) == set(ids[4:])
+
+
+def test_a_damaged_meta_file_is_kept_aside_not_overwritten(tmp_path, monkeypatch):
+    _ids(monkeypatch, "0123456789ab")
+    (tmp_path / aa.META_NAME).write_text('{"names": {"aaaaaaaaaaaa": "Sir Cl', encoding="utf-8")
+    aa.set_name(tmp_path, "0123456789ab", "Barrel")
+    assert json.loads((tmp_path / aa.META_NAME).read_text(encoding="utf-8"))["names"] == {"0123456789ab": "Barrel"}
+    kept = list(tmp_path.glob(aa.META_NAME + ".bad*"))
+    assert len(kept) == 1 and "Sir Cl" in kept[0].read_text(encoding="utf-8")
+
+
+def test_the_meta_file_is_replaced_whole(tmp_path, monkeypatch):
+    _ids(monkeypatch, "0123456789ab")
+    replaced = []
+    real = aa.os.replace
+    monkeypatch.setattr(aa.os, "replace", lambda src, dst: replaced.append(Path(dst).name) or real(src, dst))
+    aa.set_hidden(tmp_path, "0123456789ab", True)
+    assert replaced == [aa.META_NAME]
+    assert [p.name for p in tmp_path.iterdir()] == [aa.META_NAME]

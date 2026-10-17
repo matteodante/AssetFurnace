@@ -105,12 +105,18 @@ def render_views(asset: Path, folder: Path, *, size: int = 512, around: int = 16
     from image_to_3dlab.blender import find_blender
 
     folder = Path(folder).resolve()     # Blender runs from the repo, not from the caller's folder
+    # Folders are reused (a label sheet's `views/`): a render that fails half way must not
+    # leave the previous run's views to be read back as this one's.
+    if folder.is_dir():
+        for old in [folder / "views.json", *folder.glob("view_*")]:
+            old.unlink(missing_ok=True)
     render_plan(asset, folder, size, around, lit=lit, light=light)
     binary = blender or find_blender()
     if binary is None:
         raise RuntimeError("Blender was not found; install it or set I2L_BLENDER")
-    run([str(binary), "-b", "--factory-startup", "-P", str(SCRIPT), "--", str(Path(folder) / "plan.json")],
-        check=True, capture_output=True, cwd=REPO)
+    # --python-exit-code first: without it a raised exception exits 0 and check=True passes
+    run([str(binary), "-b", "--factory-startup", "--python-exit-code", "1", "-P", str(SCRIPT), "--",
+         str(Path(folder) / "plan.json")], check=True, capture_output=True, cwd=REPO)
     return load_views(folder)
 
 
@@ -132,6 +138,8 @@ def load_views(folder: Path) -> list[View]:
     from PIL import Image
 
     folder = Path(folder)
+    if not (folder / "views.json").is_file():
+        raise FileNotFoundError(f"Blender wrote no views in {folder}")
     plan = json.loads((folder / "views.json").read_text(encoding="utf-8"))
     views = []
     for entry in plan["views"]:
