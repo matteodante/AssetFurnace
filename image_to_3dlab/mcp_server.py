@@ -225,13 +225,28 @@ def _waiting(directory: Path, entry: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def _offered(entry: dict[str, Any], step: str) -> list[Any]:
-    """What a row's step offered to pick from: the candidates it waits on, or those a
-    finished pick was made among (another pick changes it)."""
+def _offered(entry: dict[str, Any], step: str) -> tuple[list[Any], str | None]:
+    """What a row's step offered to pick from, and the key of what they were made from:
+    the candidates it waits on, or those a finished pick was made among (another pick
+    changes it)."""
     done = entry.get("steps", {}).get(step, {})
     if done.get("status") == "waiting":
-        return [candidate["choice"] for candidate in done.get("candidates", [])]
-    return list((done.get("record") or {}).get("candidates", []))
+        return [candidate["choice"] for candidate in done.get("candidates", [])], done.get("key")
+    record = done.get("record") or {}
+    return list(record.get("candidates", [])), record.get("key")
+
+
+def _spec_pick(spec: str | None, row_id: str, step: str) -> bool:
+    """Whether the spec itself sets this step's pick for the row (it wins over picks.json)."""
+    data = batch.read_json(Path(spec)) if spec and Path(spec).suffix.lower() == ".json" else None
+    if not isinstance(data, dict):
+        return False
+    rows = data.get("rows") if isinstance(data.get("rows"), list) else []
+    row = next((row for row in rows if isinstance(row, dict) and row.get("id") == row_id), {})
+    for source in ((data.get("defaults") or {}).get(step), row.get(step)):
+        if isinstance(source, dict) and "pick" in source:
+            return True
+    return False
 
 
 def pick_candidate(batch_ref: str, row_id: str, step: str, choice: int) -> dict[str, Any]:
@@ -244,27 +259,23 @@ def pick_candidate(batch_ref: str, row_id: str, step: str, choice: int) -> dict[
     entry = state.get("rows", {}).get(row_id)
     if entry is None:
         return {"picked": False, "problem": f"{row_id} is not a row of {directory.name}"}
-    offered = _offered(entry, step)
-    if not offered:
+    offered, key = _offered(entry, step)
+    if len(offered) < 2:
         return {"picked": False, "problem": f"{row_id}'s {step} has nothing to pick from"}
     if choice not in offered:
         return {"picked": False,
                 "problem": f"{choice} is not one of {row_id}'s {step} candidates: "
                            f"{', '.join(map(str, offered))}"}
+    spec = (state.get("spec") or {}).get("path")
+    if _spec_pick(spec, row_id, step):
+        return {"picked": False, "problem": f"the spec sets {step}'s pick for {row_id}; "
+                                            f"change it there ({spec})"}
     picks_path = directory / batch.PICKS_FILE
     picks = batch.read_json(picks_path)
     picks = picks if isinstance(picks, dict) else {}
-    picks.setdefault(row_id, {})[step] = choice
+    # with what it was picked among: new words or settings leave it behind
+    picks.setdefault(row_id, {})[step] = {"choice": choice, "key": key}
     batch.write_json(picks_path, picks)
-    spec = (state.get("spec") or {}).get("path")
-    try:
-        loaded = batch.load_batch(Path(spec)) if spec and Path(spec).suffix.lower() == ".json" else None
-    except batch.BatchError:
-        loaded = None
-    row = next((row for row in (loaded.rows if loaded else []) if row.id == row_id), None)
-    if row is not None and row.options.get(step, {}).get("pick") != choice:
-        return {"picked": False, "problem": f"the spec sets {step}'s pick for {row_id}; "
-                                            f"change it there ({spec})"}
     if batch.lock_holder(directory) is not None:
         return {"picked": True, "resumed": None,
                 "note": "the batch is running: the pick is used when it runs next "

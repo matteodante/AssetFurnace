@@ -81,7 +81,7 @@ REPAINT_BACKEND = "hunyuan-comfyui"
 STATE_FILE = "batch-state.json"
 INDEX_FILE = "outputs.json"
 SPEC_COPY = "spec.json"
-PICKS_FILE = "picks.json"   # {row id: {step: choice}}, written by pick_candidate
+PICKS_FILE = "picks.json"   # {row id: {step: {"choice", "key"}}}, written by pick_candidate
 # Steps that make the row's picture: they come before generate.
 PICTURE_STEPS = ("picture",)
 LOCK_FILE = ".batch.lock"   # in the batches folder, not in one batch: one GPU, one batch
@@ -744,9 +744,14 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
             if step in step_catalog.CATALOG and step != "generate":
                 problems += [f"{label}: {problem}"
                              for problem in step_catalog.check(step, merged, files=False)]
-    for step, choice in ((picks or {}).get(row_id) or {}).items():
-        if step in STEP_NAMES and "pick" not in options.get(step, {}):
-            options[step] = {**options.get(step, {}), "pick": choice}
+    for step, made in ((picks or {}).get(row_id) or {}).items():
+        # only for the candidates it was made among: new words or settings wait again
+        module = load_step(step) if step in STEP_NAMES else None
+        if (module is None or not hasattr(module, "candidate_key") or "pick" in options.get(step, {})
+                or not isinstance(made, dict)):
+            continue
+        if made.get("key") == module.candidate_key({"prompt": value.get("prompt"), "options": options.get(step, {})}):
+            options[step] = {**options.get(step, {}), "pick": made.get("choice")}
     concept = None
     if asset is not None and asset.is_file() and not images:
         concept = recorded_image(asset) or next(
@@ -1406,7 +1411,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             candidates = [{**candidate, "file": _relative(Path(candidate["file"]), directory)}
                           for candidate in result.waiting["candidates"]]
             steps[name] = {"status": "waiting", "fingerprint": fingerprints[name],
-                           "candidates": candidates, "finished_at": now()}
+                           "candidates": candidates, "key": result.waiting.get("key"), "finished_at": now()}
             entry.update(status="waiting", finished_at=now(),
                          note=f"{name}: pick one of {len(candidates)} "
                               f"({', '.join(str(c['choice']) for c in candidates)})")
