@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Batches and agents can replace a step's output with a file of their own:
+  `"replace": {"finish": "my.glb"}` in a row, or `run_steps(..., replace=...)`. The step
+  does not run, the file (a Blender version, a model made elsewhere, your own rig or clips)
+  goes on with its own licence record, held to the batch's policy.
 - The `materials` step: a batch row (or an agent's `run_steps`) gets its one material, the
   person's (`"materials": {"material": "leather"}`) or the rule's from the model's words and
   kind, and `export_unreal` packs it into the ORM; left out, the model keeps its own maps.
