@@ -17,7 +17,9 @@ cd "$HOME\Desktop\Projects\AssetFurnace"
 
 Rieseguito dalla cartella, `.\install.ps1` aggiorna quella stessa copia: prende l'ultima
 release `vX.Y.Z` di questo repository (oggi nessuna, quindi `main`) e installa i pacchetti
-Python da `requirements.lock`, come `install.sh`. `$env:I3D_REF` sceglie un altro branch o tag.
+Python da `requirements.lock`, come `install.sh`. Con un driver NVIDIA per CUDA 12.8 o 12.9
+installa `requirements-cu128.lock`: l'indice cu128 di PyTorch arriva a torch 2.11.0, mentre il
+torch di `requirements.lock` è solo su cu130. `$env:I3D_REF` sceglie un altro branch o tag.
 
 Poi usare Setup nell'interfaccia, oppure gli script originali del progetto:
 
