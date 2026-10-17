@@ -361,12 +361,12 @@ questa lista prima del resoconto finale.
 | Review finale 2, GPU: Pixal3D e il giudice lasciano il lucchetto con il figlio ancora vivo | unito (#117) |
 | Review finale 2, GPU: il recupero di un lucchetto stantio può togliere quello di un lavoro vivo | unito (#117) |
 | Review finale 2, studio: un'immagine annullata aspetta e riscrive comunque il prompt | unito (#117) |
-| Review finale 2, pezzi: due avvii insieme senza prenotazione (studio e MCP) | in #118 |
-| Review finale 2, pezzi: il concept in cache ignora l'immagine del corpo | in #118 |
-| Review finale 2, pezzi: solo armi in modo 2 chiede un concept (API dello studio) | in #118 |
-| Review finale 2, MCP: i link di una cartella di rete non si leggono con `resources/read` | in #118 |
-| Review finale 2, installer: torch 2.14.1 chiesto all'indice cu128, che arriva a 2.11.0 su Windows | in #119: `requirements-cu128.lock` con torch 2.11.0 (un `setuptools<82` impediva di togliere solo torch dal lock) |
-| Review finale 2, installer: il ripiego su `requirements.txt` va in errore | in #119 |
+| Review finale 2, pezzi: due avvii insieme senza prenotazione (studio e MCP) | unito (#118) |
+| Review finale 2, pezzi: il concept in cache ignora l'immagine del corpo | unito (#118) |
+| Review finale 2, pezzi: solo armi in modo 2 chiede un concept (API dello studio) | unito (#118) |
+| Review finale 2, MCP: i link di una cartella di rete non si leggono con `resources/read` | unito (#118) |
+| Review finale 2, installer: torch 2.14.1 chiesto all'indice cu128, che arriva a 2.11.0 su Windows | unito (#119): `requirements-cu128.lock` con torch 2.11.0 (un `setuptools<82` impediva di togliere solo torch dal lock) |
+| Review finale 2, installer: il ripiego su `requirements.txt` va in errore | unito (#119) |
 
 ## Seguiti
 
