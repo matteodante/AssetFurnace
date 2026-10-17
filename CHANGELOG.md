@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Batches and agents can replace a step's output with a file of their own:
+  `"replace": {"finish": "my.glb"}` in a row, or `run_steps(..., replace=...)`. The step
+  does not run, the file (a Blender version, a model made elsewhere, your own rig or clips)
+  goes on with its own licence record, held to the batch's policy.
 - The `materials` step: a batch row (or an agent's `run_steps`) gets its one material, the
   person's (`"materials": {"material": "leather"}`) or the rule's from the model's words and
   kind, and `export_unreal` packs it into the ORM; left out, the model keeps its own maps.
@@ -346,6 +350,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`scripts/drop_fragments.py`, after its finish). The first real set's glove carried a
   56-face fragment that hung in the air next to the hand in Unreal; bits touching the piece
   and parts of a fair size stay.
+- Studio pictures and reference concepts take the shared GPU lock while sd-cli runs, as the
+  command line and the batches already did; while another session holds the GPU the job
+  stays queued, says whom it waits for, and can be cancelled.
+- The GPU lock appears with its holder already written in it, so an empty or unreadable
+  lock file (a writer that died) is taken over after a minute instead of blocking every GPU
+  job for an hour; a live process that started after its lock was written is a reused pid;
+  and a stale lock is only removed if it is still the one judged stale.
 - Library: an asset with no picture or 3D model of its own keeps its id when a later finish
   or rig joins it (one from a Blender version, say), so its versions, name and hidden flag
   stay with it; and what is made from a Blender version of one of its moves joins it too.
@@ -437,6 +448,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   models and ignores late callbacks from a closed viewport. Dynamic error text is escaped.
 - Background-job cleanup rejects invalid process IDs. Update commands quote folder
   names safely, and prop metadata uses portable paths on Windows.
+
+### Security
+- The Studio server refuses what a web page could forge. Every older endpoint that changes
+  something (setup and weight removal, the Hugging Face sign-in, generate, image, finish,
+  props, rig, plans, Library names) now needs the Studio's own origin and request header,
+  as the newer pages already did; a page or file is only served to a loopback Host, so DNS
+  rebinding cannot read the repository. On any address other than loopback (RunPod, a LAN)
+  the server asks for an access token, which the printed link carries.
 
 ## [0.4.3] - 2026-10-10
 

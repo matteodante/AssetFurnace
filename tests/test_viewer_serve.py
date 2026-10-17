@@ -82,3 +82,20 @@ def test_a_dropped_connection_is_quiet_and_real_errors_still_print(capsys):
     except RuntimeError:
         server.handle_error(None, ("127.0.0.1", 1))
     assert "a real bug" in capsys.readouterr().err
+
+
+# --- a server on a network address needs a token -------------------------------------
+def test_a_loopback_server_needs_no_token():
+    assert serve.access_token("127.0.0.1", {}) is None
+    assert serve.access_token("localhost", {"ASSETFURNACE_TOKEN": "x"}) is None
+
+
+def test_a_network_server_always_has_a_token():
+    first = serve.access_token("0.0.0.0", {})
+    assert first and len(first) >= 32 and first != serve.access_token("0.0.0.0", {})
+    assert serve.access_token("100.64.0.7", {"ASSETFURNACE_TOKEN": "chosen-token"}) == "chosen-token"
+
+
+def test_the_runpod_link_carries_the_token():
+    plan = serve.launch_plan({"RUNPOD_POD_ID": "abc123"}, port=8777, token="t0k")
+    assert "https://abc123-8777.proxy.runpod.net/viewer/studio.html?token=t0k" in plan.message
