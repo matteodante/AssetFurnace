@@ -214,6 +214,8 @@ def _file_digests(value: Any) -> Any:
     """A file option by its content: the same path holding another file is a change."""
     if isinstance(value, list):
         return [_file_digests(item) for item in value]
+    if value is False:
+        return value   # a file option turned off
     if isinstance(value, str):
         # a file gone is an input gone, as for the row's own images: a done row keeps its
         # result, a row still to run fails on it
