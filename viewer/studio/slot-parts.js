@@ -12,7 +12,7 @@ const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '
 export const MODES = [
   { id: 1, title: 'One piece', text: 'The whole character as one model, as + Create makes it. Nothing to split.' },
   { id: 2, title: 'Dressed, split into pieces', text: 'A concept of the dressed character, drawn on a base body, cut into the pieces you choose. They fit each other and the body.' },
-  { id: 3, title: 'Bare body + equipment', text: 'A base body in a bodysuit, then sets of pieces drawn on it to wear and swap one by one (as in 4Story).' },
+  { id: 3, title: 'Bare body + equipment', text: 'A base body in the clothes you choose (a bodysuit, simple clothes or underwear), then sets of pieces drawn on it to wear and swap one by one (as in 4Story).' },
 ];
 
 const SLOT_WORDS = { helmet: 'Helmet', torso: 'Torso', shoulders: 'Shoulders', gloves: 'Gloves', legs: 'Legs',
@@ -143,13 +143,21 @@ export function runPayload(state = {}) {
   return payload;
 }
 
+// How a base body is dressed under its pieces: the person chooses when registering it, nothing is assumed.
+export const DRESSINGS = [['bodysuit', 'A bodysuit (leotard)'], ['clothes', 'Simple clothes: shirt, breeches, cloth shoes'],
+  ['underwear', 'Minimal underwear'], ['other', 'Other (my own words)']];
+
 /** The body registration request for a Library character. */
-export function bodyPayload(asset, name, labels = {}) {
+export function bodyPayload(asset, name, labels = {}, dressing = '', dressingWords = '') {
   if (!asset) throw new Error('Choose a character from the Library.');
   const clean = String(name || '').trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/.test(clean)) throw new Error("Name the body: letters, digits, '.', '_' or '-'.");
+  const words = String(dressingWords || '').trim();
+  if (!DRESSINGS.some(([v]) => v === dressing) || (dressing === 'other' && !words)) {
+    throw new Error('Say how the body is dressed under its pieces (and describe it, for other).');
+  }
   return { name: clean, picture: asset.picture, model: asset.model, rigged: asset.rigged,
-    clips: (asset.clips || []).map((c) => ({ name: c.name, file: c.file })), labels };
+    clips: (asset.clips || []).map((c) => ({ name: c.name, file: c.file })), labels, dressing, dressing_words: words };
 }
 
 // ------------------------------------------------------------------------------- the page
@@ -272,7 +280,7 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
     el.querySelector('[data-bodies]').innerHTML = info.bodies.length
       ? `<ul class="act-list">${info.bodies.map((b) => `<li class="act"><span class="act-what"><b>${escape(b.name)}</b>
           <span class="meta">${escape(Object.entries(b.labels || {}).map(([k, v]) => `${k} ${v}`).join(' · '))}${b.clips?.length ? ` · clips: ${escape(b.clips.join(', '))}` : ' · no clips: checks measure the rest pose only'}</span></span></li>`).join('')}</ul>`
-      : '<p class="meta">No base body yet. Make a humanoid in a bodysuit with + Create (picture, 3D, rig), then register it below.</p>';
+      : '<p class="meta">No base body yet. Make a humanoid in what it should wear under its armour (a bodysuit, simple clothes or underwear) with + Create (picture, 3D, rig), then register it below.</p>';
     el.querySelector('[data-sets]').innerHTML = info.sets.length
       ? `<ul class="act-list">${info.sets.map((s) => `<li class="act"><span class="act-what"><b>${escape(s.set)}</b> on ${escape(s.body)}
           <span class="meta">${escape(setLine(s))}</span></span>
@@ -286,6 +294,8 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
     el.querySelector('[data-register]').innerHTML = candidates.length
       ? `<div class="row"><select name="asset">${candidates.map((a) => `<option value="${escape(a.id)}">${escape(a.name)}</option>`).join('')}</select>
           <input type="text" name="bodyName" placeholder="body name, e.g. human-male"></div>
+        <div class="row"><label>Dressed under its pieces <select name="bodyDressing"><option value="">Choose…</option>${DRESSINGS.map(([v, t]) => `<option value="${v}">${escape(t)}</option>`).join('')}</select></label>
+          <input type="text" name="bodyDressingWords" placeholder="your own words, e.g. a dark linen tunic"></div>
         <div class="row"><input type="text" name="bodyLabels" placeholder="labels, e.g. race=human, sex=male">
           <button type="button" class="ghost" data-register-go>Register</button></div><div data-register-result></div>`
       : '<p class="meta">No rigged humanoid in the Library yet.</p>';
@@ -296,7 +306,8 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
         const asset = candidates.find((a) => a.id === box.querySelector('[name=asset]').value);
         const labels = Object.fromEntries(box.querySelector('[name=bodyLabels]').value.split(',')
           .map((pair) => pair.split('=').map((x) => x.trim())).filter(([k, v]) => k && v));
-        const { ok, body } = await post('/api/slot-parts/bodies', bodyPayload(asset, box.querySelector('[name=bodyName]').value, labels));
+        const { ok, body } = await post('/api/slot-parts/bodies', bodyPayload(asset, box.querySelector('[name=bodyName]').value, labels,
+          box.querySelector('[name=bodyDressing]').value, box.querySelector('[name=bodyDressingWords]').value));
         out.innerHTML = ok ? `<p class="meta">Registered ${escape(body.name)}.</p>` : `<p class="sp-problems">${escape(body.error)}</p>`;
         if (ok) refresh();
       } catch (error) {

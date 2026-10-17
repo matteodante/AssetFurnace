@@ -142,7 +142,8 @@ def test_a_stale_lock_taken_over_by_someone_else_meanwhile_is_given_back(tmp_pat
     assert path.read_text(encoding="utf-8") == "777 first"
 
 
-def test_of_many_takers_at_once_exactly_one_holds_the_lock(tmp_path):
+@pytest.mark.parametrize("round_", range(5))
+def test_of_many_takers_at_once_exactly_one_holds_the_lock(tmp_path, round_):
     import threading
 
     path = tmp_path / "gpu.lock"
@@ -150,18 +151,40 @@ def test_of_many_takers_at_once_exactly_one_holds_the_lock(tmp_path):
 
     def take(n):
         barrier.wait()
-        with gpu_lock.gpu(f"t{n}", path=path, sleep=lambda s: None, poll=0):
+        with gpu_lock.gpu(f"t{n}", path=path, sleep=lambda s: None, poll=0, wait=60):
             inside.append(n)
             held.append(len(inside))
             inside.remove(n)
 
-    threads = [threading.Thread(target=take, args=(n,)) for n in range(8)]
+    threads = [threading.Thread(target=take, args=(n,), daemon=True) for n in range(8)]
     for t in threads:
         t.start()
     for t in threads:
-        t.join()
+        t.join(60)
+    # 2026-10-17: a release that met a reader on Windows left the lock behind, and the
+    # other seven spun on it until the suite was killed. Fail, never hang.
+    assert not any(t.is_alive() for t in threads), "a taker never got the lock"
     assert len(held) == 8 and max(held) == 1
     assert not path.exists()
+
+
+def test_the_lock_is_let_go_even_while_someone_reads_it(tmp_path, monkeypatch):
+    """Windows cannot delete a file another process has open: a job reading who holds the
+    lock at that moment made the release fail, silently, and the lock stayed for good."""
+    path = tmp_path / "gpu.lock"
+    real = Path.unlink
+    refused = []
+
+    def busy(self, missing_ok=False):
+        if self == path and len(refused) < 5:
+            refused.append(1)
+            raise PermissionError(32, "being read by another process")
+        return real(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", busy)
+    with gpu_lock.gpu("materials", path=path):
+        pass
+    assert len(refused) == 5 and not path.exists()
 
 
 def test_this_process_started_before_now():

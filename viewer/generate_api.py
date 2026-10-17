@@ -2089,16 +2089,7 @@ class Handler(SimpleHTTPRequestHandler):
         return cls._chain_runner
 
     def _refuse(self, status: int, message: str) -> None:
-        # read a small body first: closing on unread bytes resets the connection, and the
-        # caller would see a broken pipe instead of the reason
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-        except ValueError:
-            length = 0
-        if 0 < length <= 1024 * 1024:
-            self.rfile.read(length)
-        else:
-            self.close_connection = True
+        blender_edit_api.drain(self)
         self._send_json(status, {"error": message})
 
     def _admitted(self) -> bool:

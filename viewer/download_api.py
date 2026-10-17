@@ -65,6 +65,7 @@ COMMANDS: dict[str, list[str]] = {
     "flux2-klein": [sys.executable, str(REPO / "scripts" / "bootstrap_flux2_klein.py"),
                     "--yes"],
     "matte": [sys.executable, str(REPO / "scripts" / "bootstrap_matte.py"), "--yes"],
+    "gltf-validator": [sys.executable, str(REPO / "scripts" / "bootstrap_gltf_validator.py"), "--yes"],
     "autorig": [sys.executable, str(REPO / "scripts" / "bootstrap_autorig.py"), "--yes"],
     "materials-light": [sys.executable, str(REPO / "scripts" / "bootstrap_materials.py"),
                         "--only", "env,marigold-lighting", "--yes"],

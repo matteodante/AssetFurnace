@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A base body says how it is dressed under its pieces, the person's choice when it is
+  registered on every route: a bodysuit, simple clothes (shirt, breeches, cloth shoes), minimal
+  underwear, or words of their own (`slot_parts.py body --dressing`, `pieces_add_body(dressing=)`,
+  the studio's register form). It is kept in body.json, and the outfit concept keeps those
+  clothes instead of a fixed bodysuit.
 - Batches and agents can replace a step's output with a file of their own:
   `"replace": {"finish": "my.glb"}` in a row, or `run_steps(..., replace=...)`. The step
   does not run, the file (a Blender version, a model made elsewhere, your own rig or clips)
@@ -378,6 +383,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helmet the outfit's words left out was not drawn, so its cut was the face and the piece
   edit invented a helmet; the concept now adds the chosen pieces the outfit does not name,
   in their own words when they have them.
+- The GPU lock is let go even when another job is reading it at that moment: Windows
+  refused to delete the open file, the release gave up without a word, and every other GPU
+  job then waited on a lock nobody held (the suite hung on it on 2026-10-17).
+- A Studio request refused before its body was read gets its 403: the reference concept
+  and Blender edit APIs now read the body first, as the batch and export APIs did, instead of
+  closing on it (Windows then reset the connection and the page saw a network error).
+- glTF validity is never silently unchecked: without Khronos' glTF-Validator the `gltf.valid`
+  check warns that it did not run (it was skipped, and no report said so), and the validator
+  can be installed from Setup & Status (about 2 MB) as well as from its script.
 - Library names and hidden flags are never lost: two changes at once (a rename and a hide)
   no longer write over each other, the file is replaced whole so a crash cannot truncate it,
   and a damaged one is kept aside as `.bad-<time>` instead of being overwritten.

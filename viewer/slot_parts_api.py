@@ -67,7 +67,8 @@ def register_body(output: Path, payload: dict) -> dict:
     clips = {str(c["name"]): _inside(output, c["file"]) for c in payload.get("clips") or [] if c.get("file")}
     return runs.register_body(output, str(payload.get("name", "")), _inside(output, payload.get("picture")),
                               _inside(output, payload.get("model")), _inside(output, payload.get("rigged")),
-                              clips, payload.get("labels") or {})
+                              clips, payload.get("labels") or {}, payload.get("dressing"),
+                              str(payload.get("dressing_words") or ""))
 
 
 def _checked(output: Path, payload: dict, action: str = "run") -> dict:

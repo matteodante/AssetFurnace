@@ -188,8 +188,19 @@ def gpu(session: str, *, wait: float = 3600.0, poll: float = 10.0, path: Path | 
     try:
         yield
     finally:
+        _release(path, mine)
+
+
+def _release(path: Path, mine: str, attempts: int = 500, nap: float = 0.01) -> None:
+    """Delete this job's lock. Windows refuses to delete a file another process has open,
+    and a waiting job opens the lock to read who holds it, so a refusal is tried again
+    (for up to five seconds): giving up would leave the lock to block every GPU job."""
+    for _ in range(attempts):
         try:
             if holder(path) == (os.getpid(), mine):
                 path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            time.sleep(nap)
         except OSError:
-            pass
+            return
