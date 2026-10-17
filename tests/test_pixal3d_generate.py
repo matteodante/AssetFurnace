@@ -326,7 +326,11 @@ def test_the_matted_path_reaches_the_cli_absolute(tmp_path, monkeypatch):
         raise SystemExit(0)
 
     monkeypatch.setattr(px, "has_alpha", lambda _: False)          # forces the matte branch
-    monkeypatch.setattr(px, "matte", lambda p, d=None: (px.matte_path(p), "u2net"))
+    def fake_matte(p, d=None):   # a cut-out, written as matting writes one
+        px.matte_path(p).write_bytes(b"")
+        return px.matte_path(p), "u2net"
+
+    monkeypatch.setattr(px, "matte", fake_matte)
     monkeypatch.setattr(px, "readiness", lambda *a, **k: {"ready": True})
     monkeypatch.setattr(px.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(sys, "argv", ["pixal3d_generate.py", "gnome.png", "out/gnome.glb"])
@@ -636,3 +640,43 @@ def test_the_cutout_is_kept_only_as_the_subjects_outline(tmp_path, monkeypatch):
         assert kept.mode == "LA"   # the colours gone: what reads it later is the outline
     alpha = camera.subject_alpha(tmp_path / "gnome.png")   # a body's or a weapon's camera still finds it
     assert alpha.sum() == 32 * 32 and alpha[20, 20] and not alpha[2, 2]
+
+
+def test_a_run_reads_its_own_copy_of_the_cutout_whatever_another_run_cleans(tmp_path, monkeypatch):
+    # Codex on #114: two runs on one source share <stem>__matted.png; one finishing first turned
+    # the other's input into the black outline before trellis-cli read it
+    from PIL import Image
+
+    image = tmp_path / "gnome.png"
+    Image.new("RGB", (64, 64), (200, 200, 200)).save(image)
+    output = tmp_path / "out" / "gnome.glb"
+    cutout = px.matte_path(image)
+    read = {}
+
+    def fake_matte(path, destination=None):
+        rgba = Image.new("RGBA", (64, 64), (180, 40, 40, 0))
+        rgba.paste((180, 40, 40, 255), (16, 16, 48, 48))
+        rgba.save(cutout)
+        return cutout, "birefnet-lite"
+
+    class FakeProcess:
+        stdout = iter([])
+
+        def wait(self):
+            output.write_bytes(make_glb([[0.1, 0.2, 0.3]]))
+            return 0
+
+    def fake_popen(command, **kwargs):
+        px.leftovers(tmp_path / "other.glb", cutout)   # another run on the same source ends just now
+        with Image.open(command[command.index("--sv-image") + 1]) as given:
+            read["mode"], read["pixel"] = given.mode, given.convert("RGB").getpixel((20, 20))
+        return FakeProcess()
+
+    monkeypatch.setattr(px, "has_alpha", lambda _: False)
+    monkeypatch.setattr(px, "matte", fake_matte)
+    monkeypatch.setattr(px, "readiness", lambda *a, **k: {"ready": True})
+    monkeypatch.setattr(px.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(sys, "argv", ["pixal3d_generate.py", str(image), str(output)])
+    assert px.main() == 0
+    assert read["mode"] == "RGBA" and read["pixel"] == (180, 40, 40)   # its own colours, not the outline
+    assert not list(output.parent.glob("*__input*"))   # the copy goes with the run

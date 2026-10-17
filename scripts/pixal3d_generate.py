@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import math
 import os
 import subprocess
@@ -488,16 +489,27 @@ def main() -> int:
         print(f"[pixal3d] matted image: {image}", flush=True)
 
     started = time.time()
-    fov, fov_source = choose_fov(args.fov, image)
+    run_input = image
+    if matted_here:
+        # its own copy of the cut-out: another run on this source, ending while this one waits for
+        # the GPU, keeps only the outline of the shared one (`leftovers`)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        run_input = args.output.with_name(f"{args.output.stem}__matted_input{image.suffix}").resolve()
+        shutil.copyfile(image, run_input)
+    fov, fov_source = choose_fov(args.fov, run_input)
     command = build_command(
-        image, args.output, args.res, args.seed, fov,
+        run_input, args.output, args.res, args.seed, fov,
         args.models, args.cli, matted, args.gss, args.gsh,
     )
     print(f"[pixal3d] res={args.res} seed={args.seed} gss={args.gss} matted={matted}",
           flush=True)
     print(f"[pixal3d] {steps_note}", flush=True)
 
-    code = run_trellis(command, steps)
+    try:
+        code = run_trellis(command, steps)
+    finally:
+        if run_input != image:
+            run_input.unlink(missing_ok=True)
     if code != 0:
         raise SystemExit(f"trellis-cli exited with code {code}")
     if not args.output.is_file():
