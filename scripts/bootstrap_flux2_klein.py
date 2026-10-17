@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Fetch FLUX.2 klein 4B, an Apache-2.0 image editor, for the sd-cli that is already here.
 
-It runs in the same stable-diffusion.cpp binary as Qwen-Image (`vendor/sdcpp/sd-cli`),
-so this fetches only the weights: three files, about 12.3 GB, every one Apache-2.0. The
+It runs in the same stable-diffusion.cpp binary as Qwen-Image (`vendor/sdcpp/sd-cli`).
+When that binary is not there yet (a fresh install that picks FLUX first), this fetches
+the same prebuilt release Qwen-Image's setup does, then the weights: three files, about
+12.3 GB, every one Apache-2.0. The
 VAE is BFL's separate Apache-2.0 decoder, not the one inside FLUX.2-dev, which is under a
 non-commercial licence.
 
@@ -22,6 +24,9 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(REPO / "scripts"))
+
+import bootstrap_qwen_image as qwen  # the shared sd-cli, and how it is fetched
 
 from image_to_3dlab import host
 
@@ -47,11 +52,17 @@ def total_gb() -> float:
     return sum(size for _, _, size in WEIGHTS) / 1e9
 
 
-def announcement() -> str:
-    """Exactly what is about to be fetched, before anything is."""
+def announcement(build: bool = False) -> str:
+    """Exactly what is about to be fetched, before anything is: with `build`, the shared
+    sd-cli too."""
+    build_for = qwen.BUILDS.get(qwen.target()) if build else None
+    where = (f"prebuilt sd-cli, {build_for.route}, shared with Qwen-Image" if build_for
+             else "the sd-cli already installed")
     lines = ["", "About to install:", "", "  backend: FLUX.2 klein 4B (image editing)",
-             "  route:   safetensors and GGUF via stable-diffusion.cpp (the sd-cli already installed)",
-             f"  weights: {total_gb():.1f} GB total ->  Hugging Face cache"]
+             f"  route:   safetensors and GGUF via stable-diffusion.cpp ({where})"]
+    if build_for:
+        lines.append(f"  build:   prebuilt sd-cli release ({build_for.size}) -> vendor/sdcpp/")
+    lines.append(f"  weights: {total_gb():.1f} GB total ->  Hugging Face cache")
     for repo, filename, size in WEIGHTS:
         lines.append(f"             {size / 1e9:>5.2f} GB  {filename}  ({repo})")
     lines += ["", "  licence: " + LICENCE, ""]
@@ -81,11 +92,12 @@ def main(argv: list[str] | None = None) -> int:
                         help="Skip the confirmation. For the viewer and for scripts.")
     args = parser.parse_args(argv)
 
-    print(announcement())
-    if not binary_present():
+    build = not binary_present()
+    print(announcement(build=build))
+    if build and qwen.BUILDS.get(qwen.target()) is None:
         # 12 GB of weights with nothing to run them is the worst way to find out.
-        print(f"sd-cli is not installed at {BINARY}. Install the Qwen-Image route first "
-              "(python scripts/bootstrap_qwen_image.py --build-only). Nothing downloaded.")
+        print(f"sd-cli is not installed at {BINARY}, and stable-diffusion.cpp publishes no prebuilt "
+              "build for this machine. Nothing downloaded.")
         return 1
     if not args.yes:
         if not sys.stdin or not sys.stdin.isatty():
@@ -94,6 +106,8 @@ def main(argv: list[str] | None = None) -> int:
         if input("Continue? [y/N] ").strip().lower() not in {"y", "yes"}:
             print("Nothing downloaded.")
             return 1
+    if build:
+        qwen.install_binary()
     install_weights()
     print("\nDone.")
     return 0

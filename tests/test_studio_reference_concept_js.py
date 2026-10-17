@@ -83,3 +83,26 @@ def test_the_iou_line_and_the_library_sources():
     assert out[:3] == ["outline IoU 0.93", "measuring the outline…", "no outline to compare"]
     assert out[3] == [{"path": "w/r.glb", "label": "Wolf (model)"}, {"path": "images/w.png", "label": "Wolf (picture)"},
                       {"path": "images/r.png", "label": "Robot (picture)"}]
+
+
+@needs_node
+def test_a_draw_keeps_what_was_asked_when_the_controls_change_during_it():
+    """Back with a model, then Side chosen while the map is prepared: the job stays Back."""
+    out = run("""
+      const state = {way: 'other_view', source: 'images/front.png', model: 'wolf/wolf.glb', view: 'back', attempts: 2, styleRefs: []};
+      const plan = m.planDraw(state);
+      state.view = 'side'; state.way = 'redraw'; state.attempts = 4; state.styleRefs.push('images/s.png');
+      console.log(JSON.stringify({maps: plan.maps, seeds: plan.seeds.length,
+        request: plan.request(['images/front.png', 'concept/maps/a/back_depth_black.png'], 1)}));""")
+    assert out["maps"][1] == {"source": "wolf/wolf.glb", "kind": "depth", "view": "back"}
+    assert out["seeds"] == 2
+    assert out["request"]["mode"] == "other_view" and out["request"]["view"] == "back"
+    assert out["request"]["style_refs"] == []
+
+
+@needs_node
+def test_an_error_stays_on_the_sheet_until_it_is_replaced():
+    out = run("""console.log(JSON.stringify([m.errorLine({error: 'This model has no skeleton to draw a pose from'}), m.errorLine({error: ''}), m.errorLine({error: '<b>'})]));""")
+    assert out[0] == '<p class="error" data-error>This model has no skeleton to draw a pose from</p>'
+    assert out[1] == '<p class="error" data-error hidden></p>'
+    assert "&lt;b&gt;" in out[2]

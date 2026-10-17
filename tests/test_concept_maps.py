@@ -142,3 +142,18 @@ def test_blender_renders_colour_depth_and_bones_of_a_glb(tmp_path):
         assert depth[32, 32, :3].max() > 0
     bones = json.loads(files["bones"].read_text())
     assert "head" in bones["front"]
+
+
+def test_lineart_of_a_wide_picture_keeps_its_proportions(tmp_path):
+    """A round shield in an 800x400 picture stays round: the picture is fitted, not stretched."""
+    import cv2
+
+    wide = np.full((40, 80, 3), 230, np.uint8)
+    cv2.circle(wide, (40, 20), 15, (40, 40, 40), -1)
+    Image.fromarray(wide).save(tmp_path / "shield.png")
+    lines = np.asarray(Image.open(maps.lineart(tmp_path / "shield.png", tmp_path / "lines.png", size=160)))
+    assert lines.shape == (160, 160)
+    rows, cols = np.nonzero(lines < 128)
+    width, height = cols.max() - cols.min(), rows.max() - rows.min()
+    assert abs(width / height - 1) < 0.15, (width, height)
+    assert lines[5, 80] == 255 and lines[155, 80] == 255  # the padding is empty paper

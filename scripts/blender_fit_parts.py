@@ -465,18 +465,71 @@ def main() -> None:  # pragma: no cover - runs inside Blender
             shape_and_skin(o, slot, info)
         report["pieces"][slot] = info
 
-    # the covered mask: a body vertex is covered when its outward ray meets a worn piece close by;
-    # a weapon or shield is held, and the hand under its grip must stay visible
+    # the covered mask: a body vertex is hidden only where a worn piece lies over it at rest and in
+    # every sampled moment of the body's clips. Hidden by its rest pose alone, the skin a shoulder
+    # piece lifts off in a swing showed through (holes of 6-10% in the acceptance); a weapon or
+    # shield is held, and the hand under its grip must stay visible
     worn = [o for o in fitted if o.name.split("_")[0] not in fit.HELD] or fitted
-    bvh = bvh_of(worn)
-    normals = np.empty(len(body_co) * 3)
-    body_obj.data.vertices.foreach_get("normal", normals)
-    normals = normals.reshape(-1, 3) @ mw[:3, :3].T
-    normals /= np.linalg.norm(normals, axis=1, keepdims=True) + 1e-12
-    covered = np.zeros(len(body_co))
-    for i, (p, n) in enumerate(zip(body_co, normals)):
-        if bvh.ray_cast(Vector(p) + Vector(n) * 1e-4, Vector(n), job.get("cover_gap", 0.06))[0] is not None:
-            covered[i] = 1.0
+    gap = job.get("cover_gap", 0.06)
+
+    def covered_now(depsgraph=None):
+        """1 where the skin's outward ray meets a worn piece within the gap, in the pose shown."""
+        objs = [body_obj, *worn]
+        evaluated = {o.name: o.evaluated_get(depsgraph) if depsgraph else o for o in objs}
+        meshes = {name: e.to_mesh() if depsgraph else e.data for name, e in evaluated.items()}
+        verts, polys, offset = [], [], 0
+        for o in worn:
+            me, m = meshes[o.name], np.array(evaluated[o.name].matrix_world)
+            co = np.empty(len(me.vertices) * 3)
+            me.vertices.foreach_get("co", co)
+            verts.append(co.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3])
+            polys += [tuple(i + offset for i in poly.vertices) for poly in me.polygons]
+            offset += len(me.vertices)
+        tree = BVHTree.FromPolygons([Vector(v) for v in np.concatenate(verts)], polys)
+        me, m = meshes[body_obj.name], np.array(evaluated[body_obj.name].matrix_world)
+        co = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get("co", co)
+        co = co.reshape(-1, 3) @ m[:3, :3].T + m[:3, 3]
+        nrm = np.empty(len(me.vertices) * 3)
+        me.vertices.foreach_get("normal", nrm)
+        nrm = nrm.reshape(-1, 3) @ m[:3, :3].T
+        nrm /= np.linalg.norm(nrm, axis=1, keepdims=True) + 1e-12
+        out = np.array([tree.ray_cast(Vector(p) + Vector(n) * 1e-4, Vector(n), gap)[0] is not None
+                        for p, n in zip(co, nrm)], float)
+        if depsgraph:
+            for e in evaluated.values():
+                e.to_mesh_clear()
+        return out
+
+    covered = covered_now()
+    poses = 0
+    for clip in job.get("clips", []):
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=str(clip))
+        imported = [o for o in bpy.data.objects if o not in before]
+        source = next((o for o in imported if o.type == "ARMATURE" and o.animation_data and o.animation_data.action), None)
+        action = source.animation_data.action if source else None
+        if action is not None:
+            action.use_fake_user = True
+        for o in imported:
+            bpy.data.objects.remove(o, do_unlink=True)
+        if action is None:
+            continue
+        arm.animation_data_create()
+        arm.animation_data.action = action
+        if hasattr(arm.animation_data, "action_suitable_slots") and arm.animation_data.action_suitable_slots:
+            arm.animation_data.action_slot = arm.animation_data.action_suitable_slots[0]
+        arm.data.pose_position = "POSE"
+        start, end = (int(v) for v in action.frame_range)
+        for frame in fit.pose_frames(start, end, job.get("cover_frames", 8)):
+            bpy.context.scene.frame_set(frame)
+            covered *= covered_now(bpy.context.evaluated_depsgraph_get())
+            poses += 1
+        arm.animation_data.action = None
+        arm.data.pose_position = "REST"
+        bpy.context.scene.frame_set(start)
+    bpy.context.view_layer.update()
+    report["mask_poses"] = poses
     colour = body_obj.data.color_attributes.new("covered", "BYTE_COLOR", "POINT")
     rgba = np.ones((len(covered), 4))
     rgba[:, 3] = 1.0 - covered  # white everywhere, so viewers that multiply by COLOR_0 see no change
