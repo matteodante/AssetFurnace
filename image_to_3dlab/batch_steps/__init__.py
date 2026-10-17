@@ -53,6 +53,7 @@ class StepContext:
     log: Callable[[str], None]
     picture: Path | None = None   # the row's current picture: its first image, or a drawn one
     clips: list[Path] = field(default_factory=list)   # animated GLBs a step before made
+    material: str | None = None   # the row's one material, when a materials step chose it
     # for a step that makes candidates: what they are made from (its fingerprint without
     # the pick), to keep them across runs and to tell a pick still holds
     candidate_key: str | None = None
@@ -68,6 +69,7 @@ class StepResult:
     reason: str | None = None
     picture: Path | None = None     # the new current picture (a step that draws one)
     clips: list[Path] = field(default_factory=list)   # animated GLBs made (animate, clips)
+    material: str | None = None     # the one material chosen (materials)
     # several results to pick from, and no pick yet: {"candidates": [{"choice", "file"}]};
     # the row waits until a pick is given
     waiting: dict[str, Any] | None = None

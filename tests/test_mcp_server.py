@@ -139,7 +139,7 @@ def test_cancel_stops_the_runner(ran, monkeypatch):
 
 def test_list_steps():
     steps = mcp_server.list_steps()["steps"]
-    assert steps["generate"] is True and steps["materials"] is False
+    assert steps["generate"] is True and steps["materials"] is True
 
 
 def test_the_sdk_serves_every_tool():

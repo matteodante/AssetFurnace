@@ -37,7 +37,6 @@ from urllib.parse import unquote, urlsplit
 import batch_api
 
 from image_to_3dlab import piece_materials, processes
-from image_to_3dlab.slot_parts import body as body_mod
 from image_to_3dlab.slot_parts import runs
 
 REPO = Path(__file__).resolve().parents[1]
@@ -78,25 +77,10 @@ def _checked(output: Path, payload: dict, action: str = "run") -> dict:
     return payload
 
 
-def made_set(output: Path, payload: dict) -> Path:
-    """A made set's folder, `output/sets/<set>/<body>/`, from the page's names."""
-    body, set_name = str(payload.get("body", "")), str(payload.get("set", ""))
-    if not body_mod.NAME.match(body) or not body_mod.NAME.match(set_name):
-        raise ValueError("name a set and its body: letters, digits, '.', '_' or '-'")
-    folder = output / "sets" / set_name / body
-    if not any(folder.glob("*.parts.json")):
-        raise ValueError(f"{set_name} on {body} is not a finished set")
-    return folder
-
-
 def save_materials(output: Path, payload: dict) -> dict:
-    """A person's materials for pieces of a set; every piece's material afterwards."""
-    folder = made_set(output, payload)
-    pieces = payload.get("pieces")
-    if not isinstance(pieces, dict) or not pieces:
-        raise ValueError("give the pieces' materials, e.g. {\"helmet\": \"leather\"}")
-    piece_materials.save_corrections(folder, {str(k): (None if v in (None, "") else str(v)) for k, v in pieces.items()})
-    return {"set": payload["set"], "body": payload["body"], "materials": piece_materials.set_materials(folder)}
+    """A person's materials for pieces of a set; every piece's material afterwards (the same
+    function the MCP server's pieces_materials calls)."""
+    return runs.save_materials(output, payload)
 
 
 def resume_command(output: Path, payload: dict) -> tuple[list[str], Path]:
