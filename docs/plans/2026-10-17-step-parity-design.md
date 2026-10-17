@@ -308,3 +308,7 @@ Tutte le PR hanno avuto una revisione indipendente con un agente; i P1 trovati s
   corpo non valgono lì e non vengono copiati. Rifarli sul nuovo corpo è un passo da aggiungere ai pezzi.
 - Il Finish dello studio non scrive la licenza del modello che riceve (anche per una versione Blender): è così da
   prima di questo lavoro, e la licenza resta nella versione e nel rig.
+- La prova di un set vero di pezzi (`red-gold-knight`, 17/10) ha trovato sette difetti, corretti in PR a parte: la
+  spada presa per la lama (#83), il concept che non disegnava i pezzi scelti ma non nominati dal vestito (#84), le UV
+  sovrapposte del Finish (#85), il lucchetto della GPU non preso da Pixal3D, dal giudice e dai disegni dei pezzi (#86),
+  i frammenti staccati (#87), il giudice mancante senza avviso (#88); l'arma senza candidati era già coperta da #75.

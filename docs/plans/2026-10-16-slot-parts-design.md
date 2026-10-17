@@ -487,7 +487,12 @@ Sei punti, tutti veri sulle righe citate, ognuno corretto con un test che fallis
 
 ## Seguiti
 
-- Mantello: prova a parte, con la vista di schiena (funzione 2, caso 4) e la stoffa in Unreal.
+- Mantello: prova a parte, con la vista di schiena (funzione 2, caso 4) e la stoffa in Unreal. La prova su un set
+  vero (`red-gold-knight`, 17/10) lo conferma: non c'è uno slot per il mantello, quindi un mantello nel vestito resta
+  disegnato nel concept ma non diventa un pezzo.
+- La tutina del corpo base si vede fra i pezzi, sulle braccia sopra gli spallacci, all'inguine e alle caviglie (stessa
+  prova): i pezzi non arrivano a coprirla. Da provare pezzi un po' più lunghi (gambe e spallacci) o una maschera del
+  corpo più larga in quei punti.
 - Spallacci: le compenetrazioni restano al 5–7% (warn). Da provare una gabbia più fine sulla spalla, o lo spallaccio
   rigido sulla clavicola come l'elmo sulla testa.
 - Riadattamento lungo l'asse dell'osso: non serve sui due corpi provati (sezione 13); da riprendere con un corpo dalle
