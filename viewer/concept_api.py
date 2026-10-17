@@ -53,6 +53,9 @@ PICTURE_KINDS = ("lineart", "picture")
 ATTEMPTS = {"default": 1, "most": 4}
 MAP_SIZE = 1024
 MEASURING: set[str] = set()
+# The IoU arrives after the picture, and the user may judge it before that: both change the
+# same record, so they take turns and each changes only its own field.
+RECORDS = threading.Lock()
 
 
 def _sha256(path: Path) -> str:
@@ -303,7 +306,8 @@ def _run(output: Path, job: image_api.ImageJob, plan: dict, weights: dict, visio
         value = None
     finally:
         MEASURING.discard(picture)
-    sidecar.write(job.output_path, **record, iou=value)
+    with RECORDS:
+        sidecar.update(job.output_path, iou=value)
 
 
 def record(output: Path, picture: str) -> dict[str, Any]:
@@ -320,13 +324,12 @@ def judge(output: Path, request: dict[str, Any]) -> dict[str, Any]:
     if verdict not in VERDICTS:
         raise ValueError(f"the verdict is one of {', '.join(VERDICTS)}")
     path = inside(output, picture)
-    data = sidecar.read(path)
-    if data is None:
-        raise ValueError(f"{picture} has no concept record")
     judgement = {"verdict": verdict, "note": str(request.get("note") or "")[:1000],
                  "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-    data["judgement"] = judgement
-    sidecar.path_for(path).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    with RECORDS:
+        if sidecar.read(path) is None:
+            raise ValueError(f"{picture} has no concept record")
+        data = sidecar.update(path, judgement=judgement)
     log = Path(output) / FOLDER / "judgements.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a", encoding="utf-8") as handle:

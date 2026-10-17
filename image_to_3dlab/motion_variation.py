@@ -29,6 +29,8 @@ STEPS = 3
 NOISE = 10.0
 PYRAMID = 0.75
 COARSE = 5.0  # the coarsest level is this many patches long
+# A bone whose offset from its parent changes by more than this (metres) over a clip moves.
+MOVES = 1e-4
 
 
 def pyramid_lengths(final: int, coarse_ratio: float, factor: float = PYRAMID) -> list[int]:
@@ -92,8 +94,11 @@ def nearest(x: np.ndarray, y: np.ndarray, alpha: float | None = ALPHA) -> np.nda
 def synthesize(example: np.ndarray, length: int, rng: np.random.Generator, patch: int = PATCH,
                alpha: float | None = ALPHA, steps: int = STEPS, noise: float = NOISE,
                factor: float = PYRAMID, coarse: float = COARSE, loop: bool = False) -> np.ndarray:
-    """A new (C, length) motion made of `example`'s (C, T) windows."""
+    """A new (C, length) motion made of `example`'s (C, T) windows. A window is at most half
+    the example (odd, at least 3): on a 14-frame run, windows of 11 frames averaged out of
+    phase halved its swing."""
     t = example.shape[1]
+    patch = max(3, min(patch, (t // 2) - (1 - (t // 2) % 2)))
     ratio = patch * coarse / t
     mine, theirs = pyramid_lengths(length, ratio, factor), pyramid_lengths(t, ratio, factor)
     levels = min(len(mine), len(theirs))
@@ -140,8 +145,10 @@ def vary(parents: dict[str, str | None], rest: dict[str, np.ndarray], poses: lis
          up: np.ndarray, length: int, seed: int = 0, loop: bool = False) -> list[dict[str, np.ndarray]]:
     """`length` new frames of world matrices for the bones of `rest`, varied from `poses`.
 
-    Bones keep their rest offsets from their parents (their lengths); roots keep the
-    example's heights and pace along the ground."""
+    Roots keep the example's heights and pace along the ground. A bone that moves against
+    its parent in the example (Mesh2Motion keeps its root still and moves the bone below:
+    a fox's hips bounce, a snake's head sweeps) keeps that motion too; every other bone
+    keeps its rest offset, so its length."""
     up = np.asarray(up, float) / np.linalg.norm(up)
     order = _order(parents, rest)
     roots = [b for b in order if parents.get(b) not in rest]
@@ -151,6 +158,8 @@ def vary(parents: dict[str, str | None], rest: dict[str, np.ndarray], poses: lis
         return pose[b] if p not in rest else np.linalg.inv(pose[p]) @ pose[b]
 
     offsets = {b: local(rest, b)[:3, 3] for b in order}
+    tracks = {b: np.array([local(pose, b)[:3, 3] for pose in poses]) for b in order if b not in roots}
+    moving = [b for b, t in tracks.items() if np.ptp(t, axis=0).max() > MOVES]
     rows = []
     for pose in poses:
         row = [_six(local(pose, b)[:3, :3]) for b in order]
@@ -160,16 +169,20 @@ def vary(parents: dict[str, str | None], rest: dict[str, np.ndarray], poses: lis
         rows.append(np.concatenate(row))
     features = np.array(rows).T  # (C, T)
     n_rot = 6 * len(order)
-    ground = features[n_rot:].reshape(len(roots), 4, -1)
+    n_root = 4 * len(roots)
+    ground = features[n_rot:n_rot + n_root].reshape(len(roots), 4, -1)
     step = np.diff(ground[:, :3], axis=2)
     step = np.concatenate([step[:, :, :1] if step.shape[2] else np.zeros_like(ground[:, :3, :1]), step], axis=2)
-    features[n_rot:] = np.concatenate([step, ground[:, 3:]], axis=1).reshape(-1, features.shape[1])
+    features[n_rot:n_rot + n_root] = np.concatenate([step, ground[:, 3:]], axis=1).reshape(-1, features.shape[1])
+    if moving:
+        features = np.concatenate([features, np.concatenate([tracks[b].T for b in moving])])
 
     made = synthesize(features, length, np.random.default_rng(seed), loop=loop)
 
     start = ground[:, :3, 0]
-    moved = made[n_rot:].reshape(len(roots), 4, -1)
+    moved = made[n_rot:n_rot + n_root].reshape(len(roots), 4, -1)
     where = start[:, :, None] + np.cumsum(moved[:, :3], axis=2) - moved[:, :3, :1]
+    shifted = {b: made[n_rot + n_root + 3 * i:n_rot + n_root + 3 * i + 3] for i, b in enumerate(moving)}
     out = []
     for k in range(length):
         pose = {}
@@ -181,7 +194,7 @@ def vary(parents: dict[str, str | None], rest: dict[str, np.ndarray], poses: lis
                 m[:3, 3] = where[j, :, k] + moved[j, 3, k] * up
                 pose[b] = m
             else:
-                m[:3, 3] = offsets[b]
+                m[:3, 3] = shifted[b][:, k] if b in shifted else offsets[b]
                 pose[b] = pose[parents[b]] @ m
         out.append(pose)
     return out

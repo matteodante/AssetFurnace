@@ -118,8 +118,8 @@ def test_every_library_chain_and_clip_is_in_its_file(name):
 
 
 @needs_pack
-@pytest.mark.parametrize("name", sorted(cl.SOURCES))
-def test_a_library_clip_carried_onto_its_own_skeleton_comes_back(name):
+@pytest.mark.parametrize(("name", "motion"), [(n, m) for n in sorted(cl.SOURCES) for m in cl.SOURCES[n]["clips"]])
+def test_a_library_clip_carried_onto_its_own_skeleton_comes_back(name, motion):
     """The whole path on real data: the chains named here, sampled and retargeted onto the
     same skeleton, put every chain joint back where the clip has it."""
     import chain_retarget as cr
@@ -137,11 +137,49 @@ def test_a_library_clip_carried_onto_its_own_skeleton_comes_back(name):
     rig = cm.Rig(parents, order, heads)
     roles = cl.source_roles(name)
     target = {**roles, "family": "serpent" if name == "snake" else name, "ground": 0.0}
-    clip, loop = next(iter(src["clips"].values()))
+    clip, loop = src["clips"][motion]
     source = cr.load_source(path, roles, clip, loop=loop)
     chain = {b for k in ("spine", "neck", "tail", "body") for b in roles[k]}
     chain |= {b for k in ("legs", "arms", "wings") for c in roles[k] for b in c["bones"]}
     size = float(np.ptp(np.array(list(heads.values())), axis=0).max())
+    # A joint the source slides away from its parent (the kaiju's index finger, 0.2-0.3 m in
+    # its attack and death) cannot be followed by turning bones of fixed length: it and
+    # what hangs below it are left out.
+    def offset(pose, b):
+        return (np.linalg.inv(pose[parents[b]]) @ pose[b])[:3, 3]
+
+    # (only inside a chain: the hips or a serpent's head moving under a still root is the
+    # body's own travel, which the retarget carries)
+    stretched = {b for b in chain if parents.get(b) in chain
+                 and max(np.linalg.norm(offset(p, b) - offset(source.rest, b)) for p in source.poses) > 0.01 * size}
+    for b in list(stretched):
+        stretched |= {c for c in chain if b in _ancestors(parents, c)}
+    chain -= stretched
     for pose, (turn, root) in zip(source.poses, cr.retarget(rig, target, source)):
         got = cm.posed_heads(rig, cm.accumulate(rig, turn), root)
         assert max(float(np.linalg.norm(got[b] - pose[b][:3, 3])) for b in chain) < 0.02 * size
+
+
+@needs_pack
+@pytest.mark.parametrize(("name", "motion", "bone", "kept"), [
+    ("fox", "run", "Hips", 0.8),        # 14 frames: windows of 11 averaged its bounce down to 56%
+    ("snake", "slither", "head", 0.9),  # the head sweeps under a still root: it was lost entirely
+])
+def test_a_longer_take_keeps_the_swing_of_its_source(name, motion, bone, kept):
+    import chain_retarget as cr
+    import numpy as np
+
+    clip, loop = cl.SOURCES[name]["clips"][motion]
+    source = cr.load_source(cl.pack_dir() / cl.SOURCES[name]["file"], cl.source_roles(name), clip, loop=loop)
+    longer = cr.longer(source, cl.LONGER_FACTOR, cl.LONGER_SEED, loop)
+    swing = [np.ptp(np.array([p[bone][:3, 3] for p in take.poses]), axis=0).max() for take in (source, longer)]
+    assert swing[1] > kept * swing[0]
+
+
+def _ancestors(parents, bone):
+    out = []
+    while parents.get(bone) is not None:
+        bone = parents[bone]
+        out.append(bone)
+    return out
+

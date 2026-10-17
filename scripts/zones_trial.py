@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
     for step in ("human", "pbr"):
         command = sub.add_parser(step)
         command.add_argument("--dir", type=Path, required=True)
-        command.add_argument("--segmenter", choices=mz.SEGMENTERS, default="sam3")
+        command.add_argument("--segmenter", choices=mz.SEGMENTERS, default="sam2")
         if step == "human":
             command.add_argument("--labels", type=Path, required=True)
     args = parser.parse_args(argv)

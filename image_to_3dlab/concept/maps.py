@@ -104,17 +104,25 @@ def depth_on_black(rgba: Path, out: Path) -> Path:
 def lineart(picture: Path, out: Path, size: int = 1024) -> Path:
     """Black lines on white: a soft difference of Gaussians on the light, plus edges of colour.
 
-    The colour edges catch what light alone misses, such as orange on light grey.
+    The colour edges catch what light alone misses, such as orange on light grey. The
+    picture is scaled to fit `size` without changing its proportions (a round shield stays
+    round) and the lines are centred on white paper; padding added before the lines would
+    draw its own border.
     """
     colour = cv2.cvtColor(np.asarray(Image.open(picture).convert("RGB")), cv2.COLOR_RGB2BGR)
-    colour = cv2.resize(colour, (size, size), interpolation=cv2.INTER_AREA)
+    scale = size / max(colour.shape[:2])
+    fitted = (max(1, round(colour.shape[1] * scale)), max(1, round(colour.shape[0] * scale)))
+    colour = cv2.resize(colour, fitted, interpolation=cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC)
     grey = cv2.cvtColor(colour, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255
     difference = cv2.GaussianBlur(grey, (0, 0), 1.0) - 0.98 * cv2.GaussianBlur(grey, (0, 0), 1.6)
     lines = np.where(difference >= 0.0, 1.0, 1.0 + np.tanh(40.0 * difference))
     median = float(np.median(colour))
     edges = cv2.Canny(cv2.GaussianBlur(colour, (0, 0), 1.2), 0.25 * median, 0.5 * median)
     lines = np.where(cv2.dilate(edges, np.ones((2, 2), np.uint8)) > 0, 0.0, lines)
-    Image.fromarray((np.clip(lines, 0, 1) * 255).astype(np.uint8)).save(out)
+    paper = np.full((size, size), 255, np.uint8)
+    top, left = (size - lines.shape[0]) // 2, (size - lines.shape[1]) // 2
+    paper[top:top + lines.shape[0], left:left + lines.shape[1]] = (np.clip(lines, 0, 1) * 255).astype(np.uint8)
+    Image.fromarray(paper).save(out)
     return Path(out)
 
 
