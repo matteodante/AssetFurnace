@@ -21,9 +21,34 @@ SCHEMA_VERSION = 1
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
+# How a base body is dressed under its pieces: the user's choice when it is registered
+# (17/10/2026), never assumed. Simple clothes are what 4Story and WoW show between armour pieces.
+DRESSINGS = {
+    "bodysuit": "bodysuit",
+    "clothes": "simple clothes (a plain shirt, breeches and cloth shoes)",
+    "underwear": "minimal plain underwear",
+}
+
+
+def dressing(kind, words: str = "") -> dict:
+    """The body's dressing as body.json keeps it: one of DRESSINGS, or "other" with words."""
+    words = str(words or "").strip()[:300]
+    if kind not in DRESSINGS and not (kind == "other" and words):
+        raise ValueError("say how the base body is dressed under its pieces: bodysuit, clothes, underwear, "
+                         "or other with your own words")
+    return {"kind": kind, "words": words}
+
+
+def dressing_words(record: dict) -> str:
+    """The words the outfit concept keeps the body's clothes with. A body registered before the
+    choice existed was made in a bodysuit."""
+    chosen = record.get("dressing") or {"kind": "bodysuit", "words": ""}
+    return ", ".join(part for part in (DRESSINGS.get(chosen.get("kind"), ""), chosen.get("words") or "") if part)
+
+
 def record(name: str, *, image: Path, image_size: tuple[int, int], rigged: Path, views: Path,
            cam: camera_mod.Camera, parents: dict, heads: dict, found: dict, labels: dict | None = None,
-           clips: dict | None = None) -> dict:
+           clips: dict | None = None, dressing: dict | None = None) -> dict:
     roles = skeleton.inherit_roles(skeleton.bone_roles(found), parents)  # refuses anything but a humanoid
     return {
         "schema_version": SCHEMA_VERSION, "name": name,
@@ -36,11 +61,13 @@ def record(name: str, *, image: Path, image_size: tuple[int, int], rigged: Path,
         # the body's own animated clips (Kimodo, retargeted onto this rig): fit.clipping and
         # fit.holes pose the pieces with them
         "clips": {name: str(Path(path).resolve()) for name, path in (clips or {}).items()},
+        **({"dressing": dict(dressing)} if dressing else {}),
     }
 
 
 def register(name: str, image: Path, rigged: Path, views: Path | None = None, matte: Path | None = None,
-             labels: dict | None = None, root: Path = Path("output/bodies"), clips: dict | None = None) -> Path:
+             labels: dict | None = None, root: Path = Path("output/bodies"), clips: dict | None = None,
+             dressing: dict | None = None) -> Path:
     """Read a rigged body and its Pixal3D run, check it is a humanoid, write body.json.
 
     `views` is the `<model>.svviews` folder of the Pixal3D run the body came from (asked for:
@@ -54,6 +81,9 @@ def register(name: str, image: Path, rigged: Path, views: Path | None = None, ma
     from image_to_3dlab.glb_skin import SkinnedGLB
 
     image, rigged = Path(image), Path(rigged)
+    if not dressing:
+        raise ValueError("say how the base body is dressed under its pieces: bodysuit, clothes, underwear, "
+                         "or other with your own words")
     if views is None:
         raise ValueError("give the Pixal3D camera folder (<model>.svviews) the body was made with")
     alpha = camera_mod.subject_alpha(image, matte)
@@ -69,7 +99,8 @@ def register(name: str, image: Path, rigged: Path, views: Path | None = None, ma
         raise ValueError(f"{views} is not a Pixal3D camera folder (no transforms.json)")
     cam = camera_mod.from_views(views, alpha)
     return write(record(name, image=image, image_size=size, rigged=rigged, views=views, cam=cam,
-                        parents=parents, heads=heads, found=found, labels=labels, clips=clips), root)
+                        parents=parents, heads=heads, found=found, labels=labels, clips=clips,
+                        dressing=dressing), root)
 
 
 def write(data: dict, root: Path) -> Path:

@@ -345,8 +345,9 @@ def make_concept(body_json: Path, outfit: str, folder: Path, seeds: list[int], s
     from image_to_3dlab.concept import prompts, sidecar
 
     record = body_mod.load(body_json)
-    # add, not dress: the chosen pieces drawn on the bodysuit, the rest of the body left as it is
-    prompt = prompts.add_piece(outfit, style=style)
+    # add, not dress: the chosen pieces drawn on the body, its own clothes and the rest left as they are
+    prompt = prompts.add_piece(outfit, style=style,
+                                wearing=body_mod.dressing_words(record))
     folder.mkdir(parents=True, exist_ok=True)
     for seed in seeds:
         picture = folder / f"s{seed}.png"
@@ -648,6 +649,9 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--matte", type=Path, help="cut-out of the picture (default <picture>__matted.png)")
     b.add_argument("--label", action="append", default=[], help="key=value, e.g. race=human (repeatable)")
     b.add_argument("--clip", action="append", default=[], help="name=animated.glb, the body's own clip (repeatable)")
+    b.add_argument("--dressing", required=True, choices=(*body_mod.DRESSINGS, "other"),
+                   help="how the body is dressed under its pieces (no default: you choose)")
+    b.add_argument("--dressing-words", default="", help="words of your own for it; needed with other")
     b.add_argument("--root", type=Path, default=Path("output/bodies"))
     c = sub.add_parser("cuts", help="cut a concept drawn on a body into one picture per slot")
     c.add_argument("--body", type=Path, required=True, help="body.json from the body command")
@@ -754,7 +758,7 @@ def main(argv: list[str] | None = None) -> int:
             labels = dict(item.split("=", 1) for item in args.label)
             clips = dict(item.split("=", 1) for item in args.clip)
             path = body_mod.register(args.name, args.image, args.rigged, args.views, args.matte, labels, args.root,
-                                     clips)
+                                     clips, dressing=body_mod.dressing(args.dressing, args.dressing_words))
             print(f"wrote {path}")
         else:
             result = make_cuts(args.body, args.concept, slots.choose(parse_slots(args.slots)), args.out,
