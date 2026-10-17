@@ -375,6 +375,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Library names and hidden flags are never lost: two changes at once (a rename and a hide)
   no longer write over each other, the file is replaced whole so a crash cannot truncate it,
   and a damaged one is kept aside as `.bad-<time>` instead of being overwritten.
+- Game materials record a choice they make against glTF: an asset with no metallic map
+  and no `metallicFactor` (which the spec defaults to 1, metal) is packed as not metal, and
+  `maps.metallic` now says "assumed 0" instead of "factor".
 - The studio's jobs talk UTF-8 on Windows: their Python children run with `PYTHONUTF8=1`
   and their output is read as UTF-8, so a Chinese prompt or a name outside cp1252 no longer
   stops the script that prints it, or the loop that reads it.

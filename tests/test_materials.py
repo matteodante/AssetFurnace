@@ -661,3 +661,13 @@ def test_a_texture_used_by_a_mesh_extension_is_never_overwritten(tmp_path):
     start = view.get("byteOffset", 0)
     kept = np.asarray(Image.open(io.BytesIO(out.binary[start:start + view["byteLength"]])).convert("RGB"))
     np.testing.assert_array_equal(kept, mr)
+
+
+def test_a_missing_metallic_factor_is_recorded_as_assumed_not_metal(tmp_path):
+    """glTF 2.0.1: metallicFactor defaults to 1, so a viewer shows such an asset as metal.
+    Treating it as not metal is a choice, and the record says so (audit 2026-10-17)."""
+    asset = make_glb(tmp_path / "plain.glb", banded_albedo(), metallic_factor=None)
+    result = m.make_game_materials(asset, tmp_path / "out")
+    assert result.maps["metallic"].startswith("assumed 0")
+    assert "default 1" in result.maps["metallic"]
+    assert result.maps["roughness"] == "factor"
