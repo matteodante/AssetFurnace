@@ -47,6 +47,7 @@ def list_bodies(output: Path) -> list[dict[str, Any]]:
             continue
         image = Path(record["image"])
         found.append({"name": record["name"], "labels": record.get("labels", {}), "clips": sorted(record.get("clips", {})),
+                      "dressing": body_mod.dressing_words(record),
                       "picture": rel(output, image) if output.resolve() in image.resolve().parents else None})
     return found
 
@@ -80,12 +81,16 @@ def catalogue() -> list[dict[str, Any]]:
 
 
 def register_body(output: Path, name: str, picture: Path, model: Path, rigged: Path,
-                  clips: dict[str, Path] | None = None, labels: dict[str, str] | None = None) -> dict:
+                  clips: dict[str, Path] | None = None, labels: dict[str, str] | None = None,
+                  dressing: str | None = None, dressing_words: str = "") -> dict:
     """A rigged character as a base body; `model` is the Pixal3D model it was rigged from,
-    whose saved camera puts the bones on the picture."""
+    whose saved camera puts the bones on the picture. `dressing` is how it is dressed under its
+    pieces (`body.DRESSINGS`, or "other" with `dressing_words`): the person's choice, never assumed."""
+    dressed = body_mod.dressing(dressing, dressing_words)
     labels = {str(k): str(v) for k, v in (labels or {}).items() if str(k).strip()}
     path = body_mod.register(str(name), Path(picture), Path(rigged), Path(model).with_suffix(".svviews"), None,
-                             labels, output / "bodies", {str(k): Path(v) for k, v in (clips or {}).items()})
+                             labels, output / "bodies", {str(k): Path(v) for k, v in (clips or {}).items()},
+                             dressing=dressed)
     return {"name": body_mod.load(path)["name"], "record": rel(output, path)}
 
 

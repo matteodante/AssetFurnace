@@ -56,10 +56,11 @@ def dress(outfit: str, guide: str = "body", style: str = "") -> str:
             f"same size and position in the frame. " + _tail(style, "full body, front view"))
 
 
-def add_piece(piece: str, style: str = "") -> str:
-    """`piece` drawn onto the character of image 1, everything else kept."""
+def add_piece(piece: str, style: str = "", wearing: str = "bodysuit") -> str:
+    """`piece` drawn onto the character of image 1, everything else kept, the clothes it is
+    `wearing` too (a base body's own, `slot_parts.body.dressing_words`)."""
     return (f"Add {piece} to the character in image 1, fitted closely to the body. Change nothing else: "
-            f"same body, bodysuit, proportions, T-pose, framing and background. " + _tail(style))
+            f"same body, {wearing}, proportions, T-pose, framing and background. " + _tail(style))
 
 
 def complete_piece(piece: str, style: str = "") -> str:

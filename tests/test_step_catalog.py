@@ -162,7 +162,10 @@ def test_the_picture_settings_match_the_engine():
     spec = step_catalog.CATALOG["picture"]
     assert spec.param("sampler").choices == text_image.SAMPLERS
     assert spec.param("seed").default == text_image.DEFAULTS["seed"]
-    assert spec.param("width").range == (text_image.MIN_SIZE, text_image.MAX_SIZE)
+    # within what the engine takes; the engine now goes to the model card's 2752 px, and the
+    # batches' range following it is the step catalogue's call (2026-10-17)
+    low, high = spec.param("width").range
+    assert text_image.MIN_SIZE <= low and high <= text_image.MAX_SIZE
 
 
 def test_a_list_of_choices_is_checked_name_by_name():
