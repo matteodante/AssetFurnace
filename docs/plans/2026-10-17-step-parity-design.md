@@ -293,6 +293,51 @@ Tutte le PR hanno avuto una revisione indipendente con un agente; i P1 trovati s
 | d4 | Unita (#77, seguito #82): una versione Blender va avanti a Finish, Rig e Animate, e quello che se ne fa resta nel suo asset con il suo id |
 | e | #81: passo `materials`, un materiale per asset o pezzo (scelto o proposto), `pieces_materials`, "Keep its own maps" nello studio. #79 (zone proprie) chiusa: contro la decisione dell'utente |
 
+## 14. Backlog (aggiornato a ogni PR)
+
+Tutto il lavoro chiesto a questa sessione, una riga per voce, con lo stato: aperto / PR #N / unito. Va confrontato con
+questa lista prima del resoconto finale.
+
+| Voce | Stato |
+|---|---|
+| Parità: impronte, `export_unreal`, `checks`, catalogo (a) | unito (#60, #63) |
+| Parità: revisione e pezzi via MCP (b1) | unito (#62) |
+| Parità: testo-immagine, `picture`, candidati, MCP dei passi (b2) | unito (#66) |
+| Parità: `rig`, `animate` (b3a) | unito (#67) |
+| Parità: passo `concept` (b3b) | unito (#68) |
+| Parità: `replace` (b3c) | PR #69 |
+| Parità: studio, Redo, seme, triangoli (c1) | unito (#70) |
+| Parità: opzioni Unreal e soglie nello studio (c2) | unito (#71) |
+| Parità: pagina Batches, scelte e "rifai un passo" (c3) | unito (#72, #76) |
+| Parità: clip della famiglia (d1) | unito (#73, #78) |
+| Parità: bibbia dello stile (d2) | unito (#74) |
+| Parità: pezzi, scelta del vestito, arma e scudo, azioni sui set (d3) | unito (#75) |
+| Parità: versioni Blender nella catena (d4) | unito (#77, #82) |
+| Parità: materiali, un materiale per asset o pezzo (e) | unito (#81); #79 chiusa |
+| Documento finale e tabella di parità | PR #80 (per ultima) |
+| Set vero 1: spada presa per la lama | PR #83 |
+| Set vero 2: concept senza i pezzi scelti non nominati | PR #84 |
+| Set vero 3: UV sovrapposte del Finish | PR #85 |
+| Set vero 4: lucchetto GPU (Pixal3D, giudice, sd-cli) | PR #86 |
+| Set vero 5: arma senza candidati | unito (#75) |
+| Set vero 6: frammenti staccati | PR #87 |
+| Set vero 7: giudice mancante senza avviso | PR #88 |
+| Decisione A: come è vestito il corpo base (tutina, abiti semplici, intimo, testo libero), scelto alla registrazione su tre strade, in `body.json` | aperto |
+| Decisione B: nello studio un set si ferma dopo le immagini, scelta automatica evidenziata, un clic per il 3D; CLI e agenti con un flag | aperto |
+| Decisione C: arma e scudo come static mesh su un socket della mano in Unreal (`hand_r` / `hand_l`), non pezzi skinnati | aperto |
+| C, collegato: l'arma segue l'osso del dito `middle_02_r` (i diti ereditano il ruolo "hand"); test sull'osso padre | aperto |
+| Decisione D: giudice (llama.cpp + Qwen3-VL) installato nel checkout principale con il bootstrap; Setup lo mostra; il lavoro avvisa | avviso e Setup: PR #88; installazione: aperto |
+| Decisione E: mantello (nuovo slot con fisica della stoffa) rimandato | scritto nei seguiti del progetto dei pezzi (#80) |
+| MCP 1: annotazioni degli strumenti (readOnly, destructive, idempotent, title) | aperto |
+| MCP 2: risultati tipizzati (outputSchema, structuredContent) | aperto |
+| MCP 3: file prodotti come resource link con mimeType | aperto |
+| MCP 4: notifiche di avanzamento; valutare i "tasks" dell'SDK | aperto |
+| MCP 5: solo percorsi sotto il repo, `output/` o le roots del client | aperto |
+| MCP 6: nome del server "assetfurnace", istruzioni, documentazione degli strumenti per funzione | aperto |
+| MCP 7: Streamable HTTP facoltativo su 127.0.0.1 con token, uso via tunnel SSH | aperto |
+| Pixal3D secondo la scheda ufficiale (12 passi, campo visivo stimato con MoGe-2) | aperto |
+| Review finale con Codex di tutto il lavoro, correzioni, resoconto | aperto |
+
 ## Seguiti
 
 - Codex non ha revisionato le PR di questo lavoro (limite d'uso raggiunto): ognuna ha avuto una revisione indipendente
