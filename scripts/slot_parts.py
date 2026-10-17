@@ -346,7 +346,7 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
     raw = dict(slot_text) if isinstance(slot_text, dict) else parse_slots(slot_text) if slot_text else {}
     for slot, words in (("weapon", weapon), ("shield", shield)):
         if words is not None:
-            raw[slot] = {"prompt": words}
+            raw[slot] = {**raw.get(slot, {}), "prompt": words}
     folder = Path(root) / set_name / record["name"]
     state_path = folder / "run_state.json"
     state = None
@@ -355,7 +355,8 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
             raise ValueError(f"nothing to resume for {set_name} on {record['name']}: no pictures waiting")
         state = json.loads(state_path.read_text(encoding="utf-8"))
         # the run as it was asked for: a weapon, shield, style or seeds given apart from the slots
-        raw.update({slot: dict(options) for slot, options in state.get("held", {}).items() if slot not in raw})
+        for slot, options in state.get("held", {}).items():
+            raw[slot] = {**dict(options), **raw.get(slot, {})}   # a material asked beside the words
         style = style or state.get("style", "")
         seeds = state.get("seeds") or seeds
     chosen = slots.choose(raw)

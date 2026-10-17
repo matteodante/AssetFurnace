@@ -11,6 +11,9 @@
                                          {"resume": true, "body", "set", "picks": {slot: seed}}
                                          goes on from there with the person's picks
     POST /api/slot-parts/run/cancel
+    POST /api/slot-parts/materials       {"set", "body", "pieces": {slot: material | null}}: a
+                                         person's material for pieces of a made set (null: back
+                                         to the rule's proposal); answers every piece's material
 
 Mode 1 (one piece) is the studio's usual + Create; it needs nothing here. A run is
 `scripts/slot_parts.py run` in the background, one at a time, its output in
@@ -28,7 +31,8 @@ from urllib.parse import unquote, urlsplit
 
 import batch_api
 
-from image_to_3dlab import processes
+from image_to_3dlab import piece_materials, processes
+from image_to_3dlab.slot_parts import body as body_mod
 from image_to_3dlab.slot_parts import runs
 
 REPO = Path(__file__).resolve().parents[1]
@@ -67,6 +71,27 @@ def _checked(output: Path, payload: dict) -> dict:
     if int(payload.get("mode", 3)) == 2 and not payload.get("resume"):
         return {**payload, "concept": _inside(output, payload.get("concept"))}
     return payload
+
+
+def made_set(output: Path, payload: dict) -> Path:
+    """A made set's folder, `output/sets/<set>/<body>/`, from the page's names."""
+    body, set_name = str(payload.get("body", "")), str(payload.get("set", ""))
+    if not body_mod.NAME.match(body) or not body_mod.NAME.match(set_name):
+        raise ValueError("name a set and its body: letters, digits, '.', '_' or '-'")
+    folder = output / "sets" / set_name / body
+    if not any(folder.glob("*.parts.json")):
+        raise ValueError(f"{set_name} on {body} is not a finished set")
+    return folder
+
+
+def save_materials(output: Path, payload: dict) -> dict:
+    """A person's materials for pieces of a set; every piece's material afterwards."""
+    folder = made_set(output, payload)
+    pieces = payload.get("pieces")
+    if not isinstance(pieces, dict) or not pieces:
+        raise ValueError("give the pieces' materials, e.g. {\"helmet\": \"leather\"}")
+    piece_materials.save_corrections(folder, {str(k): (None if v in (None, "") else str(v)) for k, v in pieces.items()})
+    return {"set": payload["set"], "body": payload["body"], "materials": piece_materials.set_materials(folder)}
 
 
 def resume_command(output: Path, payload: dict) -> tuple[list[str], Path]:
@@ -134,13 +159,16 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
             raise PermissionError("Use this Studio page to make sets")
         if not mutation and parts == ["api", "slot-parts"]:
             handler._send_json(200, {"base": "/output/", "bodies": list_bodies(output), "sets": list_sets(output),
-                                     "slots": catalogue(), "job": job_status(output)})
+                                     "slots": catalogue(), "materials": list(piece_materials.MATERIALS),
+                                     "job": job_status(output)})
         elif mutation and parts == ["api", "slot-parts", "bodies"]:
             handler._send_json(201, register_body(output, _body(handler)))
         elif mutation and parts == ["api", "slot-parts", "run"]:
             handler._send_json(202, start_run(output, _body(handler)))
         elif mutation and parts == ["api", "slot-parts", "run", "cancel"]:
             handler._send_json(200, cancel_run())
+        elif mutation and parts == ["api", "slot-parts", "materials"]:
+            handler._send_json(200, save_materials(output, _body(handler)))
         else:
             handler._send_json(404, {"error": "Unknown endpoint"})
     except PermissionError as exc:

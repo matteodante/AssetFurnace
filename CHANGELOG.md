@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `slot_parts.py materials SET_DIR --set helmet=leather` (saved in the set's `materials.json`).
   The Unreal export packs the material's roughness and metal into the ORM
   (`export_unreal.py --material`, and `slot_parts.py unreal` for every piece).
+- Studio menus for the one material per piece: in Pieces, a menu on each slot (Auto, or a
+  material chosen before the run) and, under each made set, Materials: every piece with its
+  material and why, corrected and saved (`POST /api/slot-parts/materials`, only the pieces a
+  person changed). Export for Unreal has one Material menu whose Auto shows the rule's pick
+  from the model's prompt (`GET /api/unreal-export/material`).
 - MCP tools for the review queue (`review_queue`, `review_item`, `check_asset` with
   thresholds, `review_decide`) and for characters in pieces (`pieces_list`,
   `pieces_add_body`, `pieces_run`, `pieces_status`, `pieces_pick`, `pieces_fit`,

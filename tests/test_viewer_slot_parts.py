@@ -216,3 +216,74 @@ def test_the_page_is_in_the_studio():
     assert 'id="piecesBtn"' in html
     assert "import { openSlotParts } from './slot-parts.js';" in app and "$('piecesBtn')" in app
     assert server.count("slot_parts_api.handle(self, OUTPUT_ROOT") == 2
+
+
+def _made_set(output):
+    folder = output / "sets" / "red" / "stick"
+    folder.mkdir(parents=True)
+    (folder / "red.parts.json").write_text(json.dumps({
+        "set": "red", "body": {"name": "stick"}, "slots": {"helmet": {"prompt": "a leather hood"}, "boots": {"prompt": ""}},
+        "pieces": {"helmet": {}, "boots": {}}, "concept": {"prompt": "red plate"}, "created": "2026-10-17"}))
+    return folder
+
+
+def test_sets_list_each_pieces_material_and_a_person_corrects_it(tmp_path):
+    output = tmp_path / "output"
+    folder = _made_set(output)
+    listed = slot_parts_api.list_sets(output)[0]["materials"]
+    assert listed["helmet"]["material"] == "leather" and listed["boots"]["material"] == "metal"
+    saved = slot_parts_api.save_materials(output, {"set": "red", "body": "stick", "pieces": {"boots": "leather"}})
+    assert saved["materials"]["boots"] == {"material": "leather", "by": "person", "reason": "corrected by a person"}
+    assert json.loads((folder / "materials.json").read_text())["pieces"] == {"boots": "leather"}
+    saved = slot_parts_api.save_materials(output, {"set": "red", "body": "stick", "pieces": {"boots": None}})
+    assert saved["materials"]["boots"]["by"] == "rule"
+    for bad, words in (({"set": "red", "body": "stick", "pieces": {"boots": "steel"}}, "one of"),
+                       ({"set": "red", "body": "stick", "pieces": {"tail": "fur"}}, "not a piece"),
+                       ({"set": "../red", "body": "stick", "pieces": {"boots": "fur"}}, "letters"),
+                       ({"set": "blue", "body": "stick", "pieces": {"boots": "fur"}}, "not a finished set"),
+                       ({"set": "red", "body": "stick", "pieces": {}}, "give the pieces")):
+        with pytest.raises(ValueError, match=words):
+            slot_parts_api.save_materials(output, bad)
+
+
+def test_a_material_asked_before_the_run_reaches_slots_json(tmp_path):
+    output = tmp_path / "output"
+    output.mkdir()
+    _body_json(output)
+    command, _ = slot_parts_api.run_command(output, {
+        "mode": 3, "body": "stick", "set": "red", "outfit": "red plate", "weapon": "a mace",
+        "slots": {"helmet": {"material": "cloth"}, "weapon": {"material": "wood"}, "shield": {"material": "metal"}}})
+    spec = json.loads(Path(command[command.index("--slots-json") + 1]).read_text())
+    assert spec["helmet"]["material"] == "cloth" and spec["weapon"] == {"material": "wood"}
+    assert "shield" not in spec                    # no shield is being made: its material is dropped
+
+
+@needs_node
+def test_the_run_request_carries_a_chosen_material():
+    out = _run("""
+      const slots = { helmet: { on: true, route: 'C', prompt: '', material: 'leather' }, boots: { on: true, material: '' },
+                      weapon: { on: true, prompt: 'a mace', material: 'wood' } };
+      const payload = m.runPayload({ mode: 3, body: 'human', set: 'red-1', outfit: 'red plate', slots });
+      console.log(JSON.stringify(payload.slots));""")
+    assert out["helmet"]["material"] == "leather" and "material" not in out["boots"]
+    assert out["weapon"] == {"material": "wood"}
+
+
+@needs_node
+def test_material_menus_offer_auto_then_the_words_and_tick_the_current_one():
+    out = _run("""
+      console.log(JSON.stringify([m.materialOptions(['metal', 'cloth'], ''), m.materialOptions(['metal', 'cloth'], 'cloth', null),
+        m.materialRows({ helmet: { material: 'leather', by: 'person', reason: 'corrected by a person' } }, ['metal', 'leather'])]));""")
+    auto, chosen, rows = out
+    assert auto.startswith('<option value="" selected>Auto</option>') and '<option value="metal">metal</option>' in auto
+    assert '<option value="cloth" selected>cloth</option>' in chosen and "Auto" not in chosen
+    assert 'data-set-material="helmet"' in rows and '<option value="leather" selected>' in rows
+    assert "corrected by a person" in rows
+
+
+@needs_node
+def test_saving_materials_sends_only_what_a_person_changed():
+    out = _run("""
+      console.log(JSON.stringify(m.changedMaterials([{ slot: 'legs', value: 'cloth', was: 'metal' },
+                                                     { slot: 'helmet', value: 'leather', was: 'leather' }])));""")
+    assert out == {"legs": "cloth"}

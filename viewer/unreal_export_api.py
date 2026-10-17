@@ -1,6 +1,7 @@
 """Studio endpoints for Export for Unreal: start an export, follow it, take the files.
 
     GET  /api/unreal-export                  what this machine can do (Blender, Unreal)
+    GET  /api/unreal-export/material?file=&kind=   the rule's material for that model, and why
     POST /api/unreal-export/jobs             start one: {file, kind, size_cm, measure, ...}
     GET  /api/unreal-export/jobs/<id>        its state, then the files and the checks
     GET  /api/unreal-export/jobs/<id>/zip    every file it wrote, in one download
@@ -23,7 +24,7 @@ import time
 import uuid
 import zipfile
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 import blender_edit_api
 
@@ -32,6 +33,7 @@ for _path in (REPO, REPO / "scripts"):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
+from image_to_3dlab import piece_materials  # noqa: E402
 from image_to_3dlab import unreal_profile as up  # noqa: E402
 from image_to_3dlab.blender import find_blender  # noqa: E402
 
@@ -79,7 +81,16 @@ def parse(output: Path, data: dict) -> dict:
     name = data.get("name")
     if name:
         request["name"] = up.base_name(str(name))
+    # One material per piece: the person's choice, else the rule's from the model's prompt.
+    asked = data.get("material")
+    request["material"] = (piece_materials.check(asked) if asked
+                           else proposal(request["source"], kind)["material"])
     return request
+
+
+def proposal(source: Path, kind: str) -> dict:
+    """The rule's material for a single asset: from the prompt it was made from, else its kind."""
+    return piece_materials.propose(kind=kind, words=piece_materials.prompt_for(source))
 
 
 def run_job(output: Path, job_id: str, request: dict, export=None, check=None) -> None:
@@ -182,7 +193,7 @@ def capabilities(handler) -> dict:
     local = local_desktop(handler)
     version = next((part for part in editor.parts if part.startswith("UE_")), None) if editor else None
     return {"blender": find_blender() is not None, "unreal": editor is not None and local,
-            "unreal_version": version,
+            "unreal_version": version, "materials": list(piece_materials.MATERIALS),
             "can_reveal": local, "kinds": list(up.KINDS), "measures": list(up.MEASURES)}
 
 
@@ -212,6 +223,12 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
         _check(handler, mutation)
         if not mutation and parts == ["api", "unreal-export"]:
             handler._send_json(200, capabilities(handler))
+        elif not mutation and parts == ["api", "unreal-export", "material"]:
+            query = parse_qs(urlsplit(handler.path).query)
+            kind = (query.get("kind") or [""])[0]
+            if kind not in up.KINDS:
+                raise ValueError("Choose what this is: object, creature or equipment piece")
+            handler._send_json(200, proposal(resolve(output, (query.get("file") or [""])[0]), kind))
         elif mutation and parts == ["api", "unreal-export", "jobs"]:
             if handler.headers.get_content_type() != "application/json":
                 raise ValueError("Expected JSON")
