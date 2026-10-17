@@ -14,11 +14,20 @@ export const FACES = [[5000, '5,000 triangles · phones, crowds'], [15000, '15,0
  * The picture job's settings from Create's choices. A new seed each time by default, so the
  * same prompt gives fresh tries; a fixed seed gives the same picture back.
  */
-export function pictureSettings({ size = 768, steps = 8, newEachTime = true, seed = 42 } = {}, random = Math.random) {
-  const side = [512, 768, 1024].includes(Number(size)) ? Number(size) : 768;
+// Qwen-Image 2.1's resolution presets, as the Turbo's card says (text_image.CARD_SIZES), the
+// square first; and a square 1024 draft, about five times faster.
+export const SIZE_PRESETS = [
+  ['1:1', 2048, 2048, 'Square 2048 (the card\'s, recommended)'], ['4:3', 2400, 1792, 'Landscape 4:3'],
+  ['3:4', 1792, 2400, 'Portrait 3:4'], ['3:2', 2528, 1696, 'Landscape 3:2'], ['2:3', 1696, 2528, 'Portrait 2:3'],
+  ['16:9', 2752, 1536, 'Wide 16:9'], ['9:16', 1536, 2752, 'Tall 9:16'], ['draft', 1024, 1024, 'Square 1024 (fast draft)'],
+];
+
+export function pictureSettings({ size = '1:1', steps = 8, newEachTime = true, seed = 42 } = {}, random = Math.random) {
+  const preset = SIZE_PRESETS.find(([name, w]) => name === String(size) || w === Number(size) && name === 'draft')
+    || SIZE_PRESETS[0];
   const count = Math.max(1, Math.min(50, Math.round(Number(steps)) || 10));
   const fixed = Number.isFinite(Number(seed)) ? Math.trunc(Number(seed)) : 42;
-  return { width: side, height: side, steps: count, seed: newEachTime ? freshSeed(random) : fixed };
+  return { width: preset[1], height: preset[2], steps: count, seed: newEachTime ? freshSeed(random) : fixed };
 }
 
 /** The 3D model's seed from Create's choice: a new one each time, or the one kept. */
@@ -39,7 +48,7 @@ export function openCreate({ stage, recipes, engines, presets, styleBible = null
   stage.appendChild(sheet);
   const state = { have: 'idea', want: 'character', stop: null, tips: false, useRecipe: true, text: '', file: null,
     engine: engines[0]?.id, firstMove: presets.find((p) => !p.take)?.id,
-    pic: { size: 768, steps: 8, newEachTime: true, seed: 42 }, keep: false,
+    pic: { size: '1:1', steps: 8, newEachTime: true, seed: 42 }, keep: false,
     model: { newEachTime: true, seed: 42 }, faces: 40000, useBible: false };
   const close = () => sheet.remove();
 
@@ -72,7 +81,7 @@ export function openCreate({ stage, recipes, engines, presets, styleBible = null
       ${active.includes('animated') ? `<label class="field">First move<select data-k="move">${presets.filter((p) => !p.take).map((p) => `<option value="${esc(p.id)}" ${p.id === state.firstMove ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select></label>` : ''}
       ${active.includes('picture') ? `<details class="adv"><summary>Advanced: picture settings</summary>
         <div class="picset">
-          <label class="field">Size<select data-pic="size">${[[512, '512 (fastest)'], [768, '768 (recommended)'], [1024, '1024 (best detail, slowest)']].map(([v, t]) => `<option value="${v}" ${v === state.pic.size ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+          <label class="field">Size<select data-pic="size">${SIZE_PRESETS.map(([v, , , t]) => `<option value="${v}" ${v === state.pic.size ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
           <label class="field">Steps<input type="number" data-pic="steps" min="1" max="50" value="${state.pic.steps}"><span class="hint">10 is a good start; each extra step adds the same time again.</span></label>
           <label class="check"><input type="checkbox" data-pic="newEachTime" ${state.pic.newEachTime ? 'checked' : ''}><span>New picture each time <span class="hint">untick to reuse a seed and get the same picture back</span></span></label>
           ${state.pic.newEachTime ? '' : `<label class="field">Seed<input type="number" data-pic="seed" step="1" value="${state.pic.seed}"></label>`}

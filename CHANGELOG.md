@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Text to image follows Qwen-Image 2.1 Turbo's card on every route, as the command line already
+  did: the batches' `picture` step and a set's weapon and shield pictures draw at 2048 with the
+  card's transparent background and prompt rewriting (`transparent`, `rewrite` in the step
+  catalogue; `--opaque`, `--no-rewrite` on `scripts/text_image.py`), and Create in the studio
+  offers the card's seven presets, square 2048 first, with 1024 as a fast draft. The catalogue
+  says a negative prompt works only with `cfg_scale` above 1, and carries the Unreal export's
+  `two_sided` (`--two-sided` on `scripts/export_unreal.py`).
 - The final review of the step parity work (Codex, by area) found these, each fixed with a test:
   - a row that starts from words passes Finish's preflight before its picture is drawn;
   - Checks and Finish's repaint use the picture the model was made from (a concept step's),
