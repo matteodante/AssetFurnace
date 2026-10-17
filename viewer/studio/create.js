@@ -79,7 +79,7 @@ export function openCreate({ stage, recipes, engines, presets, onStart, onRefere
       ${active.includes('model') ? `<details class="adv"><summary>Advanced: 3D model</summary>${engines.length > 1 ? `<label class="field">Engine<select data-k="engine">${engines.map((e, i) => `<option value="${esc(e.id)}" ${e.id === state.engine ? 'selected' : ''}>${i ? '' : 'Best quality: '}${esc(e.label)}</option>`).join('')}</select></label>` : ''}<label class="check"><input type="checkbox" data-model="newEachTime" ${state.model.newEachTime ? 'checked' : ''}><span>New 3D model each time <span class="hint">untick to reuse a seed and get the same model back</span></span></label>
         ${state.model.newEachTime ? '' : `<label class="field">3D seed<input type="number" data-model="seed" min="0" step="1" value="${state.model.seed}"></label>`}
         <label class="check"><input type="checkbox" data-k="keep" ${state.keep ? 'checked' : ''}><span>Keep everything <span class="hint">textures, in-between meshes and resume files, for digging into a bad result. Takes a lot more disk.</span></span></label></details>` : ''}
-      ${active.includes('finished') && state.want !== 'prop' ? `<label class="field">Detail<select data-k="faces">${FACES.map(([v, t]) => `<option value="${v}" ${v === state.faces ? 'selected' : ''}>${t}</option>`).join('')}</select></label>` : ''}
+      ${active.includes('finished') ? `<label class="field">Detail<select data-k="faces">${FACES.map(([v, t]) => `<option value="${v}" ${v === state.faces ? 'selected' : ''}>${t}</option>`).join('')}</select></label>` : ''}
       <p class="error" data-error hidden></p>
       <div class="row end"><span class="hint">${active.length} step${active.length === 1 ? '' : 's'}${active.includes('picture') ? ' · the picture uses Qwen-Image, run on this machine' : ''}</span><button type="submit" class="primary">Make it</button></div>
     </form>`;
@@ -141,7 +141,7 @@ export function openCreate({ stage, recipes, engines, presets, onStart, onRefere
         description: state.text.trim(), prompt: state.have === 'idea' ? composePrompt(state.text, state.want, recipes, state.useRecipe) : null,
         pictureSettings: active.includes('picture') ? pictureSettings(state.pic) : null,
         modelSeed: active.includes('model') ? modelSeedFor(state.model) : null,   // a new 3D try each time unless kept
-        finishSettings: active.includes('finished') && state.want !== 'prop' ? { faces: state.faces } : null,
+        finishSettings: active.includes('finished') ? { faces: state.faces } : null,
         keepEverything: active.includes('model') && state.keep });
     };
     text?.focus();

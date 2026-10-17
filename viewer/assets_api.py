@@ -350,7 +350,7 @@ def made_with(model: dict[str, Any] | None, fin: dict[str, Any] | None) -> dict[
     made: dict[str, Any] = {}
     record = _json(model.get("record")) if model else {}
     if record:
-        seed = (record.get("parameters") or {}).get("seed")
+        seed = (record.get("parameters") or (record.get("model") or {}).get("parameters") or {}).get("seed")
         engine = record.get("backend") or (record.get("model") or {}).get("backend")
         made["model"] = {"seed": seed if isinstance(seed, int) else None, "engine": engine}
     settings = _json(fin.get("settings")) if fin else {}
