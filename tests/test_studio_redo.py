@@ -166,3 +166,33 @@ def test_a_triangle_count_made_outside_the_list_is_offered_as_made():
       console.log(JSON.stringify(m.stepBody('finished', asset, {{ engines: [], presets: [] }}, {{ redo: true }})));""")
     assert '<option value="18000" selected>18,000 triangles · as made</option>' in out
     assert out.index('value="15000"') < out.index('value="18000"') < out.index('value="40000"')
+
+
+@needs_node
+def test_redoing_the_3d_model_tries_a_new_seed_unless_one_is_chosen():
+    """Redo with nothing changed would make the same model again: a new seed is the default,
+    the one it was made with shown and kept in the box for whoever wants it back."""
+    out = _run("steps.js", f"""
+      const asset = {json.dumps(KNIGHT)};
+      const ctx = {{ engines: [{{ id: 'pixal3d', label: 'Pixal3D', license: 'x' }}], presets: [] }};
+      console.log(JSON.stringify(m.stepBody('model', asset, ctx, {{ redo: true }})));""")
+    assert 'data-k="newseed" checked' in out and "it was 77" in out and 'data-seedbox hidden' in out
+
+
+def test_a_seed_kept_in_a_provenance_shaped_record_is_read(tmp_path):
+    out = tmp_path / "output"
+    run = "a-crate__20261005-205524__sf3d__20261005-210000"
+    _write(out / "images" / "a-crate__20261005-205524" / "a-crate__20261005-205524.png", b"png", 1000)
+    _write(out / "conditional" / run / f"{run}.glb", b"CRATE", 2000)
+    _write(out / "conditional" / run / f"{run}.json",
+           json.dumps({"model": {"backend": "sf3d", "parameters": {"seed": 9}}}), 2000)
+    (asset,) = [a for a in assets_api.list_assets(out) if a["model"]]
+    assert asset["made"]["model"] == {"seed": 9, "engine": "sf3d"}
+
+
+@needs_node
+def test_one_prop_chooses_its_triangles_in_create_too():
+    out = _run("create.js", """
+      const form = m.planForm({ steps: ['picture', 'model', 'finished'], want: 'prop', finishSettings: { faces: 5000 } });
+      console.log(JSON.stringify(form.get('finish_settings')));""")
+    assert json.loads(out) == {"faces": 5000}
