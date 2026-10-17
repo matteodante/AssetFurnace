@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- A batch refuses a research-only source (Qwen's pictures, since its licence was read) only
+  for a run with commercial intent, as a run's own backends are; any other run goes on, with
+  a warning in its log, its state (`licence_warnings`) and `validate_batch`. A set's record
+  takes its licence class from the models that made it (research-only) instead of a fixed one.
 - The final review of the step parity work (Codex, by area) found these, each fixed with a test:
   - a row that starts from words passes Finish's preflight before its picture is drawn;
   - Checks and Finish's repaint use the picture the model was made from (a concept step's),
