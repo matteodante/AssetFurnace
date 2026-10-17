@@ -121,24 +121,68 @@ def _take(path: Path, mine: str) -> bool:
     return True
 
 
-def _break(path: Path, judged: str) -> None:
-    """Remove the stale lock `judged`, and only that one: it is moved aside first, and if
-    what moved is someone's fresh lock taken a moment ago, it is put back."""
-    aside = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.stale")
+def breaking(path: Path) -> Path:
+    """The file a job holds while it removes a stale lock at `path`: one breaker at a time."""
+    return path.with_name(f"{path.name}.breaking")
+
+
+def _break(path: Path, judged: str, alive: Callable[[int], bool] = pid_alive) -> bool:
+    """Remove the stale lock `judged`, and only that one. Two waiters can judge the same dead
+    lock; moving it aside and back (as this did before) let a third job take the GPU in
+    between. Now one breaker at a time holds `breaking(path)`, and under it the lock is
+    removed only while it still says `judged`: a dead holder never rewrites its lock, a taker
+    only creates one where there is none, and every other breaker waits on the guard, so
+    nothing can replace it between the reading and the removal. False while another
+    breaker is at it."""
+    guard = breaking(path)
     try:
-        os.rename(path, aside)
-    except (FileNotFoundError, PermissionError):       # gone already, or open: look again
-        return
-    try:
-        moved = aside.read_text(encoding="utf-8").strip()
+        handle = os.open(guard, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        _clear_dead_guard(guard, alive)
+        return False                                   # someone else is at it: look again
     except OSError:
-        moved = judged
-    if moved != judged:
+        return False
+    with os.fdopen(handle, "w", encoding="utf-8") as out:
+        out.write(str(os.getpid()))
+    try:
         try:
-            os.link(aside, path)                       # theirs again, unless a third took it
+            now = path.read_text(encoding="utf-8").strip()
+        except OSError:                                # gone already, or open: look again
+            return True
+        if now == judged:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+    finally:
+        _unlink(guard)
+    return True
+
+
+GUARD_STALE = 60.0  # a breaker holds its guard for milliseconds; older than this, it died
+
+
+def _clear_dead_guard(guard: Path, alive: Callable[[int], bool]) -> None:
+    """Remove the guard of a breaker that died holding it, else it would block every break."""
+    try:
+        text = guard.read_text(encoding="utf-8").strip()
+        age = time.time() - guard.stat().st_mtime
+    except OSError:
+        return
+    if (text.isdigit() and not alive(int(text))) or age > GUARD_STALE:
+        _unlink(guard)
+
+
+def _unlink(path: Path, attempts: int = 500, nap: float = 0.01) -> None:
+    """Delete `path`; on Windows a reader that has it open makes that fail for a moment."""
+    for _ in range(attempts):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            time.sleep(nap)
         except OSError:
-            pass
-    aside.unlink(missing_ok=True)
+            return
 
 
 def _stale(path: Path, pid: int | None, alive: Callable[[int], bool],
@@ -180,7 +224,8 @@ def gpu(session: str, *, wait: float = 3600.0, poll: float = 10.0, path: Path | 
             continue                                   # released between the two calls
         pid, text = found
         if _stale(path, pid, alive, started):
-            _break(path, text)
+            if not _break(path, text, alive):
+                sleep(min(poll, 0.05))
             continue
         if clock() - start > wait:
             raise GpuBusy(f"the GPU is busy ({text or 'an empty lock file'}); try again when it is free")

@@ -49,7 +49,7 @@ from typing import Any
 
 from . import manifest_run, step_catalog
 from .batch_steps import StepContext
-from .processes import group_alive, process_alive
+from .processes import group_alive, process_alive, sigterm_as_interrupt
 from .provenance import validate_run_policy
 
 REPO = Path(__file__).resolve().parents[1]
@@ -1916,8 +1916,11 @@ def run_from_cli(spec_path: Path, intent: dict[str, Any], retry_failed: bool) ->
     3 some rows wait for a pick (none failed),
     130 interrupted (run the same command again to resume)."""
     try:
-        spec = load_batch(spec_path, intent=intent)
-        report = run_batch(spec, retry_failed=retry_failed)
+        # cancel_batch stops the batch's group with SIGTERM: unwound like Ctrl+C, the row in
+        # progress goes back in the queue and its children stop before the GPU lock goes
+        with sigterm_as_interrupt():
+            spec = load_batch(spec_path, intent=intent)
+            report = run_batch(spec, retry_failed=retry_failed)
     except BatchError as exc:
         for problem in exc.problems:
             print(f"error: {problem}", file=sys.stderr)

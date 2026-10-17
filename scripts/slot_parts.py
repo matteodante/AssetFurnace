@@ -454,11 +454,13 @@ def make_concept(body_json: Path, outfit: str, folder: Path, seeds: list[int], s
     prompt = prompts.add_piece(pieces.concept_outfit(outfit, chosen or {}), style=style,
                                wearing=body_mod.dressing_words(record))
     folder.mkdir(parents=True, exist_ok=True)
+    body_sha = sidecar.sha256(Path(record["image"]))
     for seed in seeds:
         picture = folder / f"s{seed}.png"
         done = sidecar.read(picture) if picture.is_file() else None
-        if done and done.get("prompt") == prompt:
-            continue   # drawn already for these words: a pick draws nothing again
+        if (done and done.get("prompt") == prompt
+                and [r.get("sha256") for r in done.get("references") or []] == [body_sha]):
+            continue   # drawn already for these words on this very picture: a pick draws nothing again
         command = edit(prompt, Path(record["image"]), picture, seed)
         run(command)
         sidecar.write(picture, mode="add_piece", prompt=prompt, seed=seed, command=command,
