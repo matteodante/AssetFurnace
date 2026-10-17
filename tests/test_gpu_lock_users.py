@@ -58,3 +58,23 @@ def test_a_set_draws_with_the_lock_and_runs_blender_without_it(monkeypatch):
     slot_parts._run([str(Path("vendor") / "sdcpp" / "sd-cli.exe"), "-p", "a helmet"])
     slot_parts._run(["blender.exe", "--background"])
     assert held == ["slot_parts sd-cli"]
+
+
+def test_a_busy_gpu_leaves_the_pick_to_the_silhouette(tmp_path, monkeypatch, capsys):
+    from image_to_3dlab.slot_parts import candidates
+
+    class Busy:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            raise gpu_lock.GpuBusy("the GPU is busy (1 other session)")
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(judge, "LlamaServer", Busy)
+    monkeypatch.setattr(candidates, "score_all", lambda *a, **kw: {"torso": {}})
+    scores, used = slot_parts.score_candidates({}, tmp_path, tmp_path / "pieces", [1, 2])
+    assert scores == {"torso": {}} and used.startswith("shape only")
+    assert "silhouette" in capsys.readouterr().out

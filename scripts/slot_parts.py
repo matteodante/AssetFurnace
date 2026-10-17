@@ -180,6 +180,7 @@ def uses_gpu(command: list[str]) -> bool:
 
 def score_candidates(record: dict, cuts_dir: Path, folder: Path, seeds: list[int]) -> tuple[dict, str]:
     """Every slot's pictures scored, with Qwen3-VL when it is there; (scores, judge used)."""
+    from image_to_3dlab import gpu_lock
     from image_to_3dlab.style import judge, models
 
     Path(folder).mkdir(parents=True, exist_ok=True)
@@ -187,8 +188,12 @@ def score_candidates(record: dict, cuts_dir: Path, folder: Path, seeds: list[int
         server = judge.LlamaServer(log=Path(folder) / "judge.log")
     except models.MissingModel as missing:
         return candidates.score_all(record, cuts_dir, folder, seeds), f"shape only ({missing})"
-    with server:
-        return candidates.score_all(record, cuts_dir, folder, seeds, ask=candidates.make_asker(server.post)),             "qwen3-vl-8b"
+    try:
+        with server:
+            return candidates.score_all(record, cuts_dir, folder, seeds, ask=candidates.make_asker(server.post)),                 "qwen3-vl-8b"
+    except gpu_lock.GpuBusy as busy:   # another session kept the GPU: the set goes on, picked by silhouette
+        print(f"going on without the picture judge ({busy}): picking by silhouette only", flush=True)
+        return candidates.score_all(record, cuts_dir, folder, seeds), f"shape only ({busy})"
 
 
 def make_pieces(cuts_json: Path, seeds: list[int], picks: dict[str, int] | None = None, images: bool = True,
