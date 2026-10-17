@@ -264,3 +264,10 @@ def test_zones_default_to_sam2_until_sam3_is_granted(tmp_path, monkeypatch):
     import inspect
 
     assert inspect.signature(mz.find_zones).parameters["segmenter"].default == "sam2"
+
+
+def test_a_zones_mean_colour_includes_the_base_colour_factor(tmp_path):
+    _, zone, _ = zoned(tmp_path)
+    white = np.full((SIZE, SIZE, 3), 255, np.uint8)
+    records = mz.zone_records(zone, white, factor=(0.5, 0.5, 0.5))
+    assert records[0]["mean_linear"] == pytest.approx([0.5, 0.5, 0.5])

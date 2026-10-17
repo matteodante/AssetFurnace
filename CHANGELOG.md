@@ -229,6 +229,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concept record and `output/concept/judgements.jsonl`.
 
 ### Fixed
+- Game materials, from Codex's review: an interrupted `bootstrap_materials.py` no longer counts
+  as installed (a marker is written after the last package); `pbr_trial.py` tries failed assets
+  again; the label trials leave out a GLB regenerated since it was labelled; zone mean colours
+  include `baseColorFactor`; a delit concept never overwrites its source's provenance; the views'
+  near clip follows the model's size, so models a few centimetres wide are no longer cut away.
 - The studio reads and writes its JSON and text files as UTF-8 on every machine, and the
   test suite passes on Windows without `PYTHONUTF8=1`: with the locale's cp1252, an em dash
   or a middle dot written as UTF-8 failed to decode. `tests/test_text_encoding.py` keeps new

@@ -32,7 +32,12 @@ from image_to_3dlab.materials import surfaces  # noqa: E402
 
 
 def human(folder: Path, labels: Path, segmenter: str) -> int:
+    from image_to_3dlab.material_labels import still_labelled
+
     rows = [r for r in json.loads(labels.read_text(encoding="utf-8")) if r.get("points")]
+    rows, changed = still_labelled(rows)
+    for row in changed:
+        print(f"  {row.get('key')}: the file is not the version labelled; left out", flush=True)
     per_asset, hits, total = [], 0, 0
     for row in rows:
         work = folder / "work" / row["key"].replace("/", "_")
@@ -45,7 +50,8 @@ def human(folder: Path, labels: Path, segmenter: str) -> int:
     agreement = hits / total if total else None
     report = {"segmenter": segmenter, "assets": len(rows), "points": total, "agreement": agreement,
               "threshold": mz.POINT_AGREEMENT,
-              "admitted": agreement is not None and agreement >= mz.POINT_AGREEMENT, "per_asset": per_asset}
+              "admitted": agreement is not None and agreement >= mz.POINT_AGREEMENT, "per_asset": per_asset,
+              "left_out_changed": [r.get("key") for r in changed]}
     folder.mkdir(parents=True, exist_ok=True)
     (folder / f"report-human-{segmenter}.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps({k: v for k, v in report.items() if k != "per_asset"}, indent=2))
