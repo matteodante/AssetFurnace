@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 
@@ -54,3 +55,141 @@ def test_an_unreadable_lock_is_read_as_held_by_nobody_known(tmp_path):
 
 def test_this_process_is_alive():
     assert gpu_lock.pid_alive(os.getpid())
+
+
+# ---- a lock nobody can read, a reused pid, two takers at once ------------------------
+
+def _aged(path, seconds):
+    old = path.stat().st_mtime - seconds
+    os.utime(path, (old, old))
+
+
+@pytest.mark.parametrize("content", ["", "garbage"])
+def test_an_unreadable_lock_left_for_a_minute_is_taken_over(tmp_path, content):
+    # 2026-10-17 audit: a writer that died between creating the file and writing its pid
+    # left an empty lock, and every GPU job then waited an hour for nobody
+    path = tmp_path / "gpu.lock"
+    path.write_text(content, encoding="utf-8")
+    _aged(path, gpu_lock.UNREADABLE_AFTER + 5)
+    naps = []
+    with gpu_lock.gpu("materials", path=path, sleep=naps.append):
+        assert path.read_text(encoding="utf-8") == f"{os.getpid()} materials"
+    assert naps == []
+
+
+def test_a_fresh_empty_lock_is_someone_still_writing_it(tmp_path):
+    path = tmp_path / "gpu.lock"
+    path.write_text("", encoding="utf-8")
+    clock = iter(range(0, 100, 10))
+    with pytest.raises(gpu_lock.GpuBusy), gpu_lock.gpu(
+            "materials", path=path, wait=15, poll=10, sleep=lambda s: None, clock=lambda: next(clock)):
+        pass
+    assert path.exists()
+
+
+def test_a_live_pid_that_started_after_the_lock_was_written_is_a_reused_number(tmp_path):
+    path = tmp_path / "gpu.lock"
+    path.write_text("4242 reference-concept", encoding="utf-8")
+    written = path.stat().st_mtime
+    with gpu_lock.gpu("materials", path=path, alive=lambda pid: True, started=lambda pid: written + 600,
+                      sleep=lambda s: None):
+        assert path.read_text(encoding="utf-8").endswith(" materials")
+
+
+def test_a_live_pid_older_than_its_lock_is_still_the_holder(tmp_path):
+    path = tmp_path / "gpu.lock"
+    path.write_text("4242 reference-concept", encoding="utf-8")
+    written = path.stat().st_mtime
+    clock = iter(range(0, 100, 10))
+    with pytest.raises(gpu_lock.GpuBusy), gpu_lock.gpu(
+            "materials", path=path, wait=15, poll=10, alive=lambda pid: True,
+            started=lambda pid: written - 600, sleep=lambda s: None, clock=lambda: next(clock)):
+        pass
+
+
+def test_the_lock_never_exists_without_its_holder_written_in_it(tmp_path, monkeypatch):
+    path = tmp_path / "gpu.lock"
+    seen = []
+    real_link = os.link
+
+    def watching(src, dst, *a, **k):
+        real_link(src, dst, *a, **k)
+        seen.append(Path(dst).read_text(encoding="utf-8"))
+    monkeypatch.setattr(gpu_lock.os, "link", watching)
+    with gpu_lock.gpu("materials", path=path):
+        pass
+    assert seen == [f"{os.getpid()} materials"]
+    assert list(tmp_path.iterdir()) == []      # no temporary file left behind
+
+
+def test_a_stale_lock_taken_over_by_someone_else_meanwhile_is_given_back(tmp_path, monkeypatch):
+    # two jobs see the same dead lock; the first takes it over before the second removes
+    # it, and the second must not delete the first one's fresh lock
+    path = tmp_path / "gpu.lock"
+    path.write_text("4242 dead", encoding="utf-8")
+    real_rename = os.rename
+
+    def overtaken(src, dst):
+        if str(src) == str(path):
+            path.write_text("777 first", encoding="utf-8")   # the first job got there first
+        real_rename(src, dst)
+    monkeypatch.setattr(gpu_lock.os, "rename", overtaken)
+    clock = iter(range(0, 100, 10))
+    with pytest.raises(gpu_lock.GpuBusy, match="777 first"), gpu_lock.gpu(
+            "second", path=path, wait=15, poll=10, alive=lambda pid: pid == 777,
+            sleep=lambda s: None, clock=lambda: next(clock)):
+        pass
+    assert path.read_text(encoding="utf-8") == "777 first"
+
+
+@pytest.mark.parametrize("round_", range(5))
+def test_of_many_takers_at_once_exactly_one_holds_the_lock(tmp_path, round_):
+    import threading
+
+    path = tmp_path / "gpu.lock"
+    held, inside, barrier = [], [], threading.Barrier(8)
+
+    def take(n):
+        barrier.wait()
+        with gpu_lock.gpu(f"t{n}", path=path, sleep=lambda s: None, poll=0, wait=60):
+            inside.append(n)
+            held.append(len(inside))
+            inside.remove(n)
+
+    threads = [threading.Thread(target=take, args=(n,), daemon=True) for n in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(60)
+    # 2026-10-17: a release that met a reader on Windows left the lock behind, and the
+    # other seven spun on it until the suite was killed. Fail, never hang.
+    assert not any(t.is_alive() for t in threads), "a taker never got the lock"
+    assert len(held) == 8 and max(held) == 1
+    assert not path.exists()
+
+
+def test_the_lock_is_let_go_even_while_someone_reads_it(tmp_path, monkeypatch):
+    """Windows cannot delete a file another process has open: a job reading who holds the
+    lock at that moment made the release fail, silently, and the lock stayed for good."""
+    path = tmp_path / "gpu.lock"
+    real = Path.unlink
+    refused = []
+
+    def busy(self, missing_ok=False):
+        if self == path and len(refused) < 5:
+            refused.append(1)
+            raise PermissionError(32, "being read by another process")
+        return real(self, missing_ok=missing_ok)
+
+    monkeypatch.setattr(Path, "unlink", busy)
+    with gpu_lock.gpu("materials", path=path):
+        pass
+    assert len(refused) == 5 and not path.exists()
+
+
+def test_this_process_started_before_now():
+    import time
+
+    started = gpu_lock.process_started(os.getpid())
+    if started is not None:
+        assert started <= time.time()

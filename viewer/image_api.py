@@ -22,6 +22,7 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from image_to_3dlab import gpu_lock, text_image
 from image_to_3dlab.host import NVIDIA, host_platform
 from image_to_3dlab.sdcpp import NO_GPU_HELP
 
@@ -42,6 +43,7 @@ from image_to_3dlab.text_image import (  # noqa: F401 - re-exported for the stud
     OUTPUT_ROOT,
     SAMPLERS,
     SIZE_STEP,
+    T2I_DEFAULTS,
     TURBO_SIGMAS,
     TURBO_STEPS,
     WEIGHT_FILES,
@@ -52,6 +54,7 @@ from image_to_3dlab.text_image import (  # noqa: F401 - re-exported for the stud
     find_weight,
     is_installed,
     parse_progress,
+    prepare_prompt,
     provenance,
     resolve_weights,
     run_sdcli,
@@ -154,16 +157,28 @@ class ImageJobManager:
         return True
 
 
+# how often a picture waiting for the GPU looks again (and tells the page it still waits)
+GPU_POLL = 10.0
+
+
+class _Cancelled(Exception):
+    pass
+
+
 def run_job(job: ImageJob, manager: ImageJobManager,
             weights: dict[str, Path] | None = None) -> None:
-    """Drive one sd-cli run to completion, emitting progress as it goes."""
+    """Drive one sd-cli run to completion, emitting progress as it goes. sd-cli runs
+    holding the shared GPU lock, as every GPU job here does; while another session holds
+    it the job stays queued, says whom it waits for, and can be cancelled."""
     try:
         weights = weights or resolve_weights()
-        command = build_command(job.prompt, job.settings, job.output_path, weights)
+        if job.settings.get("rewrite") and not job.extra_args:
+            job.set_status("queued", message="Rewriting the prompt (Qwen-Image's own recipe, on this machine)")
+        sent, notes = prepare_prompt(job.prompt, job.settings, weights=weights, references=bool(job.extra_args),
+                                     log=job.log_lines.append, lock_path=text_image.GPU_LOCK)
+        command = build_command(sent, job.settings, job.output_path, weights)
         if job.extra_args:
             command = command[:1] + job.extra_args + command[1:]
-        job.set_status("running", total_steps=job.settings["steps"])
-        started = time.monotonic()
 
         def on_line(line: str) -> None:
             job.log_lines.append(line)
@@ -171,10 +186,24 @@ def run_job(job: ImageJob, manager: ImageJobManager,
             if event:
                 job.emit(event)
 
-        # Only where a GPU is expected from a runtime-loaded backend. The Mac build is
-        # Metal and says nothing of the sort.
-        code, _, no_gpu = run_sdcli(command, watch_gpu=host_platform() == NVIDIA, on_line=on_line,
-                                    on_process=lambda process: setattr(job, "process", process))
+        def waiting(seconds: float) -> None:
+            if job.cancel_requested:
+                raise _Cancelled
+            found = gpu_lock.holder(text_image.GPU_LOCK)
+            job.set_status("queued", message=f"Waiting for the GPU: {found[1] if found else 'busy'}")
+            time.sleep(seconds)
+            if job.cancel_requested:
+                raise _Cancelled
+
+        with gpu_lock.gpu("studio-image", path=text_image.GPU_LOCK, poll=GPU_POLL, sleep=waiting):
+            if job.cancel_requested:
+                raise _Cancelled
+            job.set_status("running", total_steps=job.settings["steps"])
+            started = time.monotonic()
+            # Only where a GPU is expected from a runtime-loaded backend. The Mac build is
+            # Metal and says nothing of the sort.
+            code, _, no_gpu = run_sdcli(command, watch_gpu=host_platform() == NVIDIA, on_line=on_line,
+                                        on_process=lambda process: setattr(job, "process", process))
         elapsed = time.monotonic() - started
         if job.cancel_requested:
             job.set_status("cancelled")
@@ -191,10 +220,12 @@ def run_job(job: ImageJob, manager: ImageJobManager,
                            log="\n".join(list(job.log_lines)[-12:]))
         else:
             sidecar = job.output_path.with_suffix(".provenance.json")
-            record = provenance(job.prompt, job.settings, elapsed, job.output_path)
-            sidecar.write_text(json.dumps({**job.extra_provenance, **record}, indent=2), encoding="utf-8")
+            record = provenance(job.prompt, job.settings, elapsed, job.output_path, prompt_sent=sent)
+            sidecar.write_text(json.dumps({**job.extra_provenance, **notes, **record}, indent=2), encoding="utf-8")
             job.set_status("done", result_url=f"/api/image/{job.id}/result.png",
                            elapsed_seconds=round(elapsed, 1))
+    except _Cancelled:
+        job.set_status("cancelled")
     except MissingWeights as exc:
         job.error = str(exc)
         job.set_status("error", error=job.error, needs_setup=True)
@@ -217,8 +248,14 @@ def with_style(prompt: str, payload: dict[str, Any]) -> tuple[str, dict[str, Any
     return (apply.styled(prompt, style), {"style": apply.record(style)}) if style else (prompt, {})
 
 
+def t2i_settings(raw: dict[str, Any]) -> dict[str, Any]:
+    """Text to image as the model card says (size, transparency, rewriting), where the
+    request does not say otherwise."""
+    return {**{k: T2I_DEFAULTS[k] for k in ("width", "height", "transparent", "rewrite")}, **raw}
+
+
 def start(prompt: str, raw_settings: dict[str, Any], extra_provenance: dict[str, Any] | None = None) -> ImageJob:
-    settings = clean_settings(raw_settings)
+    settings = clean_settings(t2i_settings(raw_settings))
     job = MANAGER.create(prompt, settings, extra_provenance=extra_provenance)
     threading.Thread(target=run_job, args=(job, MANAGER), daemon=True).start()
     return job

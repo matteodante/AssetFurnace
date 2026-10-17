@@ -30,8 +30,9 @@ if str(REPO) not in sys.path:
 import image_to_3dlab
 from image_to_3dlab.host import os_family
 
-LATEST_URL = "https://api.github.com/repos/Bingeljell/image-to-3dlab/releases/latest"
-RAW = "https://raw.githubusercontent.com/Bingeljell/image-to-3dlab/main"
+# This copy's own releases (none yet, so the check finds nothing newer): the upstream's
+# would offer an "update" that is not this code.
+LATEST_URL = "https://api.github.com/repos/matteodante/AssetFurnace/releases/latest"
 CACHE = REPO / "output" / ".update-check.json"
 MAX_AGE = 24 * 3600
 
@@ -51,11 +52,13 @@ def _version(tag: str | None) -> tuple[int, ...] | None:
 
 
 def update_command(repo: Path, family: str) -> str:
-    """The installer line that updates *this* folder, not a fresh copy in the default."""
+    """The installer line that updates *this* folder, not a fresh copy in the default: the
+    clone's own installer, since this repository is private and has no raw download."""
     if family == "windows":
         literal = str(repo).replace("'", "''")
-        return f"$env:I3D_DIR = '{literal}'; irm {RAW}/install.ps1 | iex"
-    return f"curl -fsSL {RAW}/install.sh | bash -s -- --dir {shlex.quote(str(repo))}"
+        script = str(repo / "install.ps1").replace("'", "''")
+        return f"$env:I3D_DIR = '{literal}'; & '{script}'"
+    return f"bash {shlex.quote(str(repo) + '/install.sh')} --dir {shlex.quote(str(repo))}"
 
 
 def _read_cache(path: Path) -> dict[str, Any]:

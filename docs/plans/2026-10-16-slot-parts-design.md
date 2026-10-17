@@ -63,7 +63,7 @@ Niente pesi nuovi: tutto ciò che serve è già installato.
 ### Il corpo base
 
 Un corpo base è un personaggio fatto con i passi che esistono:
-- immagine frontale in T-pose con calzamaglia;
+- immagine frontale in T-pose, vestita come decide l'utente (sotto);
 - Pixal3D a vista singola (serve la sua camera per proiettare);
 - SkinTokens con i pesi puliti.
 
@@ -72,7 +72,14 @@ Nello studio un bottone **"Usa come corpo base"** lo registra in `output/bodies/
 - il GLB rigato;
 - la camera di Pixal3D;
 - i ruoli delle ossa (testa, mani, piedi… trovati dalla forma dell'albero, come nella prova);
-- due etichette libere (per Auroconts: razza e sesso).
+- due etichette libere (per Auroconts: razza e sesso);
+- **come è vestito sotto i pezzi**, scelto dall'utente alla registrazione su tutte e tre le strade (decisione del
+  17/10/2026): `bodysuit` (calzamaglia), `clothes` (abiti semplici: camicia, brache, scarpe di stoffa, come in 4Story
+  o WoW, così fra un pezzo d'armatura e l'altro si vede un indumento), `underwear` (intimo minimo), oppure `other` con
+  parole proprie. Nessuna scelta è imposta: `slot_parts.py body --dressing`, `pieces_add_body(dressing=)`, il menu
+  "Dressed under its pieces" nello studio. Sta in `body.json` (`dressing`), e il concept del vestito lo mantiene
+  ("same body, simple clothes (...)") al posto della calzamaglia fissa di prima. I corpi registrati prima restano in
+  calzamaglia, com'erano stati fatti.
 
 Un corpo senza camera di Pixal3D o non umanoide viene rifiutato con il motivo.
 Nel modo 2, con un concept arrivato da fuori, il corpo si ricava come detto nella sezione 1b e si registra allo stesso modo.

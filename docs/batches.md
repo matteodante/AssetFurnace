@@ -41,6 +41,7 @@ the spec file**, like in a run manifest.
 | `id` | Your name for the asset, unique in the batch. Letters, digits, `_ . -`: it names the row's folder and files |
 | `images` | The first is what the generator sees; the rest are kept as references for later steps |
 | `prompt` | Words to draw the picture from, for a row whose first step is `picture` (instead of `images`) |
+| `replace` | Steps whose output is a file of your own: `{"finish": "edits/knight.glb"}` (a list of GLBs for `animate`). The step does not run; the file goes on to the next one |
 | `asset` | An existing GLB, for a row that skips `generate` |
 | `kind` | `prop` (default), `creature` or `equipment` |
 | `faces` | Face budget for `finish`, 1,000 to 200,000 (default 40,000) |
@@ -105,7 +106,9 @@ Every step's settings are described once, with their types and ranges, in
 its first row.
 
 `picture` settings: `seed` (default 42), `count` (1 to 8), `pick` (the seed to keep),
-`width`, `height`, `cfg_scale`, `sampler`, `negative_prompt`, `bible` (a style bible's
+`width`, `height`, `cfg_scale`, `sampler`, `negative_prompt` (used only with `cfg_scale` above
+1: at the Turbo's default of 1 stable-diffusion.cpp skips it, and the provenance records it
+as not applied), `bible` (a style bible's
 words after the prompt: `"-"` for the active one, or its name; none by default; `concept`
 takes it too, with up to three of the bible's pictures). An edited or another active bible
 reruns the step.
@@ -114,6 +117,18 @@ reruns the step.
 is the row's picture), the words the mode needs (`subject` and `colours` for redraw,
 `outfit` for dress, `piece`, `view`...), `structure`, `guide`, `depth`, `style`, `seed`,
 `count` (1 to 4), `pick`.
+
+**Your own file instead of a step's output.** `"replace": {"<step>": "file"}` in a row: the
+step does not run, the file (checked when the spec loads: a whole GLB, a skeleton for
+`rig`, a readable picture for `picture` and `concept`) is copied into the step's folder
+under the name the step would give it, with its own `.provenance.json` (a Blender version
+has one) or a record saying it is yours and its licence is not known, and the steps after
+it run on it. Its records are held to the batch's licence policy like any source.
+Changing the file, or the record beside it, reruns from that step; the steps before keep
+their results. A file inside the batch's own `rows/<id>/` folder is refused (the batch
+clears and rewrites it): copy an edit made there somewhere else first.
+`generate`, `finish`, `rig`, `animate`, `picture` and `concept` can be replaced; the
+others make nothing a file can stand in for.
 
 **Picking.** A step that made several candidates leaves its row `waiting`; the rest of the
 batch goes on and the run ends with exit code 3. Pick with `"pick": <seed>` in the step's

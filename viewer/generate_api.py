@@ -8,6 +8,7 @@ the viewer server, running its tests, or serving Compare never imports torch.
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import re
@@ -23,10 +24,11 @@ from dataclasses import dataclass
 from email import policy
 from email.parser import BytesParser
 from http import HTTPStatus
+from http.cookies import CookieError, SimpleCookie
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable, ClassVar
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 # Sibling import must also work when tests load this file directly via importlib.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -110,6 +112,11 @@ from props_api import (
 )
 
 REPO = Path(__file__).resolve().parents[1]
+
+# Set by serve.py when the server listens on a network address (RunPod, a LAN): every
+# request must then carry it, as the cookie the printed link sets or as a Bearer header.
+ACCESS_TOKEN: str | None = None
+TOKEN_COOKIE = "assetfurnace_token"
 WRAPPER = REPO / "scripts" / "trellis_space_generate.py"
 PYTHON = REPO / "vendor" / "trellis-space-mac" / ".venv" / "bin" / "python"
 TRELLIS_VENDOR = REPO / "vendor" / "trellis-space-mac"
@@ -200,7 +207,7 @@ def _job_env() -> dict[str, str]:
     value in this server's environment (e.g. SPARSE_CONV_BACKEND=none exported earlier)
     would otherwise be inherited and silently break the run.
     """
-    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    env = processes.child_env()
     for key in BACKEND_ENV_KEYS:
         env.pop(key, None)
     return env
@@ -2077,10 +2084,70 @@ class Handler(SimpleHTTPRequestHandler):
         if cls._chain_runner is None:
             host, port = self.server.server_address[:2]
             host = "127.0.0.1" if host in ("", "0.0.0.0") else host
-            cls._chain_runner = ChainRunner(OUTPUT_ROOT, activity_api.local_request(f"http://{host}:{port}"))
+            cls._chain_runner = ChainRunner(OUTPUT_ROOT, activity_api.local_request(
+                f"http://{host}:{port}", token=ACCESS_TOKEN))
         return cls._chain_runner
 
+    def _refuse(self, status: int, message: str) -> None:
+        blender_edit_api.drain(self)
+        self._send_json(status, {"error": message})
+
+    def _admitted(self) -> bool:
+        """With an access token set, only requests that carry it get in. The printed link
+        carries it once as ?token=; the answer moves it into a same-site cookie."""
+        self._bearer = False
+        token = ACCESS_TOKEN
+        if token is None:
+            return True
+        scheme, _, supplied = (self.headers.get("Authorization") or "").partition(" ")
+        if scheme.lower() == "bearer" and supplied:
+            self._bearer = hmac.compare_digest(supplied.strip().encode(), token.encode())
+            if self._bearer:
+                return True
+        else:
+            try:
+                jar = SimpleCookie(self.headers.get("Cookie") or "")
+            except CookieError:
+                jar = SimpleCookie()
+            if TOKEN_COOKIE in jar and hmac.compare_digest(jar[TOKEN_COOKIE].value.encode(), token.encode()):
+                return True
+            url = urlparse(self.path)
+            query = parse_qs(url.query, keep_blank_values=True)
+            if self.command in ("GET", "HEAD") and hmac.compare_digest(
+                    query.pop("token", [""])[0].encode(), token.encode()):
+                rest = urlencode(query, doseq=True)
+                self.send_response(HTTPStatus.FOUND)
+                self.send_header("Set-Cookie", f"{TOKEN_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict")
+                self.send_header("Location", url.path + (f"?{rest}" if rest else ""))
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return False
+        self._refuse(401, "Open the Studio with the link the server printed: it carries the access token")
+        return False
+
+    def _allowed(self, *, mutation: bool) -> bool:
+        """The Studio page's own requests only (see blender_edit_api.check_request). A script
+        holding the Bearer token is not a browser, so it cannot be a forged one."""
+        if getattr(self, "_bearer", False):
+            return True
+        try:
+            if mutation or urlparse(self.path).path.startswith("/api/"):
+                blender_edit_api.check_request(self, mutation=mutation, header=None)
+            else:
+                # a page, script or model: only the Host, so a link from another site opens
+                blender_edit_api.check_host(self)
+        except PermissionError as exc:
+            self._refuse(403, str(exc))
+            return False
+        return True
+
+    def do_HEAD(self) -> None:
+        if self._admitted() and self._allowed(mutation=False):
+            super().do_HEAD()
+
     def do_POST(self) -> None:
+        if not self._admitted():
+            return
         if blender_edit_api.handle(self, OUTPUT_ROOT, mutation=True) or review_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
         if material_labels_api.handle(self, OUTPUT_ROOT, mutation=True):
@@ -2090,6 +2157,9 @@ class Handler(SimpleHTTPRequestHandler):
         if unreal_export_api.handle(self, OUTPUT_ROOT, mutation=True):
             return
         if batch_api.handle(self, OUTPUT_ROOT, mutation=True) or slot_parts_api.handle(self, OUTPUT_ROOT, mutation=True):
+            return
+        # every endpoint below changes something: weights, the HF token, jobs, names
+        if not self._allowed(mutation=True):
             return
         parts = self._path_parts()
         if parts == ["api", "chains"]:
@@ -2334,6 +2404,8 @@ class Handler(SimpleHTTPRequestHandler):
         return super().send_head()
 
     def do_GET(self) -> None:
+        if not self._admitted():
+            return
         if blender_edit_api.handle(self, OUTPUT_ROOT) or review_api.handle(self, OUTPUT_ROOT):
             return
         if material_labels_api.handle(self, OUTPUT_ROOT):
@@ -2344,6 +2416,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if (batch_api.handle(self, OUTPUT_ROOT) or slot_parts_api.handle(self, OUTPUT_ROOT)
                 or style_api.handle(self, OUTPUT_ROOT)):
+            return
+        if not self._allowed(mutation=False):
             return
         if urlparse(self.path).path in ("", "/", "/viewer", "/viewer/"):
             self.send_response(HTTPStatus.FOUND)  # the front door is the studio
@@ -2454,7 +2528,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parts == ["api", "image", "defaults"]:
             self._send_json(200, {
-                "defaults": image_api.DEFAULTS,
+                "defaults": image_api.T2I_DEFAULTS,
                 "samplers": list(image_api.SAMPLERS),
                 "installed": image_api.is_installed(),
                 "license": {"name": image_api.LICENSE_NAME, "url": image_api.LICENSE_URL,

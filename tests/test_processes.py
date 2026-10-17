@@ -145,3 +145,57 @@ def test_invalid_pids_never_reach_a_signal_or_taskkill(pid, monkeypatch):
         assert not processes.process_alive(pid, windows=windows)
         processes.terminate_group(pid, windows=windows)
     assert not calls
+
+
+# ---- Windows: the server's children die with it (audit 2026-10-17) ----------------------
+
+REPO = Path(__file__).resolve().parents[1]
+CHILD = """
+import subprocess, sys, time
+sys.path.insert(0, {repo!r})
+from image_to_3dlab import processes
+print(processes.kill_children_with_this_process(), flush=True)
+held = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+kept = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], **processes.outlive_kwargs())
+job = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], **processes.group_popen_kwargs())
+print(held.pid, kept.pid, job.pid, flush=True)
+time.sleep(120)
+"""
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows job objects")
+def test_a_killed_server_takes_its_children_with_it_but_not_a_desktop_app():
+    """TerminateProcess (Task Manager, Stop-Process) runs no handler, so sd-cli kept running
+    with its 14 GB after the server died; a job object that kills on close ends it. The
+    desktop Blender someone is editing in breaks away and stays, and so does a group job
+    (a batch), which outlives the server by design and is reconciled at the next start."""
+    server = subprocess.Popen([sys.executable, "-c", CHILD.format(repo=str(REPO))],
+                              stdout=subprocess.PIPE, text=True)
+    held = kept = job = None
+    try:
+        assert server.stdout.readline().strip() == "True"
+        held, kept, job = (int(x) for x in server.stdout.readline().split())
+        assert processes.process_alive(held) and processes.process_alive(kept)
+        server.kill()                              # TerminateProcess, as Task Manager does
+        server.wait(10)
+        deadline = time.monotonic() + 10
+        while processes.process_alive(held) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        assert not processes.process_alive(held)
+        assert processes.process_alive(kept) and processes.process_alive(job)
+    finally:
+        server.kill()
+        for pid in (held, kept, job):
+            if pid:
+                processes.terminate_group(pid)
+
+
+def test_elsewhere_nothing_is_set_up():
+    assert processes.kill_children_with_this_process(windows=False) is False
+    assert processes.outlive_kwargs(windows=False) == {}
+    assert processes.group_popen_kwargs(windows=False) == {"start_new_session": True}
+
+
+def test_outside_the_servers_job_a_group_job_starts_as_before():
+    # the suite, the command line and the MCP server never make the job: no breakaway flag
+    assert processes.group_popen_kwargs(windows=True) == {"creationflags": processes.CREATE_NEW_PROCESS_GROUP}

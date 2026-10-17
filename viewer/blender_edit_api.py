@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 import blender_versions as versions
 
+from image_to_3dlab import processes
 from image_to_3dlab.blender import find_blender
 from image_to_3dlab.blender_exchange import MAX_BYTES
 
@@ -41,24 +42,52 @@ def desktop_reason(handler):
     return None
 
 
-def check_request(handler, *, mutation=False):
-    # Same-origin custom header rejects cross-site forms; loopback Host checking
-    # additionally prevents DNS rebinding from launching a desktop application.
+def drain(handler, limit=1024 * 1024):
+    """Read the body of a request refused before it was read, so the answer arrives: closing
+    on unread bytes makes Windows reset the connection, and the caller saw
+    ConnectionAbortedError instead of the reason. A body over `limit` is left unread."""
+    try:
+        length = int(handler.headers.get("Content-Length") or 0)
+    except ValueError:
+        length = 0
+    if 0 < length <= limit:
+        handler.rfile.read(length)
+    handler.close_connection = True
+
+
+def check_host(handler):
+    """The Host a request names. A loopback server only answers loopback names, so a page
+    that rebinds its own domain to 127.0.0.1 cannot read or drive it (DNS rebinding)."""
     host = handler.headers.get("Host", "")
     parsed = urlsplit("//" + host)
     if not parsed.hostname or parsed.username or parsed.path or parsed.query or parsed.fragment:
         raise PermissionError("Invalid request host")
     if local_address(handler.server.server_address[0]) and not local_address(parsed.hostname):
         raise PermissionError("Use the local Studio address")
+    return host
+
+
+def check_request(handler, *, mutation=False, header="blender-edit"):
+    """The Studio page only: a loopback Host on a loopback server, the same origin, never a
+    cross-site fetch, and on mutations a custom header that a cross-site form cannot send.
+    ``header=None`` accepts any value of it: the older Studio endpoints are shared by pages
+    that each name their own."""
+    host = check_host(handler)
+    # behind a proxy (RunPod) the page's origin is the public name the proxy forwards
+    allowed = {host.lower()}
+    forwarded = handler.headers.get("X-Forwarded-Host")
+    if forwarded and not local_address(handler.server.server_address[0]):
+        allowed.add(forwarded.split(",")[0].strip().lower())
     origin = handler.headers.get("Origin")
     if origin:
         source = urlsplit(origin)
-        if source.scheme not in ("http", "https") or source.netloc.lower() != host.lower() or source.path or source.query or source.fragment:
-            raise PermissionError("Use this Studio page to edit models")
+        if source.scheme not in ("http", "https") or source.netloc.lower() not in allowed or source.path or source.query or source.fragment:
+            raise PermissionError("Use this Studio page to edit models" if header == "blender-edit" else "Use the Studio page")
     if handler.headers.get("Sec-Fetch-Site") == "cross-site":
-        raise PermissionError("Cross-site edit requests are not allowed")
-    if mutation and (not origin or handler.headers.get("X-AssetFurnace-Request") != "blender-edit"):
-        raise PermissionError("Use this Studio page to edit models")
+        raise PermissionError("Cross-site edit requests are not allowed" if header == "blender-edit" else "Cross-site requests are not allowed")
+    sent = handler.headers.get("X-AssetFurnace-Request")
+    if mutation and (not origin or not sent or (header is not None and sent != header)):
+        raise PermissionError("Use this Studio page to edit models" if header == "blender-edit" else "Use the Studio page")
 
 
 def body(handler, maximum):
@@ -96,10 +125,13 @@ def launch(output, session_id, blender=None, popen=None):
         args = [str(binary), "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
                 "--python", str(REPO / "scripts/blender_open_asset.py"), "--", "--source", str(source),
                 "--workspace", str(workspace), "--status", str(status_file)]
+        no_window = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         try:
             with (root / "blender.log").open("ab") as log:
-                process = (popen or subprocess.Popen)(args, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
-                                                      cwd=REPO, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                # the desktop Blender someone edits in stays open when the server stops
+                process = (popen or subprocess.Popen)(
+                    args, stdin=subprocess.DEVNULL, stdout=log, stderr=log, cwd=REPO,
+                    creationflags=no_window | processes.outlive_kwargs().get("creationflags", 0))
         except OSError as exc:
             versions.write_json(status_file, {"state": "error", "error": "Blender could not start. Check its installation."})
             raise ValueError("Blender could not start. Check its installation.") from exc
@@ -181,7 +213,7 @@ def handle(handler, output, *, mutation=False):
         else:
             handler._send_json(404, {"error": "Unknown Blender edit endpoint"})
     except PermissionError as exc:
-        handler.close_connection = True
+        drain(handler)
         handler._send_json(403, {"error": str(exc)})
     except (ValueError, KeyError, TypeError, OSError) as exc:
         handler.close_connection = True
