@@ -356,6 +356,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces: a piece made on its own loses the small bits floating away from it
+  (`scripts/drop_fragments.py`, after its finish). The first real set's glove carried a
+  56-face fragment that hung in the air next to the hand in Unreal; bits touching the piece
+  and parts of a fair size stay.
+- Finish: the retopology's UVs no longer paint texels twice. Smart UV Project at its wide
+  angle stacked faces of one island on each other (the first real set's helmet and boots
+  failed the uv.overlap check at 10.1% and 11.1%); its islands are now unwrapped
+  conformally, the faces still overlapping cut apart, and the last few made islands of their
+  own: 0.07% on the same pieces.
+- Characters in pieces: the outfit concept names every chosen piece, as the design asks. A
+  helmet the outfit's words left out was not drawn, so its cut was the face and the piece
+  edit invented a helmet; the concept now adds the chosen pieces the outfit does not name,
+  in their own words when they have them.
 - The GPU lock is let go even when another job is reading it at that moment: Windows
   refused to delete the open file, the release gave up without a word, and every other GPU
   job then waited on a lock nobody held (the suite hung on it on 2026-10-17).
@@ -365,6 +378,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
   Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
   only text to image took it.
+- On Windows the server's children die with it: sd-cli, llama-server and the material
+  workers are in a job object that kills them when the server ends, also when it is killed
+  from Task Manager. The desktop Blender being edited in and the pid-tracked background jobs
+  (batches, generations) still outlive it, as they are meant to. `Ferma-AssetFurnace.cmd`
+  stops the server the launcher started.
+- Blender runs fail when their script fails, and do not depend on who runs them: the
+  concept maps and the multiview render pass `--python-exit-code 1` (a raised error used to
+  exit 0), and neither reads pictures or views an earlier render left in a reused folder;
+  Finish and the rebind run with `--factory-startup`, without the user's preferences and
+  add-ons; an uploaded .blend opens with `--disable-autoexec`, so its scripts never run.
+  SkinTokens' bpy is pinned to 5.0.1, the last for Python 3.11, its record names it, and the
+  Setup card says it is not the Blender app the rest uses.
 - Unreal exports are one-sided: the material culls back faces (glTF `doubleSided` false),
   so Unreal no longer makes every piece a Two Sided material that draws the inside of a
   helmet through its openings. Cloth (a cloak, cape, mantle, scarf, banner, flag or veil,
