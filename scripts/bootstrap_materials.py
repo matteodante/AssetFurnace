@@ -12,9 +12,13 @@ Parts:
 - `marigold-lighting`, `marigold-appearance`: Marigold-IID v1.1 (prs-eth), fp16, CreativeML
   Open RAIL++-M with use restrictions.
 - `qwen35`: Qwen3.5-4B (Apache-2.0), which names the materials it sees.
-- `sam3`: SAM 3 (Meta, SAM License). Gated: its owner must request access on Hugging Face
-  with a form asking for personal data. This script never does that; it checks for access and
-  skips SAM 3 when the account has none.
+- `sam31`: SAM 3.1 (Meta, SAM License), the zones' segmenter. Meta publishes it only in its own
+  format, so after the download its image detector is converted into transformers' files
+  (`vendor/materials/sam3.1-transformers`), inside the materials environment.
+- `sam3`: SAM 3, the same licence and gate, kept for comparison.
+  Both are gated: their owner requests access on Hugging Face with a form asking for personal
+  data (one form grants the whole SAM 3 collection). This script never does that; it checks for
+  access and skips them when the account has none.
 
 Hugging Face files are fetched at a pinned revision into the usual cache. Nothing is fetched
 without an explicit yes.
@@ -99,6 +103,21 @@ def make_env(runner=run) -> None:
     mm.env_marker().write_text(mm.env_contents(), encoding="utf-8")       # only once all of it is in
 
 
+def convert_sam31(runner=None) -> None:
+    """Turn the downloaded SAM 3.1 checkpoint into transformers' Sam3Model files."""
+    import json as _json
+
+    python = mm.require_env()
+    source = mm.model_folder(mm.SAM31)
+    out = mm.sam31_folder()
+    work = out.parent / ".sam31-convert"
+    work.mkdir(parents=True, exist_ok=True)
+    job = work / "job.json"
+    job.write_text(_json.dumps({"task": "convert_sam31", "model": str(source), "out": str(out),
+                                "result": str(work / "result.json")}), encoding="utf-8")
+    (runner or run)([str(python), str(REPO / "scripts" / "materials_worker.py"), str(job)])
+
+
 def has_access(repo: str) -> bool:
     from huggingface_hub import auth_check
     from huggingface_hub.errors import HfHubHTTPError
@@ -117,7 +136,8 @@ def fetch(model) -> None:
         hf_hub_download(model.repo, name, revision=model.revision)
 
 
-def main(argv: list[str] | None = None, access=has_access, fetcher=fetch, env_maker=make_env) -> int:
+def main(argv: list[str] | None = None, access=has_access, fetcher=fetch, env_maker=make_env,
+         converter=convert_sam31) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--only", help=f"comma-separated parts: {', '.join(PARTS)}")
@@ -148,6 +168,9 @@ def main(argv: list[str] | None = None, access=has_access, fetcher=fetch, env_ma
             continue
         print(f"Downloading {mm.MODELS[key].label}...", flush=True)
         fetcher(mm.MODELS[key])
+        if key == "sam31":
+            print("Converting SAM 3.1's image detector for transformers...", flush=True)
+            converter()
     print("Done.", flush=True)
     return 0
 

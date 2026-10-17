@@ -31,7 +31,7 @@ from image_to_3dlab.edit_glb import EditGLB  # noqa: E402
 from image_to_3dlab.materials import surfaces  # noqa: E402
 
 
-def human(folder: Path, labels: Path, segmenter: str) -> int:
+def human(folder: Path, labels: Path, segmenter: str, views: int = 16) -> int:
     from image_to_3dlab.material_labels import still_labelled
 
     rows = [r for r in json.loads(labels.read_text(encoding="utf-8")) if r.get("points")]
@@ -41,7 +41,7 @@ def human(folder: Path, labels: Path, segmenter: str) -> int:
     per_asset, hits, total = [], 0, 0
     for row in rows:
         work = folder / "work" / row["key"].replace("/", "_")
-        zones, record = mz.find_zones(Path(row["asset"]), work, segmenter)
+        zones, record = mz.find_zones(Path(row["asset"]), work, segmenter, around=views)
         result = mz.point_agreement(zones, row["points"])
         hits += result["agree"]
         total += result["points"]
@@ -58,7 +58,7 @@ def human(folder: Path, labels: Path, segmenter: str) -> int:
     return 0
 
 
-def pbr(folder: Path, segmenter: str) -> int:
+def pbr(folder: Path, segmenter: str, views: int = 16) -> int:
     names = json.loads((folder / "selection.json").read_text(encoding="utf-8"))["assets"]
     rows = []
     for name in names:
@@ -68,7 +68,7 @@ def pbr(folder: Path, segmenter: str) -> int:
         stripped = work / f"{name}.glb"
         stripped.write_bytes(pt.strip_maps(packed))
         try:
-            zones, _ = mz.find_zones(stripped, work, segmenter)
+            zones, _ = mz.find_zones(stripped, work, segmenter, around=views)
             truth = pt.true_maps(packed)
             row = {}
             for index, surface in surfaces(EditGLB(stripped.read_bytes())).items():
@@ -95,13 +95,14 @@ def main(argv: list[str] | None = None) -> int:
     for step in ("human", "pbr"):
         command = sub.add_parser(step)
         command.add_argument("--dir", type=Path, required=True)
-        command.add_argument("--segmenter", choices=mz.SEGMENTERS, default="sam2")
+        command.add_argument("--segmenter", choices=mz.SEGMENTERS, default="sam31")
+        command.add_argument("--views", type=int, default=16, help="cameras around (plus top and bottom)")
         if step == "human":
             command.add_argument("--labels", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.step == "human":
-        return human(args.dir, args.labels, args.segmenter)
-    return pbr(args.dir, args.segmenter)
+        return human(args.dir, args.labels, args.segmenter, args.views)
+    return pbr(args.dir, args.segmenter, args.views)
 
 
 if __name__ == "__main__":

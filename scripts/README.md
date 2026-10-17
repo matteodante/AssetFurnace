@@ -131,6 +131,7 @@ The asset's surface, as opposed to its shape.
 | `baked_light_trial.py` | Build, train and test the learned baked-light check. |
 | `zones_trial.py` | Test tint zones by material, and the roughness and metallic they imply. |
 | `materials_worker.py` | Run a material model on images, inside the materials environment. |
+| `sam3_keys.py` | Map a SAM 3 / SAM 3.1 checkpoint from Meta's layout to the one transformers' Sam3Model loads. |
 
 ## Measure and judge
 

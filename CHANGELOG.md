@@ -8,13 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- SAM 3.1 segments the tint zones by default: setup converts the image detector of Meta's
+  checkpoint into transformers' Sam3Model files (`bootstrap_materials.py --only sam31`); SAM 2.1
+  stays the fallback without the gated access.
 - Material label sheet (`scripts/label_sheet.py`): renders each asset's four unlit views and its
   front under three lights for a phone-friendly sheet where the user judges painted light and
   materials and taps materials on the views; `import` turns every tap into the texel and glTF
   material it landed on and appends the labels to `output/material-labels.jsonl`.
-- Tint zones use SAM 2.1 by default (`game_materials.py --zones`); `--zones sam3` once its gated
-  access is granted. Game materials v2 is closed: what is on, what stays off and why is in design
-  section 11.
+- Game materials v2: what is on, what waits for the user's labels and why is in design section 11.
 - The fitted body hides itself under the armour in Unreal: `unreal_import_check.py` builds a
   Masked material beside the body (`M_<Body>_Masked`, the body's textures as parameters,
   Vertex Color alpha in Opacity Mask), puts it on every slot and checks it (`opacity_mask`),

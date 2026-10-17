@@ -143,3 +143,27 @@ def test_the_environment_is_marked_finished_only_after_its_last_package(monkeypa
     mm.env_python().write_bytes(b"")
     boot.make_env(lambda command: None)
     assert mm.env_ready()
+
+
+def test_tint_zones_install_qwen_both_segmenters_and_warn_about_sam31_access():
+    backend = bc.BY_ID["materials-zones"]
+    assert [w.source for w in backend.weights] == [mm.QWEN35.repo, mm.SAM31.repo, mm.SAM21.repo]
+    assert backend.gated_repo == mm.SAM31.repo and "1.b.v" in backend.caveat
+    command = download_api.command_for("materials-zones", host=bc.NVIDIA)
+    assert command[-3:] == ["--only", "env,qwen35,sam21,sam31", "--yes"]
+
+
+def test_sam31_is_converted_after_its_download_and_named_when_missing(monkeypatch, tmp_path):
+    monkeypatch.setenv("I2L_MATERIALS_ENV", str(tmp_path / "env"))
+    with pytest.raises(mm.MissingModel, match="--only env,sam31"):
+        mm.require_sam31()
+    order = []
+    assert boot.main(["--only", "sam31", "--yes"], access=lambda repo: True,
+                     fetcher=lambda model: order.append(("fetch", model.key)),
+                     converter=lambda: order.append(("convert", None))) == 0
+    assert order == [("fetch", "sam31"), ("convert", None)]
+
+
+def test_sam31_is_gated_and_pinned_to_metas_own_checkpoint():
+    assert mm.SAM31.key in mm.GATED and "sam3.1_multiplex.pt" in mm.SAM31.files
+    assert mm.SAM31.license == mm.SAM3.license

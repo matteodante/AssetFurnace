@@ -87,8 +87,21 @@ SAM21 = HubModel(
     size=897_904_604, license="Apache-2.0", license_url="https://huggingface.co/facebook/sam2.1-hiera-large",
     note="The transformers files only, not the .pt. Released 2024-09-24; revision of 2025-08-15.")
 
-MODELS = {m.key: m for m in (MARIGOLD_LIGHTING, MARIGOLD_APPEARANCE, QWEN35, SAM3, SAM21)}
-GATED = {SAM3.key}
+SAM31 = HubModel(
+    key="sam31", label="SAM 3.1 (segments every region of a named material; the zones' default)",
+    repo="facebook/sam3.1", revision="daa63191845a41281374e725f4c9e51c7a824460",
+    files=("LICENSE", "config.json", "merges.txt", "processor_config.json", "special_tokens_map.json",
+           "tokenizer.json", "tokenizer_config.json", "vocab.json", "sam3.1_multiplex.pt"),
+    size=3_502_755_717 + 7352 + 25843 + 524619 + 1712 + 588 + 3642073 + 799 + 862328,
+    license="SAM License (custom; Meta may change it)",
+    license_url="https://huggingface.co/facebook/sam3.1/blob/main/LICENSE",
+    note="Gated like SAM 3 (one form grants the whole SAM 3 collection). Released 2026-03-26. Meta's own "
+         "format only: setup converts its image detector into transformers' Sam3Model files "
+         "(vendor/materials/sam3.1-transformers), the checkpoint loaded with weights_only=True. "
+         "Same licence text as SAM 3: no ITAR or trade-controlled end uses (1.b.v); Meta may change it (8).")
+
+MODELS = {m.key: m for m in (MARIGOLD_LIGHTING, MARIGOLD_APPEARANCE, QWEN35, SAM3, SAM21, SAM31)}
+GATED = {SAM3.key, SAM31.key}
 
 
 def model_folder(model: HubModel, hub: Path | None = None) -> Path:
@@ -131,6 +144,18 @@ def env_dir(repo: Path = REPO) -> Path:
 def env_python(repo: Path = REPO) -> Path:
     folder = env_dir(repo)
     return folder / "Scripts" / "python.exe" if os.name == "nt" else folder / "bin" / "python"
+
+
+def sam31_folder(repo: Path = REPO) -> Path:
+    """SAM 3.1's image detector as transformers' Sam3Model files, made by the setup from Meta's checkpoint."""
+    return env_dir(repo).parent / "sam3.1-transformers"
+
+
+def require_sam31(repo: Path = REPO) -> Path:
+    folder = sam31_folder(repo)
+    if not (folder / "model.safetensors").is_file():
+        raise MissingModel(f"SAM 3.1 is not set up ({folder}); run: {BOOTSTRAP} --only env,sam31")
+    return folder
 
 
 def env_marker(repo: Path = REPO) -> Path:
