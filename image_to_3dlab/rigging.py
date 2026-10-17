@@ -212,7 +212,8 @@ def run_commands(commands: list[tuple[list[str], Path]], log_path: Path, *, gpu:
                  lock: Path | None = None) -> int:
     """Run the commands in order to the end, their output into `log_path`; the exit code
     of the first that fails, else 0. The commands whose index is in `gpu` hold the shared
-    GPU lock while they run, and only them."""
+    GPU lock while they run, and only them. Interrupted, the running command and what it
+    started are stopped before the lock is let go."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a", encoding="utf-8") as log:
         for index, (command, cwd) in enumerate(commands):
@@ -222,7 +223,17 @@ def run_commands(commands: list[tuple[list[str], Path]], log_path: Path, *, gpu:
             def run(command: list[str] = command, cwd: Path = cwd) -> int:
                 process = popen(command, cwd=str(cwd), env={**os.environ, **ENV}, stdout=log,
                                 stderr=subprocess.STDOUT, **processes.group_popen_kwargs())
-                return process.wait()
+                try:
+                    return process.wait()
+                except BaseException:
+                    # Stopped (Ctrl+C, a cancelled batch): the child is in its own group and
+                    # would go on using the GPU after the lock is let go. Stop it first.
+                    processes.terminate_group(process.pid)
+                    try:
+                        process.wait(timeout=30)
+                    except Exception:  # noqa: BLE001 - already stopping; the interrupt goes on
+                        pass
+                    raise
 
             if index in (gpu or set()):
                 with gpu_lock.gpu(session, path=lock or gpu_lock.LOCK):

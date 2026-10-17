@@ -21,6 +21,10 @@ def preflight(rows) -> list[str]:
         problems += [f"row {row.id}: animate {problem}" for problem in step_catalog.check("animate", options)]
         if not options.get("presets"):
             problems.append(f'row {row.id}: animate needs presets, e.g. "animate": {{"presets": ["idle"]}}')
+        if "export_unreal" in row.steps and row.kind != "creature":
+            # an object is exported without animations: its clips would be dropped unsaid
+            problems.append(f'row {row.id}: its clips reach the Unreal export only for "kind": "creature" '
+                            f"(it is {row.kind})")
     if rows and not rigging.installed():
         problems.append(rigging.MISSING)
     return problems

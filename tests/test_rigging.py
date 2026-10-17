@@ -200,3 +200,32 @@ def test_rig_and_animate_are_described_with_their_command_line():
              for flag in action.option_strings}
     for param in animate.params:
         assert f"--{param.name.replace('_', '-')}" in flags, param.name
+
+
+def test_an_interrupted_command_is_stopped_before_the_gpu_is_let_go(tmp_path, monkeypatch):
+    """Ctrl+C or a cancelled batch during SkinTokens: the child (in its own process group)
+    must not go on using the GPU once the lock is free."""
+    stopped, lock = [], tmp_path / "gpu.lock"
+
+    class Running:
+        pid = 4242
+
+        def wait(self, timeout=None):
+            if timeout is None:
+                assert lock.exists()   # still held while the child is stopped
+                raise KeyboardInterrupt
+            return -1
+
+    monkeypatch.setattr(rigging.processes, "terminate_group", lambda pid: stopped.append((pid, lock.exists())))
+    with pytest.raises(KeyboardInterrupt):
+        rigging.run_commands([(["skintokens"], REPO)], tmp_path / "rig.log", gpu={0}, lock=lock,
+                             popen=lambda *a, **k: Running())
+    assert stopped == [(4242, True)] and not lock.exists()
+
+
+def test_clips_with_an_export_need_a_creature(tmp_path, monkeypatch):
+    monkeypatch.setattr(rigging, "installed", lambda root=None: True)
+    row = batch.BatchRow(id="A", images=(), asset=None, kind="prop", faces=None, profile=None,
+                         steps=("generate", "rig", "animate", "export_unreal"), backend="fake",
+                         options={"animate": {"presets": ["idle"]}})
+    assert any("creature" in p for p in animate_step.preflight([row]))
