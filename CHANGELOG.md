@@ -408,6 +408,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its v0.4.3), and run as `.\install.ps1` from a clone it updates that clone. WINDOWS.md,
   the README and the studio's update command run the clone's installer instead of the
   upstream's one-liner; the update check asks this repository's releases.
+- A negative prompt at `cfg_scale` 1 (the Turbo's default) is no longer passed to sd-cli nor
+  recorded among the settings that made the picture: stable-diffusion.cpp does not compute
+  the negative branch at 1, so the provenance now lists it under
+  `negative_prompt_not_applied` with the reason, and the run says so. Above 1 it is used.
 - Library: an asset with no picture or 3D model of its own keeps its id when a later finish
   or rig joins it (one from a Blender version, say), so its versions, name and hidden flag
   stay with it; and what is made from a Blender version of one of its moves joins it too.
