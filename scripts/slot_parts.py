@@ -481,6 +481,12 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
     return path
 
 
+def held_words(chosen: dict, slot: str) -> dict:
+    """A weapon's or shield's own words, for the fit to find a sword's hilt by."""
+    words = (chosen.get(slot) or {}).get("prompt") if slot in ("weapon", "shield") else None
+    return {"words": words} if words else {}
+
+
 def _finish_set(body_json, record, set_name, folder, chosen, drawn, made, concept, concept_info, mode, cut, seeds,
                 style, run, generate, fitter, checker, held_picks=None) -> Path:
     """Held pieces, the fit, the checks and `<set>.parts.json`, once the drawn pieces are made."""
@@ -495,10 +501,11 @@ def _finish_set(body_json, record, set_name, folder, chosen, drawn, made, concep
     pieces.write_record(pieces_json, {"cuts": str(folder / "cuts" / "cuts.json"), "seeds": list(seeds), "slots": made})
     job = fit_job(pieces_json, body_json, folder / "fit") if drawn else {
         "body": str(Path(body_json).resolve()), "concept_size": [1, 1], "out": str((folder / "fit").resolve()),
-        "pieces": [{"slot": s, "glb": e["glb"]} for s, e in made.items()]}
+        "pieces": [{"slot": s, "glb": e["glb"], **held_words(chosen, s)} for s, e in made.items()]}
     for slot in ("weapon", "shield"):
         if slot in made and drawn:
-            job["pieces"] = [p for p in job["pieces"] if p["slot"] != slot] + [{"slot": slot, "glb": made[slot]["glb"]}]
+            job["pieces"] = [p for p in job["pieces"] if p["slot"] != slot] + [{"slot": slot, "glb": made[slot]["glb"],
+                                                                                **held_words(chosen, slot)}]
     fit_report = (fitter or run_fit)(job)
     checks = (checker or check_pieces)(folder / "fit", body_json, set_name)
     parts = sidecar.parts_record(mode=mode, set_name=set_name, body=record, body_json=body_json, concept=Path(concept),
@@ -610,7 +617,8 @@ def fit_job(pieces_json: Path, body_json: Path, out: Path, options: dict | None 
         raise ValueError(f"{pieces_json} has no pieces: run the pieces command first")
     entries = [{"slot": slot, "glb": entry["glb"],
                 "split": bool(cut_record["slots"].get(slot, {}).get("split", False)),
-                **{k: entry[k] for k in ("concept_box", "frame") if k in entry}}
+                **{k: entry[k] for k in ("concept_box", "frame") if k in entry},
+                **({"words": entry["prompt"]} if entry.get("held") and entry.get("prompt") else {})}
                for slot, entry in record["slots"].items()]
     clips = list(body_mod.load(body_json).get("clips", {}).values())
     return {"body": str(Path(body_json).resolve()), "concept_size": size, "out": str(Path(out).resolve()),

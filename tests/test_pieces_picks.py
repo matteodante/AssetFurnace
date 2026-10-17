@@ -113,6 +113,9 @@ def test_a_weapon_alone_can_be_fitted_again(tmp_path):
                                        "slots": {"weapon": {"glb": str(folder / "pieces" / "weapon.glb")}}}))
     job = cli.fit_job(pieces_json, body_json, folder / "fit")   # no cuts: nothing was drawn on the body
     assert [p["slot"] for p in job["pieces"]] == ["weapon"]
+    pieces_json.write_text(json.dumps({"cuts": "none", "seeds": [1], "slots": {"weapon": {
+        "glb": "w.glb", "held": True, "prompt": "a longsword, a single standalone game asset"}}}))
+    assert cli.fit_job(pieces_json, body_json, folder / "fit")["pieces"][0]["words"].startswith("a longsword")
 
 
 def test_a_carried_set_is_listed_on_its_new_body(tmp_path, monkeypatch):
@@ -179,6 +182,8 @@ def test_the_weapon_is_picked_like_the_pieces(tmp_path):
                        checker=lambda *a: {}, **common)
     parts = json.loads(path.read_text())
     assert parts["pieces"]["weapon"]["seed"] == 2
+    (job,) = jobs
+    assert next(p for p in job["pieces"] if p["slot"] == "weapon")["words"] == "a longsword"   # for its hilt
     assert len(weapon_drawn()) == 3   # not redrawn
     pixal = [c for c in calls if c[0] != "sd-cli" and c[1].endswith("pixal3d_generate.py")]
     assert any(Path(c[2]).name == "s2.png" and Path(c[2]).parent.name == "weapon" for c in pixal)

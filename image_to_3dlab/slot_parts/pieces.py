@@ -39,7 +39,9 @@ HELD_WORDS = {"weapon": "a one-handed sword", "shield": "a round shield"}
 def held_prompt(slot: str, words: str = "", style: str = "") -> str:
     """Text to image for a weapon or shield made on its own: alone, upright, front view."""
     what = words.strip() or HELD_WORDS[slot]
-    parts = [f"{what}, a single standalone game asset shown alone, upright, front view, centred, complete",
+    # held by its handle: a weapon drawn point down would be held by its blade (fit.held_placement)
+    pose = "upright with its handle at the bottom" if slot == "weapon" else "upright"
+    parts = [f"{what}, a single standalone game asset shown alone, {pose}, front view, centred, complete",
              style.strip(), prompts.BACKGROUND]
     return ", ".join(p for p in parts if p) + "."
 

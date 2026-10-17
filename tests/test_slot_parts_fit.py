@@ -133,6 +133,49 @@ def test_a_weapon_is_held_by_its_grip_at_the_hand_bone():
     assert info["scale"] == pytest.approx(0.42)
 
 
+def _sword(point_down: bool):
+    """A sword 1.0 tall: a narrow blade, a wide crossguard, a grip and a pommel. Drawn point
+    down (as the picture model draws them), the hilt is at the top."""
+    parts = [_cube(size=(0.06, 0.02, 0.70), centre=(0, 0, 0.35)),     # blade, its point at z 0
+             _cube(size=(0.30, 0.04, 0.03), centre=(0, 0, 0.715)),    # crossguard
+             _cube(size=(0.04, 0.04, 0.20), centre=(0, 0, 0.83)),     # grip
+             _cube(size=(0.07, 0.05, 0.07), centre=(0, 0, 0.965))]    # pommel
+    sword = np.concatenate(parts)
+    if not point_down:
+        sword = sword * np.array([1, 1, -1]) + np.array([0, 0, 1.0])
+    return sword
+
+
+@pytest.mark.parametrize("point_down", [True, False])
+def test_a_sword_is_held_by_its_hilt_whichever_way_it_was_drawn(point_down):
+    sword = _sword(point_down)
+    hand = np.array([0.4, 0.0, 0.6])
+    m, info = fit.held_placement(sword, "weapon", hand, body_height=1.0, words="a gold-hilted longsword")
+    moved = sword @ m[:3, :3].T + m[:3, 3]
+    # the grip (between the crossguard and the pommel) is in the hand, the blade above it
+    grip_z = (0.73 + 0.93) / 2 if point_down else 1 - (0.73 + 0.93) / 2
+    grip = np.array([0.0, 0.0, grip_z]) @ m[:3, :3].T + m[:3, 3]
+    assert grip == pytest.approx(hand, abs=0.02)
+    assert moved[:, 2].max() - hand[2] > 2 * (hand[2] - moved[:, 2].min())   # the blade points up
+    assert info["hilt"] == ("top" if point_down else "bottom") and info["turned"] is point_down
+
+
+def test_an_axe_is_still_held_low_on_its_haft():
+    axe = np.concatenate([_cube(size=(0.04, 0.04, 0.8), centre=(0, 0, 0.4)),
+                          _cube(size=(0.35, 0.04, 0.2), centre=(0.1, 0, 0.85))])   # the head, wide, at the top
+    hand = np.array([0.0, 0.0, 0.5])
+    m, info = fit.held_placement(axe, "weapon", hand, body_height=1.0, words="a battle axe")
+    moved = axe @ m[:3, :3].T + m[:3, 3]
+    assert moved[:, 2].min() + 0.2 * np.ptp(moved[:, 2]) == pytest.approx(hand[2]) and "hilt" not in info
+
+
+def test_the_weapon_picture_asks_for_the_handle_at_the_bottom():
+    from image_to_3dlab.slot_parts import pieces
+
+    assert "handle at the bottom" in pieces.held_prompt("weapon", "a longsword")
+    assert "handle at the bottom" not in pieces.held_prompt("shield", "a round shield")
+
+
 def test_a_shield_is_held_by_its_middle():
     shield = _cube(size=(0.6, 0.1, 0.8))
     arm = np.array([0.3, 0.0, 1.0])

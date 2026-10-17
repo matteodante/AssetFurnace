@@ -97,16 +97,53 @@ def cage_sizes(base: float) -> list[float]:
 HELD = {"weapon": (0.42, 0.2), "shield": (0.30, 0.5)}
 
 
-def held_placement(points: np.ndarray, slot: str, bone_head: np.ndarray, body_height: float) -> tuple[np.ndarray, dict]:
-    """4x4 putting a weapon or shield (upright, as generated) in the hand or on the forearm."""
+# Weapons with a crossguard: their hilt is found on the model, since the picture model draws
+# them point down as often as point up (three seeds out of three on the first real set).
+BLADES = ("sword", "longsword", "greatsword", "broadsword", "shortsword", "claymore", "sabre", "saber", "katana",
+          "rapier", "scimitar", "falchion", "cutlass", "dagger", "knife", "blade", "gladius")
+
+
+def is_blade(words: str) -> bool:
+    import re
+
+    return any(token in BLADES or token.endswith("sword") for token in re.findall(r"[a-z]+", str(words).lower()))
+
+
+def hilt(points: np.ndarray) -> tuple[str, float]:
+    """For a bladed weapon standing upright: which end its hilt is at ("top" or "bottom") and
+    the height of its grip. The crossguard is the widest part; the grip lies between it and
+    the end it is nearer to (the pommel's)."""
+    p = np.asarray(points, float)
+    half = np.abs(p[:, 0] - (p[:, 0].min() + p[:, 0].max()) / 2)
+    guard = float(p[half >= 0.9 * half.max(), 2].mean())
+    lo, hi = float(p[:, 2].min()), float(p[:, 2].max())
+    end = "top" if hi - guard < guard - lo else "bottom"
+    return end, (guard + (hi if end == "top" else lo)) / 2
+
+
+def held_placement(points: np.ndarray, slot: str, bone_head: np.ndarray, body_height: float,
+                   words: str = "") -> tuple[np.ndarray, dict]:
+    """4x4 putting a weapon or shield (upright, as generated) in the hand or on the forearm.
+
+    A weapon is held a fifth of its height up from the bottom (the handle, as its picture is
+    asked for); a bladed one (`words` name it) by the grip found on the model, turned point
+    up when it was drawn point down."""
     share, grip_at = HELD[slot]
     p = np.asarray(points, float)
     lo, hi = p.min(0), p.max(0)
     k = share * body_height / max(float((hi - lo).max()), 1e-9)
     grip = np.array([(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, lo[2] + grip_at * (hi[2] - lo[2])])
-    m = np.diag([k, k, k, 1.0])
-    m[:3, 3] = np.asarray(bone_head, float) - k * grip
-    return m, {"scale": float(k), "held_at": [round(float(v), 4) for v in bone_head]}
+    turn = np.eye(3)
+    extra = {}
+    if slot == "weapon" and is_blade(words):
+        end, grip[2] = hilt(p)
+        if end == "top":
+            turn = np.diag([-1.0, 1.0, -1.0])   # half a turn about the depth axis: point up, still facing front
+        extra = {"hilt": end, "turned": end == "top"}
+    m = np.eye(4)
+    m[:3, :3] = k * turn
+    m[:3, 3] = np.asarray(bone_head, float) - k * turn @ grip
+    return m, {"scale": float(k), "held_at": [round(float(v), 4) for v in bone_head], **extra}
 
 
 def enclose(points: np.ndarray, region: np.ndarray, margin: float = 0.15) -> tuple[np.ndarray, float]:

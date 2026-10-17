@@ -503,7 +503,8 @@ def main() -> None:  # pragma: no cover - runs inside Blender
             bone = rigid_bone(roles, slot, carried=carried)
             if bone is None:
                 raise SystemExit(f"no bone to hold the {slot} on")
-            m, place = fit.held_placement(coords(obj), slot, heads[bone], float(np.ptp(body_co[:, 2])))
+            m, place = fit.held_placement(coords(obj), slot, heads[bone], float(np.ptp(body_co[:, 2])),
+                                          words=piece.get("words", ""))
             apply(obj, m)
             one_bone(obj, bone, arm)
             report["pieces"][slot] = {**info, "placement": {obj.name: place}, "deform": {obj.name: "rigid"},

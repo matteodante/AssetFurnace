@@ -337,6 +337,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces: a sword is held by its grip. The picture model drew swords point
+  down, so the fit, which held a weapon a fifth of the way up, put the hand on the blade. A
+  bladed weapon's hilt is now found on the model (the crossguard is its widest part) and the
+  sword turned point up when needed; the weapon's picture also asks for the handle at the bottom.
 - Studio Batches page: a pick that is saved but whose batch cannot resume (its preflight
   refuses) now says so, with the reasons, instead of leaving the row on "Pick one".
 - Batches: a batch made before per-step fingerprints no longer regenerates every row when
