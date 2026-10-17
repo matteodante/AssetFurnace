@@ -252,3 +252,19 @@ def test_the_users_judgement_is_kept_in_the_record_and_in_a_log(output, ready):
     with pytest.raises(ValueError, match="record"):
         concept_api.judge(output, {"picture": "images/body.png", "verdict": "keep"})
     assert grey.is_file()
+
+
+def test_a_judgement_given_while_the_outline_is_measured_is_not_lost(output, ready, monkeypatch):
+    """Keep or Discard can be pressed as soon as the picture shows, before its IoU is in."""
+    picture(output / "images" / "body.png", rgba=True)
+
+    def measure_while_judging(reference, result, fit):
+        concept_api.judge(output, {"picture": job.picture_path(), "verdict": "discard", "note": "too dark"})
+        return 0.5
+
+    monkeypatch.setattr(concept_api, "measure", measure_while_judging)
+    job = concept_api.start(output, {"mode": "add_piece", "piece": "a helmet", "shape": ["images/body.png"], "seed": 2})
+    concept_api.wait(job)
+    record = sidecar.read(job.output_path)
+    assert record["iou"] == 0.5
+    assert record["judgement"]["verdict"] == "discard" and record["judgement"]["note"] == "too dark"
