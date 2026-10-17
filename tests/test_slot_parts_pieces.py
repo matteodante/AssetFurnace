@@ -52,11 +52,13 @@ def test_no_seeds_no_jobs(tmp_path):
 
 
 def test_model_commands_run_pixal3d_finish_to_the_budget_then_winding(tmp_path):
-    first, finish, winding = pieces.model_commands(tmp_path / "s3.png", tmp_path, "boots", "py", Path("scripts"))
+    first, finish, winding, fragments = pieces.model_commands(tmp_path / "s3.png", tmp_path, "boots", "py",
+                                                              Path("scripts"))
     assert first[1].endswith("pixal3d_generate.py") and first[-1].endswith("boots.glb")
     assert finish[finish.index("--faces") + 1] == "4000"
     assert finish[finish.index("--views") + 1].endswith("boots.svviews") and "--skip-paint" in finish
     assert winding[1].endswith("fix_winding.py") and winding[2].endswith("boots_finished.glb")
+    assert fragments[1].endswith("drop_fragments.py") and fragments[2] == winding[2]
 
 
 def test_the_piece_box_comes_back_onto_the_concept():
