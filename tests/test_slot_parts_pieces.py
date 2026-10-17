@@ -35,7 +35,7 @@ def test_one_edit_per_route_c_slot_and_seed(tmp_path):
     assert [(j.slot, j.seed) for j in jobs] == [("helmet", 3), ("helmet", 7)]
     assert jobs[0].picture == tmp_path / "pieces" / "helmet" / "s3.png"
     assert jobs[0].canvas == path.parent / "helmet.png"
-    assert "a closed helmet" in jobs[0].prompt and "nothing inside" in jobs[0].prompt
+    assert "helmet, hood or hat" in jobs[0].prompt and "nothing inside" in jobs[0].prompt
 
 
 def test_a_persons_words_replace_the_default(tmp_path):
@@ -102,12 +102,21 @@ def test_a_whole_pieces_run(tmp_path):
     path, _ = _cut_record(tmp_path)
     calls = []
     edit, run = _fakes(calls)
-    result = cli.make_pieces(path, [3, 7], picks={"boots": 7}, run=run, edit=edit)
+    scored = []
+
+    def score(record, cuts_dir, folder, seeds):  # the judge's best helmet is seed 7, the boots' seed 3
+        scored.append(seeds)
+        return ({slot: {"candidates": {s: {"score": 0.5} for s in seeds}, "auto": auto, "picked": auto, "by": "auto"}
+                 for slot, auto in (("helmet", 7), ("boots", 3))}, "fake judge")
+
+    result = cli.make_pieces(path, [3, 7], picks={"boots": 7}, run=run, edit=edit, score=score)
     folder = tmp_path / "set" / "pieces"
+    assert scored == [[3, 7]] and json.loads((folder / "candidates.json").read_text())["judge"] == "fake judge"
     assert (folder / "helmet" / "s7.png").is_file()
     assert (folder / "helmet" / "s3.png.concept.json").is_file()
     assert json.loads((folder / "helmet" / "s3.png.concept.json").read_text())["mode"] == "complete_piece"
-    assert result["slots"]["helmet"]["seed"] == 3 and result["slots"]["boots"]["seed"] == 7
+    assert result["slots"]["helmet"]["seed"] == 7 and result["slots"]["helmet"]["picked_by"] == "auto"
+    assert result["slots"]["boots"]["seed"] == 7 and result["slots"]["boots"]["picked_by"] == "person"
     assert result["slots"]["boots"]["concept_box"] == pytest.approx([30, 80, 39, 99], abs=1.0)
     assert json.loads((folder / "pieces.json").read_text())["slots"]["helmet"]["glb"].endswith("helmet_finished.glb")
     tools = [Path(c[1]).name if c[0] == sys.executable else c[0] for c in calls]
@@ -225,3 +234,8 @@ def test_b0_slots_are_cut_from_the_whole_model(tmp_path):
     assert result["slots"]["helmet"]["seed"] == 3  # route C slots are made as before
     job = _json.loads((tmp_path / "set" / "pieces" / "b0" / "job.json").read_text())
     assert job["chosen"] == ["boots"] and Path(job["slot_map"]).suffix == ".npy"
+
+
+def test_the_default_words_name_what_is_drawn_and_no_pauldrons_on_the_breastplate():
+    assert "pauldrons" in pieces.WORDS["torso"] and "no shoulder pauldrons" in pieces.WORDS["torso"]
+    assert "closed" not in pieces.WORDS["helmet"] and "hood" in pieces.WORDS["helmet"]

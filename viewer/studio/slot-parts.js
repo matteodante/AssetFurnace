@@ -26,6 +26,17 @@ export function bodyOptions(bodies) {
     ? ` (${escape(Object.values(b.labels).join(', '))})` : ''}</option>`).join('') || '<option value="">none yet</option>';
 }
 
+// One row per piece: its candidate pictures, scores underneath, the picked one ticked; a
+// piece no picture convinced the judge of says so.
+export function pickRows(picks, base = '/output/') {
+  return Object.entries(picks || {}).map(([slot, entry]) => `<div class="sp-pick">
+    <b>${escape(slotLabel(slot))}</b>${entry.doubt ? ' <span class="sp-problems">none of these looked like the piece: try other seeds or words</span>' : ''}
+    <div class="sp-pick-row">${entry.candidates.map((c) => `<label class="sp-cand${c.seed === entry.auto ? ' sp-auto' : ''}">
+      <img src="${escape(base + c.picture)}" alt="${escape(slot)} seed ${c.seed}" loading="lazy">
+      <span><input type="radio" name="pick-${escape(slot)}" data-pick="${escape(slot)}" value="${c.seed}"${c.seed === entry.picked ? ' checked' : ''}>
+      seed ${c.seed} · ${Math.round(100 * c.score)}%${c.seed === entry.auto ? ' · best' : ''}</span></label>`).join('')}</div></div>`).join('');
+}
+
 export function slotLabel(name) {
   return SLOT_WORDS[name] || name;
 }
@@ -59,7 +70,7 @@ export function runPayload(state = {}) {
     slots[slot] = { route: options.route === 'B0' ? 'B0' : 'C', split: slot === 'shoulders' && Boolean(options.split),
       prompt: String(options.prompt || '').trim() };
   }
-  const payload = { mode, body: state.body, set: name, slots, seeds: String(state.seeds || '3') };
+  const payload = { mode, body: state.body, set: name, slots, seeds: String(state.seeds || '3'), choose: Boolean(state.choose) };
   for (const held of ['weapon', 'shield']) {
     const options = (state.slots || {})[held];
     if (options && options.on) payload[held] = String(options.prompt || '').trim() || (held === 'weapon' ? 'a one-handed sword' : 'a round shield');
@@ -106,6 +117,12 @@ const STYLE = `
 .sp-slots td { padding: 4px 6px; border-top: 1px solid var(--line); }
 .sp-slots input[type=text] { width: 100%; }
 .sp-problems { color: var(--ember); margin: 0; }
+.sp-pick { margin: 8px 0; }
+.sp-pick-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.sp-cand { display: grid; gap: 4px; width: 132px; font-size: 12px; cursor: pointer; }
+.sp-cand img { width: 132px; height: 132px; object-fit: contain; border: 1px solid var(--line); border-radius: 8px; background: #d9d9d9; }
+.sp-cand.sp-auto img { border-color: var(--flame); }
+.sp-cand:has(input:checked) img { outline: 2px solid var(--ember); }
 .sp-log { white-space: pre-wrap; font-size: 12px; color: var(--ash); max-height: 9em; overflow: auto; }
 `;
 
@@ -154,7 +171,8 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
         <td>${s.drawn ? `<select data-route="${escape(s.name)}" aria-label="How to make it"><option value="C">own picture</option><option value="B0">cut from the whole</option></select>` : '<span class="meta">made on its own</span>'}</td>
         <td>${s.name === 'shoulders' ? `<label><input type="checkbox" data-split="shoulders"> two pieces</label>` : ''}</td>
         <td><input type="text" data-prompt="${escape(s.name)}" placeholder="${s.held ? 'what it is, e.g. a longsword' : 'optional words for this piece'}"></td></tr>`).join('')}</tbody></table>
-      <div class="row"><label>Seeds <input type="text" name="seeds" value="3" size="8"></label>
+      <div class="row"><label title="One picture of each piece per seed; the best-scored goes to 3D">Pictures per piece (seeds) <input type="text" name="seeds" value="1,2,3" size="8"></label>
+        <label><input type="checkbox" name="choose" checked> let me check the pictures before the 3D</label>
         <label>Style <input type="text" name="style" placeholder="optional, e.g. hand-painted"></label>
         <button type="submit" class="primary">Make the set</button></div>`;
   }
@@ -179,7 +197,7 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
         prompt: form.querySelector(`[data-prompt="${s.name}"]`)?.value };
     }
     return { mode: mode(), body: value('body'), set: value('set'), concept: value('concept'), outfit: value('outfit'),
-      seeds: value('seeds'), style: value('style'), slots };
+      seeds: value('seeds'), style: value('style'), choose: form.querySelector('[name=choose]')?.checked, slots };
   }
 
   function drawLists() {
@@ -219,11 +237,25 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
     const job = info.job || {};
     const box = el.querySelector('[data-job]');
     if (!job.set) { box.innerHTML = ''; return; }
+    if (!job.running && job.picks) { drawPicks(job, box); return; }
     const state = job.running ? 'Making' : job.returncode === 0 ? 'Made' : 'Stopped or failed';
     box.innerHTML = `<h3>${escape(state)}: ${escape(job.set)} on ${escape(job.body)}</h3>
       ${job.running ? '<button type="button" class="ghost small" data-cancel>Stop</button>' : ''}
       <div class="sp-log">${escape((job.log || []).join('\n'))}</div>`;
     box.querySelector('[data-cancel]')?.addEventListener('click', async () => { await post('/api/slot-parts/run/cancel'); refresh(); });
+  }
+
+  function drawPicks(job, box) {
+    box.innerHTML = `<h3>Pick the pictures: ${escape(job.set)} on ${escape(job.body)}</h3>
+      <p class="meta">The best-scored picture of each piece is ticked; only the ticked ones go on to 3D.</p>
+      ${pickRows(job.picks, info.base || '/output/')}
+      <div class="row"><button type="button" class="primary" data-make-3d>Make the 3D</button></div><div data-picks-result></div>`;
+    box.querySelector('[data-make-3d]').addEventListener('click', async () => {
+      const picks = Object.fromEntries([...box.querySelectorAll('input[data-pick]:checked')].map((i) => [i.dataset.pick, Number(i.value)]));
+      const { ok, body } = await post('/api/slot-parts/run', { resume: true, set: job.set, body: job.body, picks });
+      box.querySelector('[data-picks-result]').innerHTML = ok ? '' : `<p class="sp-problems">${escape(body.error)}</p>`;
+      if (ok) refresh();
+    });
   }
 
   async function refresh() {

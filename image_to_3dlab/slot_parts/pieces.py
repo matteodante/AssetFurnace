@@ -21,8 +21,11 @@ from image_to_3dlab.slot_parts import camera, cuts, slots
 
 # What each slot is, when the person gave no words of their own (the trial's wording).
 WORDS = {
-    "helmet": "a closed helmet",
-    "torso": "a breastplate cuirass, complete with both sides where the arms and pauldrons hid it",
+    # what is drawn, not a kind of helmet: "a closed helmet" turned a leather hood into steel
+    "helmet": "the head piece (helmet, hood or hat) exactly as drawn, without the face or head inside",
+    # naming the pauldrons drew them: four seeds out of four on two concepts
+    "torso": "a breastplate cuirass with no shoulder pauldrons and no sleeves, complete with both sides where "
+             "the arms hid it",
     "shoulders": "a single shoulder pauldron, without any part of the breastplate",
     "gloves": "an armoured gauntlet with its forearm guard",
     "legs": "a pair of leg armour pieces with knee guards and hip guards, without boots",

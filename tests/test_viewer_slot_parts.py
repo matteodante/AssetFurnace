@@ -40,6 +40,17 @@ def test_the_body_choices_come_from_the_list_and_say_when_there_is_none():
 
 
 @needs_node
+def test_the_picks_panel_ticks_the_pick_marks_the_best_and_flags_a_doubt():
+    out = _run("""
+      const picks = { boots: { auto: 2, picked: 1, doubt: true, candidates: [
+        { seed: 1, picture: 'sets/r/b/pieces/boots/s1.png', score: 0.41 }, { seed: 2, picture: 'sets/r/b/pieces/boots/s2.png', score: 0.9 }] } };
+      console.log(JSON.stringify(m.pickRows(picks)));""")
+    assert 'src="/output/sets/r/b/pieces/boots/s1.png"' in out
+    assert 'value="1" checked' in out and "seed 2 · 90% · best" in out  # the person's pick ticked, the best marked
+    assert "none of these looked like the piece" in out
+
+
+@needs_node
 def test_the_run_request_follows_the_mode():
     out = _run("""
       const slots = { helmet: { on: true, route: 'C', prompt: ' a visor ' }, shoulders: { on: true, route: 'B0', split: true },
@@ -50,7 +61,7 @@ def test_the_run_request_follows_the_mode():
                       { mode: 3, body: 'h', set: 'x', slots: {} }, { mode: 3, body: 'h', set: 'x', slots },
                       { mode: 2, body: 'h', set: 'x', slots }].map((s) => { try { m.runPayload(s); return null; } catch (e) { return e.message; } });
       console.log(JSON.stringify({ three, two, errors }));""")
-    assert out["three"] == {"mode": 3, "body": "human", "set": "red-1", "seeds": "3", "outfit": "red plate",
+    assert out["three"] == {"mode": 3, "body": "human", "set": "red-1", "seeds": "3", "choose": False, "outfit": "red plate",
                             "slots": {"helmet": {"route": "C", "split": False, "prompt": "a visor"},
                                       "shoulders": {"route": "B0", "split": True, "prompt": ""}},
                             "weapon": "a one-handed sword"}
@@ -109,6 +120,35 @@ def test_run_command_for_each_mode(tmp_path):
                         "output folder")):
         with pytest.raises(ValueError, match=words):
             slot_parts_api.run_command(output, bad)
+
+
+def test_a_run_can_stop_at_the_pictures_and_resume_with_the_picks(tmp_path):
+    from image_to_3dlab.slot_parts import candidates
+
+    output = tmp_path / "output"
+    output.mkdir()
+    _body_json(output)
+    payload = {"mode": 3, "body": "stick", "set": "red", "outfit": "red plate", "seeds": "1,2,3", "choose": True,
+               "slots": {"boots": {}}}
+    command, _ = slot_parts_api.run_command(output, payload)
+    assert command[-1] == "--stop-at-pictures"
+    assert "--stop-at-pictures" not in slot_parts_api.run_command(output, dict(payload, seeds="3"))[0]  # one picture: no choice
+    folder = output / "sets" / "red" / "stick"
+    with pytest.raises(ValueError, match="no pictures waiting"):
+        slot_parts_api.run_command(output, {"resume": True, "body": "stick", "set": "red", "picks": {"boots": 2}})
+    pictures = folder / "pieces" / "boots"
+    pictures.mkdir(parents=True)
+    scored = {"boots": {"candidates": {s: {"picture": str(pictures / f"s{s}.png"), "score": 0.3 * s, "is_piece": 0.9,
+                                           "shape": {"score": 0.5}} for s in (1, 2, 3)},
+                        "auto": 3, "picked": 3, "by": "auto", "doubt": False}}
+    candidates.write(folder / "pieces", scored, "fake judge")
+    (folder / "run_state.json").write_text("{}")
+    waiting = slot_parts_api.waiting_picks(output, folder)
+    assert waiting["boots"]["auto"] == 3 and waiting["boots"]["candidates"][0]["picture"] == "sets/red/stick/pieces/boots/s1.png"
+    command, _ = slot_parts_api.run_command(output, {"resume": True, "body": "stick", "set": "red", "picks": {"boots": 2}})
+    assert "--resume" in command and command[command.index("--pick") + 1] == "boots=2"
+    with pytest.raises(ValueError, match="not one of its pictures"):
+        slot_parts_api.run_command(output, {"resume": True, "body": "stick", "set": "red", "picks": {"boots": 9}})
 
 
 def test_one_run_at_a_time_and_its_status(tmp_path):

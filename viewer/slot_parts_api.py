@@ -5,7 +5,11 @@
                                          a Library character (paths under output/) as a base body
     POST /api/slot-parts/run             {"mode": 2|3, "body", "set", "slots": {slot: options},
                                          "outfit" (mode 3) | "concept" (mode 2, under output/),
-                                         "weapon", "shield", "style", "seeds"}
+                                         "weapon", "shield", "style", "seeds", "choose"}: with
+                                         "choose" and several seeds, the run stops once every
+                                         piece's pictures are made and scored;
+                                         {"resume": true, "body", "set", "picks": {slot: seed}}
+                                         goes on from there with the person's picks
     POST /api/slot-parts/run/cancel
 
 Mode 1 (one piece) is the studio's usual + Create; it needs nothing here. A run is
@@ -28,6 +32,7 @@ import batch_api
 
 from image_to_3dlab import processes
 from image_to_3dlab.slot_parts import body as body_mod
+from image_to_3dlab.slot_parts import candidates as candidates_mod
 from image_to_3dlab.slot_parts import slots
 
 REPO = Path(__file__).resolve().parents[1]
@@ -97,8 +102,48 @@ def register_body(output: Path, payload: dict) -> dict:
     return {"name": body_mod.load(path)["name"], "record": rel(output, path)}
 
 
+def resume_command(output: Path, payload: dict) -> tuple[list[str], Path]:
+    """The run that goes on from the pictures, with the person's picks."""
+    body_json = output / "bodies" / str(payload.get("body", "")) / "body.json"
+    if not body_mod.NAME.match(str(payload.get("body", ""))) or not body_json.is_file():
+        raise ValueError("choose a registered base body")
+    set_name = str(payload.get("set", ""))
+    if not body_mod.NAME.match(set_name):
+        raise ValueError("give the set a name: letters, digits, '.', '_' or '-'")
+    folder = output / "sets" / set_name / body_mod.load(body_json)["name"]
+    if not (folder / "run_state.json").is_file():
+        raise ValueError(f"{set_name} has no pictures waiting for picks")
+    offered = candidates_mod.load(folder / "pieces")["slots"]
+    picks = {}
+    for slot, seed in (payload.get("picks") or {}).items():
+        if slot not in offered or str(seed) not in {str(s) for s in offered[slot]["candidates"]}:
+            raise ValueError(f"{slot}: {seed} is not one of its pictures")
+        picks[slot] = int(seed)
+    command = [sys.executable, str(REPO / "scripts" / "slot_parts.py"), "run", "--body", str(body_json),
+               "--set", set_name, "--slots-json", str(folder / "slots.json"), "--root", str(output / "sets"),
+               "--resume"]
+    if picks:
+        command += ["--pick", ",".join(f"{slot}={seed}" for slot, seed in picks.items())]
+    return command, folder / "run.log"
+
+
+def waiting_picks(output: Path, folder: Path) -> dict[str, Any] | None:
+    """The candidates a stopped run waits on, for the page: every slot's pictures and scores."""
+    if not (folder / "run_state.json").is_file():
+        return None
+    out = {}
+    for slot, entry in candidates_mod.load(folder / "pieces")["slots"].items():
+        out[slot] = {"auto": entry["auto"], "picked": entry["picked"], "doubt": bool(entry.get("doubt")),
+                     "candidates": [{"seed": int(seed), "picture": rel(output, Path(c["picture"])),
+                                     "score": c["score"], "is_piece": c.get("is_piece"), "shape": c["shape"]["score"]}
+                                    for seed, c in sorted(entry["candidates"].items(), key=lambda kv: int(kv[0]))]}
+    return out
+
+
 def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     """The `slot_parts.py run` command for a page request, and its log file."""
+    if payload.get("resume"):
+        return resume_command(output, payload)
     mode = int(payload.get("mode", 3))
     if mode not in (2, 3):
         raise ValueError("mode 1 (one piece) is + Create; this page makes modes 2 and 3")
@@ -133,6 +178,8 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
         command += ["--style", str(payload["style"]).strip()[:300]]
     if not chosen and not any(f"--{h}" in command for h in ("weapon", "shield")):
         raise ValueError("choose at least one slot, a weapon or a shield")
+    if payload.get("choose") and len(seeds) > 1 and chosen:
+        command.append("--stop-at-pictures")
     return command, folder / "run.log"
 
 
@@ -146,7 +193,8 @@ def job_status(output: Path) -> dict[str, Any]:
     parts = Path(_JOB["folder"]) / f"{_JOB['set']}.parts.json"
     return {"running": code is None, "returncode": code, "set": _JOB["set"], "body": _JOB["body"],
             "started": _JOB["started"], "log": tail,
-            "parts": rel(output, parts) if parts.is_file() and parts.stat().st_mtime >= _JOB["started"] else None}
+            "parts": rel(output, parts) if parts.is_file() and parts.stat().st_mtime >= _JOB["started"] else None,
+            "picks": waiting_picks(output, Path(_JOB["folder"])) if code == 0 else None}
 
 
 def start_run(output: Path, payload: dict, popen=subprocess.Popen) -> dict[str, Any]:

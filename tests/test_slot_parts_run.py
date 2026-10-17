@@ -123,6 +123,38 @@ def test_a_given_concept_is_mode_two_and_needs_no_outfit(tmp_path):
     assert not any(Path(c[c.index("-o") + 1]).parent.name == "concept" for c in calls if c[0] == "sd-cli")
 
 
+def test_a_run_can_wait_for_the_person_to_pick_the_pictures(tmp_path):
+    body_json, cam, heads, _ = _body(tmp_path)
+    source = _concept(tmp_path, cam, heads)
+    calls, jobs = [], []
+    edit, generate, run = _fakes(source, calls)
+
+    def score(record, cuts_dir, folder, seeds):  # the judge picks seed 2 for the torso
+        return ({"torso": {"candidates": {s: {"score": 0.5} for s in seeds}, "auto": 2, "picked": 2, "by": "auto"}},
+                "fake judge")
+
+    common = dict(concept=source, seeds=(1, 2), root=tmp_path / "sets", run=run, edit=edit, generate=generate,
+                  score=score)
+    waiting = cli.run_set(body_json, "given", "torso", stop_at_pictures=True, **common)
+    folder = tmp_path / "sets" / "given" / "stick"
+    assert waiting == folder / "pieces" / "candidates.json" and (folder / "run_state.json").is_file()
+    assert not any(c[1].endswith("pixal3d_generate.py") for c in calls if c[0] != "sd-cli")  # no 3D yet
+
+    def fitter(job):
+        jobs.append(job)
+        return {"covered_share": 0.5, "files": []}
+
+    path = cli.run_set(body_json, "given", "torso", resume=True, picks={"torso": 1}, fitter=fitter,
+                       checker=lambda *a: {}, **common)
+    parts = json.loads(path.read_text())
+    assert parts["mode"] == "dressed_split" and parts["pieces"]["torso"]["seed"] == 1  # the person's pick
+    assert parts["pieces"]["torso"]["picked_by"] == "person" and not (folder / "run_state.json").exists()
+    pixal = [c for c in calls if c[0] != "sd-cli" and c[1].endswith("pixal3d_generate.py")]
+    assert len(pixal) == 1 and Path(pixal[0][2]).name == "s1.png"
+    with pytest.raises(ValueError, match="nothing to resume"):
+        cli.run_set(body_json, "given", "torso", resume=True, **common)
+
+
 def test_run_needs_words_or_a_concept_and_a_plain_set_name(tmp_path):
     body_json, *_ = _body(tmp_path)
     with pytest.raises(ValueError, match="outfit"):

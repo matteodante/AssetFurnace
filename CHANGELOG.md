@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Characters in pieces: several pictures per piece, and the right one picked before the 3D
+  (`slot_parts/candidates.py`). Each picture is scored by Qwen3-VL ("is this one helmet / one
+  boot / ...?", stricter for a pauldron) with the outline against the slot's mask as the
+  tie-break. The best goes to 3D, a piece that no picture convinces is flagged, and everything
+  is written to `pieces/candidates.json`. The Pieces page makes three pictures per piece and
+  can stop after them (`run --stop-at-pictures`) to show the candidates; the person changes
+  any pick and goes on (`run --resume --pick`). The default words no longer draw pauldrons on a
+  breastplate or turn a hood into a closed helmet. On three outfits (18 slots, 72 pictures)
+  the automatic pick was right in 18 slots of 18.
 - SAM 3.1 segments the tint zones by default: setup converts the image detector of Meta's
   checkpoint into transformers' Sam3Model files (`bootstrap_materials.py --only sam31`); SAM 2.1
   stays the fallback without the gated access.
