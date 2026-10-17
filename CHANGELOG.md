@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Material label sheet (`scripts/label_sheet.py`): renders each asset's four unlit views and its
+  front under three lights for a phone-friendly sheet where the user judges painted light and
+  materials and taps materials on the views; `import` turns every tap into the texel and glTF
+  material it landed on and appends the labels to `output/material-labels.jsonl`.
 - Tint zones use SAM 2.1 by default (`game_materials.py --zones`); `--zones sam3` once its gated
   access is granted. Game materials v2 is closed: what is on, what stays off and why is in design
   section 11.
