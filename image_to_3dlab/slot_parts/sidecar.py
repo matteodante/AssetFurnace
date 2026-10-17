@@ -115,6 +115,27 @@ def fit_provenance(out: Path, job: dict, report: dict) -> list[Path]:
     return written
 
 
+def standalone_provenance(glb: Path, picture: Path, source: Path) -> Path:
+    """`<file>.provenance.json` beside a weapon or shield: Pixal3D's model of a Qwen picture,
+    finished, bound to the finished file by sha256 like the fitted pieces."""
+    from image_to_3dlab.provenance import LICENSES
+
+    glb = Path(glb)
+    record = {
+        "schema": "slot_parts.standalone/1",
+        "output": {"path": glb.name, "sha256": _sha(glb)},
+        "license": LICENSES["pixal3d"].license_name,
+        "classification": classification(),
+        "components": [{"role": m["role"], "name": m["id"], "license": m["license"]} for m in models()
+                       if m["id"] in ("qwen-image-2.1", "pixal3d")],
+        "picture": {"path": str(picture), "sha256": _sha(picture)},
+        "source": {"path": str(source), "sha256": _sha(source)},
+    }
+    path = glb.with_name(glb.stem + ".provenance.json")
+    path.write_text(json.dumps(record, indent=1) + "\n")
+    return path
+
+
 def write(folder: Path, set_name: str, record: dict) -> Path:
     path = Path(folder) / f"{set_name}.parts.json"
     path.write_text(json.dumps(record, indent=1) + "\n")

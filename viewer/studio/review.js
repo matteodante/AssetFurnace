@@ -55,7 +55,7 @@ export async function openReview(stage, { assets, onPick, onCount }) {
       <label class="field">Compare with<select data-k="reference"><option value="">No reference</option>
         <option value="@picture">Its own picture</option>
         ${choices.map((c, i) => `<option value="${i}">${esc(choiceLabel(c))}</option>`).join('')}</select></label>
-      <label class="field">Kind<select data-k="profile"><option value="prop">Prop</option><option value="creature">Creature</option><option value="equipment_part">Equipment part</option></select></label>
+      <label class="field">Kind<select data-k="profile"><option value="prop">Prop</option><option value="creature">Creature</option><option value="equipment_part">Equipment part</option><option value="weapon_or_shield">Weapon or shield</option></select></label>
       <label class="field">Height in metres (optional)<input data-k="height" type="number" min="0" step="0.01" placeholder="1.8"></label>
       <details class="adv rv-thresholds"><summary>Thresholds</summary><p class="meta">The profile's values; change one to check against it this time.</p><div data-thresholds class="rv-grid"></div></details>
       <button class="primary" data-run>Run the checks</button><p class="meta" data-status aria-live="polite"></p>

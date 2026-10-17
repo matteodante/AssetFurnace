@@ -104,6 +104,37 @@ def test_a_set_of_weapons_only_needs_no_fit(tmp_path, judged):
     assert parts["fit"] is None and set(parts["pieces"]) == {"weapon", "shield"}
 
 
+def test_a_sets_weapon_and_shield_are_checked_licensed_and_queued_on_their_own(tmp_path, judged, monkeypatch):
+    """Code read 18/10/2026: only the fitted pieces were checked, so a set's weapon and shield
+    had no checks report, no licence check and no place in the review queue."""
+    from image_to_3dlab.checks import review
+    from tests._check_fixtures import cube
+
+    log = tmp_path / "review-log.jsonl"
+    monkeypatch.setattr(review, "LOG", log)
+    body_json, source = _with_picture(tmp_path)
+    edit, generate, fake = _fakes(source, [])
+
+    def run(command):
+        fake(command)
+        if command[0] != "sd-cli" and command[1].endswith("retopo_repaint.py"):
+            cube(Path(command[4]))   # a real mesh to check
+
+    path = cli.run_set(body_json, "arms", {}, weapon="a longsword", shield="a kite shield", root=tmp_path / "sets",
+                       run=run, edit=edit, generate=generate, fitter=None)
+    parts = json.loads(path.read_text())
+    assert set(parts["checks"]) == {"weapon", "shield"}
+    assert {entry["profile"] for entry in parts["checks"].values()} == {"weapon_or_shield"}
+    queued = review.fold(review.load(log))
+    assert set(queued) == {"arms-stick-weapon", "arms-stick-shield"}
+    for slot in ("weapon", "shield"):
+        glb = Path(parts["pieces"][slot]["glb"])
+        report = json.loads(glb.with_name(glb.stem + ".checks.json").read_text())
+        licence = next(r for r in report["results"] if r["check"] == "license.components")
+        assert licence["status"] != "fail", licence["message"]   # its own record, bound to the finished file
+        assert queued[f"arms-stick-{slot}"]["license_status"] == licence["status"]
+
+
 def test_weapon_pictures_are_scored_and_the_best_is_offered_first(tmp_path, judged):
     body_json, source = _with_picture(tmp_path)
     edit, generate, run = _fakes(source, [])
@@ -232,7 +263,7 @@ def test_a_set_of_weapons_needs_no_concept_nor_outfit(tmp_path, judged):
     body_json, source = _with_picture(tmp_path)
     edit, generate, run = _fakes(source, [])
     path = cli.run_set(body_json, "arms", {}, weapon="a longbow", root=tmp_path / "sets", run=run, edit=edit,
-                       generate=generate, fitter=None, checker=None)
+                       generate=generate, fitter=None, checker=lambda *a: {})
     parts = json.loads(path.read_text())
     assert parts["mode"] == "standalone" and parts["concept"] is None and parts["fit"] is None
 

@@ -628,7 +628,7 @@ def check_asset(glb: str, key: str | None = None, profile: str | None = None,
                 log: str | None = None) -> Item:
     """Run the automatic checks on a GLB, write <name>.checks.json beside it and put it in
     the review queue, as scripts/check_asset.py does. profile: prop (default), creature,
-    equipment_part. set: thresholds, e.g. {"budget.faces.max": 20000}. reference: a GLB or
+    equipment_part, weapon_or_shield. set: thresholds, e.g. {"budget.faces.max": 20000}. reference: a GLB or
     picture for size and silhouette; height/width/depth: wanted size in metres. Returns the
     item as review_item does."""
     _scripts()

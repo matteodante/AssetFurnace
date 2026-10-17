@@ -35,6 +35,10 @@ skinnano alla mano e non si agganciano al corpo nell'export.
    `grip` (il nodo `SOCKET_grip` del GLB, o fatto dal controllo in Unreal), la lunghezza reale della classe o
    quella corretta, collisione convessa. Il controllo in Unreal verifica il socket e che il pivot stia sul
    modello; non il pavimento.
+7. **Controlli e coda di revisione come asset a sé.** Ogni arma e scudo di un set ha il suo record di
+   provenienza accanto al GLB finito (`<slot>_finished.provenance.json`, legato dallo SHA-256), i controlli con
+   il profilo `weapon_or_shield` (l'immagine come riferimento della sagoma) e una voce nella coda di revisione
+   (`<set>-<corpo>-<slot>`), dove si controlla la licenza. Il `checks` di `<set>.parts.json` li nomina.
 
 ## Tolto
 

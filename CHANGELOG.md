@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- From the code read of 18/10/2026 ([backlog](docs/plans/2026-10-18-code-read-fixes.md)):
+  - a set's weapons and shields are checked as assets of their own (the `weapon_or_shield`
+    profile), with a provenance record bound to the finished file, and each goes to the review
+    queue; before, only the fitted pieces were checked.
 - The Windows installer, from the second final review:
   - on a driver for CUDA 12.8 or 12.9 it installs `requirements-cu128.lock`, with torch
     2.11.0, the newest PyTorch's cu128 index has (the main lock's 2.14.1 is only on cu130, so
