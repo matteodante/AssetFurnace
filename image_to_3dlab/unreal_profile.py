@@ -50,13 +50,6 @@ REFUSED_EXTENSIONS = {"EXT_meshopt_compression", "KHR_meshopt_compression", "EXT
 _PREFIXES = ("SK_", "SM_", "T_", "MI_", "M_", "AS_", "A_")
 SIZE_TOLERANCE = 0.01   # measured size may differ from the request by 1%
 BASE_TOLERANCE_CM = 0.5
-# Where a held object hangs in Unreal: a socket of a hand of the body's skeleton (Mannequin
-# bone names), made by unreal_import_check.py. The user's decision C, 17/10/2026.
-HELD_SOCKETS = {"weapon": {"name": "SOCKET_Weapon", "bone": "hand_r"},
-                "shield": {"name": "SOCKET_Shield", "bone": "hand_l"}}
-# How far the hand bone may be from what it holds. Unreal's hand_r/hand_l sit at the wrist,
-# and the palm closes on the grip about a hand's half length (~9 cm) further on.
-GRIP_REACH_CM = 10.0
 
 # SOMA joint (what kimodo_retarget.map_skintokens_to_soma returns) -> UE5 Mannequin bone.
 SOMA_TO_UE: dict[str, str] = {
@@ -680,17 +673,12 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
             lods: int, collision: str | None, humanoid: bool, skeleton_from: str | None,
             animations: list[str], tint: str | None, problems: list[str],
             facing_bones: list[str] | None = None,
-            orm: bool = True, opacity_mask: str | None = None, socket: Mapping[str, str] | None = None
-            ) -> dict[str, Any]:
+            orm: bool = True, opacity_mask: str | None = None, grip: bool = False) -> dict[str, Any]:
     """`<mesh>.unreal.json`: what Unreal must do with the GLB, and what to expect.
 
     `opacity_mask="vertex_alpha"`: a fitted base body; Unreal's glTF import does not read
     vertex alpha, so the import gives the body a Masked material with Vertex Color alpha
     in Opacity Mask (`unreal_import_check.py` does it, and checks it).
-
-    `socket`: a static mesh held in a hand ({"name", "bone"}), in the body's own space; the
-    import makes that socket on the body's skeleton (`on`) so that the mesh, hung from it,
-    is where the fit put it.
     """
     skinned = kind != "prop"
     return {
@@ -704,11 +692,13 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
         "orm": orm,  # False when every material is plain factors: no ORM texture to find
         "tint": tint,
         "opacity_mask": opacity_mask,
+        # a weapon or shield: its pivot on its grip, and a socket of that name there (made at
+        # import from the GLB's SOCKET_grip node, or by unreal_import_check.py)
+        "grip_socket": {"name": "grip"} if grip else None,
         "lods": lods,
         "collision": collision,
         "skeleton": None if not skinned else (f"{skeleton_from}_Skeleton" if skeleton_from else names["skeleton"]),
-        "skeleton_from": skeleton_from if skinned else None,
-        "socket": {**dict(socket), "on": skeleton_from} if socket else None,
+        "skeleton_from": skeleton_from,
         "humanoid": humanoid,
         "animations": animations,
         "problems": problems,
@@ -717,7 +707,7 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
             # Skeletal LODs are reduced by Unreal (gltfpack stalls on UV seams); static
             # LODs travel inside the GLB as LODn_ nodes.
             "generate_skeletal_lods": lods if skinned and kind != "equipment" else 0,
-            "reuse_skeleton": skinned and skeleton_from is not None,
+            "reuse_skeleton": skeleton_from is not None,
         },
         "expect": {
             "size_cm": size_cm,
@@ -732,13 +722,6 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
     }
 
 
-def grip(hand: list[float], box_lo: list[float], box_hi: list[float]) -> dict[str, Any]:
-    """The hand bone (in the held mesh's own space, through its socket) against that mesh's
-    box: how far outside it is, and whether that is within a hand's reach."""
-    gap = sum(max(lo - v, 0.0, v - hi) ** 2 for v, lo, hi in zip(hand, box_lo, box_hi)) ** 0.5
-    return {"grip_inside": gap <= GRIP_REACH_CM, "grip_gap_cm": round(gap, 2)}
-
-
 def _check(name: str, ok: bool, detail: str) -> dict[str, Any]:
     return {"check": name, "ok": bool(ok), "detail": detail}
 
@@ -749,32 +732,32 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
     if expected.get("problems"):
         results.append(_check("export", False, "the export itself reported: " + "; ".join(expected["problems"])))
     want = expected["expect"]
-    # a piece on a body (equipment) or hung from its socket: no size or floor of its own
-    equipment = expected["kind"] == "equipment" or bool(expected.get("socket"))
+    equipment = expected["kind"] == "equipment"
+    held = bool(expected.get("grip_socket"))   # its pivot is its grip, not a floor
     bounds = measured.get("bounds_cm") or [0, 0, 0]
     if want.get("size_cm") and not equipment:
         got = bounds[2] if want["measure"] == "height" else max(bounds)
         ok = abs(got - want["size_cm"]) <= SIZE_TOLERANCE * want["size_cm"]
         results.append(_check("size", ok, f"{want['measure']} {got:.1f} cm, wanted {want['size_cm']} cm"))
-    if not equipment:
+    if not equipment and not held:
         min_z = measured.get("min_z", 0.0)
         results.append(_check("base", abs(min_z) <= BASE_TOLERANCE_CM, f"lowest point at z = {min_z:.2f} cm"))
     names = measured.get("names", [])
     results.append(_check("names", expected["mesh"] in names, f"assets: {', '.join(names)}"))
     want_lods = expected["lods"]
     results.append(_check("lods", measured.get("lods", 0) >= want_lods, f"{measured.get('lods')} LODs, wanted {want_lods}"))
-    if expected.get("socket"):
-        got = measured.get("socket") or {}
-        wanted = expected["socket"]
+    if held:
+        got = measured.get("grip") or {}
         if not got.get("made"):
-            results.append(_check("socket", False, f"{wanted['name']} was not made on {wanted['on']}: "
-                                  f"{got.get('error', 'no socket')}"))
+            results.append(_check("grip", False, f"no grip socket: {got.get('error', 'not made')}"))
         else:
-            held = grip(got["hand_cm"], *got["box_cm"])
-            results.append(_check("socket", held["grip_inside"],
-                                  f"{wanted['name']} on {wanted['bone']} of {wanted['on']}: the hand is "
-                                  f"{held['grip_gap_cm']:.1f} cm from the mesh hung from it (at most "
-                                  f"{GRIP_REACH_CM:.0f})"))
+            where = [float(v) for v in got.get("location_cm", [0, 0, 0])]
+            lo, hi = measured.get("box_cm") or [[0, 0, 0], [0, 0, 0]]
+            on = all(low - BASE_TOLERANCE_CM <= 0.0 <= high + BASE_TOLERANCE_CM for low, high in zip(lo, hi))
+            off = sum(v * v for v in where) ** 0.5
+            results.append(_check("grip", off <= BASE_TOLERANCE_CM and on,
+                                  f"grip socket {off:.1f} cm from the pivot, which is "
+                                  + ("on the model" if on else "outside the model")))
     if expected.get("collision") in ("box", "convex", "unreal"):
         key = "box_elems" if expected["collision"] == "box" else "convex_elems"
         count = (measured.get("collision") or {}).get(key, 0)
