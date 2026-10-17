@@ -315,7 +315,7 @@ questa lista prima del resoconto finale.
 | Parità: versioni Blender nella catena (d4) | unito (#77, #82) |
 | Parità: materiali, un materiale per asset o pezzo (e) | unito (#81); #79 chiusa |
 | Documento finale e tabella di parità | PR #80 (per ultima) |
-| Set vero 1: spada presa per la lama | PR #108 (decisione C): l'immagine chiede il manico in basso e il giudice la gira se lo vede in alto; #83 chiusa (P1 nella regola geometrica) |
+| Set vero 1: spada presa per la lama | unito (#108, decisione C): l'immagine chiede il manico in basso e il giudice la gira se lo vede in alto; #83 chiusa (P1 nella regola geometrica) |
 | Set vero 2: concept senza i pezzi scelti non nominati | unito (#84) |
 | Set vero 3: UV sovrapposte del Finish | unito (#85) |
 | Set vero 4: lucchetto GPU (Pixal3D, giudice, sd-cli) | unito (#86) |
@@ -324,18 +324,18 @@ questa lista prima del resoconto finale.
 | Set vero 7: giudice mancante senza avviso | unito (#88) |
 | Decisione A: come è vestito il corpo base (tutina, abiti semplici, intimo, testo libero), scelto alla registrazione su tre strade, in `body.json` | unito (#93) |
 | Decisione B: nello studio un set si ferma dopo le immagini, scelta automatica evidenziata, un clic per il 3D; CLI e agenti con un flag | era già così; fissato con un test: unito (#89) |
-| Decisione C: arma e scudo come static mesh su un socket della mano in Unreal (`hand_r` / `hand_l`), non pezzi skinnati | PR #108: socket fatti all'import dallo scheletro importato, presa misurata (0,8 cm sul set vero in UE 5.8); "Held" nello studio, `--socket`, opzione `socket` dei lotti |
-| C, collegato: l'arma segue l'osso del dito `middle_02_r` (i diti ereditano il ruolo "hand"); test sull'osso padre | PR #108 (segue la radice della catena della mano) |
+| Decisione C: arma e scudo come static mesh su un socket della mano in Unreal (`hand_r` / `hand_l`), non pezzi skinnati | unito (#108): socket fatti all'import dallo scheletro importato, presa misurata (0,8 cm sul set vero in UE 5.8); "Held" nello studio, `--socket`, opzione `socket` dei lotti |
+| C, collegato: l'arma segue l'osso del dito `middle_02_r` (i diti ereditano il ruolo "hand"); test sull'osso padre | unito (#108; segue la radice della catena della mano) |
 | Decisione D: giudice (llama.cpp + Qwen3-VL) installato nel checkout principale con il bootstrap; Setup lo mostra; il lavoro avvisa | installato il 17/10 (bootstrap_style.py --only llama, provato: risponde in 13 s); avviso e Setup: unito (#88) |
 | Decisione E: mantello (nuovo slot con fisica della stoffa) rimandato | scritto nei seguiti del progetto dei pezzi (#80) |
-| MCP 1: annotazioni degli strumenti (readOnly, destructive, idempotent, title) | aperto |
-| MCP 2: risultati tipizzati (outputSchema, structuredContent) | aperto |
-| MCP 3: file prodotti come resource link con mimeType | aperto |
-| MCP 4: notifiche di avanzamento; valutare i "tasks" dell'SDK | aperto |
-| MCP 5: solo percorsi sotto il repo, `output/` o le roots del client | aperto |
-| MCP 6: nome del server "assetfurnace", istruzioni, documentazione degli strumenti per funzione | aperto |
-| MCP 7: Streamable HTTP facoltativo su 127.0.0.1 con token, uso via tunnel SSH | aperto |
-| Pixal3D secondo la scheda ufficiale (12 passi, campo visivo stimato con MoGe-2) | PR #104 (MoGe-2 installato e provato: 23 s su GPU; conflitti con main risolti il 17/10) |
+| MCP 1: annotazioni degli strumenti (readOnly, destructive, idempotent, title) | PR #109 |
+| MCP 2: risultati tipizzati (outputSchema, structuredContent) | PR #109 |
+| MCP 3: file prodotti come resource link con mimeType | PR #109 (leggibili con `resources/read`, solo sotto `output/` o le roots) |
+| MCP 4: notifiche di avanzamento; valutare i "tasks" dell'SDK | PR #109: `wait_batch` con avanzamento; i tasks restano fuori (l'SDK 2.3 li esclude di proposito, i lavori in background fanno già il loro lavoro) |
+| MCP 5: solo percorsi sotto il repo, `output/` o le roots del client | PR #109 (anche i percorsi dentro uno spec) |
+| MCP 6: nome del server "assetfurnace", istruzioni, documentazione degli strumenti per funzione | PR #109 |
+| MCP 7: Streamable HTTP facoltativo su 127.0.0.1 con token, uso via tunnel SSH | PR #109 (provato davvero: 401 senza token, 200 con) |
+| Pixal3D secondo la scheda ufficiale (12 passi, campo visivo stimato con MoGe-2) | unito (#104; MoGe-2 installato e provato: 23 s su GPU) |
 | Review finale con Codex di tutto il lavoro, correzioni, resoconto | aperto |
 
 ## Seguiti
