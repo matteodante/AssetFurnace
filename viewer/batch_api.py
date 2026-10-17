@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
-from blender_edit_api import local_address
+import blender_edit_api
 
 from image_to_3dlab import batch, mcp_server
 
@@ -225,23 +225,9 @@ def submit(output: Path, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
 
 
 def check_request(handler, *, mutation: bool) -> None:
-    """The local Studio page only: loopback Host on a loopback server (no DNS rebinding),
-    same origin, and on mutations a custom header a cross-site form cannot send."""
-    host = handler.headers.get("Host", "")
-    parsed = urlsplit("//" + host)
-    if not parsed.hostname or parsed.username or parsed.path or parsed.query:
-        raise PermissionError("Invalid request host")
-    if local_address(handler.server.server_address[0]) and not local_address(parsed.hostname):
-        raise PermissionError("Use the local Studio address")
-    origin = handler.headers.get("Origin")
-    if origin:
-        source = urlsplit(origin)
-        if source.scheme not in ("http", "https") or source.netloc.lower() != host.lower():
-            raise PermissionError("Use this Studio page to run batches")
-    if handler.headers.get("Sec-Fetch-Site") == "cross-site":
-        raise PermissionError("Cross-site batch requests are not allowed")
-    if mutation and (not origin or handler.headers.get("X-AssetFurnace-Request") != HEADER):
-        raise PermissionError("Use this Studio page to run batches")
+    """The local Studio page only, as every Studio API checks it (no DNS rebinding, same
+    origin, and on mutations the batch page's own header)."""
+    blender_edit_api.check_request(handler, mutation=mutation, header=HEADER)
 
 
 def _body(handler) -> dict[str, Any]:
