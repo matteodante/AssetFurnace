@@ -267,14 +267,14 @@ Stato reale, aggiornato a ogni PR: [sezione 13](#13-stato).
 | a | Unita (#60): impronte per passo, passi `export_unreal` e `checks`, catalogo |
 | a-fix | Unita (#63): i lotti vecchi non rigenerano più quando `checks` entra fra i predefiniti; file nelle opzioni per contenuto; controlli ripetuti ri-accodati |
 | b1 | Unita (#62): strumenti MCP per la coda di revisione e per i pezzi (`slot_parts/runs.py` condiviso con lo studio) |
-| b3c | In revisione: `replace` nei lotti e in `run_steps` (sostituire l'uscita di un passo con un proprio file, versione Blender compresa) |
-| b3b | In revisione: passo `concept` (funzione 2) con candidati; `concept/requests.py` condiviso con lo studio; chiave dei candidati = impronta del passo senza la scelta; nel catalogo il flag della riga di comando di ogni parametro (`flag`) |
-| b3a | In revisione: `image_to_3dlab/rigging.py` condiviso con lo studio, `scripts/autorig.py`, passi `rig` e `animate`; le clip arrivano all'export Unreal |
-| b2 | In revisione: testo-immagine nel pacchetto e `scripts/text_image.py`; passo `picture` con candidati, attesa (`waiting`, uscita 3) e scelta (`pick`, `picks.json`); MCP `describe_steps`, `run_steps`, `pick_candidate`, `rerun_step`; test di parità nei due sensi |
+| b2 | Unita (#66): testo-immagine nel pacchetto e `scripts/text_image.py`; passo `picture` con candidati, attesa (`waiting`, uscita 3) e scelta (`pick`, `picks.json`); MCP `describe_steps`, `run_steps`, `pick_candidate`, `rerun_step`; test di parità nei due sensi |
+| b3a | Unita (#67): `image_to_3dlab/rigging.py` condiviso con lo studio, `scripts/autorig.py`, passi `rig` e `animate`; le clip arrivano all'export Unreal |
+| b3b | Unita (#68): passo `concept` (funzione 2) con candidati; `concept/requests.py` condiviso con lo studio; chiave dei candidati = impronta del passo senza la scelta; flag della riga di comando nel catalogo |
+| b3c | In revisione (#69): `replace` nei lotti e in `run_steps` (sostituire l'uscita di un passo con un proprio file, versione Blender compresa) |
+| c1 | In revisione: studio, "Redo…" su 3D, Finish e Rig con i valori usati; passi "fatti da una versione precedente"; seme del 3D in Create e nel passo; triangoli del Finish in Create |
 
 ## Seguiti
 
-- Codex non ha revisionato #60 (limite d'uso raggiunto); al suo posto una revisione indipendente con un agente.
-
+- Codex non ha revisionato le PR di questo lavoro (limite d'uso raggiunto): ognuna ha avuto una revisione indipendente con un agente, e i P1 trovati sono stati corretti prima del merge.
 - Lo studio non usa il lucchetto della GPU e non vede i lotti in corso (`docs/batches.md`): resta così finché lo
   studio non ha un gestore di lavori unico. Fuori da questo lavoro.
