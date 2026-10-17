@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A base body says how it is dressed under its pieces, the person's choice when it is
+  registered on every route: a bodysuit, simple clothes (shirt, breeches, cloth shoes), minimal
+  underwear, or words of their own (`slot_parts.py body --dressing`, `pieces_add_body(dressing=)`,
+  the studio's register form). It is kept in body.json, and the outfit concept keeps those
+  clothes instead of a fixed bodysuit.
 - Batches and agents can replace a step's output with a file of their own:
   `"replace": {"finish": "my.glb"}` in a row, or `run_steps(..., replace=...)`. The step
   does not run, the file (a Blender version, a model made elsewhere, your own rig or clips)
@@ -340,6 +345,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concept record and `output/concept/judgements.jsonl`.
 
 ### Changed
+- Text to image runs as Qwen-Image 2.1 Turbo's card says (docs/text-to-image.md): 2048x2048
+  by default with the card's presets, the official transparent-background prompt (a real
+  alpha, so the 3D step needs no cut-out), and the official prompt rewriting, run on this
+  machine with the text encoder already installed. The rewriting's system prompt comes with
+  the Qwen-Image setup; without it the picture is drawn from the prompt as written. Runs from
+  reference pictures stay at 1024: 2048 with references does not fit 16 GB.
 - Qwen-Image's licence class now says what its licence says: `research-only` (the Qwen
   Research License allows it "for research or evaluation purposes only", 1(i) and 2(a)),
   and the records cite the licence text instead of an unverified post about output rights.
@@ -356,12 +367,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces says when the picture judge is missing: Setup & Status lists it (llama.cpp
+  running Qwen3-VL) with its download, a run without it says in its log that pictures are
+  picked by silhouette only, and the pick panel and `pieces_status` show which judge picked.
+- Characters in pieces: a piece made on its own loses the small bits floating away from it
+  (`scripts/drop_fragments.py`, after its finish). The first real set's glove carried a
+  56-face fragment that hung in the air next to the hand in Unreal; bits touching the piece
+  and parts of a fair size stay.
+- Finish: the retopology's UVs no longer paint texels twice. Smart UV Project at its wide
+  angle stacked faces of one island on each other (the first real set's helmet and boots
+  failed the uv.overlap check at 10.1% and 11.1%); its islands are now unwrapped
+  conformally, the faces still overlapping cut apart, and the last few made islands of their
+  own: 0.07% on the same pieces.
+- Characters in pieces: the outfit concept names every chosen piece, as the design asks. A
+  helmet the outfit's words left out was not drawn, so its cut was the face and the piece
+  edit invented a helmet; the concept now adds the chosen pieces the outfit does not name,
+  in their own words when they have them.
+- The GPU lock is let go even when another job is reading it at that moment: Windows
+  refused to delete the open file, the release gave up without a word, and every other GPU
+  job then waited on a lock nobody held (the suite hung on it on 2026-10-17).
+- A Studio request refused before its body was read gets its 403: the reference concept
+  and Blender edit APIs now read the body first, as the batch and export APIs did, instead of
+  closing on it (Windows then reset the connection and the page saw a network error).
+- glTF validity is never silently unchecked: without Khronos' glTF-Validator the `gltf.valid`
+  check warns that it did not run (it was skipped, and no report said so), and the validator
+  can be installed from Setup & Status (about 2 MB) as well as from its script.
 - Library names and hidden flags are never lost: two changes at once (a rename and a hide)
   no longer write over each other, the file is replaced whole so a crash cannot truncate it,
   and a damaged one is kept aside as `.bad-<time>` instead of being overwritten.
+- Game materials record a choice they make against glTF: an asset with no metallic map
+  and no `metallicFactor` (which the spec defaults to 1, metal) is packed as not metal, and
+  `maps.metallic` now says "assumed 0" instead of "factor".
+- The studio's jobs talk UTF-8 on Windows: their Python children run with `PYTHONUTF8=1`
+  and their output is read as UTF-8, so a Chinese prompt or a name outside cp1252 no longer
+  stops the script that prints it, or the loop that reads it.
 - The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
   Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
   only text to image took it.
+- On Windows the server's children die with it: sd-cli, llama-server and the material
+  workers are in a job object that kills them when the server ends, also when it is killed
+  from Task Manager. The desktop Blender being edited in and the pid-tracked background jobs
+  (batches, generations) still outlive it, as they are meant to. `Ferma-AssetFurnace.cmd`
+  stops the server the launcher started.
+- Blender runs fail when their script fails, and do not depend on who runs them: the
+  concept maps and the multiview render pass `--python-exit-code 1` (a raised error used to
+  exit 0), and neither reads pictures or views an earlier render left in a reused folder;
+  Finish and the rebind run with `--factory-startup`, without the user's preferences and
+  add-ons; an uploaded .blend opens with `--disable-autoexec`, so its scripts never run.
+  SkinTokens' bpy is pinned to 5.0.1, the last for Python 3.11, its record names it, and the
+  Setup card says it is not the Blender app the rest uses.
+- Unreal exports are one-sided: the material culls back faces (glTF `doubleSided` false),
+  so Unreal no longer makes every piece a Two Sided material that draws the inside of a
+  helmet through its openings. Cloth (a cloak, cape, mantle, scarf, banner, flag or veil,
+  by name) stays two sided; `export_unreal(two_sided=)` decides by hand.
 - Studio pictures and reference concepts take the shared GPU lock while sd-cli runs, as the
   command line and the batches already did; while another session holds the GPU the job
   stays queued, says whom it waits for, and can be cancelled.
@@ -376,6 +434,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its v0.4.3), and run as `.\install.ps1` from a clone it updates that clone. WINDOWS.md,
   the README and the studio's update command run the clone's installer instead of the
   upstream's one-liner; the update check asks this repository's releases.
+- A negative prompt at `cfg_scale` 1 (the Turbo's default) is no longer passed to sd-cli nor
+  recorded among the settings that made the picture: stable-diffusion.cpp does not compute
+  the negative branch at 1, so the provenance now lists it under
+  `negative_prompt_not_applied` with the reason, and the run says so. Above 1 it is used.
 - Library: an asset with no picture or 3D model of its own keeps its id when a later finish
   or rig joins it (one from a Blender version, say), so its versions, name and hidden flag
   stay with it; and what is made from a Blender version of one of its moves joins it too.

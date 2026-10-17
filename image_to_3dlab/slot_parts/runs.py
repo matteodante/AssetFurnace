@@ -47,6 +47,7 @@ def list_bodies(output: Path) -> list[dict[str, Any]]:
             continue
         image = Path(record["image"])
         found.append({"name": record["name"], "labels": record.get("labels", {}), "clips": sorted(record.get("clips", {})),
+                      "dressing": body_mod.dressing_words(record),
                       "picture": rel(output, image) if output.resolve() in image.resolve().parents else None})
     return found
 
@@ -80,12 +81,16 @@ def catalogue() -> list[dict[str, Any]]:
 
 
 def register_body(output: Path, name: str, picture: Path, model: Path, rigged: Path,
-                  clips: dict[str, Path] | None = None, labels: dict[str, str] | None = None) -> dict:
+                  clips: dict[str, Path] | None = None, labels: dict[str, str] | None = None,
+                  dressing: str | None = None, dressing_words: str = "") -> dict:
     """A rigged character as a base body; `model` is the Pixal3D model it was rigged from,
-    whose saved camera puts the bones on the picture."""
+    whose saved camera puts the bones on the picture. `dressing` is how it is dressed under its
+    pieces (`body.DRESSINGS`, or "other" with `dressing_words`): the person's choice, never assumed."""
+    dressed = body_mod.dressing(dressing, dressing_words)
     labels = {str(k): str(v) for k, v in (labels or {}).items() if str(k).strip()}
     path = body_mod.register(str(name), Path(picture), Path(rigged), Path(model).with_suffix(".svviews"), None,
-                             labels, output / "bodies", {str(k): Path(v) for k, v in (clips or {}).items()})
+                             labels, output / "bodies", {str(k): Path(v) for k, v in (clips or {}).items()},
+                             dressing=dressed)
     return {"name": body_mod.load(path)["name"], "record": rel(output, path)}
 
 
@@ -355,7 +360,17 @@ def status(output: Path, record: dict[str, Any] | None = None, running: bool | N
     return {"running": running, "action": record.get("action", "run"), "set": record["set"], "body": record["body"],
             "started": record["started"], "log": tail,
             "parts": rel(output, parts) if parts.is_file() and parts.stat().st_mtime >= record["started"] else None,
-            "picks": None if running else waiting_picks(output, folder)}
+            "picks": None if running else waiting_picks(output, folder),
+            # which judge picked the pictures: "shape only (...)" when the picture judge is missing
+            "judge": None if running else _judge_of_this_run(folder, record["started"])}
+
+
+def _judge_of_this_run(folder: Path, started: float) -> str | None:
+    """Which judge picked this run's pictures; None when candidates.json is an earlier run's."""
+    path = candidates_mod.path(folder / "pieces")
+    if not path.is_file() or path.stat().st_mtime < started:
+        return None
+    return candidates_mod.load(folder / "pieces").get("judge")
 
 
 def cancel(output: Path, stop=processes.terminate_group) -> dict[str, Any]:

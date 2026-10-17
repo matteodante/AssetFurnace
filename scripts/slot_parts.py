@@ -2,7 +2,7 @@
 """Characters in pieces (feature 4): register a base body, then cut a concept into slots.
 
     python scripts/slot_parts.py body knight --image body.png --rigged body_rigged.glb \
-        --views body.svviews [--label race=human --label sex=male]
+        --views body.svviews --dressing clothes [--label race=human --label sex=male]
     python scripts/slot_parts.py cuts --body output/bodies/knight/body.json --concept concept.png \
         --slots helmet,torso,shoulders:split,gloves,boots --out output/sets/red-knight/knight/cuts
     python scripts/slot_parts.py pieces --cuts output/sets/red-knight/knight/cuts/cuts.json \
@@ -187,6 +187,9 @@ def score_candidates(record: dict, cuts_dir: Path, folder: Path, seeds: list[int
     try:
         server = judge.LlamaServer(log=Path(folder) / "judge.log")
     except models.MissingModel as missing:
+        # said in the run's log: the pick panel and pieces_status show it too (candidates.json's judge)
+        print(f"going on without the picture judge ({missing}): each piece's picture is picked by its "
+              "silhouette only; Setup & Status installs the judge", flush=True)
         return candidates.score_all(record, cuts_dir, folder, seeds), f"shape only ({missing})"
     try:
         with server:
@@ -355,14 +358,15 @@ def check_pieces(fit_dir: Path, body_json: Path, set_name: str) -> dict:
 
 
 def make_concept(body_json: Path, outfit: str, folder: Path, seeds: list[int], style: str = "", run=_run,
-                 edit=edit_command, pick: int | None = None) -> tuple[Path, dict]:
+                 edit=edit_command, pick: int | None = None, chosen: dict | None = None) -> tuple[Path, dict]:
     """The outfit drawn on the base body (an edit of its picture), once per seed; the
     picked seed is taken (default the first). Pictures already made are kept."""
     from image_to_3dlab.concept import prompts, sidecar
 
     record = body_mod.load(body_json)
-    # add, not dress: the chosen pieces drawn on the bodysuit, the rest of the body left as it is
-    prompt = prompts.add_piece(outfit, style=style)
+    # add, not dress: the chosen pieces drawn on the body, its own clothes and the rest left as they are
+    prompt = prompts.add_piece(pieces.concept_outfit(outfit, chosen or {}), style=style,
+                               wearing=body_mod.dressing_words(record))
     folder.mkdir(parents=True, exist_ok=True)
     for seed in seeds:
         picture = folder / f"s{seed}.png"
@@ -455,7 +459,7 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
         if not outfit.strip():
             raise ValueError("give the outfit in words (--outfit) or a concept drawn on the body (--concept)")
         if stop_at_concept and len(concept_seeds) > 1:
-            make_concept(body_json, outfit, folder / "concept", list(concept_seeds), style, run, edit)
+            make_concept(body_json, outfit, folder / "concept", list(concept_seeds), style, run, edit, chosen=drawn)
             held = {slot: {"prompt": chosen[slot]["prompt"]} for slot in ("weapon", "shield") if slot in chosen}
             folder.mkdir(parents=True, exist_ok=True)
             state_path.write_text(json.dumps({"waiting": "concept", "concepts": [int(s) for s in concept_seeds],
@@ -464,7 +468,8 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
                                   encoding="utf-8")
             return folder / "concept"
         concept, concept_info = make_concept(body_json, outfit, folder / "concept", list(concept_seeds), style, run,
-                                             edit, pick=int(concept_pick) if concept_pick is not None else None)
+                                             edit, pick=int(concept_pick) if concept_pick is not None else None,
+                                             chosen=drawn)
         mode = "body_and_equipment"
     else:
         concept_info = {"given": True}
@@ -664,6 +669,9 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--matte", type=Path, help="cut-out of the picture (default <picture>__matted.png)")
     b.add_argument("--label", action="append", default=[], help="key=value, e.g. race=human (repeatable)")
     b.add_argument("--clip", action="append", default=[], help="name=animated.glb, the body's own clip (repeatable)")
+    b.add_argument("--dressing", required=True, choices=(*body_mod.DRESSINGS, "other"),
+                   help="how the body is dressed under its pieces (no default: you choose)")
+    b.add_argument("--dressing-words", default="", help="words of your own for it; needed with other")
     b.add_argument("--root", type=Path, default=Path("output/bodies"))
     c = sub.add_parser("cuts", help="cut a concept drawn on a body into one picture per slot")
     c.add_argument("--body", type=Path, required=True, help="body.json from the body command")
@@ -770,7 +778,7 @@ def main(argv: list[str] | None = None) -> int:
             labels = dict(item.split("=", 1) for item in args.label)
             clips = dict(item.split("=", 1) for item in args.clip)
             path = body_mod.register(args.name, args.image, args.rigged, args.views, args.matte, labels, args.root,
-                                     clips)
+                                     clips, dressing=body_mod.dressing(args.dressing, args.dressing_words))
             print(f"wrote {path}")
         else:
             result = make_cuts(args.body, args.concept, slots.choose(parse_slots(args.slots)), args.out,

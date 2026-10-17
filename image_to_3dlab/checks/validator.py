@@ -1,7 +1,8 @@
 """glTF validity, judged by Khronos' own glTF-Validator (Apache-2.0).
 
-Install it with `python scripts/bootstrap_gltf_validator.py`. Errors fail, warnings warn,
-infos and hints are ignored. Without the validator the check is skipped, never passed.
+Install it with `python scripts/bootstrap_gltf_validator.py` or from Setup & Status. Errors
+fail, warnings warn, infos and hints are ignored. Without the validator the check warns that
+it did not run: never a pass, and never silent.
 """
 
 from __future__ import annotations
@@ -40,6 +41,10 @@ def grade(report: dict, keep: int = 10) -> dict:
                   {"validator": report.get("validatorVersion"), "messages": messages})
 
 
-@register("gltf.valid", needs=("glb", "gltf_validator"))
+@register("gltf.valid", needs=("glb",))
 def valid(asset, config):
+    if asset.validator_path is None:
+        return result("gltf.valid", "warn", None, {"errors": 0, "warnings": 0},
+                      "not run: glTF-Validator is not installed (Setup & Status, or "
+                      "python scripts/bootstrap_gltf_validator.py)")
     return grade(run_validator(asset.validator_path, asset.glb, int(config.get("timeout", 120))))

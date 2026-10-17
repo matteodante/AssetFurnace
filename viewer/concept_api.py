@@ -35,7 +35,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from PIL import Image, UnidentifiedImageError
 
 import image_api
-from blender_edit_api import check_request
+from blender_edit_api import check_request, drain
 
 from image_to_3dlab.blender import find_blender
 from image_to_3dlab.concept import edit, maps, prompts, requests, sidecar
@@ -330,6 +330,7 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
         else:
             handler._send_json(404, {"error": "No such concept request"})
     except PermissionError as exc:
+        drain(handler)   # refused before the body was read
         handler._send_json(403, {"error": str(exc)})
     except image_api.MissingWeights as exc:
         handler._send_json(503, {"error": str(exc), "needs_setup": True, "missing": exc.missing})
