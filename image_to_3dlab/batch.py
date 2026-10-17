@@ -154,7 +154,7 @@ class BatchRow:
             "parameters": self.parameters, "options": self._options_by_content(),
             "size_cm": self.size_cm, "measure": self.measure,
             **({"prompt": self.prompt} if self.prompt is not None else {}),
-            **({"replace": {step: _file_digests(files) for step, files in self.replace.items()}}
+            **({"replace": {step: _replacement_digests(files) for step, files in self.replace.items()}}
                if self.replace else {}),
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
@@ -193,8 +193,8 @@ class BatchRow:
             options = by_content.get(name, {})
             fields = (step_catalog.CATALOG[name].row_fields if name in step_catalog.CATALOG
                       else UNKNOWN_STEP_FIELDS)
-            if name in self.replace:   # a file of the user's own: only that file counts
-                options, fields = {"replace": _file_digests(self.replace[name])}, ()
+            if name in self.replace:   # a file of the user's own: only it and its records count
+                options, fields = {"replace": _replacement_digests(self.replace[name])}, ()
             previous = _hash({"after": previous, "step": name, "options": options,
                               "fields": {key: getattr(self, key) for key in fields}})
             fingerprints[name] = previous
@@ -214,6 +214,17 @@ UNKNOWN_STEP_FIELDS = ("kind", "faces", "profile", "backend", "parameters", "siz
 
 def _hash(payload: Any) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def _replacement_digests(files: Any) -> Any:
+    """A replacing file by its content and the records beside it (its licence travels
+    with them: a changed record is a change)."""
+    if isinstance(files, list):
+        return [_replacement_digests(item) for item in files]
+    path = Path(files)
+    records = [[c.name, sha256_file(c)] for c in (path.with_suffix(".provenance.json"), path.with_suffix(".json"))
+               if c.is_file()]
+    return {"sha256": sha256_file(path), "records": records}
 
 
 def _file_digests(value: Any) -> Any:
@@ -552,9 +563,11 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         gated = ([(row.backend, row.backend)] if "generate" in row.steps and "generate" not in row.replace
                  else []) + (
             [(source, f"its source ({source})")] if source is not None else []) + (
-            [(PICTURE_MODEL, "the picture model")] if {"picture", "concept"} & set(row.steps) else []) + (
+            [(PICTURE_MODEL, "the picture model")]
+            if {"picture", "concept"} & (set(row.steps) - set(row.replace)) else []) + (
             [(REPAINT_BACKEND, "the repaint")]
-            if "finish" in row.steps and row.options.get("finish", {}).get("paint") else [])
+            if "finish" in row.steps and "finish" not in row.replace
+            and row.options.get("finish", {}).get("paint") else [])
         for backend, what in gated:
             try:
                 validate_run_policy(backend, resolved_intent["use_case"],
@@ -563,8 +576,17 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
             except ValueError as exc:
                 problems.append(f"row {row.id}: license policy for {what}: {exc}")
         for step, files in row.replace.items():
-            # a file of the user's own carries what its records say it was made with
+            # a file of the user's own carries what its records say it was made with: its
+            # model, gated like a source's, and every class its records name
             for file in files if isinstance(files, list) else [files]:
+                made_with = recorded_backend(Path(file))
+                if made_with is not None:
+                    try:
+                        validate_run_policy(made_with, resolved_intent["use_case"],
+                                            resolved_intent["distribution"], policy.get("allow_conditional", True))
+                    except ValueError as exc:
+                        problems.append(f"row {row.id}: license policy for the file replacing {step} "
+                                        f"({made_with}): {exc}")
                 for classification in recorded_classes(Path(file)):
                     problem = class_problem(classification, resolved_intent, policy)
                     if problem:
@@ -798,7 +820,8 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
             if step in step_catalog.CATALOG and step != "generate":
                 problems += [f"{label}: {problem}"
                              for problem in step_catalog.check(step, merged, files=False)]
-    replaced, replace_problems = _parse_replace(value.get("replace"), steps, base, label)
+    replaced, replace_problems = _parse_replace(value.get("replace"), steps, base, label,
+                                                inside=staged / row_id if staged is not None else None)
     problems += replace_problems
     concept = None
     if asset is not None and asset.is_file() and not images:
@@ -833,9 +856,12 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
 PICTURE_SUFFIXES = {"png": (".png",), "jpg": (".jpg", ".jpeg")}
 
 
-def _parse_replace(raw: Any, steps: list[str], base: Path, label: str) -> tuple[dict[str, Any], list[str]]:
+def _parse_replace(raw: Any, steps: list[str], base: Path, label: str,
+                   inside: Path | None = None) -> tuple[dict[str, Any], list[str]]:
     """`"replace": {"finish": "my.glb"}`: each named step's output is a file of the user's
-    own (a list of GLBs for `animate`), found from the spec's folder and checked now."""
+    own (a list of GLBs for `animate`), found from the spec's folder and checked now. Not
+    a file inside the row's own folder (`inside`): the batch clears and rewrites it, so
+    an edit saved there is copied out first."""
     if raw is None:
         return {}, []
     if not isinstance(raw, dict):
@@ -855,7 +881,14 @@ def _parse_replace(raw: Any, steps: list[str], base: Path, label: str) -> tuple[
             problems.append(f"{label}: replace: {step} takes {'a list of files' if many else 'a file path'}")
             continue
         paths = [(base / item).resolve() for item in items]
+        names = [path.name.lower() for path in paths]
+        if len(set(names)) < len(names):
+            problems.append(f"{label}: replace: {step}: two files have the same name; rename one")
         for path in paths:
+            if inside is not None and path.is_relative_to(inside.resolve()):
+                problems.append(f"{label}: replace: {step}: {path.name} is inside the batch's own folder for "
+                                "this row, which the batch clears and rewrites; copy it somewhere else first")
+                continue
             problem = _replacement_problem(spec, path)
             if problem:
                 problems.append(f"{label}: replace: {step}: {problem}")
@@ -1446,7 +1479,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
         return
 
     staged = row.images or ((row.concept,) if row.concept else ())
-    if "generate" not in row.steps and staged:
+    if ("generate" not in row.steps or "generate" in row.replace) and staged:
         # generate copies a row's images; a finish-only row's (or the picture its asset's
         # record leads to) are staged here, so its folder and outputs.json carry it too
         try:
@@ -1608,17 +1641,22 @@ def _replaced_name(step: str, row_id: str, source: Path) -> str:
 
 
 def _replacement_record(source: Path, step: str) -> dict[str, Any]:
-    """The file's own record when it has one (a Blender version has), with where it came
-    from; else a record that says it is the user's and that its licence is not known."""
-    for candidate in (source.with_suffix(".provenance.json"), source.with_suffix(".json")):
-        record = read_json(candidate)
-        if isinstance(record, dict) and record:
-            return {**record, "replaced": {"step": step, "file": str(source), "sha256": sha256_file(source)}}
+    """The record of a file of the user's own: its licence and class from the record kept
+    beside it (the one with licence data, as for an asset row; a Blender version has one),
+    that record nested whole, and an output that names this very file. Without a record,
+    one that says the file is the user's and that its licence is not known."""
+    sha = sha256_file(source)
+    found = recorded_sidecar(source)
+    record = read_json(found) if found is not None else None
+    record = record if isinstance(record, dict) else {}
+    classification = record.get("classification") or (record.get("output") or {}).get("classification")
     return {"schema_version": 1, "created_at": now(), "tool": f"batch: replace {step}",
-            "input": {"path": str(source), "sha256": sha256_file(source), "source": "user-provided"},
-            "license": None, "classification": None,
-            "note": "A file of the user's own, with no licence record beside it: its licence is "
-                    "the user's to state."}
+            "input": {"path": str(source), "sha256": sha, "source": "user-provided"},
+            "license": record.get("license"), "classification": classification,
+            "output": {"sha256": sha, "classification": classification},
+            "source_record": record or None,
+            **({} if record else {"note": "A file of the user's own, with no licence record beside it: "
+                                          "its licence is the user's to state."})}
 
 
 def checks_report(row_dir: Path, steps: dict[str, Any]) -> Path | None:

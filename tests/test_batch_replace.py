@@ -4,6 +4,7 @@ the file, checked, becomes its output, and the steps after it run on it."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import struct
 from pathlib import Path
@@ -83,7 +84,9 @@ def test_a_finished_model_of_your_own_goes_on_to_the_checks(tmp_path, steps):
     folder = spec_path.parent / "out" / "lot" / "rows" / "SK_Knight" / "finish"
     assert (folder / "SK_Knight.glb").read_bytes() == mine.read_bytes()
     record = json.loads((folder / "SK_Knight.provenance.json").read_text())
-    assert record["license"] == {"name": "MIT"} and record["manual_edit"]["session_id"] == "s1"
+    assert record["license"] == {"name": "MIT"} and record["classification"] == "commercial-clear"
+    assert record["source_record"]["manual_edit"]["session_id"] == "s1"
+    assert record["output"]["sha256"] == hashlib.sha256(mine.read_bytes()).hexdigest()
 
 
 def test_a_file_without_a_record_says_so_in_its_provenance(tmp_path, steps):
@@ -177,3 +180,77 @@ def test_run_steps_passes_a_replacement(tmp_path, monkeypatch):
                                   backend="fake", replace={"finish": str(mine)})
     spec = json.loads(Path(result["spec"]).read_text())
     assert spec["rows"][0]["replace"] == {"finish": str(mine)}
+
+
+def test_an_edit_saved_over_the_batchs_own_output_is_refused(tmp_path, steps):
+    """rows/<id>/... is the batch's: it clears and rewrites it. An edit saved there would be
+    deleted, or rewritten as its own replacement on every run: it is copied out first."""
+    spec_path = _spec(tmp_path, {})
+    batch.run_batch(batch.load_batch(spec_path))
+    finished = spec_path.parent / "out" / "lot" / "rows" / "SK_Knight" / "finish" / "SK_Knight.glb"
+    spec = json.loads(spec_path.read_text())
+    spec["rows"][0]["replace"] = {"finish": str(finished)}
+    spec_path.write_text(json.dumps(spec))
+    with pytest.raises(batch.BatchError, match="copy it somewhere else first"):
+        batch.load_batch(spec_path)
+    assert finished.is_file()
+
+
+def test_the_model_a_replacing_files_record_names_is_gated(tmp_path, steps):
+    mine = tiny_glb(tmp_path / "mine.glb", "mine")
+    mine.with_suffix(".json").write_text(json.dumps({"model": {"backend": "hunyuan-comfyui"}}))
+    path = _spec(tmp_path, {"replace": {"finish": "mine.glb"}})
+    spec = json.loads(path.read_text())
+    spec.update(use_case="game", distribution="worldwide")
+    path.write_text(json.dumps(spec))
+    with pytest.raises(batch.BatchError, match="hunyuan-comfyui"):
+        batch.load_batch(path)
+
+
+def test_a_changed_record_of_the_replacing_file_reruns_its_step(tmp_path, steps):
+    _generator, _finish, seen = steps
+    mine = tiny_glb(tmp_path / "mine.glb", "mine")
+    record = mine.with_suffix(".provenance.json")
+    record.write_text(json.dumps({"license": {"name": "MIT"}, "classification": "commercial-clear"}))
+    spec_path = _spec(tmp_path, {"replace": {"finish": "mine.glb"}})
+    batch.run_batch(batch.load_batch(spec_path))
+    record.write_text(json.dumps({"license": {"name": "CC-BY"}, "classification": "commercial-conditional"}))
+    batch.run_batch(batch.load_batch(spec_path))
+    assert len(seen) == 2
+    copied = json.loads((spec_path.parent / "out" / "lot" / "rows" / "SK_Knight" / "finish"
+                         / "SK_Knight.provenance.json").read_text())
+    assert copied["license"] == {"name": "CC-BY"}
+
+
+def test_the_record_with_the_licence_is_the_one_kept(tmp_path, steps):
+    mine = tiny_glb(tmp_path / "mine.glb", "mine")
+    mine.with_suffix(".provenance.json").write_text(json.dumps({"note": "thin"}))
+    mine.with_suffix(".json").write_text(json.dumps({"license": {"name": "MIT"},
+                                                     "output": {"classification": "commercial-clear"}}))
+    spec_path = _spec(tmp_path, {"replace": {"finish": "mine.glb"}})
+    batch.run_batch(batch.load_batch(spec_path))
+    copied = json.loads((spec_path.parent / "out" / "lot" / "rows" / "SK_Knight" / "finish"
+                         / "SK_Knight.provenance.json").read_text())
+    assert copied["license"] == {"name": "MIT"} and copied["classification"] == "commercial-clear"
+
+
+def test_two_clips_with_one_name_are_refused(tmp_path, steps):
+    for folder in ("a", "b"):
+        skinned(tmp_path / folder / "walk.glb", folder)
+    skinned(tmp_path / "rigged.glb")
+    with pytest.raises(batch.BatchError, match="same name"):
+        batch.load_batch(_spec(tmp_path, {"kind": "creature", "steps": ["generate", "rig", "animate"],
+                                          "replace": {"rig": "rigged.glb", "animate": ["a/walk.glb", "b/walk.glb"]}}))
+
+
+def test_a_replaced_picture_does_not_need_the_picture_model(tmp_path, steps):
+    tiny_png(tmp_path / "drawn.png")
+    path = tmp_path / "words.json"
+    path.write_text(json.dumps({
+        "schema_version": 1, "license_policy": {"allow_conditional": False}, "output": {"directory": "out"},
+        "defaults": {"backend": "fake", "steps": ["picture", "generate"]},
+        "rows": [{"id": "SM_A", "prompt": "a crate", "replace": {"picture": "drawn.png"}}]}))
+    from image_to_3dlab import provenance
+
+    assert provenance.LICENSES["fake"].classification == "commercial-clear"
+    batch.load_batch(path)   # no refusal for a model that does not run

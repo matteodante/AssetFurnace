@@ -118,7 +118,9 @@ step does not run, the file (checked when the spec loads: a whole GLB, a skeleto
 under the name the step would give it, with its own `.provenance.json` (a Blender version
 has one) or a record saying it is yours and its licence is not known, and the steps after
 it run on it. Its records are held to the batch's licence policy like any source.
-Changing the file reruns that step's followers; the steps before keep their results.
+Changing the file, or the record beside it, reruns from that step; the steps before keep
+their results. A file inside the batch's own `rows/<id>/` folder is refused (the batch
+clears and rewrites it): copy an edit made there somewhere else first.
 `generate`, `finish`, `rig`, `animate`, `picture` and `concept` can be replaced; the
 others make nothing a file can stand in for.
 
