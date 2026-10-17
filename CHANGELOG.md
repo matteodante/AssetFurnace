@@ -346,6 +346,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- On Windows the server's children die with it: sd-cli, llama-server and the material
+  workers are in a job object that kills them when the server ends, also when it is killed
+  from Task Manager. The desktop Blender being edited in and the pid-tracked background jobs
+  (batches, generations) still outlive it, as they are meant to. `Ferma-AssetFurnace.cmd`
+  stops the server the launcher started.
 - Studio pictures and reference concepts take the shared GPU lock while sd-cli runs, as the
   command line and the batches already did; while another session holds the GPU the job
   stays queued, says whom it waits for, and can be cancelled.

@@ -44,11 +44,18 @@ Setup: http://localhost:8777/viewer/setup.html
 Il collegamento avvia il servizio in background se necessario. I suoi log sono in
 `journal/server.out.log` e `journal/server.err.log`.
 
+Per fermarlo: doppio clic su `Ferma-AssetFurnace.cmd`. Il server tiene i processi che
+lancia (sd-cli, llama-server, i worker dei materiali) in un job object di Windows, quindi
+si chiudono con lui anche se viene terminato da Gestione attività. Restano aperti solo il
+Blender in cui si sta modificando un modello e i lavori in background con il loro file pid
+(batch, generazioni), che il server riprende o chiude al riavvio.
+
 ## Differenze rispetto alla release originale
 
 - Il setup SkinTokens usa `.venv/Scripts/python.exe` su Windows, invece del percorso
   Linux. Gli altri passaggi di installazione rimangono quelli originali.
-- I due file `Avvia-AssetFurnace` facilitano l'avvio da Esplora file.
+- I file `Avvia-AssetFurnace` e `Ferma-AssetFurnace` avviano e fermano il server da
+  Esplora file.
 
 Modelli, ambienti Python, output e credenziali non vengono pubblicati nel repository.
 TRELLIS.2 e Hunyuan3D-2.1 non sono configurati in questa installazione Windows.
