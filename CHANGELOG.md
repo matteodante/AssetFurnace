@@ -362,6 +362,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
   Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
   only text to image took it.
+- Blender runs fail when their script fails, and do not depend on who runs them: the
+  concept maps and the multiview render pass `--python-exit-code 1` (a raised error used to
+  exit 0), and neither reads pictures or views an earlier render left in a reused folder;
+  Finish and the rebind run with `--factory-startup`, without the user's preferences and
+  add-ons; an uploaded .blend opens with `--disable-autoexec`, so its scripts never run.
+  SkinTokens' bpy is pinned to 5.0.1, the last for Python 3.11, its record names it, and the
+  Setup card says it is not the Blender app the rest uses.
 - Unreal exports are one-sided: the material culls back faces (glTF `doubleSided` false),
   so Unreal no longer makes every piece a Two Sided material that draws the inside of a
   helmet through its openings. Cloth (a cloak, cape, mantle, scarf, banner, flag or veil,

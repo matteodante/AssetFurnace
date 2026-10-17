@@ -25,6 +25,10 @@ MAC_APP = Path("/Applications/Blender.app/Contents/MacOS/Blender")
 DOWNLOAD_URL = "https://www.blender.org/download/"
 # Tested on 5.2; the scripts use nothing newer than 4.2 LTS, so older than that is flagged.
 MIN_VERSION = (4, 2)
+# The bpy wheel SkinTokens runs in its own venv: 5.0.1 is the last one for Python 3.11
+# (PyPI, read 2026-10-17; 5.1 and later need 3.13). It is not the Blender app Finish and
+# the exports use; the two meet only through GLB files.
+SKINTOKENS_BPY = "5.0.1"
 
 
 def candidates(family: str, home: Path | None = None) -> list[Path]:

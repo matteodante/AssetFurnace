@@ -32,6 +32,7 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from image_to_3dlab import blender as _blender
 from image_to_3dlab import clip_library as _clips
 from image_to_3dlab import host as _host
 from image_to_3dlab import material_models as _material_models
@@ -655,6 +656,10 @@ CATALOG: tuple[Backend, ...] = (
         },
         license_name="MIT",
         license_url="https://github.com/VAST-AI-Research/SkinTokens/blob/main/LICENSE",
+        caveat=(f"SkinTokens runs Blender's bpy {_blender.SKINTOKENS_BPY} (Python 3.11) in its own "
+                "venv; Finish and the exports use the Blender app found on this machine "
+                "(tested on 5.2 LTS). They meet only through GLB files, and each rig's record "
+                "names its bpy."),
         install="scripts/bootstrap_autorig.py",
         runs_on=(APPLE, NVIDIA, AMD),
         setup_minutes=10,
