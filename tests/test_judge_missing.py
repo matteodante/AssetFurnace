@@ -58,6 +58,8 @@ def test_the_page_and_agents_see_which_judge_picked(tmp_path):
     record = {"log": str(folder / "run.log"), "folder": str(folder), "set": "red", "body": "stick", "started": 0}
     status = runs.status(tmp_path, record, running=False)
     assert status["judge"].startswith("shape only")
+    later = {**record, "started": 4_000_000_000}   # a run started after that file was written
+    assert runs.status(tmp_path, later, running=False)["judge"] is None
 
 
 @needs_node
@@ -69,3 +71,30 @@ def test_the_pick_panel_says_the_judge_is_missing():
     out = json.loads(subprocess.run([NODE, "--input-type=module", "--eval", program], check=True,
                                     capture_output=True, text=True, encoding="utf-8").stdout)
     assert "Setup & Status" in out[0] and out[1] == "" and out[2] == ""
+
+
+def test_setup_does_not_offer_a_download_where_there_is_no_build(monkeypatch):
+    import importlib
+
+    from image_to_3dlab.style import models
+
+    monkeypatch.setattr(models, "llama_build", lambda system=None, machine=None: None)
+    import backend_catalog
+
+    reloaded = importlib.reload(backend_catalog)
+    try:
+        assert reloaded.BY_ID["judge"].automated_setup is False
+    finally:
+        monkeypatch.undo()
+        importlib.reload(backend_catalog)
+
+
+def test_the_bootstrap_says_when_there_is_no_build(monkeypatch, capsys):
+    import bootstrap_style
+
+    from image_to_3dlab.style import models
+
+    monkeypatch.setattr(models, "llama_build", lambda system=None, machine=None: None)
+    monkeypatch.setattr(sys, "argv", ["bootstrap_style.py", "--only", "llama", "--yes"])
+    assert bootstrap_style.main() == 1
+    assert "no prebuilt release" in capsys.readouterr().out

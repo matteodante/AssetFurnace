@@ -739,6 +739,8 @@ CATALOG: tuple[Backend, ...] = (
         license_url="https://github.com/ggml-org/llama.cpp/blob/master/LICENSE",
         install="scripts/bootstrap_style.py --only llama",
         runs_on=(APPLE, NVIDIA, AMD),
+        # llama.cpp publishes builds for Windows x64, Linux x64 and Apple Silicon only
+        automated_setup=_style_models.llama_build() is not None,
         setup_minutes=1,
         upstream=("ggml-org llama.cpp", "https://github.com/ggml-org/llama.cpp"),
         weights=(
