@@ -119,11 +119,29 @@ def uv_overlap_pixels(groups: list[tuple[np.ndarray, np.ndarray]], resolution: i
     return shared + 2.0 * folded, float(len(every)) + folded
 
 
+def without_copied_uvs(groups: list[tuple[np.ndarray, np.ndarray]]) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Each UV triangle once: a face whose three texture corners repeat an earlier face's
+    exactly is a copy sharing the texture on purpose (the mirrored second pauldron of a
+    pair), not a layout painting over itself. Accidental overlaps do not land corner on corner."""
+    seen: set = set()
+    out = []
+    for uv, faces in groups:
+        corners = np.round(uv[faces], 6).reshape(len(faces), 6)
+        keep = np.zeros(len(faces), bool)
+        for i, key in enumerate(map(tuple, np.sort(corners.reshape(-1, 3, 2), axis=1).reshape(-1, 6))):
+            if key not in seen:
+                seen.add(key)
+                keep[i] = True
+        out.append((uv, faces[keep]))
+    return out
+
+
 @register("uv.overlap")
 def uv_overlap(asset, config):
     """Share of the surface painted from texture pixels that another piece also uses.
 
-    Mirrored or stacked UVs on purpose show up here too; a profile can make it warn only.
+    Mirrored or stacked UVs on purpose show up here too; a profile can make it warn only, or
+    with `copies_ok` count a face that repeats another's UV triangle exactly only once.
     """
     resolution = int(config.get("resolution", 1024))
     groups: dict[int, list] = {}
@@ -148,6 +166,8 @@ def uv_overlap(asset, config):
         return result("uv.overlap", "pass", 0.0, limits, "no texture, so no UV layout to overlap")
     reused = used = 0.0
     for members in groups.values():
+        if config.get("copies_ok"):
+            members = without_copied_uvs(members)
         r, u = uv_overlap_pixels(members, resolution)
         reused += r
         used += u

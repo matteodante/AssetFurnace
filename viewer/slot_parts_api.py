@@ -26,6 +26,7 @@ from urllib.parse import unquote, urlsplit
 
 import batch_api
 
+from image_to_3dlab import processes
 from image_to_3dlab.slot_parts import body as body_mod
 from image_to_3dlab.slot_parts import slots
 
@@ -153,16 +154,26 @@ def start_run(output: Path, payload: dict, popen=subprocess.Popen) -> dict[str, 
         raise ValueError(f"a set is already being made ({_JOB['set']}); wait or stop it")
     command, log = run_command(output, payload)
     handle = log.open("w", encoding="utf-8")
-    process = popen(command, stdout=handle, stderr=subprocess.STDOUT, cwd=str(REPO))
+    # its own process group: Stop must reach the edits, Pixal3D and Blender it starts, not
+    # only the script that starts them
+    process = popen(command, stdout=handle, stderr=subprocess.STDOUT, cwd=str(REPO), **processes.group_popen_kwargs())
     _JOB.clear()
     _JOB.update(process=process, log=str(log), folder=str(log.parent), set=payload["set"], body=payload["body"],
                 started=time.time())
     return job_status(output)
 
 
-def cancel_run() -> dict[str, Any]:
+def cancel_run(stop=processes.terminate_group) -> dict[str, Any]:
+    """Stop the run and every process under it, then wait for it, so a new run cannot start
+    while the old one's Blender or Pixal3D still holds the GPU."""
     if _JOB and _JOB["process"].poll() is None:
-        _JOB["process"].terminate()
+        process = _JOB["process"]
+        stop(process.pid)
+        process.terminate()
+        try:
+            process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            process.kill()
     return {"stopped": True}
 
 

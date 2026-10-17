@@ -196,8 +196,9 @@ def make_pieces(cuts_json: Path, seeds: list[int], picks: dict[str, int] | None 
                 raise ValueError(f"{slot}: no picture for seed {seed} at {picture}; run without --models-only")
             for command in pieces.model_commands(picture, folder, slot, sys.executable, REPO / "scripts"):
                 run(command)
-            matte = picture.with_name(f"{picture.stem}__matted.png")
-            alpha = np.asarray(Image.open(matte).convert("RGBA"))[..., 3] > 127
+            from image_to_3dlab.slot_parts import camera
+
+            alpha = camera.subject_alpha(picture)
             place = cuts.Placement.from_dict(record["slots"][slot]["placement"])
             result["slots"][slot] = {
                 "seed": seed, "picture": str(picture), "glb": str(pieces.finished_path(folder, slot)),
@@ -220,8 +221,7 @@ def make_b0(cut_record: dict, chosen: list[str], folder: Path, run=_run, blender
         run(command)
     model = folder / "b0" / "model" / "concept_finished.glb"
     views = model.with_name("concept.svviews")
-    matte = concept.with_name(f"{concept.stem}__matted.png")
-    alpha = np.asarray(Image.open(matte).convert("RGBA"))[..., 3] > 127
+    alpha = camera.subject_alpha(concept)
     cam = camera.from_views(views, alpha)
     slot_map = folder / "b0" / "slots.npy"
     slot_map.parent.mkdir(parents=True, exist_ok=True)
@@ -359,7 +359,9 @@ def refit_job(fit_dir: Path, source_body: Path, body_json: Path, out: Path) -> d
             continue
         stem = Path(name).stem
         slot = stem.removesuffix("_L").removesuffix("_R")
-        pieces_out.append({"slot": slot, "glb": str((Path(fit_dir) / name).resolve()), "transfer": True})
+        # one shoulders file was fitted unsplit; two (_L and _R) were split on purpose
+        pieces_out.append({"slot": slot, "glb": str((Path(fit_dir) / name).resolve()), "transfer": True,
+                           "split": stem != slot})
     if not pieces_out:
         raise ValueError(f"{fit_dir} holds no fitted pieces")
     return {"body": str(Path(body_json).resolve()), "source_body": str(Path(source_body).resolve()),
@@ -416,6 +418,7 @@ def fit_job(pieces_json: Path, body_json: Path, out: Path, options: dict | None 
     if not record["slots"]:
         raise ValueError(f"{pieces_json} has no pieces: run the pieces command first")
     entries = [{"slot": slot, "glb": entry["glb"],
+                "split": bool(cut_record["slots"].get(slot, {}).get("split", False)),
                 **{k: entry[k] for k in ("concept_box", "frame") if k in entry}}
                for slot, entry in record["slots"].items()]
     clips = list(body_mod.load(body_json).get("clips", {}).values())

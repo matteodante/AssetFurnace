@@ -150,7 +150,11 @@ def test_fit_job_carries_each_piece_box_and_the_concept_size(tmp_path):
     job = cli.fit_job(pieces_json, body_json, tmp_path / "fit", {"offset": 0.003})
     assert job["concept_size"] == [512, 512] and job["offset"] == 0.003
     assert job["clips"] == [str((tmp_path / "walk.glb").resolve())]  # the mask is checked in the body's poses
-    assert job["pieces"] == [{"slot": "helmet", "glb": "h.glb", "concept_box": [1, 2, 3, 4]}]
+    assert job["pieces"] == [{"slot": "helmet", "glb": "h.glb", "split": False, "concept_box": [1, 2, 3, 4]}]
+    record["slots"]["shoulders"] = {"split": True}  # the person's two shoulder pieces reach the fit
+    path.write_text(json.dumps(record))
+    pieces_json.write_text(json.dumps({"cuts": str(path), "slots": {"shoulders": {"glb": "s.glb", "concept_box": [1, 2, 3, 4]}}}))
+    assert cli.fit_job(pieces_json, body_json, tmp_path / "fit")["pieces"][0]["split"] is True
     pieces_json.write_text(json.dumps({"cuts": str(path), "slots": {}}))
     with pytest.raises(ValueError, match="no pieces"):
         cli.fit_job(pieces_json, body_json, tmp_path / "fit")

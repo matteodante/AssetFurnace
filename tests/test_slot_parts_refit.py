@@ -39,6 +39,7 @@ def test_refit_job_carries_every_fitted_piece(tmp_path):
     assert [(p["slot"], Path(p["glb"]).name) for p in job["pieces"]] == [
         ("helmet", "helmet.glb"), ("gloves", "gloves_R.glb"), ("gloves", "gloves_L.glb")]
     assert all(p["transfer"] for p in job["pieces"]) and job["source_body"].endswith("first.json")
+    assert [p["split"] for p in job["pieces"]] == [False, True, True]  # an _L/_R pair stays two files
 
 
 def test_a_transferred_piece_needs_the_first_body(tmp_path):
