@@ -9,8 +9,10 @@ bone by name, at rest and at evenly spaced times of each clip.
   the body under them) that sinks into skin the mask leaves visible. Buried inner faces of
   a solid piece and skin hidden under armour do not count. The worst pose is the value.
 * **fit.holes**: of the body this piece covers at rest and the mask hides (the outward ray
-  from hidden skin meets the piece within `gap`), the share that a pose leaves bare (the ray misses the piece
-  within `reach`). The worst pose is the value.
+  from hidden skin meets the piece within `gap`), the share that a pose leaves bare: the ray
+  misses every worn piece of the set within `reach`. Skin a shoulder piece lifts off but the
+  torso still covers does not show, so it is not a hole. The set is the other piece GLBs beside
+  the masked body (the fit step's folder), weapons and shields left out.
 
 Geometry only, measured by rays and nearest points: no pixels.
 """
@@ -105,6 +107,17 @@ def rays_hit(origins: np.ndarray, directions: np.ndarray, target, reach: float) 
     return hit
 
 
+# The fit step writes these beside the pieces; none is a worn piece.
+NOT_WORN = ("set", "preview", "body_masked", "body_trimmed", "weapon", "shield")
+
+
+def worn_set(asset) -> list[Path]:
+    """This piece and every other worn piece fitted to the same body (the GLBs beside it)."""
+    folder = Path(asset.body).parent
+    others = [p for p in sorted(folder.glob("*.glb")) if p.stem not in NOT_WORN and p.resolve() != Path(asset.glb).resolve()]
+    return [Path(asset.glb), *others]
+
+
 def measure(asset, config: dict) -> dict:
     """Clipping and holes of one piece over every pose; computed once per asset."""
     from image_to_3dlab.glb_skin import SkinnedGLB
@@ -113,6 +126,12 @@ def measure(asset, config: dict) -> dict:
     if key in _CACHE:
         return _CACHE[key]
     piece_rig, body_rig = SkinnedGLB(asset.glb), SkinnedGLB(asset.body)
+    worn_rigs = []
+    for path in worn_set(asset)[1:]:
+        try:
+            worn_rigs.append(SkinnedGLB(path))
+        except (LookupError, ValueError, OSError):
+            continue
     alpha = vertex_alpha(body_rig)
     masked_faces = (alpha[body_rig.mesh.faces] < 0.5).all(axis=1)
     rng = np.random.default_rng(0)
@@ -136,7 +155,14 @@ def measure(asset, config: dict) -> dict:
                       piece_rig.mesh.faces)
         clipping = outer_skin_inside(piece, body, masked_faces, sample)
         n = body.vertex_normals[region]
-        bare = ~rays_hit(body.vertices[region] + n * 1e-4, n, piece, reach) if len(region) else np.zeros(0, bool)
+        bare = np.zeros(0, bool)
+        if len(region):
+            meshes = [piece] + [_mesh(r.deform(world_by_name(r, named)) if named else r.mesh.vertices, r.mesh.faces)
+                                for r in worn_rigs]
+            import trimesh
+
+            every = trimesh.util.concatenate(meshes) if len(meshes) > 1 else piece
+            bare = ~rays_hit(body.vertices[region] + n * 1e-4, n, every, reach)
         found.append({"pose": label, "clipping": clipping, "holes": float(bare.mean()) if len(bare) else 0.0})
     _CACHE[key] = {"poses": found, "region": len(region)}
     return _CACHE[key]

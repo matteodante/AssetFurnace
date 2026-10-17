@@ -363,7 +363,8 @@ def refit_job(fit_dir: Path, source_body: Path, body_json: Path, out: Path) -> d
     if not pieces_out:
         raise ValueError(f"{fit_dir} holds no fitted pieces")
     return {"body": str(Path(body_json).resolve()), "source_body": str(Path(source_body).resolve()),
-            "concept_size": [1, 1], "out": str(Path(out).resolve()), "pieces": pieces_out}
+            "concept_size": [1, 1], "out": str(Path(out).resolve()), "pieces": pieces_out,
+            "clips": list(body_mod.load(body_json).get("clips", {}).values())}
 
 
 def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0, exporter=None) -> Path:
@@ -393,8 +394,10 @@ def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0
             "Import the body first, then each piece on the body's Skeleton (each .unreal.json says so).",
             ("Put every piece on a Skeletal Mesh Component under the body's and call SetLeaderPoseComponent(body) "
              "on it, so the pieces follow the body's animation with no cost of their own."),
-            ("The body carries a vertex colour: alpha 0 where a piece covers the skin. In the body's material, "
-             "plug Vertex Color alpha into Opacity Mask (blend mode Masked) to hide the body under the armour."),
+            ("The body carries a vertex colour: alpha 0 where a piece covers the skin, and its glTF material is "
+             "MASK. Unreal's glTF import ignores vertex alpha, so the body needs a Masked material with Vertex "
+             "Color alpha in Opacity Mask; unreal_import_check.py makes it (M_<Body>_Masked, from the body's "
+             "textures, which stay parameters) and checks it."),
             "The weapon and shield are skinned to one bone (the hand, the forearm) at 100%: no socket needed.",
         ],
     }
@@ -415,8 +418,9 @@ def fit_job(pieces_json: Path, body_json: Path, out: Path, options: dict | None 
     entries = [{"slot": slot, "glb": entry["glb"],
                 **{k: entry[k] for k in ("concept_box", "frame") if k in entry}}
                for slot, entry in record["slots"].items()]
+    clips = list(body_mod.load(body_json).get("clips", {}).values())
     return {"body": str(Path(body_json).resolve()), "concept_size": size, "out": str(Path(out).resolve()),
-            "pieces": entries, **(options or {})}
+            "pieces": entries, "clips": clips, **(options or {})}
 
 
 def run_fit(job: dict, blender: Path | None = None, run=None) -> dict:

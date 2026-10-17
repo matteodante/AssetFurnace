@@ -1,7 +1,7 @@
 # Funzione 4: personaggi in pezzi e equipaggiamento su un corpo base (progetto)
 
 Data: 16 ottobre 2026, aggiornato la sera dello stesso giorno con i tre modi e l'esito della seconda prova della strada C.
-Stato: **implementato** (PR #31, #35, #38, #40, #41, #42 e la PR 8); accettazione nella sezione 12.
+Stato: **implementato** (PR #31, #35, #38, #40, #41, #42, #44 e la PR 9); accettazione nelle sezioni 12 e 13.
 Piano: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 4.
 Prove che lo precedono: [`2026-10-15-slot-parts-spike.md`](2026-10-15-slot-parts-spike.md), con l'appendice sulla strada C.
 
@@ -317,13 +317,52 @@ peggiora. Questi pezzi sono in revisione come fail, non nascosti.
 - **Test**: suite completa senza `PYTHONUTF8` verde sul ramo della #42 (3831 passati, 46 saltati). Per la PR 8, i test
   della funzione 4, dei controlli, dell'uscita Unreal e di Kimodo.
 
+## 13. I seguiti chiusi (PR 9, 17/10/2026)
+
+L'accettazione della PR 8 aveva quattro pezzi in fail per buchi oltre il 5%. Due cose li hanno portati tutti sotto l'1%,
+senza toccare i pezzi:
+
+- **La maschera tiene conto delle pose.** Prima si calcolava a riposo: la pelle sotto un pezzo spariva anche se, alzando
+  il braccio, lo spallaccio se ne staccava. Ora la pelle resta nascosta solo se un pezzo la copre a riposo **e** in 8
+  istanti di ogni clip del corpo (`fit.pose_frames`), con un raggio verso fuori entro 6 cm. Le clip arrivano dal
+  `body.json` (`--clip`), anche nel riadattamento. Il corpo coperto scende di poco: 72% sul primo corpo, 69% sulla donna.
+- **I buchi si misurano contro tutto il set.** Un buco è pelle nascosta che in posa non ha **nessun** pezzo sopra, non
+  solo quello misurato: dove lo spallaccio si alza ma il busto copre ancora, la pelle non si vede. Il set sono gli altri
+  GLB accanto al corpo mascherato, arma e scudo esclusi (`fit_checks.worn_set`).
+
+| Pezzo | Primo corpo: compenetrazioni / buchi | Secondo corpo: compenetrazioni / buchi |
+|---|---|---|
+| Elmo | 0% / 0,2% | 1,1% / 0,4% |
+| Busto | 0,5% / 0,1% | 0,3% / 0,2% |
+| Spallaccio destro | 6,7% / 0,8% | 2,9% / 0,4% |
+| Spallaccio sinistro | 5,5% / 0,2% | 4,6% / 0,4% |
+| Guanto destro | 0,9% / 0,6% | 1,7% / 0,5% |
+| Guanto sinistro | 0,3% / 0,1% | 3,3% / 0,1% |
+| Gambe | 0% / 0,1% | 0,3% / 0,1% |
+| Stivali | 0% / 0% | 0% / ≤ 0,2% |
+
+Stesse pose di prima (riposo, 8 istanti di camminata e 8 di fendente), stesso set. Nessun fail su entrambi i corpi: i
+buchi sono tutti sotto il warn del 2%, le compenetrazioni sotto il fail del 10%. Gli spallacci restano in warn per le
+compenetrazioni (5–7%), come nella PR 8. La spada non era in questo giro: la maschera non la riguarda.
+
+- **Il riadattamento lungo l'asse dell'osso non serve** su questi due corpi: dopo il riadattamento box su box la donna
+  ha buchi sotto lo 0,5% su ogni pezzo. Resta un'idea per proporzioni molto più lontane.
+- **L'Opacity Mask in Unreal è automatica.** Prima il corpo restava intero sotto l'armatura.
+  - L'uscita per Unreal esporta il colore dei vertici del corpo, quando l'alfa scende sotto 0,5, e mette il suo
+    materiale glTF in `alphaMode` MASK.
+  - L'importazione glTF di Unreal 5.8.3 non legge l'alfa dei vertici: `unreal_import_check.py` costruisce, accanto al
+    corpo, `M_<corpo>_Masked`. È Masked, con le texture del corpo come parametri e l'alfa di Vertex Color in Opacity
+    Mask, e lo mette su ogni slot del corpo.
+  - Il controllo `opacity_mask` lo verifica. Su entrambe le prove, il corpo da solo e il set intero (10 file), tutto
+    passa.
+
+![In Unreal 5.8.3: a sinistra il corpo da solo, che mostra solo la pelle che i pezzi non coprono; a destra il set intero a metà passo](img/slot-parts/4-unreal-opacity-mask.jpg)
+
 ## Seguiti
 
 - Mantello: prova a parte, con la vista di schiena (funzione 2, caso 4) e la stoffa in Unreal.
-- Spallacci: buchi oltre il 5% in posa su entrambi i corpi. Da provare una gabbia più fine sulla spalla, o lo
-  spallaccio rigido sulla clavicola come l'elmo sulla testa.
-- Riadattamento a corpi con proporzioni molto diverse: oggi box su box per slot; i pezzi su arti più lunghi o più
-  bassi (le braccia della donna) bucano di più. Un riadattamento lungo l'asse dell'osso aiuterebbe.
-- Materiale del corpo in Unreal: il controllo d'importazione non collega ancora l'alfa dei vertici all'Opacity Mask;
-  lo dice `<corpo>.unreal-set.json`, va fatto a mano o da uno script d'importazione.
+- Spallacci: le compenetrazioni restano al 5–7% (warn). Da provare una gabbia più fine sulla spalla, o lo spallaccio
+  rigido sulla clavicola come l'elmo sulla testa.
+- Riadattamento lungo l'asse dell'osso: non serve sui due corpi provati (sezione 13); da riprendere con un corpo dalle
+  proporzioni molto diverse.
 - Pesi di HoloPart: cancellati dal coordinatore il 16/10 insieme alla cartella della prova in WSL.
