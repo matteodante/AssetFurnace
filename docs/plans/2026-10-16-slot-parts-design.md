@@ -441,6 +441,16 @@ Su main mancava il punto 3: con più semi si prendeva il primo.
   - Con "fammi vedere le immagini prima del 3D", il lavoro si ferma dopo le immagini (`run --stop-at-pictures`).
   - La pagina mostra i candidati con il migliore spuntato. L'utente cambia quelli che vuole e preme "Make the 3D"
     (`run --resume --pick`).
+  - Arma e scudo stanno fra i candidati come gli altri pezzi: un'immagine per seme, senza punteggio (non c'è un
+    ritaglio con cui confrontarle), la prima spuntata.
+- **Il vestito (modo 3)** si può scegliere prima dei pezzi: "Outfit pictures (seeds)" lo disegna una volta per seme e,
+  con "let me pick the outfit", il lavoro si ferma (`run --stop-at-concept --concept-seeds 3,4,5`). La scelta
+  (`run --resume --pick concept=4`) va avanti da quel vestito, anche fino alla scelta dei pezzi. Agenti:
+  `pieces_run(concept_seeds=, choose_concept=)` e `pieces_pick({"concept": 4})`.
+- **Un set fatto** ha nella pagina Pieces "Fit again", "Carry to body" ed "Export for Unreal", come i comandi `fit`,
+  `refit` e `unreal` e gli strumenti MCP. Un set portato su un altro corpo ha lì il suo `<set>.parts.json` (con
+  `carried_from`; i controlli non vengono portati, perché erano del primo corpo), quindi la pagina lo elenca e lo
+  esporta. Una scelta del vestito resta nello stato finché il set non è fatto: un fit fallito riparte da quel vestito.
 - Senza Qwen3-VL (llama.cpp non installato) decide la sagoma, e il record lo dice.
 
 **Misura.** Tre vestiti: i due cavalieri rossi delle prove (s3, s7) sull'uomo e un ranger di cuoio disegnato sulla

@@ -16,7 +16,7 @@ export const MODES = [
 ];
 
 const SLOT_WORDS = { helmet: 'Helmet', torso: 'Torso', shoulders: 'Shoulders', gloves: 'Gloves', legs: 'Legs',
-  boots: 'Boots', weapon: 'Weapon', shield: 'Shield' };
+  boots: 'Boots', weapon: 'Weapon', shield: 'Shield', concept: 'Outfit' };
 
 /** A slot's name in words. */
 // The base-body choices; redrawn whenever the list of bodies changes, so a body just
@@ -26,15 +26,17 @@ export function bodyOptions(bodies) {
     ? ` (${escape(Object.values(b.labels).join(', '))})` : ''}</option>`).join('') || '<option value="">none yet</option>';
 }
 
-// One row per piece: its candidate pictures, scores underneath, the picked one ticked; a
-// piece no picture convinced the judge of says so.
+// One row per piece (or the outfit, `concept`): its candidate pictures, scores underneath
+// when there are any, the picked one ticked; a piece no picture convinced the judge of says so.
+const scoreText = (score) => (typeof score === 'number' ? ` · ${Math.round(100 * score)}%` : '');
+
 export function pickRows(picks, base = '/output/') {
   return Object.entries(picks || {}).map(([slot, entry]) => `<div class="sp-pick">
     <b>${escape(slotLabel(slot))}</b>${entry.doubt ? ' <span class="sp-problems">none of these looked like the piece: try other seeds or words</span>' : ''}
     <div class="sp-pick-row">${entry.candidates.map((c) => `<label class="sp-cand${c.seed === entry.auto ? ' sp-auto' : ''}">
       <img src="${escape(base + c.picture)}" alt="${escape(slot)} seed ${c.seed}" loading="lazy">
       <span><input type="radio" name="pick-${escape(slot)}" data-pick="${escape(slot)}" value="${c.seed}"${c.seed === entry.picked ? ' checked' : ''}>
-      seed ${c.seed} · ${Math.round(100 * c.score)}%${c.seed === entry.auto ? ' · best' : ''}</span></label>`).join('')}</div></div>`).join('');
+      seed ${c.seed}${scoreText(c.score)}${c.seed === entry.auto ? (typeof c.score === 'number' ? ' · best' : ' · first') : ''}</span></label>`).join('')}</div></div>`).join('');
 }
 
 export function slotLabel(name) {
@@ -54,6 +56,18 @@ export function setLine(set = {}) {
   const bad = Object.values(set.statuses || {}).filter((s) => s && s !== 'pass').length;
   if (bad) parts.push(`${bad} to look at`);
   return parts.join(' · ');
+}
+
+/** A made set's actions: fit it again, carry it to another body, export it for Unreal. */
+export function setActions(set = {}, bodies = []) {
+  const others = (bodies || []).filter((b) => b.name !== set.body);
+  const data = `data-set="${escape(set.set)}" data-body="${escape(set.body)}"`;
+  return `<span class="sp-set-actions">
+    <button type="button" class="ghost small" data-set-action="fit" ${data} title="Fit the pieces on the body again, after a piece was changed">Fit again</button>
+    ${others.length ? `<select data-refit-to aria-label="Body to carry the set to">${others.map((b) => `<option value="${escape(b.name)}">${escape(b.name)}</option>`).join('')}</select>
+    <button type="button" class="ghost small" data-set-action="refit" ${data} title="Carry the fitted pieces to the chosen body">Carry to body</button>` : ''}
+    <label class="meta">height cm <input type="number" data-size-cm min="1" max="100000" step="1" value="180" style="width:5em"></label>
+    <button type="button" class="ghost small" data-set-action="unreal" ${data} title="The masked body and every piece on its Skeleton, for Unreal 5.8">Export for Unreal</button></span>`;
 }
 
 /** A material menu's options: "Auto" (the rule decides) first unless `auto` is null, then the words. */
@@ -111,6 +125,10 @@ export function runPayload(state = {}) {
   }
   if (String(state.style || '').trim()) payload.style = String(state.style).trim();
   if (state.useBible) payload.bible = '-';
+  if (mode === 3 && String(state.conceptSeeds || '').trim()) {
+    payload.concept_seeds = String(state.conceptSeeds).trim();
+    payload.choose_concept = Boolean(state.chooseConcept);
+  }
   return payload;
 }
 
@@ -151,7 +169,10 @@ const STYLE = `
 .sp-cand:has(input:checked) img { outline: 2px solid var(--ember); }
 .sp-log { white-space: pre-wrap; font-size: 12px; color: var(--ash); max-height: 9em; overflow: auto; }
 [data-sets] .act-what { grid-column: 1 / 3; }
+[data-bodies] .act-what { grid-column: 1 / -1; }
 .sp-materials { margin: 4px 0 8px; grid-column: 1 / -1; }
+.sp-set-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; grid-column: 1 / -1; }
+.sp-set-actions select { width: auto; }
 .sp-materials table { border-collapse: collapse; font-size: 13px; }
 .sp-materials td { padding: 3px 6px; }
 `;
@@ -195,7 +216,9 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
         <label>Set name <input type="text" name="set" placeholder="red-knight"></label></div>
       ${mode() === 2
         ? '<div class="row"><input type="text" name="concept" placeholder="Concept drawn on that body, a picture under output/ (e.g. images/knight.png)"></div>'
-        : '<div class="row"><textarea name="outfit" rows="2" placeholder="The outfit in words, e.g. crimson and gold plate armour: a closed helmet, rounded pauldrons, gauntlets, armoured boots"></textarea></div>'}
+        : `<div class="row"><textarea name="outfit" rows="2" placeholder="The outfit in words, e.g. crimson and gold plate armour: a closed helmet, rounded pauldrons, gauntlets, armoured boots"></textarea></div>
+          <div class="row"><label title="The outfit drawn once per seed on the body; empty: once, with the first picture seed">Outfit pictures (seeds) <input type="text" name="conceptSeeds" placeholder="first seed" size="8"></label>
+            <label><input type="checkbox" name="chooseConcept" checked> let me pick the outfit before the pieces</label></div>`}
       <table class="sp-slots"><tbody>${(info.slots || []).map((s) => `<tr>
         <td><label><input type="checkbox" data-on="${escape(s.name)}"> ${escape(slotLabel(s.name))}</label></td>
         <td>${s.drawn ? `<select data-route="${escape(s.name)}" aria-label="How to make it"><option value="C">own picture</option><option value="B0">cut from the whole</option></select>` : '<span class="meta">made on its own</span>'}</td>
@@ -230,7 +253,8 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
     }
     return { mode: mode(), body: value('body'), set: value('set'), concept: value('concept'), outfit: value('outfit'),
       seeds: value('seeds'), style: value('style'), choose: form.querySelector('[name=choose]')?.checked, slots,
-      useBible: form.querySelector('[name=useBible]')?.checked };
+      useBible: form.querySelector('[name=useBible]')?.checked, conceptSeeds: value('conceptSeeds'),
+      chooseConcept: form.querySelector('[name=chooseConcept]')?.checked };
   }
 
   function drawLists() {
@@ -242,6 +266,7 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
       ? `<ul class="act-list">${info.sets.map((s) => `<li class="act"><span class="act-what"><b>${escape(s.set)}</b> on ${escape(s.body)}
           <span class="meta">${escape(setLine(s))}</span></span>
           ${s.preview ? `<button type="button" class="ghost small" data-preview="${escape(s.preview)}" data-title="${escape(`${s.set} on ${s.body}`)}">Show</button>` : ''}
+          ${setActions(s, info.bodies)}
           ${Object.keys(s.materials || {}).length ? `<details class="sp-materials" data-materials="${escape(s.set)}" data-body="${escape(s.body)}"><summary>Materials</summary>
             <table><tbody>${materialRows(s.materials, info.materials)}</tbody></table>
             <button type="button" class="ghost small" data-save-materials>Save materials</button> <span class="meta" data-materials-result></span></details>` : ''}</li>`).join('')}</ul>`
@@ -275,17 +300,20 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
     if (!job.set) { box.innerHTML = ''; return; }
     if (!job.running && job.picks) { drawPicks(job, box); return; }
     const state = job.running ? 'Making' : job.returncode === 0 ? 'Made' : 'Stopped or failed';
-    box.innerHTML = `<h3>${escape(state)}: ${escape(job.set)} on ${escape(job.body)}</h3>
+    const what = { fit: ' (fit again)', refit: ' (carried to another body)', unreal: ' (Unreal export)' }[job.action] || '';
+    box.innerHTML = `<h3>${escape(state)}: ${escape(job.set)} on ${escape(job.body)}${escape(what)}</h3>
       ${job.running ? '<button type="button" class="ghost small" data-cancel>Stop</button>' : ''}
       <div class="sp-log">${escape((job.log || []).join('\n'))}</div>`;
     box.querySelector('[data-cancel]')?.addEventListener('click', async () => { await post('/api/slot-parts/run/cancel'); refresh(); });
   }
 
   function drawPicks(job, box) {
-    box.innerHTML = `<h3>Pick the pictures: ${escape(job.set)} on ${escape(job.body)}</h3>
-      <p class="meta">The best-scored picture of each piece is ticked; only the ticked ones go on to 3D.</p>
+    const outfit = Boolean(job.picks.concept);
+    box.innerHTML = `<h3>${outfit ? 'Pick the outfit' : 'Pick the pictures'}: ${escape(job.set)} on ${escape(job.body)}</h3>
+      <p class="meta">${outfit ? 'The outfit drawn on the body once per seed; the ticked one is cut into the pieces.'
+        : 'The best-scored picture of each piece is ticked (a weapon or shield: the first); only the ticked ones go on to 3D.'}</p>
       ${pickRows(job.picks, info.base || '/output/')}
-      <div class="row"><button type="button" class="primary" data-make-3d>Make the 3D</button></div><div data-picks-result></div>`;
+      <div class="row"><button type="button" class="primary" data-make-3d>${outfit ? 'Go on with this outfit' : 'Make the 3D'}</button></div><div data-picks-result></div>`;
     box.querySelector('[data-make-3d]').addEventListener('click', async () => {
       const picks = Object.fromEntries([...box.querySelectorAll('input[data-pick]:checked')].map((i) => [i.dataset.pick, Number(i.value)]));
       const { ok, body } = await post('/api/slot-parts/run', { resume: true, set: job.set, body: job.body, picks });
@@ -331,6 +359,17 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
       if (!Object.keys(pieces).length) { result.textContent = 'Nothing changed.'; return; }
       const { ok, body } = await post('/api/slot-parts/materials', { set: box.dataset.materials, body: box.dataset.body, pieces });
       result.textContent = ok ? 'Saved: the Unreal export uses these.' : body.error;
+      if (ok) refresh();
+      return;
+    }
+    const action = event.target.closest('[data-set-action]');
+    if (action) {
+      const row = action.closest('li');
+      const payload = { action: action.dataset.setAction, set: action.dataset.set, body: action.dataset.body };
+      if (payload.action === 'refit') payload.to = row.querySelector('[data-refit-to]')?.value;
+      if (payload.action === 'unreal') payload.size_cm = Number(row.querySelector('[data-size-cm]')?.value || 180);
+      const { ok, body } = await post('/api/slot-parts/run', payload);
+      result.innerHTML = ok ? '' : `<p class="sp-problems">${escape(body.error)}</p>`;
       if (ok) refresh();
       return;
     }

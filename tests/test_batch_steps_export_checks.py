@@ -208,7 +208,7 @@ def test_the_index_and_the_mcp_list_the_unreal_export(tmp_path, monkeypatch, fak
 
 def test_the_shipped_steps_now_include_export_and_checks():
     available = batch.available_steps()
-    assert available["export_unreal"] and available["checks"] and not available["materials"]
+    assert available["export_unreal"] and available["checks"] and available["materials"]
 
 
 def test_a_version_queued_without_checks_is_queued_again_with_them(tmp_path, monkeypatch, fake_checks):

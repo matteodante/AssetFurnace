@@ -722,6 +722,9 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
             problems.append(f"{label}: step {step!r} is listed twice")
     if "picture" in steps and steps[0] != "picture":
         problems.append(f"{label}: picture makes the row's picture, so it must come first")
+    if "materials" in steps and "export_unreal" in steps and steps.index("materials") > steps.index("export_unreal"):
+        problems.append(f"{label}: materials chooses the material the export packs, so it must come before "
+                        "export_unreal")
     if "generate" in steps and any(step not in PICTURE_STEPS for step in steps[:steps.index("generate")]):
         problems.append(f"{label}: generate makes the asset, so it must come first (only a "
                         "step that draws its picture may come before it)")
@@ -1516,6 +1519,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     # step that draws one (`picture`) leaves
     picture = row.images[0] if row.images else row.concept
     clips: list[Path] = []   # animated GLBs a step made, for the export
+    material: str | None = None   # the one material a materials step chose, for the export
     steps = entry.setdefault("steps", {})
     for name in [name for name in steps if name not in row.steps]:
         del steps[name]   # a step taken out of the row is no longer part of its result
@@ -1530,6 +1534,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             sidecar = _absolute(done.get("sidecar"), directory) or sidecar
             picture = _absolute(done.get("picture"), directory) or picture
             clips = [directory / clip for clip in done.get("clips", [])] or clips
+            material = done.get("material") or material
             continue
         rerun = True
         step = REPLACED if name in row.replace else load_step(name)
@@ -1554,6 +1559,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
                           sidecar=sidecar, intent=spec.intent,
                           license_policy=spec.license_policy,
                           options=row.options.get(name, {}), log=log, picture=picture, clips=clips,
+                          material=material,
                           candidate_key=row.candidate_key(name))
         try:
             result = step.run(ctx)
@@ -1581,6 +1587,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
         asset = result.asset or asset
         picture = result.picture or picture
         clips = result.clips or clips
+        material = result.material or material
         sidecar = result.sidecar if result.asset else sidecar
         steps[name] = {
             "status": "done", "finished_at": now(), "fingerprint": fingerprints[name],
@@ -1590,6 +1597,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             "sidecar": _relative(result.sidecar, directory) if result.sidecar else None,
             **({"picture": _relative(result.picture, directory)} if result.picture else {}),
             **({"clips": [_relative(clip, directory) for clip in result.clips]} if result.clips else {}),
+            **({"material": result.material} if result.material else {}),
             # a step that made candidates: the key a later pick (pick_candidate) is made for
             **({"key": ctx.candidate_key} if (result.record or {}).get("candidates") else {}),
             **({"record": result.record} if result.record else {}),

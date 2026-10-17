@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `"replace": {"finish": "my.glb"}` in a row, or `run_steps(..., replace=...)`. The step
   does not run, the file (a Blender version, a model made elsewhere, your own rig or clips)
   goes on with its own licence record, held to the batch's policy.
+- The `materials` step: a batch row (or an agent's `run_steps`) gets its one material, the
+  person's (`"materials": {"material": "leather"}`) or the rule's from the model's words and
+  kind, and `export_unreal` packs it into the ORM; left out, the model keeps its own maps.
+  Agents correct a set's pieces with `pieces_materials`, and the studio's Export for Unreal
+  can leave the material out ("Keep its own maps"). One material per piece, no zones.
+- Characters in pieces: the mode 3 outfit can be drawn once per seed and wait for a pick
+  (`slot_parts.py run --stop-at-concept`, `pieces_run(concept_seeds=, choose_concept=)`,
+  the Pieces page's "Outfit pictures"); the weapon and shield are picked among their seeds
+  like the drawn pieces; and the Pieces page fits a set again, carries it to another body
+  and exports it for Unreal, as `fit`, `refit` and `unreal` do. `refit` now writes the
+  carried set's record on its new body, and `fit` works on a set of a weapon or shield alone.
 - A version made in Blender goes on through Finish, Rig and Animate. The studio shows the
   steps on a chosen version, Rig and Animate list versions among their models (a version
   that kept its skeleton is animated as a rig, copied once and not rigged again), and what
@@ -335,6 +346,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Library: an asset with no picture or 3D model of its own keeps its id when a later finish
+  or rig joins it (one from a Blender version, say), so its versions, name and hidden flag
+  stay with it; and what is made from a Blender version of one of its moves joins it too.
 - Studio Batches page: a pick that is saved but whose batch cannot resume (its preflight
   refuses) now says so, with the reasons, instead of leaving the row on "Pick one".
 - Batches: a batch made before per-step fingerprints no longer regenerates every row when
