@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `pieces_refit`, `pieces_unreal`, `pieces_cancel`). Same code as the studio: the pieces
   commands moved to `image_to_3dlab/slot_parts/runs.py`, and one set is made at a time
   whichever route started it.
+- Text to image from the command line: `scripts/text_image.py "words" --count 4`, the
+  studio's Create engine (now `image_to_3dlab/text_image.py`), holding the shared GPU lock.
+- Batches can start from words: a `prompt` and the `picture` step draw the row's picture
+  before `generate`. With `count` the step draws several and the row waits for a pick
+  (exit code 3); the candidates are kept, so a pick draws nothing again.
+- MCP tools `describe_steps` (the step catalogue), `run_steps` (one asset through some
+  steps, as a batch of one row), `pick_candidate` and `rerun_step`; `batch_status` lists
+  the candidates a waiting row offers.
 - Batches: an edited row runs again from its first changed step, not from the start. A new
   face budget reruns `finish` and what follows without regenerating; a new real size reruns
   only `export_unreal` and `checks`; a step added at the end runs alone. Each step keeps a

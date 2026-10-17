@@ -122,6 +122,7 @@ The asset's surface, as opposed to its shape.
 | `classify_thickness.py` | Separate solid body from thin foliage by measuring local thickness. |
 | `material_label_set.py` | Queue assets for the user's material labels, follow the progress, export what is complete. |
 | `label_sheet.py` | Build the pictures of the material label sheet, and bring its labels back into the project's record. |
+| `text_image.py` | Make a picture from words, as the studio's Create does, from the command line. |
 | `reference_concept.py` | Draw a new concept from a reference: prepare a map, then redraw, dress, add a piece or turn it. |
 | `game_materials.py` | Pack a generated GLB's own maps as a game-ready ORM, with its sidecar and licence record. |
 | `bootstrap_materials.py` | Install the game-material models and their environment, after saying what, how big and under which licence. |

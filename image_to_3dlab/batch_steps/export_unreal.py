@@ -6,7 +6,7 @@ run (feature 5, `docs/plans/2026-10-15-unreal-profile-design.md`), with the row'
 was: the export is an extra output, listed under `unreal` in `outputs.json`.
 
 Options (`"export_unreal": {...}` in the spec), described in `step_catalog`: name (default
-the row's id), collision, lods, tint, forward, body, body_name, animations. Files are
+the row's id), collision, lods, tint, forward, body, body_name, animations, material. Files are
 relative to the spec.
 """
 
@@ -63,7 +63,7 @@ def run(ctx: StepContext) -> StepResult:
             animations=paths["animations"],
             tint=Path(options["tint"]) if options.get("tint") else None,
             forward=tuple(float(value) for value in forward) if forward else None,
-            body_name=options.get("body_name"), log=ctx.log)
+            body_name=options.get("body_name"), material=options.get("material"), log=ctx.log)
     except (ValueError, RuntimeError) as exc:
         return StepResult(ok=False, reason=str(exc))
     if not result["ok"]:
