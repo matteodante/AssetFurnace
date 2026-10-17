@@ -151,7 +151,10 @@ export function runPayload(state = {}) {
   if (!Object.keys(slots).some((s) => s !== 'weapon' && s !== 'shield') && !payload.weapon && !payload.shield) {
     throw new Error('Choose at least one piece.');
   }
-  if (mode === 2) {
+  const worn = Object.keys(slots).some((s) => s !== 'weapon' && s !== 'shield');
+  if (!worn) {
+    // weapons and shields only: assets of their own, nothing drawn on the body
+  } else if (mode === 2) {
     if (!state.concept) throw new Error('Give the concept of the dressed character (a picture under output/, drawn on the body).');
     payload.concept = state.concept;
   } else {
@@ -161,7 +164,7 @@ export function runPayload(state = {}) {
   }
   if (String(state.style || '').trim()) payload.style = String(state.style).trim();
   if (state.useBible) payload.bible = '-';
-  if (mode === 3 && String(state.conceptSeeds || '').trim()) {
+  if (worn && mode === 3 && String(state.conceptSeeds || '').trim()) {
     payload.concept_seeds = String(state.conceptSeeds).trim();
     payload.choose_concept = Boolean(state.chooseConcept);
   }

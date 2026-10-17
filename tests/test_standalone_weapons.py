@@ -249,8 +249,8 @@ def test_the_studio_lists_each_weapons_grip_on_its_picture(tmp_path):
                                                                              "grip": str(grip.path_for(Path(record["picture"])))}}}))
     listed = runs.list_sets(tmp_path)[0]["grips"]["weapon"]
     assert listed["picture"] == "sets/arms/stick/pieces/weapon/s1.png" and listed["class"] == "sword"
-    x0, y0, x1, y1 = record["box"]
-    assert listed["at"] == pytest.approx([(x0 + x1) / 2 / 64, (y0 + y1) / 2 / 64], abs=1e-3)
+    u, v = CAM.project(np.asarray([record["point"]]))[0] / 64   # the grip itself, seen on its picture
+    assert listed["at"] == pytest.approx([u, v], abs=1e-3)
     assert "axe" in listed["classes"] and listed["by"] == "judge"
 
 
@@ -370,3 +370,80 @@ def test_a_weapon_without_a_pixal3d_camera_waits_for_a_person(tmp_path, capsys):
     record = fresh.find_grip("weapon", "a longsword", picture, tiny_glb(tmp_path / "w.glb"))
     assert record["by"] == "none" and record["point"] is None and record["class"] == "sword"
     assert "no Pixal3D camera" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------- review round (Codex, #111)
+
+def _shield_record(folder: Path) -> dict:
+    picture = folder / "pieces" / "shield" / "s1.png"
+    picture.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (64, 64), (217, 217, 217)).save(picture)
+    model = pieces.finished_path(folder / "pieces", "shield")
+    model.parent.mkdir(parents=True, exist_ok=True)
+    trimesh.creation.box(extents=(0.8, 0.8, 0.06)).export(model)   # a square shield, its face to the camera
+    record = grip.find(model, picture, CAM, slot="shield", words="a square shield", ask_box=None)
+    grip.write(record, grip.path_for(picture))
+    return record
+
+
+def test_a_moved_shield_grip_stays_on_its_back_and_upright(tmp_path):
+    record = _shield_record(tmp_path)
+    moved = grip.correct(record, at=(0.5, 0.5))
+    assert moved["point"][2] == pytest.approx(-0.03, abs=1e-3) and moved["axis"] == [0.0, 1.0, 0.0]
+
+
+def test_the_grip_of_a_carried_set_is_corrected_where_it_lives(tmp_path):
+    first = tmp_path / "sets" / "red" / "stick"
+    record = _record(first)
+    carried = tmp_path / "sets" / "red" / "tall"
+    carried.mkdir(parents=True)
+    (carried / "red.parts.json").write_text(json.dumps({"set": "red", "carried_from": "stick", "pieces": {
+        "weapon": {"standalone": True, "glb": record["model"], "grip": str(grip.path_for(Path(record["picture"])))}}}))
+    saved = grip.correct_in(carried, "weapon", weapon_class="axe")
+    assert saved["class"] == "axe" and grip.load(first / "pieces" / "weapon" / "grip.json")["class"] == "axe"
+
+
+def test_a_set_rerun_with_weapons_only_does_not_export_the_old_fit(tmp_path):
+    from tests.test_slot_parts_cli import _body
+
+    body_json, *_ = _body(tmp_path)
+    folder = tmp_path / "sets" / "arms" / "stick"
+    record = _record(folder)
+    (folder / "fit").mkdir(parents=True)
+    (folder / "fit" / "fit.json").write_text(json.dumps({"files": ["torso.glb"], "covered_share": 0.5}))   # a run before
+    (folder / "arms.parts.json").write_text(json.dumps({"set": "arms", "fit": None, "pieces": {
+        "weapon": {"standalone": True, "glb": record["model"], "grip": str(grip.path_for(Path(record["picture"])))}}}))
+    calls = []
+    cli.unreal_set(folder / "fit", body_json, tmp_path / "unreal",
+                   exporter=lambda source, **k: calls.append(k["kind"]) or {"glb": str(source), "problems": []})
+    assert calls == ["prop"]   # the weapon alone: not the old body and torso
+
+
+def test_the_studio_marker_shows_the_grip_itself_not_the_box(tmp_path):
+    folder = tmp_path / "sets" / "arms" / "stick"
+    record = _record(folder, words="a battle axe")   # an axe: held near the end of the box
+    at = grip.picture_point(record)
+    u, v = CAM.project(np.asarray([record["point"]]))[0] / 64
+    assert at == pytest.approx([u, v], abs=1e-3)
+
+
+def test_studio_and_agents_make_a_set_of_weapons_without_an_outfit(tmp_path):
+    import shutil
+    import subprocess
+
+    from image_to_3dlab.slot_parts import runs
+    from tests.test_slot_parts_cli import _body
+
+    _body(tmp_path)
+    command, _ = runs.run_command(tmp_path, {"mode": 3, "body": "stick", "set": "arms", "slots": {},
+                                             "weapon": "a longbow"})
+    assert "--weapon" in command and "--outfit" not in command and "--concept" not in command
+    if shutil.which("node") is None:
+        return
+    url = (REPO / "viewer" / "studio" / "slot-parts.js").as_uri()
+    program = f"""import * as m from {json.dumps(url)};
+      console.log(JSON.stringify(m.runPayload({{mode: 3, body: 'stick', set: 'arms', seeds: '1',
+        slots: {{weapon: {{on: true, prompt: 'a longbow'}}}}}})));"""
+    payload = json.loads(subprocess.run(["node", "--input-type=module", "--eval", program], check=True,
+                                        capture_output=True, text=True).stdout)
+    assert payload["weapon"] == "a longbow" and "outfit" not in payload

@@ -178,7 +178,10 @@ def correct(record: dict, *, at: tuple[float, float] | None = None, weapon_class
         w, h = _size(Path(record["picture"]))
         half = WINDOW * max(w, h)
         box = (u * w - half, v * h - half, u * w + half, v * h + half)
-        point, axis = from_box(mesh_points(Path(record["model"])), Camera.from_dict(record["camera"]), box)
+        points = mesh_points(Path(record["model"]))
+        point, axis = from_box(points, Camera.from_dict(record["camera"]), box)
+        if out.get("class") == "shield":   # still held on its back, upright: only where on it moves
+            point, axis = [point[0], point[1], float(points[:, 2].min())], [0.0, 1.0, 0.0]
         out.update(box=[round(c, 1) for c in box], point=point, axis=axis)
     if at is not None or weapon_class is not None or size_cm is not None:
         out["by"] = "person"
@@ -211,6 +214,13 @@ def correct_in(folder: Path, slot: str, *, at: tuple[float, float] | None = None
     if slot not in slots.STANDALONE:
         raise ValueError(f"{slot}: only a weapon or shield has a grip (slot {', '.join(slots.STANDALONE)})")
     path = Path(folder) / "pieces" / slot / "grip.json"
+    for parts in sorted(Path(folder).glob("*.parts.json")):   # a carried set names the one it was made with
+        try:
+            named = (json.loads(parts.read_text(encoding="utf-8")).get("pieces") or {}).get(slot) or {}
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(named, dict) and named.get("grip"):
+            path = Path(named["grip"])
     record = load(path)
     if record is None:
         raise ValueError(f"no grip record for the {slot} in {folder}: make the set first")
@@ -226,10 +236,10 @@ def picture_point(record: dict) -> list[float] | None:
         w, h = _size(Path(record["picture"]))
     except (OSError, KeyError, ValueError):
         return None
-    if record.get("box"):
-        x0, y0, x1, y1 = record["box"]
-        return [round((x0 + x1) / 2 / w, 4), round((y0 + y1) / 2 / h, 4)]
     if record.get("point") and record.get("camera"):
         u, v = Camera.from_dict(record["camera"]).project(np.asarray([record["point"]], float))[0]
         return [round(min(max(u / w, 0.0), 1.0), 4), round(min(max(v / h, 0.0), 1.0), 4)]
+    if record.get("box"):
+        x0, y0, x1, y1 = record["box"]
+        return [round((x0 + x1) / 2 / w, 4), round((y0 + y1) / 2 / h, 4)]
     return None

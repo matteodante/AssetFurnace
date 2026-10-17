@@ -651,7 +651,10 @@ def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0
     from image_to_3dlab.slot_parts import grip as grip_mod
 
     record = body_mod.load(body_json)
-    fitted = (Path(fit_dir) / "fit.json").is_file()
+    found = sorted(Path(fit_dir).parent.glob("*.parts.json"))
+    said = json.loads(found[0].read_text(encoding="utf-8")) if found else {}
+    # an earlier run's fit left on disk is not this set's when its record says it has none
+    fitted = (Path(fit_dir) / "fit.json").is_file() and not ("fit" in said and said["fit"] is None)
     report = json.loads((Path(fit_dir) / "fit.json").read_text()) if fitted else {"files": []}
     try:
         chosen = piece_materials.set_materials(Path(fit_dir).parent)

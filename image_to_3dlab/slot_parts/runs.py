@@ -167,7 +167,9 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     command = _base(body_json, set_name) + [
         "--slots-json", str(spec), "--seeds", ",".join(map(str, seeds)),
         "--concept-seeds", ",".join(map(str, concept_seeds)), "--root", str(output / "sets")]
-    if mode == 2:
+    if not raw:
+        pass   # weapons and shields only: nothing drawn on the body, no concept nor outfit
+    elif mode == 2:
         concept = payload.get("concept")
         if not concept or not Path(concept).is_file():
             raise ValueError("mode 2 needs the concept already drawn on the body")
