@@ -111,3 +111,35 @@ def test_a_step_that_failed_its_trial_is_not_offered_in_setup():
     # Marigold-IID Appearance failed the Poly Haven trial (design section 10): no card for it.
     assert "materials-pbr" not in bc.BY_ID
     assert download_api.command_for("materials-pbr", host=bc.NVIDIA) is None
+
+
+def test_an_interrupted_setup_is_not_a_finished_environment(monkeypatch, tmp_path):
+    monkeypatch.setenv("I2L_MATERIALS_ENV", str(tmp_path / "env"))
+    python = mm.env_python()
+    python.parent.mkdir(parents=True)
+    python.write_bytes(b"")                                   # the venv was made, the packages never came
+    assert not mm.env_ready()
+    with pytest.raises(mm.MissingModel, match="interrupted"):
+        mm.require_env()
+    made = []
+    assert boot.main(["--only", "env", "--yes"], env_maker=lambda: made.append(True)) == 0
+    assert made == [True]
+
+
+def test_the_environment_is_marked_finished_only_after_its_last_package(monkeypatch, tmp_path):
+    monkeypatch.setenv("I2L_MATERIALS_ENV", str(tmp_path / "env"))
+    monkeypatch.setattr(boot.shutil, "which", lambda name: "uv")
+    monkeypatch.setattr(boot.host, "has_nvidia_gpu", lambda: False)
+    ran = []
+
+    def runner(command):
+        ran.append(command)
+        if len(ran) == 3:
+            raise KeyboardInterrupt                           # cancelled during the last install
+    with pytest.raises(KeyboardInterrupt):
+        boot.make_env(runner)
+    assert not mm.env_marker().exists()
+    mm.env_python().parent.mkdir(parents=True)
+    mm.env_python().write_bytes(b"")
+    boot.make_env(lambda command: None)
+    assert mm.env_ready()

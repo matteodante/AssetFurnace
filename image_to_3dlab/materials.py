@@ -711,7 +711,7 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
             written["tint"] = out_dir / f"{names[surface.material]}_Tint.png"
             images.append((written["tint"], tint))
             tint_tex, binary = add_texture(document, binary, _png(tint), f"{names[surface.material]}_Tint", sampler)
-            zone_list = mz.zone_records(zone, surface.image)
+            zone_list = mz.zone_records(zone, surface.image, factor=surface.factor)
             material.setdefault("extras", {}).setdefault("assetfurnace", {}).update(
                 {"tintMask": {"index": tint_tex, **info}, "zones": [z["material"] for z in zone_list]})
         per_material.append({"material": surface.material, "name": material.get("name"),

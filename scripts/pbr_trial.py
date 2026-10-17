@@ -111,8 +111,9 @@ def score_asset(folder: Path, name: str) -> dict:
 def run(folder: Path, views: int) -> int:
     selection = json.loads((folder / "selection.json").read_text(encoding="utf-8"))["assets"]
     results = folder / "results.jsonl"
-    done = {json.loads(line)["asset"] for line in results.read_text(encoding="utf-8").splitlines()} \
-        if results.is_file() else set()
+    rows = [json.loads(line) for line in results.read_text(encoding="utf-8").splitlines()] \
+        if results.is_file() else []
+    done = {row["asset"] for row in rows if "error" not in row}         # a failure is tried again
     for name in selection:
         if name in done:
             continue
@@ -135,6 +136,8 @@ def run(folder: Path, views: int) -> int:
 
 def report(folder: Path) -> int:
     rows = [json.loads(line) for line in (folder / "results.jsonl").read_text(encoding="utf-8").splitlines()]
+    latest = {row["asset"]: row for row in rows}                            # a retry replaces its failure
+    rows = list(latest.values())
     # Scored again from the files, so a newer measure applies to runs already done.
     scored = [score_asset(folder, r["asset"]) for r in rows if "error" not in r]
     scored = [r for r in scored if r.get("texels")]

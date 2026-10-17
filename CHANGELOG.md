@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Material label sheet (`scripts/label_sheet.py`): renders each asset's four unlit views and its
+  front under three lights for a phone-friendly sheet where the user judges painted light and
+  materials and taps materials on the views; `import` turns every tap into the texel and glTF
+  material it landed on and appends the labels to `output/material-labels.jsonl`.
 - Tint zones use SAM 2.1 by default (`game_materials.py --zones`); `--zones sam3` once its gated
   access is granted. Game materials v2 is closed: what is on, what stays off and why is in design
   section 11.
@@ -244,6 +248,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Game materials, from Codex's review: an interrupted `bootstrap_materials.py` no longer counts
+  as installed (a marker is written after the last package); `pbr_trial.py` tries failed assets
+  again; the label trials leave out a GLB regenerated since it was labelled; zone mean colours
+  include `baseColorFactor`; a delit concept never overwrites its source's provenance; the views'
+  near clip follows the model's size, so models a few centimetres wide are no longer cut away.
 - Creature clips: `-long` takes keep the motion of a bone that moves under a still root (a
   snake's head, a fox's bounce), with windows at most half a short clip; a foot is held on
   its side of the body only as much as the source's own foot is, measured from the hips;
