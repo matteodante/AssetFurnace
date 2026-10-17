@@ -43,4 +43,4 @@ def test_windows_installer_run_from_a_clone_updates_that_clone():
 def test_windows_guide_runs_the_installer_from_the_clone_not_the_upstream_site():
     guide = (REPO / "WINDOWS.md").read_text(encoding="utf-8")
     assert "assetfurnace.com/install.ps1" not in guide and "| iex" not in guide
-    assert ".\install.ps1" in guide
+    assert r".\install.ps1" in guide
