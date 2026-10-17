@@ -362,6 +362,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Library names and hidden flags are never lost: two changes at once (a rename and a hide)
+  no longer write over each other, the file is replaced whole so a crash cannot truncate it,
+  and a damaged one is kept aside as `.bad-<time>` instead of being overwritten.
 - The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
   Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
   only text to image took it.
