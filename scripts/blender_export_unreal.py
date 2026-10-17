@@ -16,9 +16,7 @@ What it does to the model:
 - puts each extra animation on its own NLA track, exported as one glTF animation each;
 - adds baked LODs as `LODn_SM_<Name>` nodes and a `UBX_`/`UCX_` collision node;
 - culls back faces (glTF `doubleSided` false) unless the job says two sided (cloth);
-- equipment takes all of that from its body (`body` in the job), so it lands on the body;
-- an object held in a hand (`held` in the job) too, but leaves its skeleton behind: a static
-  mesh in the body's space, which Unreal hangs from a socket of the hand.
+- equipment takes all of that from its body (`body` in the job), so it lands on the body.
 
 Writes the GLB and a JSON report of what it measured and changed.
 """
@@ -197,25 +195,6 @@ def _measure_skeleton(bpy, arm, meshes, job):
             "dims_before_m": dims, "forward_before": forward}
 
 
-def _unskin(bpy, objects):
-    """The meshes alone, where their skeleton's rest pose holds them; the skeletons removed."""
-    armatures = [o for o in objects if o.type == "ARMATURE"]
-    _rest(bpy, armatures)
-    meshes = [o for o in objects if o.type == "MESH"]
-    for mesh in meshes:
-        world = mesh.matrix_world.copy()
-        for modifier in [m for m in mesh.modifiers if m.type == "ARMATURE"]:
-            mesh.modifiers.remove(modifier)
-        mesh.parent = None
-        mesh.matrix_world = world
-        mesh.vertex_groups.clear()
-    for obj in objects:
-        if obj.type != "MESH":
-            bpy.data.objects.remove(obj, do_unlink=True)
-    bpy.context.view_layer.update()
-    return meshes
-
-
 def _transform_matrix(t):
     from mathutils import Matrix
 
@@ -317,7 +296,10 @@ def _hull(bmesh, mesh, points):
     for point in points:
         bm.verts.new(point)
     result = bmesh.ops.convex_hull(bm, input=list(bm.verts))
-    leftovers = [g for g in result["geom_interior"] + result["geom_unused"] if isinstance(g, bmesh.types.BMVert)]
+    # a point can be both interior and unused (repeated points: a Pixal3D mesh's seams), and
+    # delete refuses one named twice
+    leftovers = list(dict.fromkeys(g for g in result["geom_interior"] + result["geom_unused"]
+                                   if isinstance(g, bmesh.types.BMVert)))
     bmesh.ops.delete(bm, geom=leftovers, context="VERTS")
     bm.to_mesh(mesh)
     bm.free()
@@ -360,8 +342,7 @@ def run(job):
     skinned = job["kind"] != "prop"
 
     body = None
-    held = job.get("held")
-    if job["kind"] == "equipment" or held:
+    if job["kind"] == "equipment":
         objects, removed = _import(bpy, job["body"])
         arm = next((o for o in objects if o.type == "ARMATURE"), None)
         if arm is None:
@@ -412,13 +393,19 @@ def run(job):
         _rest(bpy, [arm], rest=False)
         report["root_head_m"] = list(arm.matrix_world @ arm.data.bones[up.ROOT_BONE].head_local)
     else:
-        if held:
-            # in the body's space, moved exactly as the body is: the socket finds it there
-            meshes = _unskin(bpy, objects)
-            lo, hi = _world_box(bpy, meshes)
+        if job.get("grip"):   # a weapon or shield: the pivot on its grip, the blade or head up
+            from mathutils import Vector
+
+            x, y, z = job["grip"]["point"]
+            ax, ay, az = job["grip"]["axis"]
+            # glTF (x, y, z) is Blender (x, -z, y) once imported
+            point, axis = Vector((x, -z, y)), Vector((ax, -az, ay)).normalized()
+            turn = axis.rotation_difference(Vector((0.0, 0.0, 1.0))).to_matrix().to_4x4() @ Matrix.Translation(-point)
+            lo, hi = _world_box(bpy, meshes, turn)
             dims = [h - low for low, h in zip(lo, hi)]
-            scale, offset, matrix = body["scale"], body["offset"], _transform_matrix(body)
-            report["held"] = held
+            scale = up.scale_factor(dims, job["size_cm"], job["measure"])
+            offset = [0.0, 0.0, 0.0]
+            matrix = Matrix.Diagonal((scale, scale, scale, 1.0)) @ turn
         else:
             lo, hi = _world_box(bpy, meshes)
             dims = [h - low for low, h in zip(lo, hi)]
@@ -434,8 +421,7 @@ def run(job):
         for index, path in enumerate(lod_files, start=1):
             lod_objects, lod_removed = _import(bpy, path)
             report["removed"] += lod_removed
-            # a held piece's detail levels leave their skeleton too, or the body's move misses them
-            lod_meshes = _unskin(bpy, lod_objects) if held else [o for o in lod_objects if o.type == "MESH"]
+            lod_meshes = [o for o in lod_objects if o.type == "MESH"]
             _apply(bpy, lod_meshes, matrix)
             lod = _join(bpy, lod_meshes, up.lod_node(names["mesh"], index))
             _materials([lod], job["base"], index)
@@ -443,8 +429,11 @@ def run(job):
         if job.get("collision") in ("box", "convex"):
             _collision(bpy, mesh, job["collision"], names["collision"][job["collision"]])
             report["collision"] = job["collision"]
-        report.update(humanoid=False, scale=scale, yaw_deg=math.degrees(body["yaw"]) if held else 0.0,
-                      offset_m=list(offset), dims_before_m=dims)
+        if job.get("grip"):   # the socket the game attaches it by, where the pivot is (Interchange reads SOCKET_)
+            socket = bpy.data.objects.new("SOCKET_grip", None)
+            bpy.context.scene.collection.objects.link(socket)
+            report["grip_socket"] = "SOCKET_grip"
+        report.update(humanoid=False, scale=scale, yaw_deg=0.0, offset_m=list(offset), dims_before_m=dims)
         lo, hi = _world_box(bpy, [mesh])
 
     report["box_after_m"] = [lo, hi]

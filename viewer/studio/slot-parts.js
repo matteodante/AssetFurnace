@@ -68,6 +68,10 @@ export function setLine(set = {}) {
 export function setActions(set = {}, bodies = []) {
   const others = (bodies || []).filter((b) => b.name !== set.body);
   const data = `data-set="${escape(set.set)}" data-body="${escape(set.body)}"`;
+  if (set.mode === 'standalone') {   // weapons and shields only: nothing fitted, nothing to carry, no body to size
+    return `<span class="sp-set-actions"><button type="button" class="ghost small" data-set-action="unreal" ${data}
+      title="Each weapon and shield as a static mesh of its own, pivot on its grip, for Unreal 5.8">Export for Unreal</button></span>`;
+  }
   return `<span class="sp-set-actions">
     <button type="button" class="ghost small" data-set-action="fit" ${data} title="Fit the pieces on the body again, after a piece was changed">Fit again</button>
     ${others.length ? `<select data-refit-to aria-label="Body to carry the set to">${others.map((b) => `<option value="${escape(b.name)}">${escape(b.name)}</option>`).join('')}</select>
@@ -87,6 +91,27 @@ export function materialRows(pieces = {}, materials = []) {
   return Object.entries(pieces || {}).map(([slot, entry]) => `<tr><td>${escape(slotLabel(slot))}</td>
     <td><select data-set-material="${escape(slot)}" data-was="${escape(entry.material)}" aria-label="${escape(slotLabel(slot))} material">${materialOptions(materials, entry.material, null)}</select></td>
     <td class="meta">${escape(entry.reason || '')}</td></tr>`).join('');
+}
+
+/** Where a click falls on a picture, as fractions of its width and height (kept inside it). */
+export function pointOn(rect, clientX, clientY) {
+  const clamp = (v) => Math.round(Math.min(1, Math.max(0, v)) * 1000) / 1000;
+  return [clamp((clientX - rect.left) / rect.width), clamp((clientY - rect.top) / rect.height)];
+}
+
+const GRIP_BY = { judge: 'found by the picture judge', person: 'placed by you', rule: 'the middle of its back',
+  none: 'not found yet: click the grip on the picture' };
+
+/** A set's weapon and shield, each on its picture with a marker on its grip, its class and length. */
+export function gripRows(grips = {}, base = '/output/') {
+  const percent = (v) => `${Math.round(v * 1000) / 10}%`;
+  return Object.entries(grips || {}).map(([slot, g]) => `<div class="sp-grip" data-grip-slot="${escape(slot)}">
+    <div class="sp-grip-picture"><img src="${escape(base + g.picture)}" alt="${escape(slotLabel(slot))}: click its grip" data-grip-picture>
+      <span class="sp-grip-marker" data-grip-marker${g.at ? ` style="left:${percent(g.at[0])};top:${percent(g.at[1])}"` : ' hidden'}></span></div>
+    <div class="sp-grip-fields"><b>${escape(slotLabel(slot))}</b>
+      <label>Kind <select data-grip-class>${(g.classes || []).map((c) => `<option value="${escape(c)}"${c === g.class ? ' selected' : ''}>${escape(c)}</option>`).join('')}</select></label>
+      <label>Length (cm) <input type="number" min="1" max="1000" step="1" value="${escape(g.size_cm ?? '')}" data-grip-size></label>
+      <span class="meta">${escape(GRIP_BY[g.by] || '')}</span></div></div>`).join('');
 }
 
 /** Only the pieces whose menu a person changed: {slot: material}. */
@@ -126,7 +151,10 @@ export function runPayload(state = {}) {
   if (!Object.keys(slots).some((s) => s !== 'weapon' && s !== 'shield') && !payload.weapon && !payload.shield) {
     throw new Error('Choose at least one piece.');
   }
-  if (mode === 2) {
+  const worn = Object.keys(slots).some((s) => s !== 'weapon' && s !== 'shield');
+  if (!worn) {
+    // weapons and shields only: assets of their own, nothing drawn on the body
+  } else if (mode === 2) {
     if (!state.concept) throw new Error('Give the concept of the dressed character (a picture under output/, drawn on the body).');
     payload.concept = state.concept;
   } else {
@@ -136,7 +164,7 @@ export function runPayload(state = {}) {
   }
   if (String(state.style || '').trim()) payload.style = String(state.style).trim();
   if (state.useBible) payload.bible = '-';
-  if (mode === 3 && String(state.conceptSeeds || '').trim()) {
+  if (worn && mode === 3 && String(state.conceptSeeds || '').trim()) {
     payload.concept_seeds = String(state.conceptSeeds).trim();
     payload.choose_concept = Boolean(state.chooseConcept);
   }
@@ -170,6 +198,13 @@ async function post(url, body = {}) {
 }
 
 const STYLE = `
+.sp-grips { margin: 4px 0 8px; grid-column: 1 / -1; }
+.sp-grip { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; margin: 8px 0; }
+.sp-grip-picture { position: relative; width: 140px; cursor: crosshair; }
+.sp-grip-picture img { display: block; width: 100%; border-radius: 8px; border: 1px solid var(--line); }
+.sp-grip-marker { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border: 3px solid #ff5a36;
+  border-radius: 50%; box-shadow: 0 0 0 2px rgba(0, 0, 0, .5); pointer-events: none; }
+.sp-grip-fields { display: grid; gap: 6px; }
 .sp-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; }
 .sp-modes label { display: block; padding: 10px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
 .sp-modes input { margin-right: 6px; }
@@ -288,7 +323,11 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
           ${setActions(s, info.bodies)}
           ${Object.keys(s.materials || {}).length ? `<details class="sp-materials" data-materials="${escape(s.set)}" data-body="${escape(s.body)}"><summary>Materials</summary>
             <table><tbody>${materialRows(s.materials, info.materials)}</tbody></table>
-            <button type="button" class="ghost small" data-save-materials>Save materials</button> <span class="meta" data-materials-result></span></details>` : ''}</li>`).join('')}</ul>`
+            <button type="button" class="ghost small" data-save-materials>Save materials</button> <span class="meta" data-materials-result></span></details>` : ''}
+          ${Object.keys(s.grips || {}).length ? `<details class="sp-grips" data-grips="${escape(s.set)}" data-body="${escape(s.body)}"><summary>Grip</summary>
+            <p class="meta">Where a weapon or shield is held: its pivot and its grip socket in Unreal. Click the grip on the picture to move it.</p>
+            ${gripRows(s.grips, info.base || '/output/')}
+            <button type="button" class="ghost small" data-save-grips>Save grip</button> <span class="meta" data-grips-result></span></details>` : ''}</li>`).join('')}</ul>`
       : '<p class="meta">No sets yet.</p>';
     const candidates = bodyCandidates(assets());
     el.querySelector('[data-register]').innerHTML = candidates.length
@@ -373,6 +412,32 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
     }
   });
   el.addEventListener('click', async (event) => {
+    const picture = event.target.closest('[data-grip-picture]');
+    if (picture) {   // the grip moves where the person clicks
+      const at = pointOn(picture.getBoundingClientRect(), event.clientX, event.clientY);
+      const row = picture.closest('[data-grip-slot]');
+      const marker = row.querySelector('[data-grip-marker]');
+      marker.hidden = false;
+      marker.style.left = `${at[0] * 100}%`;
+      marker.style.top = `${at[1] * 100}%`;
+      row.dataset.at = at.join(',');
+      return;
+    }
+    const saveGrips = event.target.closest('[data-save-grips]');
+    if (saveGrips) {
+      const box = saveGrips.closest('[data-grips]');
+      const result = box.querySelector('[data-grips-result]');
+      for (const row of box.querySelectorAll('[data-grip-slot]')) {
+        const payload = { set: box.dataset.grips, body: box.dataset.body, slot: row.dataset.gripSlot,
+          class: row.querySelector('[data-grip-class]').value, size_cm: Number(row.querySelector('[data-grip-size]').value) || null };
+        if (row.dataset.at) payload.at = row.dataset.at.split(',').map(Number);
+        const { ok, body } = await post('/api/slot-parts/grip', payload);
+        if (!ok) { result.textContent = body.error; return; }
+      }
+      result.textContent = 'Saved: export the set for Unreal again to use it.';
+      refresh();
+      return;
+    }
     const save = event.target.closest('[data-save-materials]');
     if (save) {
       const box = save.closest('[data-materials]');

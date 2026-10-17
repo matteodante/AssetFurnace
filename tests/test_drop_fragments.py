@@ -8,7 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import numpy as np
 import trimesh
 
 from image_to_3dlab.slot_parts import fragments, pieces, slots

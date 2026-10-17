@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   writes beside the GLB, which nothing reads, is removed once the run ends (`--keep-ply` keeps
   it), and the cut-out it made is kept only as the subject's outline, which a body's or a
   weapon's camera still reads.
+- A batch refuses a research-only source (Qwen's pictures, since its licence was read) only
+  for a run with commercial intent, as a run's own backends are; any other run goes on, with
+  a warning in its log, its state (`licence_warnings`) and `validate_batch`. A set's record
+  takes its licence class from the models that made it (research-only) instead of a fixed one.
 - The final review of the step parity work (Codex, by area) found these, each fixed with a test:
   - a row that starts from words passes Finish's preflight before its picture is drawn;
   - Checks and Finish's repaint use the picture the model was made from (a concept step's),
@@ -43,16 +47,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     call and in the spec it names;
   - optional Streamable HTTP on 127.0.0.1 with a bearer token, reached from another machine
     through an SSH tunnel (`--http`, `docs/batches.md`).
-- A set's weapon and shield reach Unreal as static meshes hung from sockets of the hands
-  (`SOCKET_Weapon` on hand_r, `SOCKET_Shield` on hand_l), not as pieces skinned to a bone: the
-  export keeps them in the body's space, the Unreal check makes the sockets on the body from
-  the skeleton it imported and checks that the hand holds what hangs from them, and the
-  picture shows them in the hands. The weapon's picture is asked for handle down and turned
-  when the picture judge sees its handle at the top (the first real set's sword was drawn
-  point down in three seeds out of three). Any object can be held the same way: the studio's
-  Export for Unreal has "Held" (right or left hand) and "Held by", `export_unreal.py --socket
-  SOCKET_Weapon=hand_r --body body.glb`, and a batch row's `"export_unreal": {"socket": ...}`
-  (agents through `run_steps`).
+- Weapons and shields are game assets of their own (the user's decision, 17/10/2026): made
+  beside a set, never fitted to the body nor tied to it in Unreal, but made well.
+  - Their picture is drawn in a canonical pose (upright, grip at the bottom, point or head at
+    the top, plain background). The picture judge turns a weapon drawn the other way, and
+    scores the pictures so the best is the automatic pick (the studio pauses for the choice).
+  - Their grip is found by the picture judge (Qwen3-VL grounding) on the picture, and brought
+    onto the 3D through the Pixal3D camera. Along a long haft, the class says where the hand
+    closes (near the end for an axe, mid-haft for a staff). A shield is held at the centre of
+    its back. Each grip is recorded in `<piece>/grip.json`.
+  - A person corrects the grip on every route: the studio's marker on the picture, with a
+    kind and a length; `slot_parts.py grip`; MCP `pieces_grip`.
+  - In Unreal each one is a static mesh with its pivot on the grip, the blade or head along
+    +Z, a `grip` socket there, its real length, and a convex collision. `export_unreal.py
+    --grip grip.json` and the batch option `grip` do the same for any object.
+  - A set of weapons or shields only needs no concept nor outfit.
+  - Removed: the hand sockets on the body and "Held"/"Held by" (#108), and the weapon and
+    shield placed in the hand by the fit.
 - A base body says how it is dressed under its pieces, the person's choice when it is
   registered on every route: a bodysuit, simple clothes (shirt, breeches, cloth shoes), minimal
   underwear, or words of their own (`slot_parts.py body --dressing`, `pieces_add_body(dressing=)`,

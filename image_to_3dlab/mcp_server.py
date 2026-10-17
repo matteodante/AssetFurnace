@@ -61,6 +61,7 @@ INSTALL_HINT = 'The MCP server needs the MCP SDK: pip install "mcp>=2.3,<3"'
 class Checked(TypedDict, total=False):
     ok: bool
     problems: list[str]
+    warnings: list[str]
     steps: dict[str, bool]
     name: str
     directory: str
@@ -255,7 +256,7 @@ def validate_batch(spec: str, use_case: str | None = None, distribution: str | N
                               "steps": batch.available_steps()}
     if loaded is not None:
         result.update(name=loaded.name, directory=str(loaded.directory),
-                      rows=len(loaded.rows), intent=loaded.intent)
+                      rows=len(loaded.rows), intent=loaded.intent, warnings=loaded.warnings)
     return result
 
 
@@ -762,6 +763,30 @@ def pieces_unreal(body: str, set: str, size_cm: float = 180.0) -> Started:
     return _pieces("unreal", {"body": body, "set": set, "size_cm": size_cm})
 
 
+class Grip(TypedDict, total=False):
+    saved: bool
+    problems: list[str]
+    set: str
+    body: str
+    slot: str
+    grip: dict[str, Any]
+
+
+def pieces_grip(body: str, set: str, slot: str, at: list[float] | None = None, weapon_class: str | None = None,
+                size_cm: float | None = None) -> Grip:
+    """Correct where a set's weapon or shield is held (its Unreal pivot and `grip` socket): `at`
+    a point on its picture ([x, y], fractions of its width and height), `weapon_class` (sword,
+    dagger, axe, mace, hammer, spear, staff, bow, weapon, shield), `size_cm` its real length.
+    The record shows where the picture judge put it. pieces_unreal then exports with it."""
+    from .slot_parts import runs
+
+    try:
+        return {"saved": True, **runs.save_grip(OUTPUT, {"body": body, "set": set, "slot": slot, "at": at,
+                                                         "class": weapon_class, "size_cm": size_cm})}
+    except (ValueError, OSError) as exc:
+        return {"saved": False, "problems": [str(exc)]}
+
+
 def pieces_materials(body: str, set: str, pieces: dict[str, str | None]) -> Materials:
     """Correct the one material of pieces of a made set: {"helmet": "leather"}; None gives a
     piece the rule's proposal back. Answers every piece's material and why (person, asked
@@ -797,7 +822,8 @@ def pieces_cancel() -> Stopped:
 
 TOOLS = (validate_batch, submit_batch, resume_batch, batch_status, wait_batch, list_outputs, cancel_batch,
          list_steps, review_queue, review_item, check_asset, review_decide, pieces_list, pieces_add_body,
-         pieces_run, pieces_pick, pieces_fit, pieces_refit, pieces_unreal, pieces_materials, pieces_status,
+         pieces_run, pieces_pick, pieces_fit, pieces_refit, pieces_unreal, pieces_materials, pieces_grip,
+         pieces_status,
          pieces_cancel,
          describe_steps, run_steps, pick_candidate, rerun_step)
 
@@ -825,6 +851,7 @@ HINTS = {
     "pieces_refit": ("Carry a set to a body", False, True, False),
     "pieces_unreal": ("Export a set for Unreal", False, True, False),
     "pieces_materials": ("Correct pieces' materials", False, False, True),
+    "pieces_grip": ("Correct a weapon's grip", False, False, True),
     "pieces_status": ("Pieces run state", True, False, True),
     "pieces_cancel": ("Stop the pieces run", False, True, True),
     "describe_steps": ("Every step and its settings", True, False, True),
@@ -840,7 +867,7 @@ list_outputs, cancel_batch. A batch runs for hours in the background; submit ans
 file), run_steps, pick_candidate, rerun_step, list_steps.
 - Review: check_asset, review_queue, review_item, review_decide.
 - Characters in pieces: pieces_list, pieces_add_body, pieces_run, pieces_status, pieces_pick, pieces_fit, \
-pieces_refit, pieces_unreal, pieces_materials, pieces_cancel.
+pieces_refit, pieces_unreal, pieces_materials, pieces_grip, pieces_cancel.
 Paths are absolute, on this machine, inside this repository or its output/ folder, or inside one of the roots your \
 client shares; any other path is refused. Files a tool hands back come as resource links too. Nothing here \
 downloads weights: a missing install is reported with the command to run."""

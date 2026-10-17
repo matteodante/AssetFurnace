@@ -78,7 +78,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 from PIL import Image
 
-from image_to_3dlab import unreal_profile as up
 from image_to_3dlab.slot_parts import body as body_mod
 from image_to_3dlab.slot_parts import candidates, cuts, masks, orient, pieces, slots
 
@@ -304,8 +303,8 @@ def orient_held(pictures: list[Path], ask) -> dict[Path, bool | None]:
 def held_pictures(slot: str, words: str, folder: Path, seeds: list[int], style: str = "", run=_run,
                   generate=text_command) -> dict[int, Path]:
     """A weapon's or shield's pictures, one per seed; those already made for these words are
-    kept (a resumed run draws nothing again). A weapon's are turned handle down where the
-    picture judge sees the handle at the top (slot_parts/orient.py)."""
+    kept (a resumed run draws nothing again). A weapon's are turned grip down where the
+    picture judge sees the grip at the top (slot_parts/orient.py)."""
     prompt = pieces.held_prompt(slot, words, style)
     made = {}
     for seed in seeds:
@@ -322,29 +321,102 @@ def held_pictures(slot: str, words: str, folder: Path, seeds: list[int], style: 
     return made
 
 
-def held_candidates(pictures: dict[int, Path]) -> dict:
-    """A held piece's pictures as candidates.json lists them: no outline to score them by,
-    so the first seed is the automatic pick and a person picks another."""
-    first = next(iter(pictures))
-    return {"candidates": {seed: {"picture": str(path), "score": None, "is_piece": None, "shape": {"score": None}}
-                           for seed, path in pictures.items()},
-            "auto": first, "picked": first, "by": "auto", "doubt": False, "held": True}
+HELD_QUESTION = {
+    "weapon": "Is this one complete {what}, upright with its grip at the bottom and its point or head at the top, "
+              "alone on a plain background? Answer yes or no.",
+    "shield": "Is this one complete {what}, seen from the front, alone on a plain background? Answer yes or no.",
+}
+
+
+def score_held(slot: str, words: str, pictures: dict[int, Path]) -> dict[int, float | None]:
+    """The picture judge's yes for each picture: one complete weapon (or shield) in the canonical
+    pose. No judge: no scores, and the first seed stays the automatic pick."""
+    from image_to_3dlab import gpu_lock
+    from image_to_3dlab.style import judge, models
+
+    what = words.strip() or pieces.HELD_WORDS[slot]
+    try:
+        server = judge.LlamaServer()
+    except models.MissingModel:
+        return {seed: None for seed in pictures}
+    try:
+        with server:
+            ask = candidates.make_asker(server.post)
+            return {seed: round(ask(path, HELD_QUESTION[slot].format(what=what)), 4) for seed, path in pictures.items()}
+    except (gpu_lock.GpuBusy, RuntimeError) as exc:
+        print(f"{slot} pictures not scored: the picture judge could not run ({exc})", flush=True)
+        return {seed: None for seed in pictures}
+
+
+def held_candidates(pictures: dict[int, Path], scores: dict[int, float | None] | None = None) -> dict:
+    """A weapon's or shield's pictures as candidates.json lists them, scored by the judge (the
+    best is the automatic pick; without scores, the first seed)."""
+    scores = scores or {}
+    ranked = [seed for seed in pictures if scores.get(seed) is not None]
+    auto = max(ranked, key=lambda seed: (scores[seed], -seed)) if ranked else next(iter(pictures))
+    return {"candidates": {seed: {"picture": str(path), "score": scores.get(seed), "is_piece": scores.get(seed),
+                                  "shape": {"score": None}} for seed, path in pictures.items()},
+            "auto": auto, "picked": auto, "by": "auto", "doubt": False, "held": True}
+
+
+def find_grip(slot: str, words: str, picture: Path, model: Path) -> dict:
+    """The grip of a weapon or shield just made (slot_parts/grip.py): the Pixal3D camera of its
+    model, and the picture judge's box on its picture."""
+    from image_to_3dlab import gpu_lock
+    from image_to_3dlab.slot_parts import camera as camera_mod
+    from image_to_3dlab.slot_parts import grip
+    from image_to_3dlab.style import judge, models
+
+    views = pieces.model_path(Path(picture).parent.parent, slot).with_suffix(".svviews")
+    try:
+        cam = camera_mod.from_views(views, camera_mod.subject_alpha(picture))
+    except (OSError, ValueError, KeyError) as exc:   # a model not made by Pixal3D from this picture
+        print(f"{slot}: no Pixal3D camera to place the grip on the model ({exc}); place it with "
+              "`slot_parts.py grip` or the studio's marker", flush=True)
+        return {"slot": slot, "class": grip.weapon_class(slot, words), "size_cm": None, "picture": str(picture),
+                "model": str(model), "camera": None, "box": None, "point": None, "axis": None, "by": "none"}
+    if slot == "shield":
+        return grip.find(model, picture, cam, slot=slot, words=words, ask_box=None)
+    try:
+        server = judge.LlamaServer()
+    except models.MissingModel:
+        return grip.find(model, picture, cam, slot=slot, words=words, ask_box=None)
+    try:
+        with server:
+            def ask_box(path: Path, question: str) -> str:
+                content = [{"type": "image_url", "image_url": {"url": judge._data_url(path)}},
+                           {"type": "text", "text": question}]
+                reply = server.post({"messages": [{"role": "user", "content": content}], "max_tokens": 160,
+                                     "temperature": 0})
+                return reply["choices"][0]["message"]["content"]
+
+            return grip.find(model, picture, cam, slot=slot, words=words, ask_box=ask_box)
+    except (gpu_lock.GpuBusy, RuntimeError) as exc:
+        print(f"{slot}: the picture judge could not run ({exc})", flush=True)
+        return grip.find(model, picture, cam, slot=slot, words=words, ask_box=None)
 
 
 def make_held(slot: str, words: str, folder: Path, seeds: list[int], style: str = "", run=_run,
               generate=text_command, pick: int | None = None) -> dict:
-    """A weapon or shield made on its own: pictures (one per seed), then the picked one
-    (default the first seed) in 3D."""
+    """A weapon or shield, an asset of its own: pictures (one per seed, scored by the judge),
+    the picked one (default the best scored) in 3D, then its grip (`<slot>/grip.json`)."""
+    from image_to_3dlab.slot_parts import grip
+
     prompt = pieces.held_prompt(slot, words, style)
     pictures = held_pictures(slot, words, folder, seeds, style, run, generate)
-    seed = pick if pick is not None else seeds[0]
+    scores = score_held(slot, words, pictures) if pick is None and len(pictures) > 1 else {}
+    if pick is None:
+        pick = held_candidates(pictures, scores)["auto"]
+    seed = pick
     if seed not in pictures:
         raise ValueError(f"{slot}: seed {seed} is not one of its pictures")
     picture = pictures[seed]
     for command in pieces.model_commands(picture, folder, slot, sys.executable, REPO / "scripts"):
         run(command)
-    return {"seed": seed, "picture": str(picture), "glb": str(pieces.finished_path(folder, slot)),
-            "prompt": prompt, "held": True}
+    glb = pieces.finished_path(folder, slot)
+    record = grip.write(find_grip(slot, words, picture, glb), grip.path_for(picture))
+    return {"seed": seed, "picture": str(picture), "glb": str(glb), "prompt": prompt, "held": True,
+            "standalone": True, "grip": str(record), "scores": {str(k): v for k, v in scores.items()}}
 
 
 def check_pieces(fit_dir: Path, body_json: Path, set_name: str) -> dict:
@@ -452,7 +524,8 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
     chosen = slots.choose(raw)
     drawn = {k: v for k, v in chosen.items() if k in slots.DRAWN}
     if resume:
-        concept, concept_info, mode = Path(state["concept"]), state["concept_info"], state["mode"]
+        concept = Path(state["concept"]) if state.get("concept") else None
+        concept_info, mode = state["concept_info"], state["mode"]
         cut = {"subject_from": state.get("subject_from")}
         if picks:
             candidates.choose(folder / "pieces", picks)
@@ -464,7 +537,9 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
                            cut, seeds, style, run, generate, fitter, checker, held_picks)
         state_path.unlink()  # only now: a fit that fails or is stopped can be resumed again
         return path
-    if concept is None:
+    if not drawn:   # weapons and shields only: assets of their own, nothing drawn on the body
+        concept, concept_info, mode = None, {"standalone": True}, "standalone"
+    elif concept is None:
         if not outfit.strip():
             raise ValueError("give the outfit in words (--outfit) or a concept drawn on the body (--concept)")
         if stop_at_concept and len(concept_seeds) > 1:
@@ -494,10 +569,12 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
             # this run's drawn pieces, never an earlier run's left in candidates.json
             offered = candidates.load(folder / "pieces") if drawn else {"slots": {}, "judge": None}
             for slot, options in held.items():
-                offered["slots"][slot] = held_candidates(held_pictures(slot, options["prompt"], folder / "pieces",
-                                                                       list(seeds), style, run, generate))
+                drawn_held = held_pictures(slot, options["prompt"], folder / "pieces", list(seeds), style, run,
+                                           generate)
+                offered["slots"][slot] = held_candidates(drawn_held, score_held(slot, options["prompt"], drawn_held))
             candidates.write(folder / "pieces", offered["slots"], offered.get("judge") or "none")
-        state_path.write_text(json.dumps({"waiting": "picks", "concept": str(concept), "concept_info": concept_info,
+        state_path.write_text(json.dumps({"waiting": "picks", "concept": str(concept) if concept else None,
+                                          "concept_info": concept_info,
                                           "mode": mode, "subject_from": cut.get("subject_from"), "held": held,
                                           "style": style, "seeds": list(seeds)}, indent=1) + "\n",
                               encoding="utf-8")
@@ -523,15 +600,12 @@ def _finish_set(body_json, record, set_name, folder, chosen, drawn, made, concep
     (folder / "pieces").mkdir(parents=True, exist_ok=True)
     pieces_json = folder / "pieces" / "pieces.json"
     pieces.write_record(pieces_json, {"cuts": str(folder / "cuts" / "cuts.json"), "seeds": list(seeds), "slots": made})
-    job = fit_job(pieces_json, body_json, folder / "fit") if drawn else {
-        "body": str(Path(body_json).resolve()), "concept_size": [1, 1], "out": str((folder / "fit").resolve()),
-        "pieces": [{"slot": s, "glb": e["glb"]} for s, e in made.items()]}
-    for slot in ("weapon", "shield"):
-        if slot in made and drawn:
-            job["pieces"] = [p for p in job["pieces"] if p["slot"] != slot] + [{"slot": slot, "glb": made[slot]["glb"]}]
-    fit_report = (fitter or run_fit)(job)
-    checks = (checker or check_pieces)(folder / "fit", body_json, set_name)
-    parts = sidecar.parts_record(mode=mode, set_name=set_name, body=record, body_json=body_json, concept=Path(concept),
+    fit_report, checks = None, {}
+    if drawn:   # the worn pieces only: a weapon or shield is an asset of its own, never fitted
+        fit_report = (fitter or run_fit)(fit_job(pieces_json, body_json, folder / "fit"))
+        checks = (checker or check_pieces)(folder / "fit", body_json, set_name)
+    parts = sidecar.parts_record(mode=mode, set_name=set_name, body=record, body_json=body_json,
+                                 concept=Path(concept) if concept else None,
                                  concept_info=concept_info, chosen=chosen, pieces=made, fit=fit_report, checks=checks,
                                  matte=cut.get("subject_from"))
     return sidecar.write(folder, set_name, parts)
@@ -546,6 +620,8 @@ def refit_job(fit_dir: Path, source_body: Path, body_json: Path, out: Path) -> d
             continue
         stem = Path(name).stem
         slot = stem.removesuffix("_L").removesuffix("_R")
+        if slot in slots.STANDALONE:   # fitted by a run from before: an asset of its own now, not carried
+            continue
         # one shoulders file was fitted unsplit; two (_L and _R) were split on purpose
         pieces_out.append({"slot": slot, "glb": str((Path(fit_dir) / name).resolve()), "transfer": True,
                            "split": stem != slot})
@@ -556,51 +632,74 @@ def refit_job(fit_dir: Path, source_body: Path, body_json: Path, out: Path) -> d
             "clips": list(body_mod.load(body_json).get("clips", {}).values())}
 
 
-# Where a held piece hangs in Unreal: a socket of the hand, made at import (the user's decision C).
-SOCKETS = up.HELD_SOCKETS
+def standalone_pieces(folder: Path) -> dict[str, dict]:
+    """A set's weapon and shield, as its `.parts.json` lists them: {slot: {"glb", "grip"}}."""
+    found = sorted(Path(folder).glob("*.parts.json"))
+    parts = json.loads(found[0].read_text(encoding="utf-8")) if found else {}
+    return {slot: entry for slot, entry in (parts.get("pieces") or {}).items()
+            if slot in slots.STANDALONE and isinstance(entry, dict) and entry.get("glb")}
 
 
 def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0, exporter=None) -> Path:
-    """The body and every piece of a fitted set for Unreal 5.8, sharing one Skeleton, and a
+    """A set for Unreal 5.8: the body and every worn piece sharing one Skeleton (when the set has
+    worn pieces), each weapon and shield as a static mesh of its own with its grip, and a
     `<body>.unreal-set.json` saying how to put them together."""
     if exporter is None:
         sys.path.insert(0, str(REPO / "scripts"))
         from export_unreal import export_unreal as exporter
     from image_to_3dlab import piece_materials
+    from image_to_3dlab.slot_parts import grip as grip_mod
 
     record = body_mod.load(body_json)
-    report = json.loads((Path(fit_dir) / "fit.json").read_text())
+    found = sorted(Path(fit_dir).parent.glob("*.parts.json"))
+    said = json.loads(found[0].read_text(encoding="utf-8")) if found else {}
+    # an earlier run's fit left on disk is not this set's when its record says it has none
+    fitted = (Path(fit_dir) / "fit.json").is_file() and not ("fit" in said and said["fit"] is None)
+    report = json.loads((Path(fit_dir) / "fit.json").read_text()) if fitted else {"files": []}
     try:
         chosen = piece_materials.set_materials(Path(fit_dir).parent)
-    except FileNotFoundError:            # a set fitted before its record: the slots' defaults
+    except FileNotFoundError:            # a set fitted before its record, or with nothing fitted: the defaults
         chosen = {}
     materials = {}
     base = "".join(part.capitalize() for part in record["name"].replace("_", "-").split("-"))
     body_glb = Path(fit_dir) / "body_masked.glb"
-    exported = {"body": exporter(body_glb, kind="creature", size_cm=size_cm, name=base, out_dir=Path(out) / base)}
+    exported = ({"body": exporter(body_glb, kind="creature", size_cm=size_cm, name=base, out_dir=Path(out) / base)}
+                if fitted else {})
     pieces_out = {}
     for name in report["files"]:
         if name in ("set.glb", "preview.glb", "body_masked.glb", "body_trimmed.glb"):
+            continue
+        if Path(name).stem in slots.STANDALONE:   # fitted by a run from before: exported on its own below
             continue
         piece = "".join(part.capitalize() for part in Path(name).stem.split("_"))
         slot = piece_materials.piece_of(name)
         if slot is not None:
             materials[slot] = chosen.get(slot) or piece_materials.propose(slot=slot)
-        held = SOCKETS.get(slot)
-        # a weapon or shield: a static mesh hung from a socket of the hand (the user's decision,
-        # 17/10/2026), every other piece skinned to the body's skeleton
-        pieces_out[Path(name).stem] = exporter(Path(fit_dir) / name, kind="prop" if held else "equipment",
-                                               size_cm=size_cm, name=f"{base}{piece}", body=body_glb,
-                                               body_name=base, out_dir=Path(out) / f"{base}{piece}",
-                                               material=materials[slot]["material"] if slot else None,
-                                               **({"socket": held} if held else {}))
+        pieces_out[Path(name).stem] = exporter(Path(fit_dir) / name, kind="equipment", size_cm=size_cm,
+                                               name=f"{base}{piece}", body=body_glb, body_name=base,
+                                               out_dir=Path(out) / f"{base}{piece}",
+                                               material=materials[slot]["material"] if slot else None)
+    standalone = {}
+    for slot, entry in standalone_pieces(Path(fit_dir).parent).items():
+        found = grip_mod.load(Path(entry["grip"])) if entry.get("grip") else None
+        held = found if found and found.get("point") else None
+        materials[slot] = chosen.get(slot) or piece_materials.propose(slot=slot)
+        # named after its set, not the body it was made beside: an asset of its own
+        set_name = Path(fit_dir).parent.parent.name
+        name = "".join(part.capitalize() for part in set_name.replace("_", "-").split("-")) + slot.capitalize()
+        pieces_out[slot] = exporter(Path(entry["glb"]), kind="prop", name=name, out_dir=Path(out) / name,
+                                    size_cm=float((found or {}).get("size_cm") or grip_mod.CLASSES[
+                                        grip_mod.weapon_class(slot, entry.get("prompt", ""))].size_cm),
+                                    measure="longest", collision="convex", grip=held,
+                                    material=materials[slot]["material"])
+        standalone[slot] = {"socket": "grip" if held else None, "grip_by": (found or {}).get("by"),
+                            "class": (found or {}).get("class")}
     summary = {
-        "body": record["name"], "size_cm": size_cm, "skeleton": f"SK_{base}_Skeleton",
-        "meshes": {"body": exported["body"]["glb"], **{k: v["glb"] for k, v in pieces_out.items()}},
-        "problems": {k: v.get("problems", []) for k, v in {"body": exported["body"], **pieces_out}.items()},
+        "body": record["name"], "size_cm": size_cm, "skeleton": f"SK_{base}_Skeleton" if fitted else None,
+        "meshes": {**({"body": exported["body"]["glb"]} if fitted else {}), **{k: v["glb"] for k, v in pieces_out.items()}},
+        "problems": {k: v.get("problems", []) for k, v in {**exported, **pieces_out}.items()},
         "materials": materials,
-        "sockets": {slot: SOCKETS[slot] for slot in SOCKETS
-                    if any(piece_materials.piece_of(n) == slot for n in report["files"])},
+        "standalone": standalone,
         "how": [
             "Import the body first, then each piece on the body's Skeleton (each .unreal.json says so).",
             ("Put every piece on a Skeletal Mesh Component under the body's and call SetLeaderPoseComponent(body) "
@@ -609,10 +708,12 @@ def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0
              "MASK. Unreal's glTF import ignores vertex alpha, so the body needs a Masked material with Vertex "
              "Color alpha in Opacity Mask; unreal_import_check.py makes it (M_<Body>_Masked, from the body's "
              "textures, which stay parameters) and checks it."),
-            ("The weapon and shield are static meshes in the body's own space, hung from sockets of its hands "
-             f"({SOCKETS['weapon']['name']} on {SOCKETS['weapon']['bone']}, {SOCKETS['shield']['name']} on "
-             f"{SOCKETS['shield']['bone']}); unreal_import_check.py makes the sockets from the imported skeleton "
-             "and checks the grip. Attach each with AttachToComponent(body, socket) and no offset."),
+            ("A weapon or shield is a static mesh of its own, at its real size, with its pivot on its grip and a "
+             "`grip` socket there (the blade or head along +Z): attach it to a hand socket of your character in "
+             "the game. Unreal's glTF import does not turn the GLB's SOCKET_grip node into a socket "
+             "(UE 5.8, 17/10/2026): unreal_import_check.py adds it; by hand, add a socket named grip at the "
+             "origin. A grip the picture judge did not find is said in `standalone`; place it with "
+             "`slot_parts.py grip` or the studio's marker, and export again."),
         ],
     }
     path = Path(out) / f"{record['name']}.unreal-set.json"
@@ -656,10 +757,12 @@ def fit_job(pieces_json: Path, body_json: Path, out: Path, options: dict | None 
         cut_record, size = {"slots": {}}, [1, 1]
     if not record["slots"]:
         raise ValueError(f"{pieces_json} has no pieces: run the pieces command first")
+    if not any(slot not in slots.STANDALONE for slot in record["slots"]):
+        raise ValueError(f"{pieces_json} has no worn pieces to fit: a weapon or shield is an asset of its own")
     entries = [{"slot": slot, "glb": entry["glb"],
                 "split": bool(cut_record["slots"].get(slot, {}).get("split", False)),
                 **{k: entry[k] for k in ("concept_box", "frame") if k in entry}}
-               for slot, entry in record["slots"].items()]
+               for slot, entry in record["slots"].items() if slot not in slots.STANDALONE]
     clips = list(body_mod.load(body_json).get("clips", {}).values())
     return {"body": str(Path(body_json).resolve()), "concept_size": size, "out": str(Path(out).resolve()),
             "pieces": entries, "clips": clips, **(options or {})}
@@ -753,6 +856,13 @@ def build_parser() -> argparse.ArgumentParser:
     un.add_argument("--body", type=Path, required=True)
     un.add_argument("--size-cm", type=float, default=180.0, help="the body's real height")
     un.add_argument("--out", type=Path, help="default: unreal/ beside fit/")
+    gp = sub.add_parser("grip", help="show or correct where a set's weapon or shield is held")
+    gp.add_argument("--set-dir", type=Path, required=True, help="output/sets/<set>/<body>/")
+    gp.add_argument("--slot", choices=slots.STANDALONE, required=True)
+    gp.add_argument("--at", help="the grip on its picture: X,Y as fractions of its width and height (0.5,0.8)")
+    gp.add_argument("--class", dest="weapon_class", help="sword, dagger, axe, mace, hammer, spear, staff, bow, "
+                                                         "weapon or shield")
+    gp.add_argument("--size-cm", type=float, help="its real length (the longest side)")
     mt = sub.add_parser("materials", help="show or correct the one material of each piece of a set")
     mt.add_argument("set_dir", type=Path, help="output/sets/<set>/<body>/")
     mt.add_argument("--set", action="append", default=[], metavar="SLOT=MATERIAL",
@@ -765,7 +875,16 @@ def main(argv: list[str] | None = None) -> int:
     p = build_parser()
     args = p.parse_args(argv)
     try:
-        if args.command == "materials":
+        if args.command == "grip":
+            from image_to_3dlab.slot_parts import grip
+
+            at = tuple(float(v) for v in args.at.split(",")) if args.at else None
+            if at is not None and len(at) != 2:
+                raise ValueError("--at is X,Y: two fractions of the picture's width and height")
+            record = grip.correct_in(args.set_dir, args.slot, at=at, weapon_class=args.weapon_class,
+                                     size_cm=args.size_cm)
+            print(json.dumps({k: record[k] for k in ("class", "size_cm", "point", "axis", "by")}, indent=1))
+        elif args.command == "materials":
             from image_to_3dlab import piece_materials
 
             changes = {**{slot: None for slot in args.clear},

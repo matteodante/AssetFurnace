@@ -16,6 +16,8 @@
                                          "to" (refit), "size_cm" (unreal)}: fit a made set again,
                                          carry it to another body, export it for Unreal
     POST /api/slot-parts/run/cancel
+    POST /api/slot-parts/grip            {"set", "body", "slot", "at": [x, y], "class", "size_cm"}: a
+                                         weapon's or shield's grip, corrected (slot_parts/grip.py)
     POST /api/slot-parts/materials       {"set", "body", "pieces": {slot: material | null}}: a
                                          person's material for pieces of a made set (null: back
                                          to the rule's proposal); answers every piece's material
@@ -76,6 +78,12 @@ def _checked(output: Path, payload: dict, action: str = "run") -> dict:
     if action == "run" and int(payload.get("mode", 3)) == 2 and not payload.get("resume"):
         return {**payload, "concept": _inside(output, payload.get("concept"))}
     return payload
+
+
+def save_grip(output: Path, payload: dict) -> dict:
+    """A person's grip for a set's weapon or shield (the marker, the class, the length); the same
+    function the MCP server's pieces_grip and `slot_parts.py grip` call."""
+    return runs.save_grip(output, payload)
 
 
 def save_materials(output: Path, payload: dict) -> dict:
@@ -159,6 +167,8 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
             handler._send_json(202, start_run(output, _body(handler)))
         elif mutation and parts == ["api", "slot-parts", "run", "cancel"]:
             handler._send_json(200, cancel_run())
+        elif mutation and parts == ["api", "slot-parts", "grip"]:
+            handler._send_json(200, save_grip(output, _body(handler)))
         elif mutation and parts == ["api", "slot-parts", "materials"]:
             handler._send_json(200, save_materials(output, _body(handler)))
         else:
