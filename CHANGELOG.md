@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   material and why, corrected and saved (`POST /api/slot-parts/materials`, only the pieces a
   person changed). Export for Unreal has one Material menu whose Auto shows the rule's pick
   from the model's prompt (`GET /api/unreal-export/material`).
+- MCP tools for the review queue (`review_queue`, `review_item`, `check_asset` with
+  thresholds, `review_decide`) and for characters in pieces (`pieces_list`,
+  `pieces_add_body`, `pieces_run`, `pieces_status`, `pieces_pick`, `pieces_fit`,
+  `pieces_refit`, `pieces_unreal`, `pieces_cancel`). Same code as the studio: the pieces
+  commands moved to `image_to_3dlab/slot_parts/runs.py`, and one set is made at a time
+  whichever route started it.
 - Batches: an edited row runs again from its first changed step, not from the start. A new
   face budget reruns `finish` and what follows without regenerating; a new real size reruns
   only `export_unreal` and `checks`; a step added at the end runs alone. Each step keeps a
@@ -282,6 +288,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Batches: a batch made before per-step fingerprints no longer regenerates every row when
+  `checks` joins its default steps or a row is edited; the row as it last ran is rebuilt
+  from its spec copy and its still-valid steps are kept. A file named in a step's settings
+  (a body, a LOD, a tint) counts by its content, so replacing it reruns that step and
+  moving it does not; a done row whose file has since gone keeps its result. Checks run
+  again with another result are queued for review again.
 - Characters in pieces, from a second review:
   - a run resumed after the person picked the pictures keeps the weapon, shield, style and
     seeds it was started with;

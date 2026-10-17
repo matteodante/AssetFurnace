@@ -15,6 +15,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from image_to_3dlab import step_catalog
 from image_to_3dlab.batch_steps import StepContext, StepResult
 from image_to_3dlab.blender import find_blender, missing_help
 
@@ -32,6 +33,9 @@ def export_unreal(source: Path, **settings):
 def preflight(rows) -> list[str]:
     problems = []
     for row in rows:
+        # the files it names, now that it will run (the spec's check left them out)
+        problems += [f"row {row.id}: export_unreal {problem}" for problem in
+                     step_catalog.check("export_unreal", row.options.get("export_unreal", {}))]
         if row.size_cm is None:
             problems.append(f"row {row.id}: export_unreal needs size_cm, the real size in "
                             "centimetres: a generated model has none of its own")
