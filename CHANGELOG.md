@@ -362,6 +362,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
   Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
   only text to image took it.
+- On Windows the server's children die with it: sd-cli, llama-server and the material
+  workers are in a job object that kills them when the server ends, also when it is killed
+  from Task Manager. The desktop Blender being edited in and the pid-tracked background jobs
+  (batches, generations) still outlive it, as they are meant to. `Ferma-AssetFurnace.cmd`
+  stops the server the launcher started.
 - Blender runs fail when their script fails, and do not depend on who runs them: the
   concept maps and the multiview render pass `--python-exit-code 1` (a raised error used to
   exit 0), and neither reads pictures or views an earlier render left in a reused folder;
