@@ -175,6 +175,9 @@ def score_candidates(record: dict, cuts_dir: Path, folder: Path, seeds: list[int
     try:
         server = judge.LlamaServer(log=Path(folder) / "judge.log")
     except models.MissingModel as missing:
+        # said in the run's log: the pick panel and pieces_status show it too (candidates.json's judge)
+        print(f"going on without the picture judge ({missing}): each piece's picture is picked by its "
+              "silhouette only; Setup & Status installs the judge", flush=True)
         return candidates.score_all(record, cuts_dir, folder, seeds), f"shape only ({missing})"
     with server:
         return candidates.score_all(record, cuts_dir, folder, seeds, ask=candidates.make_asker(server.post)),             "qwen3-vl-8b"

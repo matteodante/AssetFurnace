@@ -342,6 +342,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces says when the picture judge is missing: Setup & Status lists it (llama.cpp
+  running Qwen3-VL) with its download, a run without it says in its log that pictures are
+  picked by silhouette only, and the pick panel and `pieces_status` show which judge picked.
 - Library: an asset with no picture or 3D model of its own keeps its id when a later finish
   or rig joins it (one from a Blender version, say), so its versions, name and hidden flag
   stay with it; and what is made from a Blender version of one of its moves joins it too.
