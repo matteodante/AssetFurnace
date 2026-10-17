@@ -258,6 +258,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces, from a second review:
+  - a run resumed after the person picked the pictures keeps the weapon, shield, style and
+    seeds it was started with;
+  - the waiting state goes only once the set is made, so a fit that fails or is stopped can be
+    resumed again;
+  - a later single-seed run no longer takes an earlier run's pick (the 3D came from the old
+    picture);
+  - a set cut entirely from the whole character (B0) has no pictures to score and no longer
+    fails on the judge's log;
+  - each of the body's materials gets its own Masked material and textures in Unreal, so the
+    eyes no longer take the skin's;
+  - `uv.overlap`'s copy test keeps each corner's (u, v) pair, so two different triangles are not
+    taken for copies.
 - Characters in pieces keep their shape when fitted. The cage shrinkwrapped onto the body
   tore a breastplate into shards: a hollow piece's inner wall lies inside the body by design,
   and was pushed out through the outer one. The fit now pushes only the outward-facing

@@ -200,6 +200,23 @@ def closeup_path(picture: Path | str, mesh: str) -> Path:
     return picture.with_name(f"{picture.stem}-{mesh}{picture.suffix}")
 
 
+def masked_materials(slot_materials: list[str | None], side: dict) -> list[tuple[str, dict]]:
+    """For each material slot of a body: the Masked material it gets and the textures that
+    material samples. Each of the body's materials (`MI_<Name>`, `MI_<Name>_01`...) keeps its
+    own textures, from the sidecar's `materials`; one material for every slot put the skin's
+    textures on the eyes. A slot the sidecar does not name falls back to its main textures."""
+    base = side["mesh"].removeprefix("SK_")
+    known = side.get("materials") or {}
+    names: dict[str, str] = {}
+    plan = []
+    for current in slot_materials:
+        key = current if current in known else side["material"]
+        if key not in names:
+            names[key] = f"M_{base}_Masked" + (f"_{len(names):02d}" if names else "")
+        plan.append((names[key], known.get(key) or side["textures"]))
+    return plan
+
+
 def safe_mesh_name(mesh: str) -> str:
     sys.path.insert(0, str(REPO))
     from image_to_3dlab.unreal_profile import safe_mesh_name as check_name
@@ -356,16 +373,9 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
         name_animations(export)
         unreal.EditorAssetLibrary.save_directory(folder)
 
-    def mask_by_vertex_alpha(export, folder):
-        """The body under the armour hidden: a Masked material with Vertex Color alpha in Opacity
-        Mask, built in the body's folder from the body's own textures, on every slot of the mesh.
-        The textures are parameters, so a game can make instances of it for other bodies."""
-        side = export["sidecar"]
-        mesh = mesh_of(export)
-        if mesh is None:
-            return
+    def masked_material(name, folder, wanted):
+        """A Masked material with Vertex Color alpha in Opacity Mask, sampling `wanted` textures."""
         mel = unreal.MaterialEditingLibrary
-        name = f"M_{side['mesh'].removeprefix('SK_')}_Masked"
         if unreal.EditorAssetLibrary.does_asset_exist(f"{folder}/{name}"):
             unreal.EditorAssetLibrary.delete_asset(f"{folder}/{name}")
         material = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
@@ -375,7 +385,7 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
         parameters = {"base_color": "BaseColor", "normal": "Normal", "orm": "ORM"}
         nodes = {}
         for row, (key, parameter) in enumerate(parameters.items()):
-            texture = textures.get(side["textures"].get(key) or "")
+            texture = textures.get(wanted.get(key) or "")
             if texture is None:
                 continue
             node = mel.create_material_expression(material, unreal.MaterialExpressionTextureSampleParameter2D, -600, row * 260)
@@ -402,10 +412,26 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
         mel.connect_material_property(colour, "A", unreal.MaterialProperty.MP_OPACITY_MASK)
         mel.recompile_material(material)
         unreal.EditorAssetLibrary.save_loaded_asset(material)
+        return material
+
+    def mask_by_vertex_alpha(export, folder):
+        """The body under the armour hidden: every material slot gets a Masked material with
+        Vertex Color alpha in Opacity Mask, built in the body's folder from that slot's own
+        textures (`masked_materials`). The textures are parameters, so a game can make
+        instances of it for other bodies."""
+        side = export["sidecar"]
+        mesh = mesh_of(export)
+        if mesh is None:
+            return
         # The array hands out copies of its slots: each one changed is put back.
         slots = list(mesh.get_editor_property("materials"))
-        for i, slot in enumerate(slots):
-            slot.set_editor_property("material_interface", material)
+        current = [s.get_editor_property("material_interface") for s in slots]
+        plan = masked_materials([m.get_name() if m else None for m in current], side)
+        built = {}
+        for i, (slot, (name, wanted)) in enumerate(zip(slots, plan)):
+            if name not in built:
+                built[name] = masked_material(name, folder, wanted)
+            slot.set_editor_property("material_interface", built[name])
             slots[i] = slot
         mesh.set_editor_property("materials", slots)
         unreal.EditorAssetLibrary.save_loaded_asset(mesh)
@@ -455,7 +481,7 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
         if side.get("opacity_mask") == "vertex_alpha" and isinstance(mesh, unreal.SkeletalMesh):
             used = [s.get_editor_property("material_interface") for s in mesh.get_editor_property("materials")]
             masked = bool(used) and all(
-                isinstance(u, unreal.Material) and u.get_name().endswith("_Masked")
+                isinstance(u, unreal.Material) and "_Masked" in u.get_name()
                 and u.get_editor_property("blend_mode") == unreal.BlendMode.BLEND_MASKED for u in used)
             got["opacity_mask"] = "masked by vertex alpha" if masked else str([u.get_name() if u else None for u in used])
         if isinstance(mesh, unreal.StaticMesh):

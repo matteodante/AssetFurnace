@@ -126,9 +126,10 @@ def without_copied_uvs(groups: list[tuple[np.ndarray, np.ndarray]]) -> list[tupl
     seen: set = set()
     out = []
     for uv, faces in groups:
-        corners = np.round(uv[faces], 6).reshape(len(faces), 6)
+        corners = np.round(uv[faces], 6)  # (faces, 3 corners, u v)
         keep = np.zeros(len(faces), bool)
-        for i, key in enumerate(map(tuple, np.sort(corners.reshape(-1, 3, 2), axis=1).reshape(-1, 6))):
+        for i, triangle in enumerate(corners):
+            key = tuple(sorted(map(tuple, triangle)))  # the corners in order, each keeping its (u, v) pair
             if key not in seen:
                 seen.add(key)
                 keep[i] = True

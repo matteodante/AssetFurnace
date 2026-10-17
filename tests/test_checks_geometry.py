@@ -116,3 +116,15 @@ def test_a_copy_sharing_the_texture_counts_once_when_copies_are_allowed():
     near = [(np.vstack([square, shifted]), np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]]))]
     reused, used = uv_overlap_pixels(without_copied_uvs(near), resolution=512)
     assert reused / used == pytest.approx(0.15, abs=0.01)  # a real overlap still counts
+
+
+
+def test_two_different_triangles_are_not_taken_for_copies():
+    """Codex review: sorting u and v apart made these two overlapping triangles one key."""
+    from image_to_3dlab.checks.mesh_checks import without_copied_uvs
+
+    uv = np.array([[0.1, 0.1], [0.5, 0.9], [0.9, 0.5], [0.1, 0.5], [0.5, 0.1], [0.9, 0.9]])
+    faces = np.array([[0, 1, 2], [3, 4, 5]])
+    kept = without_copied_uvs([(uv, faces)])[0][1]
+    assert len(kept) == 2
+    assert len(without_copied_uvs([(uv, np.array([[0, 1, 2], [2, 0, 1]]))])[0][1]) == 1  # the same triangle, turned

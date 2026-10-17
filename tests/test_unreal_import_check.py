@@ -226,3 +226,15 @@ def test_equipment_exported_for_another_body_size_does_not_fit(tmp_path):
                                     "SK_Body", size_cm=180),
                             _export(tmp_path / "x", "equipment", "SK_Helm", skeleton_from="SK_Body", size_cm=180)])
     assert uc.fit_results(same)["SK_Helm"]["ok"] is True
+
+
+def test_each_body_material_gets_its_own_masked_material_and_textures():
+    """Codex review: one Masked material from the first slot's textures put the skin on the eyes."""
+    side = {"mesh": "SK_Hero", "material": "MI_Hero",
+            "textures": {"base_color": "T_Hero_BaseColor", "normal": "T_Hero_N", "orm": "T_Hero_ORM"},
+            "materials": {"MI_Hero": {"base_color": "T_Hero_BaseColor", "normal": "T_Hero_N", "orm": "T_Hero_ORM"},
+                          "MI_Hero_01": {"base_color": "T_Hero_01_BaseColor"}}}
+    plan = uc.masked_materials(["MI_Hero", "MI_Hero_01", "MI_Hero"], side)
+    assert [name for name, _ in plan] == ["M_Hero_Masked", "M_Hero_Masked_01", "M_Hero_Masked"]
+    assert plan[1][1] == {"base_color": "T_Hero_01_BaseColor"}  # the eyes keep their own texture
+    assert uc.masked_materials([None], side) == [("M_Hero_Masked", side["materials"]["MI_Hero"])]
