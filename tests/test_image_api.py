@@ -115,7 +115,7 @@ def test_the_record_says_a_negative_prompt_at_cfg_1_was_not_applied(tmp_path):
     assert "negative_prompt_not_applied" not in applied
 
 
-@pytest.mark.parametrize("given,expected", [(700, 704), (769, 768), (10, 256), (9000, 1536)])
+@pytest.mark.parametrize("given,expected", [(700, 704), (769, 768), (10, 256), (9000, 2752)])
 def test_sizes_are_snapped_to_a_multiple_of_32(given, expected):
     """sd.cpp fails deep in a run on a size it cannot use. A user typing 700 means 'about
     this big', so round rather than refuse."""
