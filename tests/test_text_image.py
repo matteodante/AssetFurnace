@@ -97,7 +97,9 @@ def test_missing_weights_are_named_not_downloaded(monkeypatch, tmp_path, capsys)
     assert "qwen-image-2.1-turbo-Q8_0.gguf" in capsys.readouterr().err
 
 
-def test_the_studio_runs_the_same_engine():
+def test_the_studio_shares_the_engines_functions():
+    # the same settings, command runner and licence record; that the studio's job also
+    # takes the GPU lock is tested on its own run (test_image_api_extras.py)
     sys.path.insert(0, str(REPO / "viewer"))
     import image_api
 
