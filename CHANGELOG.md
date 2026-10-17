@@ -356,6 +356,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Finish: the retopology's UVs no longer paint texels twice. Smart UV Project at its wide
+  angle stacked faces of one island on each other (the first real set's helmet and boots
+  failed the uv.overlap check at 10.1% and 11.1%); its islands are now unwrapped
+  conformally, the faces still overlapping cut apart, and the last few made islands of their
+  own: 0.07% on the same pieces.
 - Characters in pieces: the outfit concept names every chosen piece, as the design asks. A
   helmet the outfit's words left out was not drawn, so its cut was the face and the piece
   edit invented a helmet; the concept now adds the chosen pieces the outfit does not name,
