@@ -643,3 +643,10 @@ def test_readiness_keeps_one_row_per_weight_even_from_one_repo():
     """The encoder and its vision file share a repo; keyed by repo, one hid the other."""
     payload = bc.readiness("qwen-image")
     assert len(payload["weights"]) == len(bc.BY_ID["qwen-image"].weights)
+
+
+def test_the_autorig_card_names_its_bpy_beside_the_blender_app():
+    from image_to_3dlab.blender import SKINTOKENS_BPY
+
+    entry = next(b for b in bc.catalog_status()["backends"] if b["id"] == "autorig")
+    assert f"bpy {SKINTOKENS_BPY}" in entry["caveat"] and "Blender" in entry["caveat"]

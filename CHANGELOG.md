@@ -346,6 +346,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Blender runs fail when their script fails, and do not depend on who runs them: the
+  concept maps and the multiview render pass `--python-exit-code 1` (a raised error used to
+  exit 0), and neither reads pictures or views an earlier render left in a reused folder;
+  Finish and the rebind run with `--factory-startup`, without the user's preferences and
+  add-ons; an uploaded .blend opens with `--disable-autoexec`, so its scripts never run.
+  SkinTokens' bpy is pinned to 5.0.1, the last for Python 3.11, its record names it, and the
+  Setup card says it is not the Blender app the rest uses.
 - Studio pictures and reference concepts take the shared GPU lock while sd-cli runs, as the
   command line and the batches already did; while another session holds the GPU the job
   stays queued, says whom it waits for, and can be cancelled.

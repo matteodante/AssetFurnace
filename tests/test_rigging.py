@@ -229,3 +229,15 @@ def test_clips_with_an_export_need_a_creature(tmp_path, monkeypatch):
                          steps=("generate", "rig", "animate", "export_unreal"), backend="fake",
                          options={"animate": {"presets": ["idle"]}})
     assert any("creature" in p for p in animate_step.preflight([row]))
+
+
+def test_the_rig_record_names_the_bpy_skintokens_ran(tmp_path, monkeypatch):
+    from image_to_3dlab import rigging
+
+    site = tmp_path / ".venv" / "Lib" / "site-packages"
+    (site / "bpy-5.0.1.dist-info").mkdir(parents=True)
+    assert rigging.bpy_version(tmp_path) == "5.0.1"
+    assert rigging.bpy_version(tmp_path / "none") is None
+    monkeypatch.setattr(rigging, "bpy_version", lambda *a: "5.0.1")
+    record = rigging.rig_record("a.glb", b"x", None, "upload")
+    assert record["rig"]["bpy"] == "5.0.1"
