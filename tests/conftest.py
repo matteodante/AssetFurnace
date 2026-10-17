@@ -32,3 +32,22 @@ for directory in ("viewer", "scripts"):
     path = str(REPO / directory)
     if path not in sys.path:
         sys.path.insert(0, path)
+
+
+import pytest
+
+
+@pytest.fixture(scope="session")
+def _suite_gpu_lock(tmp_path_factory):
+    return tmp_path_factory.mktemp("gpu") / "assetfurnace-gpu.lock"
+
+
+@pytest.fixture(autouse=True)
+def _private_gpu_lock(_suite_gpu_lock, monkeypatch):
+    """No test takes the machine's real GPU lock: a job of the user's would wait on the
+    suite, or the suite on it, for up to an hour."""
+    from image_to_3dlab import gpu_lock, text_image
+
+    lock = _suite_gpu_lock
+    monkeypatch.setattr(gpu_lock, "LOCK", lock)
+    monkeypatch.setattr(text_image, "GPU_LOCK", lock)
