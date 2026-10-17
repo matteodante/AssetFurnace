@@ -1649,8 +1649,11 @@ class _Replaced:
         record = {"replaced_by": given}
         if spec.makes == "picture":
             return StepResult(picture=made[0][0], files=files, record=record)
-        if spec.makes == "clips":
-            return StepResult(clips=[target for target, _ in made], files=files, record=record)
+        if spec.makes == "clips":   # added to the clips made before (a clips step's), as animate does
+            mine = [target for target, _ in made]
+            names = {clip.name for clip in mine}
+            return StepResult(clips=[*(clip for clip in ctx.clips or [] if clip.name not in names), *mine],
+                              files=files, record=record)
         return StepResult(asset=made[0][0], sidecar=made[0][1], files=files, record=record)
 
 

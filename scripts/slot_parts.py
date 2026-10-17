@@ -636,6 +636,11 @@ def carried_record(fit_dir: Path, body_json: Path, out: Path, report: dict) -> P
                  fit={k: report[k] for k in ("covered_share", "files") if k in report}, checks={},
                  created=sidecar.now_text())
     Path(out).parent.mkdir(parents=True, exist_ok=True)
+    from image_to_3dlab import piece_materials
+
+    corrections = Path(fit_dir).parent / piece_materials.CORRECTIONS   # the person's materials go along
+    if corrections.is_file():
+        (Path(out).parent / piece_materials.CORRECTIONS).write_bytes(corrections.read_bytes())
     return sidecar.write(Path(out).parent, parts["set"], parts)
 
 

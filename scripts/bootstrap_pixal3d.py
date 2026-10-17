@@ -652,11 +652,10 @@ def main(argv: list[str] | None = None) -> int:
             install_build(key, kind)
     if weights:
         install_weights()
-        try:   # the official recipe's camera estimate: Pixal3D works without it (the 20 degree gauge)
-            install_moge()
-        except (subprocess.CalledProcessError, OSError) as exc:
-            print(f"\nMoGe-2 could not be set up ({exc}); Pixal3D will use the 20 degree gauge. "
-                  "Try again with: python scripts/bootstrap_pixal3d.py --moge")
+        # The official recipe's camera estimate is a download of its own (its own card in Setup &
+        # Status), never part of this one: Pixal3D works without it, on the 20 degree gauge.
+        print("\nFor the official recipe's camera estimate (MoGe-2: 1.3 GB of weights and its own PyTorch), "
+              "run: python scripts/bootstrap_pixal3d.py --moge")
     print("\nDone. Generate with:\n"
           "    python scripts/pixal3d_generate.py input.png output.glb --res 1024")
     return 0

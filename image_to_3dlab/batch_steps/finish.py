@@ -65,10 +65,10 @@ def preflight(rows) -> list[str]:
                      for problem in step_catalog.check("finish", row.options.get("finish", {}))]
     for row in rows:
         image = row.images[0] if row.images else (row.concept or recorded_image(row.asset))
-        if image is None:
+        if image is None and "picture" not in row.steps:   # a row from words: its picture step draws it
             problems.append(f"row {row.id}: finish needs the source image: give the row "
                             "an image, or an asset whose provenance names one that exists")
-        elif "generate" not in row.steps:   # generate checks its own input
+        elif image is not None and "generate" not in row.steps:   # generate checks its own input
             broken = _unreadable(image)
             if broken:
                 problems.append(f"row {row.id}: {image.name} is not a readable picture: {broken}")
@@ -137,7 +137,10 @@ def _views_problems(views: Path) -> list[str]:
 
 
 def source_image(ctx: StepContext) -> Path | None:
-    """The concept the asset came from: the row's first image, else its record's input."""
+    """The concept the asset came from: the picture a step drew (a picture or concept step,
+    which generate made the model from), else the row's first image, else its record's input."""
+    if ctx.picture is not None and (not ctx.row.images or ctx.picture != ctx.row.images[0]):
+        return ctx.picture
     if ctx.row.images:
         copy = ctx.row_dir / "input" / ctx.row.images[0].name
         return copy if copy.is_file() else ctx.row.images[0]

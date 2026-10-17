@@ -187,6 +187,7 @@ def rig_record(name: str, data: bytes, source: dict[str, Any] | None, origin: st
 def animation_record(rig: dict[str, Any] | None, preset: dict[str, Any], arm_spread: float,
                      tool: str = "viewer Animate tab: scripts/kimodo_retarget.py") -> dict[str, Any]:
     record = dict(rig or {})
+    record.pop("output", None)   # the rig's own file and hash (a Blender version's), not this clip's
     record.update({
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "tool": tool,
@@ -277,6 +278,8 @@ def rig_model(source: Path, out_dir: Path, name: str, *, origin: str, tool: str,
     first, so the run never depends on it. RuntimeError with the log's tail on failure."""
     if not installed():
         raise RuntimeError(MISSING)
+    # SkinTokens runs from its own folder: a path relative to the caller's would miss there
+    source, out_dir = Path(source).resolve(), Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     copy = out_dir / "input" / "source.glb"
     copy.parent.mkdir(exist_ok=True)
@@ -302,6 +305,7 @@ def animate_model(rigged: Path, preset_ids_: list[str], out_dir: Path, *, speed:
     `.provenance.json` (the rig's record plus the motion's licence), into `out_dir`."""
     if not installed():
         raise RuntimeError(MISSING)
+    rigged, out_dir = Path(rigged).resolve(), Path(out_dir).resolve()
     known = {preset["id"]: preset for preset in presets(motions)}
     unknown = [preset for preset in preset_ids_ if preset not in known]
     if unknown:
