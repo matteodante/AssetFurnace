@@ -98,3 +98,48 @@ def test_the_segment_job_cuts_only_drawn_slots(tmp_path):
     path.write_text(json.dumps({k: v for k, v in job.items() if k != "slot_map"}))
     with pytest.raises(ValueError, match="slot_map"):
         bs.load_job(path)
+
+
+def test_a_cap_closing_a_cut_takes_one_uv_point_from_its_rim():
+    from types import SimpleNamespace as NS
+
+    class UV:
+        def __init__(self, x, y):
+            self.x, self.y = x, y
+
+        def copy(self):
+            return UV(self.x, self.y)
+
+    class Loop(dict):
+        pass
+
+    class Face:  # hashable, like a BMFace
+        def __init__(self, loops):
+            self.loops = loops
+
+    layer = object()
+
+    def loop(vert, x, y):
+        item = Loop()
+        item[layer] = NS(uv=UV(x, y))
+        item.vert = vert
+        vert.link_loops.append(item)
+        return item
+
+    a, b, c = (NS(link_loops=[]) for _ in range(3))
+    kept = Face([loop(a, 0.1, 0.2), loop(b, 0.3, 0.4)])
+    cap = Face([loop(a, 0.9, 0.9), loop(b, 0.0, 0.0), loop(c, 0.5, 0.0)])
+    for face in (kept, cap):
+        for item in face.loops:
+            item.face = face
+    mesh = NS(loops=NS(layers=NS(uv=NS(active=layer))))
+    _load_segment_script().collapse_caps(mesh, [cap])
+    # the cap no longer stretches across the atlas: every corner on a rim texel
+    assert {(item[layer].uv.x, item[layer].uv.y) for item in cap.loops} == {(0.1, 0.2)}
+    assert (kept.loops[1][layer].uv.x, kept.loops[1][layer].uv.y) == (0.3, 0.4)
+
+
+def test_a_b0_file_keeps_the_slot_face_budget_twice_for_a_pair():
+    bs = _load_segment_script()
+    assert bs.face_budget("legs") == 8000
+    assert bs.face_budget("gloves") == 2 * 4000

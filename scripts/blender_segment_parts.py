@@ -48,6 +48,31 @@ def load_job(path: Path) -> dict:
     return job
 
 
+def face_budget(name: str) -> int:
+    """Triangles one B0 file may keep: the slot's budget, twice for a paired slot's two sides."""
+    slot = slots.CATALOGUE[name]
+    return slot.faces * (2 if slot.paired else 1)
+
+
+def collapse_caps(b, caps) -> None:
+    """Each cap closing a cut gets one UV point, taken from a kept face at its rim.
+
+    Filled faces would otherwise take the UVs of rim vertices from all over the atlas and
+    stretch across it, painting over every other chart (uv.overlap near 100%). A cap sits
+    inside the armour, so one texel of its rim is all it needs.
+    """
+    uv = b.loops.layers.uv.active
+    if uv is None:
+        return
+    caps = set(caps)
+    for face in caps:
+        point = next((other[uv].uv.copy() for loop in face.loops for other in loop.vert.link_loops
+                      if other.face not in caps), None)
+        if point is not None:
+            for loop in face.loops:
+                loop[uv].uv = point
+
+
 def main() -> None:  # pragma: no cover - runs inside Blender
     import bmesh
     import bpy
@@ -114,16 +139,22 @@ def main() -> None:  # pragma: no cover - runs inside Blender
         boundary = [e for e in b.edges if e.is_boundary]
         filled = bmesh.ops.holes_fill(b, edges=boundary, sides=0)["faces"] if boundary else []
         if filled:
-            bmesh.ops.triangulate(b, faces=filled)
+            filled = bmesh.ops.triangulate(b, faces=filled)["faces"]
+            collapse_caps(b, filled)
         bmesh.ops.recalc_face_normals(b, faces=b.faces)
         for f in b.faces:
             f.smooth = True
         b.to_mesh(piece.data)
         b.free()
+        # A piece cut from the whole model keeps its density; it gets the slot's face budget,
+        # like a piece made on its own (a paired file holds both sides).
+        target = face_budget(name)
+        if len(piece.data.polygons) > target:
+            piece.modifiers.new("budget", "DECIMATE").ratio = 0.97 * target / len(piece.data.polygons)
         bpy.ops.object.select_all(action="DESELECT")
         piece.select_set(True)
         path = out / f"{name}.glb"
-        bpy.ops.export_scene.gltf(filepath=str(path), export_format="GLB", use_selection=True)
+        bpy.ops.export_scene.gltf(filepath=str(path), export_format="GLB", use_selection=True, export_apply=True)
         files[name] = str(path)
         bpy.data.objects.remove(piece, do_unlink=True)
     frame = [float(co[:, 0].min()), float(co[:, 2].min()), float(co[:, 0].max()), float(co[:, 2].max()), y_centre]

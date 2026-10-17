@@ -256,6 +256,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (fitted on white paper, not stretched to a square); changing the controls while a draw runs
   no longer mixes two requests (the back's depth with a side prompt); and an error while the
   map is prepared stays on the sheet instead of vanishing.
+- Pieces cut from a whole character (route B0, `blender_segment_parts.py`) no longer fail
+  `uv.overlap` at 70–100%: the caps closing each cut took UVs from all over the atlas and
+  painted across it, so each cap now takes one texel from its rim. A B0 file is also
+  decimated to its slot's face budget (twice for a paired slot), like a piece made on its own.
 - The studio reads and writes its JSON and text files as UTF-8 on every machine, and the
   test suite passes on Windows without `PYTHONUTF8=1`: with the locale's cp1252, an em dash
   or a middle dot written as UTF-8 failed to decode. `tests/test_text_encoding.py` keeps new
