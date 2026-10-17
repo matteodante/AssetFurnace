@@ -95,7 +95,7 @@ DEFAULT_INTENT = {"use_case": "showcase", "distribution": "private", "commercial
 POLICY_KEYS = {"allow_conditional", "allow_research_only"}
 TOP_KEYS = {"schema_version", "name", "_about", "license_policy", "output", "defaults",
             "rows", *INTENT_KEYS}
-ROW_KEYS = {"id", "images", "asset", "prompt", "kind", "faces", "profile", "steps", "backend",
+ROW_KEYS = {"id", "images", "asset", "prompt", "replace", "kind", "faces", "profile", "steps", "backend",
             "parameters", "seed", "size_cm", "measure", *STEP_NAMES}
 CSV_COLUMNS = ("id", "images", "asset", "prompt", "kind", "faces", "profile", "steps", "backend", "seed",
                "size_cm", "measure")
@@ -130,6 +130,8 @@ class BatchRow:
     concept: Path | None = None
     # what the `picture` step draws, for a row that starts from words
     prompt: str | None = None
+    # steps whose output is a file of the user's own: {step: path} (a list for `animate`)
+    replace: dict[str, Any] = field(default_factory=dict)
 
     def fingerprint(self) -> str:
         """What the row asks for, files by content: moving the spec does not re-run it."""
@@ -152,6 +154,8 @@ class BatchRow:
             "parameters": self.parameters, "options": self._options_by_content(),
             "size_cm": self.size_cm, "measure": self.measure,
             **({"prompt": self.prompt} if self.prompt is not None else {}),
+            **({"replace": {step: _file_digests(files) for step, files in self.replace.items()}}
+               if self.replace else {}),
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
@@ -189,6 +193,8 @@ class BatchRow:
             options = by_content.get(name, {})
             fields = (step_catalog.CATALOG[name].row_fields if name in step_catalog.CATALOG
                       else UNKNOWN_STEP_FIELDS)
+            if name in self.replace:   # a file of the user's own: only that file counts
+                options, fields = {"replace": _file_digests(self.replace[name])}, ()
             previous = _hash({"after": previous, "step": name, "options": options,
                               "fields": {key: getattr(self, key) for key in fields}})
             fingerprints[name] = previous
@@ -529,7 +535,8 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
         # a recorded backend this repo has no reviewed licence for is refused, not skipped;
         # only an asset with no record at all goes without (its finish record says so)
         source = None if "generate" in row.steps else recorded_backend(row.asset)
-        gated = ([(row.backend, row.backend)] if "generate" in row.steps else []) + (
+        gated = ([(row.backend, row.backend)] if "generate" in row.steps and "generate" not in row.replace
+                 else []) + (
             [(source, f"its source ({source})")] if source is not None else []) + (
             [(PICTURE_MODEL, "the picture model")] if {"picture", "concept"} & set(row.steps) else []) + (
             [(REPAINT_BACKEND, "the repaint")]
@@ -541,6 +548,13 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
                                     policy.get("allow_conditional", True))
             except ValueError as exc:
                 problems.append(f"row {row.id}: license policy for {what}: {exc}")
+        for step, files in row.replace.items():
+            # a file of the user's own carries what its records say it was made with
+            for file in files if isinstance(files, list) else [files]:
+                for classification in recorded_classes(Path(file)):
+                    problem = class_problem(classification, resolved_intent, policy)
+                    if problem:
+                        problems.append(f"row {row.id}: license policy for the file replacing {step}: {problem}")
         if "generate" not in row.steps:
             # a source can carry more than its generator: a repaint, a matte, whatever
             # finished it before. Every class its records name is held to the policy.
@@ -770,6 +784,8 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
             if step in step_catalog.CATALOG and step != "generate":
                 problems += [f"{label}: {problem}"
                              for problem in step_catalog.check(step, merged, files=False)]
+    replaced, replace_problems = _parse_replace(value.get("replace"), steps, base, label)
+    problems += replace_problems
     concept = None
     if asset is not None and asset.is_file() and not images:
         concept = recorded_image(asset) or next(
@@ -796,7 +812,65 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
                     profile=str(profile) if profile is not None else None,
                     steps=tuple(steps), backend=backend, parameters=parameters,
                     options=options, size_cm=size_cm, measure=measure, given_images=given,
-                    concept=concept, prompt=prompt), []
+                    concept=concept, prompt=prompt, replace=replaced), []
+
+
+# What a file of the user's own must be, by the kind of output it stands in for.
+PICTURE_SUFFIXES = {"png": (".png",), "jpg": (".jpg", ".jpeg")}
+
+
+def _parse_replace(raw: Any, steps: list[str], base: Path, label: str) -> tuple[dict[str, Any], list[str]]:
+    """`"replace": {"finish": "my.glb"}`: each named step's output is a file of the user's
+    own (a list of GLBs for `animate`), found from the spec's folder and checked now."""
+    if raw is None:
+        return {}, []
+    if not isinstance(raw, dict):
+        return {}, [f'{label}: replace must be an object, like {{"finish": "my_model.glb"}}']
+    problems, replaced = [], {}
+    for step, given in raw.items():
+        if step not in steps:
+            problems.append(f"{label}: replace: {step} is not one of its steps")
+            continue
+        spec = step_catalog.CATALOG.get(step)
+        if spec is None or not spec.replace:
+            problems.append(f"{label}: replace: {step} makes nothing a file of yours can stand in for")
+            continue
+        many = spec.makes == "clips"
+        items = given if many and isinstance(given, list) else [given]
+        if not all(isinstance(item, str) and item for item in items):
+            problems.append(f"{label}: replace: {step} takes {'a list of files' if many else 'a file path'}")
+            continue
+        paths = [(base / item).resolve() for item in items]
+        for path in paths:
+            problem = _replacement_problem(spec, path)
+            if problem:
+                problems.append(f"{label}: replace: {step}: {problem}")
+        replaced[step] = [str(path) for path in paths] if many else str(paths[0])
+    return replaced, problems
+
+
+def _replacement_problem(spec, path: Path) -> str | None:
+    if not path.is_file():
+        return f"file does not exist: {path}"
+    if "glb" in spec.replace and path.suffix.lower() == ".glb":
+        if not _is_glb(path):
+            return f"{path.name} is not a GLB file"
+        if spec.name == "rig":
+            from image_to_3dlab.rigging import has_skin
+
+            if not has_skin(path):
+                return f"{path.name} has no skeleton"
+        return None
+    if any(path.suffix.lower() in PICTURE_SUFFIXES.get(kind, ()) for kind in spec.replace):
+        from PIL import Image, UnidentifiedImageError
+
+        try:
+            with Image.open(path) as opened:
+                opened.load()
+        except (OSError, UnidentifiedImageError, ValueError):
+            return f"{path.name} is not a readable picture"
+        return None
+    return f"{spec.name} takes a {' or '.join(spec.replace)} file, not {path.name}"
 
 
 # --------------------------------------------------------------------- step registry
@@ -824,8 +898,9 @@ def preflight(spec: BatchSpec, work: dict[str, tuple[str, ...]] | None = None) -
     rows, and the done steps of an interrupted one)."""
     problems = []
     for name in STEP_NAMES:
+        # a step whose output a file of the user's own replaces needs nothing installed
         using = [row for row in spec.rows
-                 if name in (row.steps if work is None else work.get(row.id, ()))]
+                 if name in (row.steps if work is None else work.get(row.id, ())) and name not in row.replace]
         step = load_step(name) if using else None
         if step is not None and hasattr(step, "preflight"):
             problems += [f"{name}: {problem}" for problem in step.preflight(using)]
@@ -853,7 +928,7 @@ def _as_it_ran(row: BatchRow, entry: dict[str, Any], last: dict[str, Any] | None
                 backend=last.get("backend"), parameters=last.get("parameters") or {},
                 options={name: last[name] for name in STEP_NAMES if isinstance(last.get(name), dict)},
                 size_cm=last.get("size_cm"), measure=last.get("measure"), concept=row.concept,
-                prompt=last.get("prompt")))
+                prompt=last.get("prompt"), replace=last.get("replace") or {}))
         except (TypeError, ValueError):
             pass
     candidates.append(BatchRow(**{**row.__dict__, "steps": tuple(entry.get("steps", {}))}))
@@ -1393,7 +1468,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             clips = [directory / clip for clip in done.get("clips", [])] or clips
             continue
         rerun = True
-        step = load_step(name)
+        step = REPLACED if name in row.replace else load_step(name)
         if step is None:
             warning = f"step {name} is not available yet; skipped"
             print(f"warning: {row.id}: {warning}", file=sys.stderr, flush=True)
@@ -1474,6 +1549,62 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
                  sidecar=_relative(sidecar, directory) if sidecar else None)
     save()
     log("done")
+
+
+class _Replaced:
+    """The step a file of the user's own stands in for: the file, copied into the step's
+    folder under the name the step would give it, with its records, becomes the output."""
+
+    @staticmethod
+    def run(ctx: StepContext):
+        from .batch_steps import StepResult
+
+        name = ctx.step_dir.name
+        spec = step_catalog.CATALOG[name]
+        given = ctx.row.replace[name]
+        sources = [Path(item) for item in (given if isinstance(given, list) else [given])]
+        ctx.step_dir.mkdir(parents=True, exist_ok=True)
+        ctx.log(f"{name}: replaced by {', '.join(source.name for source in sources)}")
+        made, files = [], []
+        for source in sources:
+            target = ctx.step_dir / _replaced_name(name, ctx.row.id, source)
+            shutil.copyfile(source, target)
+            record = _replacement_record(source, name)
+            sidecar = target.with_name(target.stem + ".provenance.json")
+            sidecar.write_text(json.dumps(record, indent=2), encoding="utf-8")
+            made.append((target, sidecar))
+            files += [target, sidecar]
+        record = {"replaced_by": given}
+        if spec.makes == "picture":
+            return StepResult(picture=made[0][0], files=files, record=record)
+        if spec.makes == "clips":
+            return StepResult(clips=[target for target, _ in made], files=files, record=record)
+        return StepResult(asset=made[0][0], sidecar=made[0][1], files=files, record=record)
+
+
+REPLACED = _Replaced()
+
+
+def _replaced_name(step: str, row_id: str, source: Path) -> str:
+    if step == "animate":
+        return source.name   # clips keep their names: they become the animations' names
+    if step == "rig":
+        return f"{row_id}_rigged.glb"
+    return f"{row_id}{source.suffix.lower()}"
+
+
+def _replacement_record(source: Path, step: str) -> dict[str, Any]:
+    """The file's own record when it has one (a Blender version has), with where it came
+    from; else a record that says it is the user's and that its licence is not known."""
+    for candidate in (source.with_suffix(".provenance.json"), source.with_suffix(".json")):
+        record = read_json(candidate)
+        if isinstance(record, dict) and record:
+            return {**record, "replaced": {"step": step, "file": str(source), "sha256": sha256_file(source)}}
+    return {"schema_version": 1, "created_at": now(), "tool": f"batch: replace {step}",
+            "input": {"path": str(source), "sha256": sha256_file(source), "source": "user-provided"},
+            "license": None, "classification": None,
+            "note": "A file of the user's own, with no licence record beside it: its licence is "
+                    "the user's to state."}
 
 
 def checks_report(row_dir: Path, steps: dict[str, Any]) -> Path | None:
@@ -1608,6 +1739,7 @@ def _spec_record(spec: BatchSpec) -> dict[str, Any]:
                   "given_images": list(row.given_images or [str(i) for i in row.images]),
                   "asset": str(row.asset) if row.asset else None, "kind": row.kind,
                   **({"prompt": row.prompt} if row.prompt is not None else {}),
+                  **({"replace": row.replace} if row.replace else {}),
                   "faces": row.faces, "profile": row.profile, "steps": list(row.steps),
                   "backend": row.backend, "parameters": row.parameters,
                   "size_cm": row.size_cm, "measure": row.measure,

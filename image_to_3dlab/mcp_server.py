@@ -322,18 +322,20 @@ def run_steps(name: str, steps: list[str], prompt: str | None = None, images: li
               size_cm: float | None = None, measure: str | None = None, backend: str | None = None,
               parameters: dict[str, Any] | None = None, options: dict[str, dict[str, Any]] | None = None,
               use_case: str = "showcase", distribution: str = "private", commercial: bool = False,
-              allow_conditional: bool = True) -> dict[str, Any]:
+              allow_conditional: bool = True, replace: dict[str, Any] | None = None) -> dict[str, Any]:
     """Run one asset through some steps, from words (`prompt`, with "picture" first),
     pictures (`images`) or a GLB (`asset`). It is a batch of one row named `name`, written
     to output/batches/.agent/<name>.json and started like submit_batch: calling it again
     with other settings reruns from the first changed step. steps: as describe_steps
     lists them, e.g. ["picture", "generate", "finish", "checks"]. options: each step's
     settings under its name, e.g. {"picture": {"count": 4}, "finish": {"paint": false}}.
+    replace: steps whose output is a file of yours, e.g. {"finish": "C:/edits/knight.glb"}
+    (a Blender version, a model made elsewhere): the step does not run, the file goes on.
     Paths are absolute, on this machine."""
     row: dict[str, Any] = {"id": name, "steps": list(steps), "kind": kind}
     for key, value in (("prompt", prompt), ("images", images), ("asset", asset), ("faces", faces),
                        ("size_cm", size_cm), ("measure", measure), ("backend", backend),
-                       ("parameters", parameters)):
+                       ("parameters", parameters), ("replace", replace)):
         if value is not None:
             row[key] = value
     row.update(options or {})
