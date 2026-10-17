@@ -6,7 +6,9 @@
     python viewer/serve.py --host 100.x.y.z      # explicit Tailscale/LAN interface
 
 Bound to 127.0.0.1 by default. An explicit --host exposes the whole repository, including
-`output/`, on that interface; use a private interface protected by appropriate ACLs.
+`output/`, on that interface, so a server on any address other than loopback asks for an
+access token: the printed link carries it (set ASSETFURNACE_TOKEN to choose it; otherwise
+a new one is made at every start). Scripts send it as `Authorization: Bearer <token>`.
 
 The viewer exists because judging a mesh by eye is the acceptance test in this repo, and
 every such judgement previously required opening Blender. It is also driveable by browser
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import secrets
 import signal
 import socketserver
 import sys
@@ -29,7 +32,11 @@ from typing import NamedTuple
 # and when loaded by the test suite via importlib (script dir not on sys.path).
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import generate_api
+from blender_edit_api import local_address
 from generate_api import OUTPUT_ROOT, Handler, _reconcile_orphaned_jobs, _terminate_active_job
+
+from image_to_3dlab import processes
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -54,7 +61,15 @@ class LaunchPlan(NamedTuple):
     message: str
 
 
-def launch_plan(env: Mapping[str, str], port: int = 8777) -> LaunchPlan:
+def access_token(host: str, env: Mapping[str, str]) -> str | None:
+    """None on loopback, where only this computer can connect. On any other address the
+    whole repository would be open to the network (RunPod's proxy is public), so a token."""
+    if local_address(host):
+        return None
+    return env.get("ASSETFURNACE_TOKEN") or secrets.token_urlsafe(32)
+
+
+def launch_plan(env: Mapping[str, str], port: int = 8777, token: str | None = None) -> LaunchPlan:
     """How `./lab` (serve.py --auto) should listen, for a new user who just ran the installer.
 
     On their own machine: privately, and open the browser. On a RunPod pod: on all
@@ -66,7 +81,8 @@ def launch_plan(env: Mapping[str, str], port: int = 8777) -> LaunchPlan:
     pod = env.get("RUNPOD_POD_ID")
     if pod:
         return LaunchPlan("0.0.0.0", False, (
-            f"Open https://{pod}-{port}.proxy.runpod.net/viewer/studio.html\n"
+            f"Open https://{pod}-{port}.proxy.runpod.net/viewer/studio.html"
+            f"{f'?token={token}' if token else ''}\n"
             f"(the pod needs HTTP port {port} exposed; add it in the pod's settings if not)"))
     if env.get("SSH_CONNECTION") or env.get("SSH_CLIENT"):
         return LaunchPlan("127.0.0.1", False, (
@@ -74,6 +90,26 @@ def launch_plan(env: Mapping[str, str], port: int = 8777) -> LaunchPlan:
             f"    ssh -L {port}:127.0.0.1:{port} <this machine>\n"
             f"then open {local}"))
     return LaunchPlan("127.0.0.1", True, f"Opening {local}")
+
+
+JOURNAL = REPO / "journal"
+
+
+def write_pid_file(port: int, folder: Path = JOURNAL) -> Path:
+    """`journal/server-<port>.pid`: `<pid> <port>`, where Ferma-AssetFurnace.ps1 looks."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"server-{port}.pid"
+    path.write_text(f"{os.getpid()} {port}", encoding="utf-8")
+    return path
+
+
+def remove_pid_file(path: Path) -> None:
+    """Only this server's: another one may have started on the port since."""
+    try:
+        if path.read_text(encoding="utf-8").split()[0] == str(os.getpid()):
+            path.unlink()
+    except (OSError, IndexError):
+        pass
 
 
 def main() -> int:
@@ -87,8 +123,11 @@ def main() -> int:
     plan = launch_plan(os.environ, args.port) if args.auto else None
     if plan is not None:
         args.host = plan.host
+    generate_api.ACCESS_TOKEN = token = access_token(args.host, os.environ)
+    if plan is not None and token:
+        plan = launch_plan(os.environ, args.port, token)
 
-    url = f"http://{args.host}:{args.port}/viewer/studio.html"
+    url = f"http://{args.host}:{args.port}/viewer/studio.html" + (f"?token={token}" if token else "")
     print(url, flush=True)
 
     # A prior server life may have died mid-generation (crash, closed terminal) without
@@ -110,9 +149,14 @@ def main() -> int:
     signal.signal(signal.SIGTERM, _handle_shutdown_signal)
     signal.signal(signal.SIGINT, _handle_shutdown_signal)
 
+    # Windows: sd-cli, llama-server and the workers die with this server, also when it is
+    # killed from Task Manager (TerminateProcess runs none of the handlers above).
+    processes.kill_children_with_this_process()
+
     import functools
     handler = functools.partial(Handler, directory=str(REPO))
     with ThreadingHTTPServer((args.host, args.port), handler) as httpd:
+        pid_file = write_pid_file(args.port)
         if plan is not None:
             print(plan.message, flush=True)
             if plan.open_browser and not args.no_browser:
@@ -122,6 +166,8 @@ def main() -> int:
             httpd.serve_forever()
         except (KeyboardInterrupt, SystemExit):
             print("\nstopped")
+        finally:
+            remove_pid_file(pid_file)
     return 0
 
 

@@ -253,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
             intent["use_case"],
             intent["distribution"],
             policy.get("allow_conditional", True),
+            commercial_intent=bool(intent["commercial_intent"]),
         )
     except ValueError as exc:
         print(f"error: license policy: {exc}", file=sys.stderr)

@@ -1,20 +1,22 @@
-# Install or update image-to-3dlab on Windows with an NVIDIA GPU. LIMITED TESTING: if you run it,
-# please tell us how it went in GitHub Discussions.
+# Install or update AssetFurnace on Windows with an NVIDIA GPU. LIMITED TESTING: if you run it,
+# please tell us how it went.
 #
-#   irm https://raw.githubusercontent.com/Bingeljell/image-to-3dlab/main/install.ps1 | iex
+#   git clone https://github.com/matteodante/AssetFurnace.git; cd AssetFurnace; .\install.ps1
 #
-# Re-running it is how you update. It never downloads model weights; those are chosen,
-# sized and agreed to in the viewer's Setup & Status page.
+# Re-running it from the clone is how you update that clone. It never downloads model
+# weights; those are chosen, sized and agreed to in the viewer's Setup & Status page.
 #
 # Options: set these before running, e.g. $env:I3D_DIR = "D:\lab"
-#   I3D_DIR    where to install (default: $HOME\image-to-3dlab)
-#   I3D_REF    a release tag or branch (default: the newest vX.Y.Z release)
-#   I3D_REPO   clone from here instead of GitHub
+#   I3D_DIR    where to install (default: the clone this script is in, else $HOME\image-to-3dlab)
+#   I3D_REF    a release tag or branch (default: the repository's newest vX.Y.Z release, else main)
+#   I3D_REPO   clone from here instead of github.com/matteodante/AssetFurnace
 #   I3D_YES    "1" for no questions (scripts and agents)
 
 $ErrorActionPreference = "Stop"
-$Repo = if ($env:I3D_REPO) { $env:I3D_REPO } else { "https://github.com/Bingeljell/image-to-3dlab.git" }
-$Dir  = if ($env:I3D_DIR)  { $env:I3D_DIR }  else { Join-Path $HOME "image-to-3dlab" }
+$Repo = if ($env:I3D_REPO) { $env:I3D_REPO } else { "https://github.com/matteodante/AssetFurnace.git" }
+# Run as .\install.ps1 from a clone, it updates that clone rather than making another one.
+$Here = if ($PSScriptRoot -and (Test-Path (Join-Path $PSScriptRoot ".git"))) { $PSScriptRoot } else { $null }
+$Dir  = if ($env:I3D_DIR) { $env:I3D_DIR } elseif ($Here) { $Here } else { Join-Path $HOME "image-to-3dlab" }
 $Ref  = $env:I3D_REF
 $Yes  = $env:I3D_YES -eq "1"
 
@@ -62,7 +64,13 @@ if (Test-Path (Join-Path $Dir ".git")) {
     git clone --quiet $Repo $Dir
 }
 if (-not $Ref) {
-    $Ref = git -C $Dir tag --list "v[0-9]*.[0-9]*.[0-9]*" --sort=-v:refname | Select-Object -First 1
+    # The newest release of the repository being installed. Not `git tag --list`: a clone
+    # that once fetched another remote's tags (the upstream's v0.4.3) keeps them, and an
+    # update would go back to that release.
+    $Ref = git ls-remote --tags --refs $Repo "v[0-9]*.[0-9]*.[0-9]*" |
+        ForEach-Object { ($_ -split "refs/tags/")[1] } |
+        Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } |
+        Sort-Object { [version]$_.Substring(1) } -Descending | Select-Object -First 1
     if (-not $Ref) { $Ref = "main" }
 }
 Say "Version: $Ref"
@@ -75,8 +83,17 @@ Say "Setting up Python 3.11 and the viewer's packages (a few GB with an NVIDIA G
 & uv venv --quiet --allow-existing --python 3.11 (Join-Path $Dir ".venv")
 $Py = Join-Path $Dir ".venv\Scripts\python.exe"
 
+# The lock pins every package to versions tested together, as install.sh installs them;
+# requirements.txt only bounds them, so installing from it gave each install whatever
+# PyPI had that day.
+$Reqs = Join-Path $Dir "requirements.lock"
+if (-not (Test-Path $Reqs)) { $Reqs = Join-Path $Dir "requirements.txt" }
+$TorchVersion = (Select-String -Path $Reqs -Pattern '^torch==([^ ;]+)' | Select-Object -First 1).Matches.Groups[1].Value
+$VisionVersion = (Select-String -Path $Reqs -Pattern '^torchvision==([^ ;]+)' | Select-Object -First 1).Matches.Groups[1].Value
+
 # PyPI only has CPU-only PyTorch for Windows, so on an NVIDIA machine install the CUDA
-# build from PyTorch's own index first; requirements.txt then finds torch already there.
+# build from PyTorch's own index first, at the lock's versions: the lock then finds torch
+# already there (2.x+cu1yy satisfies ==2.x) instead of replacing it with the CPU wheel.
 # image_to_3dlab.host picks the build that matches the driver (tested in tests/test_host.py).
 # An update also replaces a CPU-only torch left by an older installer.
 if ($HasGpu) {
@@ -87,12 +104,20 @@ if ($HasGpu) {
     Pop-Location
     if (-not $TorchIndex) {
         Say "Your NVIDIA driver is too old for PyTorch's CUDA builds (they need CUDA 12.8 or newer). Update the driver, then run this again. Until then PyTorch will use the CPU."
-    } elseif (-not $TorchHasCuda) {
-        Say "Installing PyTorch with CUDA from $TorchIndex"
-        & uv pip install --quiet --python $Py --reinstall-package torch --reinstall-package torchvision --index-url $TorchIndex torch torchvision
+    } else {
+        $Torch = if ($TorchVersion) { @("torch==$TorchVersion", "torchvision==$VisionVersion") } else { @("torch", "torchvision") }
+        if (-not $TorchHasCuda) {
+            Say "Installing PyTorch with CUDA from $TorchIndex"
+            & uv pip install --quiet --python $Py --reinstall-package torch --reinstall-package torchvision --index-url $TorchIndex @Torch
+        } else {
+            # the locked version, if this install has another one
+            & uv pip install --quiet --python $Py --index-url $TorchIndex @Torch
+        }
+        if ($LASTEXITCODE -ne 0) { Die "PyTorch ($($Torch -join ', ')) with CUDA could not be installed from $TorchIndex. Nothing else was changed in the packages." }
     }
 }
-& uv pip install --quiet --python $Py -r (Join-Path $Dir "requirements.txt")
+# (falls back to "requirements.txt" only in a checkout older than the lock)
+& uv pip install --quiet --python $Py -r $Reqs
 
 # 5. Blender: Finish needs it, and it is the user's to install. Same finder Finish uses.
 if (Test-Path $Py) {

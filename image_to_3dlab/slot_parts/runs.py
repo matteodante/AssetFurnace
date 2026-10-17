@@ -360,7 +360,17 @@ def status(output: Path, record: dict[str, Any] | None = None, running: bool | N
     return {"running": running, "action": record.get("action", "run"), "set": record["set"], "body": record["body"],
             "started": record["started"], "log": tail,
             "parts": rel(output, parts) if parts.is_file() and parts.stat().st_mtime >= record["started"] else None,
-            "picks": None if running else waiting_picks(output, folder)}
+            "picks": None if running else waiting_picks(output, folder),
+            # which judge picked the pictures: "shape only (...)" when the picture judge is missing
+            "judge": None if running else _judge_of_this_run(folder, record["started"])}
+
+
+def _judge_of_this_run(folder: Path, started: float) -> str | None:
+    """Which judge picked this run's pictures; None when candidates.json is an earlier run's."""
+    path = candidates_mod.path(folder / "pieces")
+    if not path.is_file() or path.stat().st_mtime < started:
+        return None
+    return candidates_mod.load(folder / "pieces").get("judge")
 
 
 def cancel(output: Path, stop=processes.terminate_group) -> dict[str, Any]:

@@ -346,13 +346,19 @@ def read_history(output: Path, limit: int = 200) -> list[dict[str, Any]]:
     return records
 
 
-def local_request(base: str) -> Request:
-    """Calls this same server, as the browser would. Long-running jobs answer their start at once."""
+def local_request(base: str, token: str | None = None) -> Request:
+    """Calls this same server, as the browser would: from the Studio's origin with its
+    request header, and with the access token when the server has one. Long-running jobs
+    answer their start at once."""
     import urllib.error
     import urllib.request
 
     def request(method: str, path: str, body: bytes | None, content_type: str | None):
         req = urllib.request.Request(base + path, data=body, method=method)
+        req.add_header("Origin", base)
+        req.add_header("X-AssetFurnace-Request", "plan")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
         if content_type:
             req.add_header("Content-Type", content_type)
         try:

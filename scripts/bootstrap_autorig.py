@@ -10,8 +10,9 @@ What it does, in order:
 1. Clones SkinTokens into `vendor/SkinTokens` at a pinned commit (git-ignored, ~5 MB).
 2. Applies `patch_skintokens_portable.py`, so it runs on a Mac and on NVIDIA without
    flash-attn.
-3. Makes a Python 3.11 venv there (Blender's `bpy` needs 3.11) with torch and upstream's
-   requirements, about 2 GB of packages. On NVIDIA, torch is the CUDA build the driver
+3. Makes a Python 3.11 venv there with torch, Blender's `bpy` 5.0.1 (the last bpy wheel
+   for Python 3.11; upstream asks only bpy>=4.2) and upstream's requirements, about 2 GB
+   of packages. On NVIDIA, torch is the CUDA build the driver
    can run, not PyPI's newest; on AMD it is the ROCm build, because PyPI's Linux torch is
    a CUDA one and would not see the card at all.
 4. Fetches the two checkpoints (~1.6 GB) at a pinned revision into the shared Hugging Face
@@ -44,6 +45,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 import patch_skintokens_portable as portable
 
 from image_to_3dlab import host
+from image_to_3dlab.blender import SKINTOKENS_BPY
 
 UPSTREAM = "https://github.com/VAST-AI-Research/SkinTokens.git"
 COMMIT = "273b691d35989d71cd17ff2895fdc735097b92d1"
@@ -69,8 +71,9 @@ CHECKPOINTS = (
 )
 WEIGHT_BYTES = sum(c.bytes for c in CHECKPOINTS)
 TORCH = ("torch", "torchvision")
-# Upstream's requirements.txt uses scipy without listing it.
-EXTRA_PACKAGES = ("scipy",)
+# Upstream's requirements.txt uses scipy without listing it, and asks only bpy>=4.2: the
+# bpy is pinned to the one tested, which the rig's record names.
+EXTRA_PACKAGES = ("scipy", f"bpy=={SKINTOKENS_BPY}")
 
 
 def venv_python(root: Path = VENDOR) -> Path:
@@ -84,7 +87,7 @@ def announcement(build: bool = True, weights: bool = True) -> str:
     if build:
         lines.append(f"  code     {UPSTREAM} @ {COMMIT[:7]} -> {VENDOR.relative_to(REPO)}/")
         lines.append(f"  packages a Python {PYTHON_VERSION} venv there, about 2 GB "
-                     "(torch, Blender's bpy)")
+                     f"(torch, Blender's bpy {SKINTOKENS_BPY})")
     if weights:
         lines.append(f"  weights  {HF_REPO} @ {HF_REVISION[:7]}, "
                      f"{WEIGHT_BYTES / 1e9:.1f} GB, into the Hugging Face cache")

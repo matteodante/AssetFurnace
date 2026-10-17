@@ -76,3 +76,35 @@ def test_the_scan_finds_what_it_should():
 @pytest.mark.parametrize("path", CHECKED, ids=lambda p: p.name)
 def test_text_files_are_read_and_written_as_utf8(path):
     assert unencoded(path.read_text(encoding="utf-8")) == [], f"{path.name}: say encoding='utf-8'"
+
+
+# ---- pipes between the studio and its jobs (audit 2026-10-17) ----------------------------
+
+def _keywords(call: ast.Call) -> dict:
+    return {k.arg: k.value for k in call.keywords if k.arg}
+
+
+def test_every_text_pipe_the_studio_reads_names_its_encoding():
+    """`text=True` alone decodes with the locale: cp1252 on Windows, where a Chinese prompt
+    or a name outside it breaks the reading loop or the child that prints it."""
+    loose = []
+    for path in sorted((REPO / "viewer").glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and getattr(node.func, "attr", None) == "Popen":
+                given = _keywords(node)
+                text = given.get("text")
+                if isinstance(text, ast.Constant) and text.value is True and "encoding" not in given:
+                    loose.append(f"{path.name}:{node.lineno}")
+    assert loose == []
+
+
+def test_a_child_prints_any_character_to_the_studio():
+    import subprocess
+    import sys
+
+    from image_to_3dlab import processes
+
+    child = subprocess.run([sys.executable, "-c", "print('→ 中文 · café')"], env=processes.child_env(),
+                           capture_output=True, check=True, **processes.TEXT_PIPE)
+    assert child.stdout.strip() == "→ 中文 · café"
+    assert processes.child_env(HF_HUB_OFFLINE="1")["HF_HUB_OFFLINE"] == "1"
