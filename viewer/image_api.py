@@ -172,19 +172,6 @@ def run_job(job: ImageJob, manager: ImageJobManager,
     it the job stays queued, says whom it waits for, and can be cancelled."""
     try:
         weights = weights or resolve_weights()
-        if job.settings.get("rewrite") and not job.extra_args:
-            job.set_status("queued", message="Rewriting the prompt (Qwen-Image's own recipe, on this machine)")
-        sent, notes = prepare_prompt(job.prompt, job.settings, weights=weights, references=bool(job.extra_args),
-                                     log=job.log_lines.append, lock_path=text_image.GPU_LOCK)
-        command = build_command(sent, job.settings, job.output_path, weights)
-        if job.extra_args:
-            command = command[:1] + job.extra_args + command[1:]
-
-        def on_line(line: str) -> None:
-            job.log_lines.append(line)
-            event = parse_progress(line)
-            if event:
-                job.emit(event)
 
         def waiting(seconds: float) -> None:
             if job.cancel_requested:
@@ -195,7 +182,27 @@ def run_job(job: ImageJob, manager: ImageJobManager,
             if job.cancel_requested:
                 raise _Cancelled
 
-        with gpu_lock.gpu("studio-image", path=text_image.GPU_LOCK, poll=GPU_POLL, sleep=waiting):
+        def gpu(session: str, path: Path = text_image.GPU_LOCK):
+            """The GPU, waited for the way the page can cancel (the rewriter and sd-cli)."""
+            return gpu_lock.gpu(session, path=path, poll=GPU_POLL, sleep=waiting)
+
+        if job.settings.get("rewrite") and not job.extra_args:
+            job.set_status("queued", message="Rewriting the prompt (Qwen-Image's own recipe, on this machine)")
+        sent, notes = prepare_prompt(job.prompt, job.settings, weights=weights, references=bool(job.extra_args),
+                                     log=job.log_lines.append, lock_path=text_image.GPU_LOCK, lock=gpu)
+        if job.cancel_requested:
+            raise _Cancelled
+        command = build_command(sent, job.settings, job.output_path, weights)
+        if job.extra_args:
+            command = command[:1] + job.extra_args + command[1:]
+
+        def on_line(line: str) -> None:
+            job.log_lines.append(line)
+            event = parse_progress(line)
+            if event:
+                job.emit(event)
+
+        with gpu("studio-image"):
             if job.cancel_requested:
                 raise _Cancelled
             job.set_status("running", total_steps=job.settings["steps"])

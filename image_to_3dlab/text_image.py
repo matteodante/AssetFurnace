@@ -227,13 +227,14 @@ def rgba_prompt(words: str) -> str:
 
 def prepare_prompt(prompt: str, settings: dict[str, Any], *, weights: dict[str, Path] | None = None,
                    references: bool = False, log: Callable[[str], None] = lambda line: None,
-                   lock_path: Path | None = None) -> tuple[str, dict[str, Any]]:
+                   lock_path: Path | None = None, lock: Callable | None = None) -> tuple[str, dict[str, Any]]:
     """The prompt sd-cli gets, and what the record should say about it.
 
     Text to image with `rewrite`: QwenLM's rewriting (image_to_3dlab/prompt_rewrite.py) on a
     brief that already asks for transparency when `transparent` is on, since the rewriter
     keeps what a brief fixes and invents what it leaves open, a background included. Then
-    the transparent-background template. A run from reference pictures keeps its prompt."""
+    the transparent-background template. A run from reference pictures keeps its prompt.
+    `lock` takes the GPU for the rewriter (gpu_lock.gpu, or the studio's cancellable wait)."""
     if references:
         return prompt, {}
     notes: dict[str, Any] = {}
@@ -243,7 +244,8 @@ def prepare_prompt(prompt: str, settings: dict[str, Any], *, weights: dict[str, 
 
         brief = rgba_prompt(prompt) if settings.get("transparent") else prompt
         model = (weights or resolve_weights())["llm"]
-        found = prompt_rewrite.rewrite(brief, model=model, log=log, lock_path=lock_path)
+        found = prompt_rewrite.rewrite(brief, model=model, log=log, lock_path=lock_path,
+                                       **({"lock": lock} if lock else {}))
         if found is not None:
             sent = found.pop("prompt")
             notes["prompt_rewrite"] = {"applied": True, **found}
