@@ -11,6 +11,7 @@ upstream file cannot change what a step does without someone noticing.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -132,9 +133,25 @@ def env_python(repo: Path = REPO) -> Path:
     return folder / "Scripts" / "python.exe" if os.name == "nt" else folder / "bin" / "python"
 
 
+def env_marker(repo: Path = REPO) -> Path:
+    """Written after every package is installed: an interrupted setup leaves python.exe without it."""
+    return env_dir(repo) / ".i2l-materials-complete"
+
+
+def env_contents() -> str:
+    return json.dumps({"python": PYTHON_VERSION, "packages": [*TORCH, *ENV_PACKAGES]}, sort_keys=True)
+
+
+def env_ready(repo: Path = REPO) -> bool:
+    """The environment exists and holds exactly the packages pinned here."""
+    marker = env_marker(repo)
+    return env_python(repo).is_file() and marker.is_file() and marker.read_text(encoding="utf-8") == env_contents()
+
+
 def require_env(repo: Path = REPO) -> Path:
     python = env_python(repo)
-    if not python.is_file():
-        raise MissingModel(f"the materials environment is not set up ({env_dir(repo)}); "
+    if not env_ready(repo):
+        raise MissingModel(f"the materials environment is not set up, or its setup was interrupted "
+                           f"({env_dir(repo)}); "
                            f"run: {BOOTSTRAP} --only env")
     return python

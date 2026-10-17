@@ -93,8 +93,10 @@ def make_env(runner=run) -> None:
     if uv is None:
         raise SystemExit("uv is required: https://docs.astral.sh/uv/")
     index = host.torch_cuda_index(host.driver_cuda_version()) if host.has_nvidia_gpu() else None
+    mm.env_marker().unlink(missing_ok=True)
     for command in env_commands(uv, mm.env_dir(), mm.env_python(), index):
         runner(command)
+    mm.env_marker().write_text(mm.env_contents(), encoding="utf-8")       # only once all of it is in
 
 
 def has_access(repo: str) -> bool:
@@ -130,7 +132,7 @@ def main(argv: list[str] | None = None, access=has_access, fetcher=fetch, env_ma
             chosen.remove(key)
     if not chosen:
         return 1
-    print(announcement(chosen, env_present=mm.env_python().is_file()), flush=True)
+    print(announcement(chosen, env_present=mm.env_ready()), flush=True)
     if not args.yes:
         if not sys.stdin.isatty():
             print("Refusing to download without --yes when there is nobody to ask.")
@@ -140,7 +142,7 @@ def main(argv: list[str] | None = None, access=has_access, fetcher=fetch, env_ma
             return 1
     for key in chosen:
         if key == "env":
-            if not mm.env_python().is_file():
+            if not mm.env_ready():
                 print("Making the materials environment...", flush=True)
                 env_maker()
             continue
