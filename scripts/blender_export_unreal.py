@@ -15,6 +15,7 @@ What it does to the model:
 - renames a humanoid's bones like the UE5 Mannequin and adds a `root` bone at the origin;
 - puts each extra animation on its own NLA track, exported as one glTF animation each;
 - adds baked LODs as `LODn_SM_<Name>` nodes and a `UBX_`/`UCX_` collision node;
+- culls back faces (glTF `doubleSided` false) unless the job says two sided (cloth);
 - equipment takes all of that from its body (`body` in the job), so it lands on the body.
 
 Writes the GLB and a JSON report of what it measured and changed.
@@ -434,6 +435,13 @@ def run(job):
                 colours = {"export_vertex_color": "ACTIVE"}
                 report["vertex_colour"] = attr.name
                 break
+    # glTF's exporter writes doubleSided = not use_backface_culling
+    two_sided = bool(job.get("two_sided", False))
+    for o in bpy.context.scene.objects:
+        for slot in getattr(o, "material_slots", []):
+            if slot.material is not None:
+                slot.material.use_backface_culling = not two_sided
+    report["two_sided"] = two_sided
     bpy.ops.export_scene.gltf(
         filepath=str(out), export_format="GLB", export_yup=True,
         export_animations=exported_animations,
