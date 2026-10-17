@@ -69,7 +69,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
          out_dir: Path | None = None, lods: list[Path] | None = None, collision: str | None = None,
          body: Path | None = None, animations: list[Path] | None = None, tint: Path | None = None,
          forward: tuple[float, float, float] | None = None, body_name: str | None = None,
-         material: str | None = None) -> dict[str, Any]:
+         material: str | None = None, two_sided: bool | None = None) -> dict[str, Any]:
     """Check the request and work out names, files and the Blender job. No side effects."""
     source = Path(source)
     material = piece_materials.check(material) if material is not None else None
@@ -127,6 +127,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
         "source_animation": up.clip_name(source.stem, prefix, base),
         "forward": list(forward) if forward else [0.0, -1.0, 0.0],
         "family": (family or {}).get("family"),
+        "two_sided": up.two_sided(base, two_sided),
         "out": str((work / "blender.glb").resolve()), "report": str((work / "blender.json").resolve()),
     }
     return {"names": names, "out_dir": out_dir, "work": work, "job": job, "material": material,
@@ -232,14 +233,14 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
                   body: Path | None = None, animations: list[Path] | None = None, tint: Path | None = None,
                   forward: tuple[float, float, float] | None = None, body_name: str | None = None,
                   material: str | None = None, blender: Path | None = None, run=subprocess.run,
-                  log=lambda message: print(message)) -> dict[str, Any]:
+                  log=lambda message: print(message), two_sided: bool | None = None) -> dict[str, Any]:
     """Export one asset for Unreal. Returns the paths written, the problems found and
     the sidecar. Raises ValueError for a bad request and RuntimeError when Blender fails."""
     from image_to_3dlab.blender import find_blender, missing_help
 
     p = plan(source, kind=kind, size_cm=size_cm, measure=measure, name=name, out_dir=out_dir, lods=lods,
              collision=collision, body=body, animations=animations, tint=tint, forward=forward,
-             body_name=body_name, material=material)
+             body_name=body_name, material=material, two_sided=two_sided)
     kind = p["job"]["kind"]
     blender = blender or find_blender()
     if blender is None:
@@ -326,6 +327,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="non-humanoid creatures: which way the model faces in Blender (default 0 -1 0)")
     parser.add_argument("--material", choices=piece_materials.MATERIALS,
                         help="the one material of this piece: sets its roughness and metal (game materials)")
+    parser.add_argument("--two-sided", action=argparse.BooleanOptionalAction, default=None,
+                        help="draw both sides of the material (default: only for cloth such as a cloak)")
     parser.add_argument("--blender", type=Path, help="Blender executable (default: found like Finish finds it)")
     parser.add_argument("--check-in-unreal", action="store_true",
                         help="then import it in Unreal 5 with scripts/unreal_import_check.py")
@@ -344,7 +347,7 @@ def main(argv=None) -> int:
                                body=args.body, body_name=args.body_name, animations=args.animations,
                                tint=False if args.tint is not None and str(args.tint).lower() == "none" else args.tint,
                                forward=tuple(args.forward) if args.forward else None, material=args.material,
-                               blender=args.blender)
+                               blender=args.blender, two_sided=args.two_sided)
     except (ValueError, RuntimeError) as exc:
         print(f"export_unreal: {exc}", file=sys.stderr)
         return 2
