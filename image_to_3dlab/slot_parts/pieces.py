@@ -11,6 +11,7 @@ sits on the concept, hence on the body (measured in the second route C trial).
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,6 +35,23 @@ WORDS = {
 
 
 HELD_WORDS = {"weapon": "a one-handed sword", "shield": "a round shield"}
+# How the outfit concept names a chosen piece its words left out (slot-parts design, section 4.1).
+CONCEPT_WORDS = {"helmet": "a helmet", "torso": "a breastplate", "shoulders": "shoulder pauldrons",
+                 "gloves": "gauntlets", "legs": "leg armour", "boots": "boots"}
+
+
+def concept_outfit(outfit: str, chosen: dict) -> str:
+    """The outfit's words plus every chosen drawn piece they do not name, in the piece's own
+    words when it has them: a helmet left out of the outfit was missing from the concept, so
+    its cut was the face and the piece edit invented a helmet."""
+    from image_to_3dlab.piece_materials import SLOT_NOUNS
+
+    said = set(re.findall(r"[a-z]+", str(outfit).lower()))
+    # "armour" names the whole outfit, not the breastplate: "leg armour and boots" has no torso
+    nouns = {slot: set(SLOT_NOUNS[slot]) - {"armour", "armor"} for slot in CONCEPT_WORDS}
+    missing = [(options or {}).get("prompt") or CONCEPT_WORDS[slot] for slot, options in chosen.items()
+               if slot in CONCEPT_WORDS and not said & nouns[slot]]
+    return f"{outfit.strip()}, with {', '.join(missing)}" if missing else outfit
 
 
 def held_prompt(slot: str, words: str = "", style: str = "") -> str:
@@ -82,7 +100,8 @@ def picture_jobs(cut_record: dict, cuts_dir: Path, folder: Path, seeds: list[int
 
 
 def model_commands(picture: Path, folder: Path, slot: str, python: str, scripts: Path) -> list[list[str]]:
-    """Pixal3D, the finish to the slot's face budget with the photo projected back, then winding."""
+    """Pixal3D, the finish to the slot's face budget with the photo projected back, then winding
+    and the floating bits dropped."""
     glb, done = model_path(folder, slot), finished_path(folder, slot)
     views = glb.with_suffix(".svviews")
     return [
@@ -90,6 +109,7 @@ def model_commands(picture: Path, folder: Path, slot: str, python: str, scripts:
         [python, str(scripts / "retopo_repaint.py"), str(glb), str(picture), str(done),
          "--faces", str(slots.CATALOGUE[slot].faces), "--skip-paint", "--views", str(views)],
         [python, str(scripts / "fix_winding.py"), str(done)],
+        [python, str(scripts / "drop_fragments.py"), str(done)],   # a stray bit would float beside the piece
     ]
 
 

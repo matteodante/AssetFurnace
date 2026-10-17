@@ -573,3 +573,45 @@ def test_cli_takes_the_material(files, tmp_path, monkeypatch):
         "ok": True, "out_dir": "", "glb": "", "sidecar": "", "problems": []})
     assert ex.main([str(files["part"]), "--kind", "prop", "--size-cm", "40", "--material", "wood"]) == 0
     assert seen["material"] == "wood"
+
+
+# ---- one side unless it is cloth (audit 2026-10-17: every export was Two Sided) ---------
+
+@pytest.mark.parametrize("base, expected", [
+    ("HumanMaleHelmet", False), ("HumanMaleTorso", False), ("Barrel", False),
+    ("HumanMaleCloak", True), ("KnightCape", True), ("WizardMantle", True), ("TownBanner", True),
+])
+def test_only_cloth_is_two_sided_by_default(base, expected):
+    assert up.two_sided(base) is expected
+
+
+def test_two_sided_can_be_asked_for_or_refused():
+    assert up.two_sided("Barrel", True) is True
+    assert up.two_sided("HumanMaleCloak", False) is False
+
+
+def test_the_job_tells_blender_which_side_to_draw(files):
+    assert ex.plan(files["part"], kind="prop", size_cm=50)["job"]["two_sided"] is False
+    assert ex.plan(files["part"], kind="prop", size_cm=50, two_sided=True)["job"]["two_sided"] is True
+    assert ex.plan(files["part"], kind="prop", size_cm=50, name="Old Cloak")["job"]["two_sided"] is True
+
+
+def _double_sided_triangle(path: Path) -> Path:
+    document, binary = parse_glb(_triangle_glb(size=0.5))
+    document["materials"][0]["doubleSided"] = True       # as Pixal3D and the fit write them
+    path.write_bytes(build_glb(document, binary))
+    return path
+
+
+@pytest.mark.skipif(find_blender() is None, reason="needs Blender")
+@pytest.mark.parametrize("two_sided", [False, True])
+def test_real_blender_exports_one_side_unless_asked(tmp_path, two_sided):
+    """glTF 2.0.1 `material.doubleSided`: false enables back-face culling; UE 5.8's
+    Interchange makes a true one a Two Sided material (InterchangeGLTFMaterial.cpp)."""
+    source = _double_sided_triangle(tmp_path / "thing.glb")
+    result = ex.export_unreal(source, kind="prop", size_cm=50, measure="longest", out_dir=tmp_path / "out",
+                              two_sided=two_sided,
+                              log=lambda m: None)
+    assert result["ok"], result["problems"]
+    document, _ = parse_glb(Path(result["glb"]).read_bytes())
+    assert [m.get("doubleSided", False) for m in document["materials"]] == [two_sided]

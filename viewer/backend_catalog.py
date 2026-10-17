@@ -32,6 +32,7 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from image_to_3dlab import blender as _blender
 from image_to_3dlab import clip_library as _clips
 from image_to_3dlab import host as _host
 from image_to_3dlab import material_models as _material_models
@@ -39,6 +40,7 @@ from image_to_3dlab import matte as _matte
 from image_to_3dlab import moge_fov as _moge
 from image_to_3dlab.host import AMD, APPLE, NVIDIA
 from image_to_3dlab.provenance import QWEN_OUTPUT_RIGHTS
+from image_to_3dlab.style import models as _style_models
 
 HF_HUB_DIR = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
 
@@ -334,8 +336,10 @@ CATALOG: tuple[Backend, ...] = (
             WeightSet("Pixal3D single-view Q8_0, with BiRefNet matting",
                       "raven38/pixal3d-sv-q8_0-v1", int(8.4 * GB),
                       REPO / "vendor" / "pixal3d-cpp" / "models" / "pixal3d-sv",
-                      note="Includes the BiRefNet matting model (ilintar/trellis2-gguf), "
-                           "used to cut out a subject when the image has no alpha."),
+                      note="Includes a BiRefNet matting model, a third-party GGUF conversion "
+                           "(ilintar/trellis2-gguf, licence 'other'; its card does not say which "
+                           "BiRefNet checkpoint), for trellis-cli's own cut-out. The studio cuts "
+                           "pictures out with BiRefNet-lite first."),
             # Installed with Pixal3D since 0.3.5: without it the cut-out falls back to
             # u2net, which ate a white robot's upper arms on a fresh Linux install.
             WeightSet("BiRefNet-lite background remover", _matte.LITE_URL, _matte.LITE_BYTES,
@@ -484,7 +488,7 @@ CATALOG: tuple[Backend, ...] = (
         rank=5,
         best_for="Fastest of the lot, and the smallest download. Good for a quick look.",
         tradeoff="Lowest fidelity here, and it bakes lighting into the texture.",
-        license_name="Stability AI Community License (non-commercial under $1M revenue)",
+        license_name="Stability AI Community License (free incl. commercial under $1M annual revenue, registration required)",
         license_url="https://huggingface.co/stabilityai/stable-fast-3d",
         install="scripts/bootstrap_sf3d.py",
         # Not NVIDIA: SF3D's pins (old huggingface-hub, rembg) broke the lab's shared
@@ -583,9 +587,12 @@ CATALOG: tuple[Backend, ...] = (
         label="Qwen-Image 2.1 Turbo (text to image)",
         kind="image",
         best_for="Makes the source image when you do not have one. Prompt in, picture out.",
-        tradeoff="Runs on your machine, and the pictures you make are yours.",
+        tradeoff="Runs on your machine, 8 steps at cfg 1, about 15 s a picture on an RTX 5070 Ti.",
         license_name="Qwen Research License",
         license_url="https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE",
+        caveat=("Non-commercial only: the licence allows the model for research or evaluation "
+                "purposes only (sections 1(i), 2(a)); commercial use needs Qwen's separate "
+                "licence. Every picture's record says so."),
         install="Prebuilt stable-diffusion.cpp binary in vendor/sdcpp/",
         runs_on=(APPLE, NVIDIA, AMD),
         setup_minutes=15,
@@ -672,6 +679,10 @@ CATALOG: tuple[Backend, ...] = (
         },
         license_name="MIT",
         license_url="https://github.com/VAST-AI-Research/SkinTokens/blob/main/LICENSE",
+        caveat=(f"SkinTokens runs Blender's bpy {_blender.SKINTOKENS_BPY} (Python 3.11) in its own "
+                "venv; Finish and the exports use the Blender app found on this machine "
+                "(tested on 5.2 LTS). They meet only through GLB files, and each rig's record "
+                "names its bpy."),
         install="scripts/bootstrap_autorig.py",
         runs_on=(APPLE, NVIDIA, AMD),
         setup_minutes=10,
@@ -746,6 +757,32 @@ CATALOG: tuple[Backend, ...] = (
             WeightSet(_material_models.SAM21.label, _material_models.SAM21.repo, _material_models.SAM21.size,
                       HF_HUB_DIR / "models--facebook--sam2.1-hiera-large",
                       note="Apache-2.0, not gated: the fallback until SAM 3 is granted."),
+        ),
+    ),
+    Backend(
+        id="judge",
+        label="Picture judge (Qwen3-VL on llama.cpp)",
+        kind="tool",
+        best_for=("Picks the best of several pictures of each piece in Characters in pieces, by asking "
+                  "Qwen3-VL whether a picture shows the piece and how well it matches the cut."),
+        tradeoff=("Optional. Without it a set's pictures are picked by their silhouette only, and the run "
+                  "says so. It uses Qwen-Image's own Qwen3-VL model, so set up Qwen-Image first."),
+        license_name=_style_models.LLAMA_LICENSE,
+        license_url="https://github.com/ggml-org/llama.cpp/blob/master/LICENSE",
+        install="scripts/bootstrap_style.py --only llama",
+        runs_on=(APPLE, NVIDIA, AMD),
+        # llama.cpp publishes builds for Windows x64, Linux x64 and Apple Silicon only
+        automated_setup=_style_models.llama_build() is not None,
+        setup_minutes=1,
+        upstream=("ggml-org llama.cpp", "https://github.com/ggml-org/llama.cpp"),
+        weights=(
+            WeightSet(f"llama.cpp {_style_models.LLAMA_TAG}",
+                      _style_models.LLAMA_RELEASES + (_style_models.llama_build() or next(iter(
+                          _style_models.LLAMA_BUILDS.values()))).archive,
+                      (_style_models.llama_build() or next(iter(_style_models.LLAMA_BUILDS.values()))).size,
+                      _style_models.llama_dir(REPO),
+                      note="The prebuilt release for this machine (Vulkan, or Metal on a Mac), checked "
+                           "against its SHA-256."),
         ),
     ),
     Backend(

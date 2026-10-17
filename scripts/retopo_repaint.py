@@ -98,9 +98,10 @@ def headless(blender: Path, script: str) -> list[str]:
     """Blender, headless, running one of this repo's scripts; its arguments follow.
 
     Blender exits 0 when a ``--python`` script raises unless ``--python-exit-code`` comes
-    first, and a stage that crashed would then read as done.
+    first, and a stage that crashed would then read as done. ``--factory-startup`` leaves
+    out the user's preferences and add-ons, so Finish does the same on every machine.
     """
-    return [str(blender), "--background", "--python-exit-code", "1",
+    return [str(blender), "--background", "--factory-startup", "--python-exit-code", "1",
             "--python", str(SCRIPTS / script), "--"]
 
 

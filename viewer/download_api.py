@@ -72,7 +72,11 @@ COMMANDS: dict[str, list[str]] = {
     "materials-zones": [sys.executable, str(REPO / "scripts" / "bootstrap_materials.py"),
                         "--only", "env,qwen35,sam21,sam31", "--yes"],
     "clip-library": [sys.executable, str(REPO / "scripts" / "bootstrap_clip_library.py"), "--yes"],
+<<<<<<< HEAD
     "moge": [sys.executable, str(REPO / "scripts" / "bootstrap_pixal3d.py"), "--moge", "--yes"],
+=======
+    "judge": [sys.executable, str(REPO / "scripts" / "bootstrap_style.py"), "--only", "llama", "--yes"],
+>>>>>>> origin/main
     # NVIDIA-only: Tencent's own Hunyuan3D-2.1, built for CUDA. The catalogue marks it
     # unsupported everywhere else, so start() refuses before this runs on a Mac.
     "hunyuan-cuda": [sys.executable, str(REPO / "scripts" / "bootstrap_hunyuan_cuda.py"),

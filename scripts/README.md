@@ -90,6 +90,7 @@ Everything here operates on a GLB or a cached decode and is headless.
 | Script | What it does |
 |---|---|
 | `repair_decode.py` | Repair winding on a cached decode, before `to_glb` ever sees it. |
+| `drop_fragments.py` | Drop the small bits floating away from a generated piece. |
 | `fix_winding.py` | Make a generated mesh's faces point outward. |
 | `mesh_weld.py` | Weld vertices that share coordinates exactly, and drop the faces that collapse. |
 | `mesh_health.py` | Measure the structural health of a generated mesh, and optionally repair it. |

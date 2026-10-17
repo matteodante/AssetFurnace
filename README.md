@@ -85,14 +85,17 @@ Prop sheets were built and contributed by [@AdrielSantana](https://github.com/Ad
 
 ## Install
 
+This copy (github.com/matteodante/AssetFurnace) installs from a clone; the
+assetfurnace.com one-liners install the upstream project instead.
+
 **Mac (Apple Silicon) or Linux:**
 ```bash
-curl -fsSL https://assetfurnace.com/install.sh | bash
+git clone https://github.com/matteodante/AssetFurnace.git && AssetFurnace/install.sh --dir AssetFurnace
 ```
 
-**Windows** (limited testing, more testers wanted: tell us how it goes):
+**Windows** (limited testing, see [WINDOWS.md](WINDOWS.md)):
 ```powershell
-irm https://assetfurnace.com/install.ps1 | iex
+git clone https://github.com/matteodante/AssetFurnace.git; cd AssetFurnace; .\install.ps1
 ```
 
 The installer is short, so [read it](install.sh) before you run it
@@ -111,7 +114,7 @@ the picture first, then carries on to 3D. It runs Qwen-Image 2.1 on your own mac
 
 ![Three creatures generated from text prompts on a laptop, about four and a half minutes each](docs/images/prompt-to-source-image.jpg)
 
-Built with Qwen. The pictures you make are yours ([Qwen's statement](https://x.com/QwenDevs/status/2101917379785838660)).
+Built with Qwen. Its [licence](https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE) allows it for non-commercial use only, research or evaluation (sections 1(i) and 2(a)); every picture's record says so.
 
 Six backends, one studio. Sadly life is full of trade-offs, so pick the tradeoff you want (lol):
 

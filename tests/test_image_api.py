@@ -89,10 +89,30 @@ def test_prompt_is_one_argument_not_shell_text():
 
 def test_negative_prompt_only_appears_when_asked():
     assert "--negative-prompt" not in command_for()
-    command = command_for(negative_prompt="blurry")
+    command = command_for(negative_prompt="blurry", cfg_scale=2.5)
     assert command[command.index("--negative-prompt") + 1] == "blurry"
     # and the positive prompt survives the insertion
     assert command[command.index("-p") + 1] == "a fox"
+
+
+def test_at_cfg_1_the_negative_prompt_is_not_passed():
+    # stable-diffusion.cpp computes the negative branch only when the guidance differs from
+    # 1 (resolve_guidance, src/pipeline/request.cpp, master f0aac52, 2026-10-17); at the
+    # Turbo's default it would change nothing and only look as if it had
+    assert "--negative-prompt" not in command_for(negative_prompt="blurry")
+    assert "blurry" not in command_for(negative_prompt="blurry", cfg_scale=1.0)
+
+
+def test_the_record_says_a_negative_prompt_at_cfg_1_was_not_applied(tmp_path):
+    settings = api.clean_settings({"negative_prompt": "text, watermark"})
+    record = api.provenance("a fox", settings, 1.0, tmp_path / "x.png")
+    assert "negative_prompt" not in record["settings"]
+    assert record["negative_prompt_not_applied"]["text"] == "text, watermark"
+    assert "cfg" in record["negative_prompt_not_applied"]["reason"]
+    applied = api.provenance("a fox", api.clean_settings({"negative_prompt": "text", "cfg_scale": 3}), 1.0,
+                             tmp_path / "x.png")
+    assert applied["settings"]["negative_prompt"] == "text"
+    assert "negative_prompt_not_applied" not in applied
 
 
 @pytest.mark.parametrize("given,expected", [(700, 704), (769, 768), (10, 256), (9000, 1536)])
@@ -152,20 +172,19 @@ def test_slug_survives_a_prompt_with_nothing_usable():
 def test_provenance_records_the_licence_and_its_class():
     """A PNG in a folder six months from now remembers nothing on its own."""
     record = api.provenance("a fox", api.clean_settings({}), 262.3, Path("/o/fox.png"))
-    assert record["license"]["classification"] == "commercial-conditional"
+    assert record["license"]["classification"] == "research-only"
     assert "Built with Qwen" == record["license"]["attribution"]
     assert record["prompt"] == "a fox"
     json.dumps(record)  # must survive being written to the sidecar
 
 
-def test_provenance_says_the_output_is_yours_and_cites_qwen():
-    """Qwen stated on 2026-09-21 that outputs are not licensed Materials. The sidecar says
-    the picture is yours and cites the statement, so the record stands on its own."""
+def test_provenance_says_what_the_licence_allows_and_cites_it():
+    """The sidecar quotes the licence text, so the record stands on its own."""
     note = api.provenance("a fox", api.clean_settings({}), 1.0, Path("/o/f.png"))[
         "license"]["inherited_by_derivatives"]
     assert note == api.OUTPUT_RIGHTS
-    assert "yours" in note and "non-commercial" not in note.lower()
-    assert "https://x.com/QwenDevs/status/2101917379785838660" in note
+    assert "non-commercial" in note.lower() and "research or evaluation" in note
+    assert "x.com" not in note
 
 
 def test_output_goes_to_the_images_folder():

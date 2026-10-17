@@ -36,13 +36,14 @@ def check(tmp_path, fetch, now=1_000_000.0, current="0.2.0", **kw):
 def test_a_newer_release_is_reported_with_the_command_for_this_folder(tmp_path):
     result = check(tmp_path, Fetch())
     assert result["newer"] is True and result["latest"] == "0.3.0"
-    assert "install.sh | bash -s -- --dir /lab" in result["command"]
+    assert result["command"] == "bash /lab/install.sh --dir /lab"
     assert result["url"].endswith("v0.3.0")
 
 
 def test_windows_gets_the_powershell_command(tmp_path):
     result = check(tmp_path, Fetch(), family="windows")
     assert "install.ps1" in result["command"] and "I3D_DIR" in result["command"]
+    assert "irm " not in result["command"]          # a private repository has no raw download
 
 
 def test_update_commands_keep_folder_names_literal():
@@ -108,7 +109,7 @@ def test_the_cache_lives_in_the_git_ignored_output_folder():
 
 def test_the_request_goes_to_this_repo_releases_only():
     assert update_api.LATEST_URL == (
-        "https://api.github.com/repos/Bingeljell/image-to-3dlab/releases/latest")
+        "https://api.github.com/repos/matteodante/AssetFurnace/releases/latest")
 
 
 def test_cache_file_records_when_it_asked(tmp_path):
