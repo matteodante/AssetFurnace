@@ -167,6 +167,8 @@ class BatchRow:
             options = dict(options)
             for key in step_catalog.file_options(name, options):
                 options[key] = _file_digests(options[key])
+            if options.get("bible"):   # the bible by what it says (for this kind): edited, or another active one, is a change
+                options["bible"] = {"bible": _bible_digest(options["bible"]), "kind": self.kind}
             out[name] = options
         return out
 
@@ -225,6 +227,18 @@ def _replacement_digests(files: Any) -> Any:
     records = [[c.name, sha256_file(c)] for c in (path.with_suffix(".provenance.json"), path.with_suffix(".json"))
                if c.is_file()]
     return {"sha256": sha256_file(path), "records": records}
+
+
+def _bible_digest(bible: str) -> Any:
+    """A style bible by its name and the hash of its bible.json; as given when it cannot be
+    found (the step's preflight says why)."""
+    from .style import apply
+
+    try:
+        style = apply.resolve(bible)
+    except ValueError:
+        return bible
+    return {"bible": style.name, "sha256": style.sha256}
 
 
 def _file_digests(value: Any) -> Any:

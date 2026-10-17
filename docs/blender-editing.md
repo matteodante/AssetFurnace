@@ -39,9 +39,23 @@ This feature uses the server's existing access model; it does not add user accou
   records (the primary record references `source_record` to avoid duplicating ancestry).
   Editing does not change the source license or establish rights to added content.
 - Previous clips, LODs, collision files, Unreal exports and pipeline results stay on the
-  original. They are not attached to a changed mesh or skeleton. Steps remain available
-  through **Original pipeline**; automatic Finish/Rig/Animate for edited versions is
-  outside this release. Generate a new Unreal delivery separately when needed.
+  original. They are not attached to a changed mesh or skeleton. Generate a new Unreal
+  delivery separately when needed.
+- The steps go on from a version. With a version selected, the Steps panel shows the
+  steps after the one it stands in for:
+  - A version that kept its skeleton is a rig, so Animate runs on it. The first move copies
+    it once into `output/animate/<name>__rig__<time>/`; it is not rigged again, and its
+    record names the version.
+  - A version without a skeleton stands in for its 3D model, or for its finished model when
+    it was made from one. Finish and Rig run on its file.
+  - What they make joins the same asset in the Library, followed by the version's SHA-256,
+    and the Steps panel then shows **Original pipeline** with the result.
+  - Redo is not offered on a version, because it would draw over the edit.
+  - Outside the studio, a version's `model.glb` is a file like any other. On the command
+    line, give it to `scripts/autorig.py`, `scripts/retopo_repaint.py` or
+    `scripts/export_unreal.py`. In a batch or `run_steps`, use `"replace": {"finish":
+    "output/blender-edits/versions/<id>/model.glb"}` (or `generate`, `rig`). Its
+    `model.provenance.json` carries the licence.
 - Studio previews the imported file's own materials, skeleton and embedded animations.
   Missing rigs, fewer animations/textures, or changed rig/node metadata produce notices.
   These comparisons are conservative and cannot establish animation compatibility.

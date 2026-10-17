@@ -105,6 +105,9 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
             Param("cfg_scale", "float", 1.0, range=(0.0, 20.0)),
             Param("sampler", "choice", "euler", choices=SAMPLERS),
             Param("negative_prompt", "text", None, help="what to keep out"),
+            Param("bible", "text", None, help="a style bible's words after the prompt: - for the active "
+                                              "one, or its name; none by default"),
+            Param("kind", "text", None, row=True, help="the asset's kind, for the bible's words for that kind"),
         ),
         row_fields=(),
         skip="give the row its picture as images instead", replace=("png", "jpg"),
@@ -130,6 +133,9 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
             Param("view", "choice", None, choices=VIEWS, help="other_view: which side"),
             Param("depth", "bool", None, help="other_view: the second shape picture is that side's depth"),
             Param("style", "text", None, help="style words"),
+            Param("bible", "text", None, help="a style bible's words and up to three of its pictures: - for "
+                                              "the active one, or its name; none by default"),
+            Param("kind", "text", None, row=True, help="the asset's kind, for the bible's words for that kind"),
             Param("seed", "int", 42, range=(0, 2**31 - 1)),
             Param("count", "int", 1, range=(1, 4), flag="--attempts", help="concepts to pick from, seed, seed+1..."),
             Param("pick", "int", None, range=(0, 2**31 - 1), flag="",

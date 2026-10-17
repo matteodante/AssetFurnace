@@ -64,6 +64,7 @@ export function problemsOf(state) {
 export function requestFor(state, shape, seed) {
   const body = { mode: state.way, shape, style_refs: state.styleRefs || [], seed };
   if (String(state.style || '').trim()) body.style = state.style.trim();
+  if (state.useBible) body.bible = '-';   // the active style bible: its words and pictures, opt-in
   if (state.way === 'redraw') Object.assign(body, { subject: state.subject, colours: state.colours, parts: state.parts || '', structure: MODEL.test(state.source) ? 'depth' : 'lineart' });
   if (state.way === 'dress') Object.assign(body, { outfit: state.outfit, guide: state.guide || 'body' });
   if (state.way === 'add_piece') body.piece = state.piece;
@@ -121,7 +122,7 @@ async function send(url, body, { raw = false } = {}) {
 const served = (base, path) => base + path.split('/').map(encodeURIComponent).join('/');
 
 /** Show the sheet over the viewer. `onDone()` runs after a picture is made, to refresh the Library. */
-export function openReferenceConcept({ stage, assets = [], base = '/output/', onDone }) {
+export function openReferenceConcept({ stage, assets = [], base = '/output/', styleBible = null, onDone }) {
   const sheet = document.createElement('div');
   sheet.className = 'sheet reference-concept';
   stage.appendChild(sheet);
@@ -157,6 +158,7 @@ export function openReferenceConcept({ stage, assets = [], base = '/output/', on
       ${way.fields.map(([key, label, example]) => `<label class="field">${esc(label)}<input data-k="${key}" value="${esc(state[key] || '')}" placeholder="${esc(example)}"></label>`).join('')}
       <details class="adv"><summary>Style (optional)</summary>
         <label class="field">Style words<input data-k="style" value="${esc(state.style)}" placeholder="stylised fantasy game art, hand-painted look"></label>
+        ${styleBible ? `<label class="check"><input type="checkbox" data-k="useBible" ${state.useBible ? 'checked' : ''}><span><b>Style bible:</b> ${esc(styleBible)} <span class="hint">its words and up to three of its pictures</span></span></label>` : ''}
         <p class="hint">Style pictures (up to 3) are painted from, never copied: ${state.styleRefs.length ? state.styleRefs.map(esc).join(', ') : 'none'}.</p>
         <div class="row"><select data-k="styleRef">${options((p) => PICTURE.test(p), '')}</select><button type="button" class="ghost" data-clear-style ${state.styleRefs.length ? '' : 'disabled'}>Clear</button></div>
       </details>
@@ -230,7 +232,7 @@ export function openReferenceConcept({ stage, assets = [], base = '/output/', on
     sheet.querySelectorAll('[data-k]').forEach((el) => el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', () => {
       const key = el.dataset.k;
       if (key === 'styleRef') { if (el.value && !state.styleRefs.includes(el.value)) state.styleRefs = [...state.styleRefs, el.value].slice(0, 3); render(); return; }
-      state[key] = el.value;
+      state[key] = el.type === 'checkbox' ? el.checked : el.value;
       if (el.tagName === 'SELECT') render();
     }));
     q('[data-clear-style]').onclick = () => { state.styleRefs = []; render(); };

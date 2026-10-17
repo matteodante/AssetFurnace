@@ -2,7 +2,7 @@
 // Steps run here through the server's job APIs, prop-sheet splitting included.
 
 import { STEPS, stepCount, doneCount, statusText, displayModel, stepFile, servedUrl, visibleAssets, openingView, isModelFile,
-  canRedo, staleNote, madeWith } from './library.js';
+  canRedo, staleNote, madeWith, versionAsset } from './library.js';
 import { createStudioViewer } from './viewer.js';
 import { readyEngines, readableLog } from './jobs.js';
 import { stepBody, wireStep } from './steps.js';
@@ -26,7 +26,9 @@ let assets = [];
 let filter = 'all', query = '', showHidden = false, limit = 30;
 let current = null;
 let engines = [], presets = [], recipes = null, busy = false, playNext = null;
+let styleBible = null;   // the active style bible's name, offered (never forced) where pictures are drawn
 let making = null, viewingMaking = false;  // the asset Create is making right now
+let stepsAsset = null;
 let redo = null;   // the finished step being made again with other values, on the current asset
 const selectedVersions = new Map();
 let displayedFile = null;
@@ -82,6 +84,7 @@ function engineOf(path) {
 
 function summaries(asset) {
   const faces = fileName(asset.finished).match(/_(\d+k)\.glb$/)?.[1];
+  if (asset.version) return { ...summaries({ ...asset, version: null }), [asset.stage]: 'Edited in Blender (this version)' };
   return {
     picture: asset.picture ? 'Done' : 'No picture kept (model uploaded or older run)',
     model: asset.model ? engineOf(asset.model) : asset.finished ? 'Made outside the app' : '',
@@ -92,6 +95,7 @@ function summaries(asset) {
 }
 
 function renderSteps(asset) {
+  stepsAsset = asset;   // the asset the step cards act on: the chosen Blender version's, when one is
   $('sideKind').textContent = { 'prop set': 'Prop set', character: 'Character', model: '3D model', picture: 'Picture' }[asset.kind] || '';
   const done = doneCount(asset), total = stepCount(asset), sum = summaries(asset);
   $('steps').innerHTML = STEPS.map((step, i) => {
@@ -133,10 +137,15 @@ const ctx = {
   get engines() { return engines; },
   get presets() { return presets; },
   url: (relative) => url(relative),
-  asset: () => current,
+  asset: () => stepsAsset || current,
   onBusy: (on) => { busy = on; document.body.classList.toggle('busy', on); },
   // after a new move, open the asset on that move
-  onDone: async (stepId, { preset } = {}) => { playNext = preset; redo = null; await loadLibrary(current?.id); },
+  onDone: async (stepId, { preset } = {}) => {
+    playNext = preset; redo = null;
+    // made from a Blender version: the result is in the asset's own steps, so show those
+    if (current && stepsAsset?.version) selectedVersions.set(current.id, 'original');
+    await loadLibrary(current?.id);
+  },
 };
 
 function show(asset) {
@@ -166,7 +175,13 @@ function show(asset) {
     displayedFile = revision.file;
     viewer.load(url(revision.file), { label: revision.label, embeddedClips: true });
     $('vMeta').textContent = `Blender version · ${revision.label}`;
-    $('steps').innerHTML = '<li class="hint opened-note">This version contains only what was exported from Blender. Select Original pipeline to see its steps, moves and other outputs.</li>';
+    const onVersion = versionAsset(asset, revision);
+    if (onVersion) {
+      renderSteps(onVersion);
+      $('steps').insertAdjacentHTML('afterbegin', '<li class="hint opened-note">The steps go on from this Blender version; what they make joins this asset. Select Original pipeline to see its own steps and moves.</li>');
+    } else {
+      $('steps').innerHTML = '<li class="hint opened-note">This version contains only what was exported from Blender. Select Original pipeline to see its steps, moves and other outputs.</li>';
+    }
     setDownload(revision.file);
     blenderPanel.update(asset, revision.file, revision);
     unrealPanel.update(asset, revision.file, revision);
@@ -261,17 +276,18 @@ async function loadTools() {
   engines = readyEngines(catalog);
   presets = animate?.installed ? animate.presets : [];
   recipes = await fetch('/api/recipes').then((r) => r.json()).catch(() => null);
+  styleBible = (await fetch('/api/style-bible').then((r) => r.json()).catch(() => null))?.active || null;
 }
 
 // ------------------------------------------------------------------ Create
 function openCreateSheet() {
   closeSheet($('stage'));
-  openCreate({ stage: $('stage'), recipes, engines, presets, onStart: (plan) => startChain(plan), onReference: openReferenceSheet });
+  openCreate({ stage: $('stage'), recipes, engines, presets, styleBible, onStart: (plan) => startChain(plan), onReference: openReferenceSheet });
 }
 
 function openReferenceSheet() {
   closeSheet($('stage'));
-  openReferenceConcept({ stage: $('stage'), assets, base, onDone: () => refreshAssets() });
+  openReferenceConcept({ stage: $('stage'), assets, base, styleBible, onDone: () => refreshAssets() });
 }
 
 $('createBtn').addEventListener('click', () => {
@@ -504,7 +520,7 @@ function showSet(file, title) {
   viewer.load(url(file), { label: title, turntable: true });
 }
 $('piecesBtn').addEventListener('click', () => openSlotParts($('stage'), { assets: () => assets, open: showSet,
-  create: () => openCreateSheet() }));
+  create: () => openCreateSheet(), styleBible }));
 
 // ------------------------------------------------------------------ Review
 function setReviewCount(payload) {

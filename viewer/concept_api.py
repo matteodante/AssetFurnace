@@ -165,7 +165,11 @@ def build(output: Path, request: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"the way is one of {', '.join(prompts.MODES)}")
     shape = [inside(output, p) for p in request.get("shape") or []]
     style_refs = [inside(output, p) for p in request.get("style_refs") or []]
-    return requests.plan(request["mode"], shape, style_refs, request)
+    from image_to_3dlab.style import apply
+
+    # the style bible when the request names one ("-": the active one), opt-in
+    style = apply.resolve(request.get("bible"), request.get("kind"), references=3, output=Path(output))
+    return requests.plan(request["mode"], shape, style_refs, request, bible=style)
 
 
 def measure(reference: Path, result: Path, fit: bool) -> float | None:
@@ -200,7 +204,8 @@ def start(output: Path, request: dict[str, Any]) -> image_api.ImageJob:
     job = image_api.MANAGER.create(
         plan["prompt"], image_api.clean_settings({"seed": _seed(request)}),
         extra_args=edit.edit_args(paths, vision),
-        extra_provenance={"concept": {"mode": plan["mode"], "references": _reference_names(plan["references"])}},
+        extra_provenance={"concept": {"mode": plan["mode"], "references": _reference_names(plan["references"])},
+                          **({"style": plan["style_record"]} if plan.get("style_record") else {})},
         name=plan["name"])
     thread = threading.Thread(target=_run, args=(output, job, plan, weights, vision), daemon=True)
     job.thread = thread

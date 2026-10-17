@@ -106,7 +106,10 @@ Every step's settings are described once, with their types and ranges, in
 its first row.
 
 `picture` settings: `seed` (default 42), `count` (1 to 8), `pick` (the seed to keep),
-`width`, `height`, `cfg_scale`, `sampler`, `negative_prompt`.
+`width`, `height`, `cfg_scale`, `sampler`, `negative_prompt`, `bible` (a style bible's
+words after the prompt: `"-"` for the active one, or its name; none by default; `concept`
+takes it too, with up to three of the bible's pictures). An edited or another active bible
+reruns the step.
 
 `concept` settings: `mode` (required), `shape` and `style_refs` (files; the shape default
 is the row's picture), the words the mode needs (`subject` and `colours` for redraw,

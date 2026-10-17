@@ -208,8 +208,17 @@ def run_job(job: ImageJob, manager: ImageJobManager,
 MANAGER = ImageJobManager()
 
 
-def start(prompt: str, raw_settings: dict[str, Any]) -> ImageJob:
+def with_style(prompt: str, payload: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    """The prompt with the style bible's words when the request names one (`bible`: "-"
+    for the active one, and the asset's `kind`), and the provenance that says so."""
+    from image_to_3dlab.style import apply
+
+    style = apply.resolve(payload.get("bible"), payload.get("kind"))
+    return (apply.styled(prompt, style), {"style": apply.record(style)}) if style else (prompt, {})
+
+
+def start(prompt: str, raw_settings: dict[str, Any], extra_provenance: dict[str, Any] | None = None) -> ImageJob:
     settings = clean_settings(raw_settings)
-    job = MANAGER.create(prompt, settings)
+    job = MANAGER.create(prompt, settings, extra_provenance=extra_provenance)
     threading.Thread(target=run_job, args=(job, MANAGER), daemon=True).start()
     return job

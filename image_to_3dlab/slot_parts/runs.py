@@ -158,11 +158,20 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
             command += [f"--{held}", words[:300]]
     if str(payload.get("style") or "").strip():
         command += ["--style", str(payload["style"]).strip()[:300]]
+    command += bible_args(payload)
     if not chosen and not any(f"--{h}" in command for h in ("weapon", "shield")):
         raise ValueError("choose at least one slot, a weapon or a shield")
     if payload.get("choose") and len(seeds) > 1 and chosen:
         command.append("--stop-at-pictures")
     return command, folder / "run.log"
+
+
+def bible_args(payload: dict) -> list[str]:
+    """The style bible a set is drawn with, when asked: "-" for the active one, or a name."""
+    bible = str(payload.get("bible") or "").strip()
+    if bible and not (bible == "-" or body_mod.NAME.match(bible)):
+        raise ValueError("the style bible is - (the active one) or a bible's name")
+    return ["--bible", bible] if bible else []
 
 
 def resume_command(output: Path, payload: dict) -> tuple[list[str], Path]:
