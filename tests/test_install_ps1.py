@@ -15,9 +15,10 @@ PS1 = REPO / "install.ps1"
 
 def test_windows_installer_uses_the_same_lockfile_as_the_shell_one():
     ps1 = PS1.read_text()
-    assert ps1.index('"requirements.lock"') < ps1.index("& uv pip install --quiet --python $Py -r $Reqs")
+    assert ps1.index('"requirements.lock"') < ps1.index("& uv pip install --quiet --python $Py -r $Install")
+    assert "$Install = $Reqs" in ps1
     # CUDA torch at the lock's own versions, so the lock does not swap it for PyPI's CPU wheel
-    assert "^torch==" in ps1 and "^torchvision==" in ps1
+    assert 'Get-Pin $Reqs "torch"' in ps1 and 'Get-Pin $Reqs "torchvision"' in ps1
     assert '"torch==$TorchVersion"' in ps1 and '"torchvision==$VisionVersion"' in ps1
 
 

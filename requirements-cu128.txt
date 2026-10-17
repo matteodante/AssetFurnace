@@ -1,0 +1,9 @@
+# Constraints for requirements-cu128.lock: the newest torch and torchvision PyTorch's CUDA 12.8
+# index carries for CPython 3.11 on Windows (download.pytorch.org/whl/cu128/torch/, read
+# 2026-10-18). requirements.lock pins a newer torch that only the CUDA 13.0 index has, so a
+# driver for CUDA 12.8 or 12.9 installs this lock instead (install.ps1). After changing
+# requirements.lock, compile this one again starting from it:
+#   cp requirements.lock requirements-cu128.lock
+#   uv pip compile --universal --python-version 3.11 requirements.txt -c requirements-cu128.txt -o requirements-cu128.lock
+torch==2.11.0
+torchvision==0.26.0

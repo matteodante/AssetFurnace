@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- The Windows installer, from the second final review:
+  - on a driver for CUDA 12.8 or 12.9 it installs `requirements-cu128.lock`, with torch
+    2.11.0, the newest PyTorch's cu128 index has (the main lock's 2.14.1 is only on cu130, so
+    the install stopped there). That lock is compiled from the same `requirements.txt`, from
+    the main lock, and differs from it only in torch's own packages;
+  - an older checkout without the lock (`requirements.txt`, no exact pins) installs instead
+    of failing on "Cannot index into a null array".
 - Batches, from the second final review:
   - a batch with commercial intent is refused when it draws with Qwen-Image (research-only),
     as the licence asks;
