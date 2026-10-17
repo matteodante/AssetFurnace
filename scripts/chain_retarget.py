@@ -470,3 +470,73 @@ def load_source(glb: Path, roles: dict, clip: str, fps: int = FPS, loop: bool = 
         world = skin.pose(index, min(k / fps, duration))
         poses.append({n: world[j] for n, j in by_name.items()})
     return Source(parents=parents, rest=rest, poses=poses, roles=roles)
+
+
+# -- the command line ----------------------------------------------------------------------
+
+def build_parser():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Carry one CC0 library clip onto a rigged creature, chain by chain.")
+    parser.add_argument("--list", action="store_true", help="the library's creatures and clips, then stop")
+    parser.add_argument("--rig", type=Path, help="the rigged GLB (SkinTokens output)")
+    parser.add_argument("--source", help="the library creature the clip comes from (see --list)")
+    parser.add_argument("--clip", help="the clip, as --list names it")
+    parser.add_argument("--family", default="auto", help="the rig's family (default: recognised)")
+    parser.add_argument("--longer", action="store_true", help="a longer take, varied (GenMM), of a looping clip")
+    parser.add_argument("--factor", type=float, default=None, help="how much longer (default the library's)")
+    parser.add_argument("--seed", type=int, default=None, help="the variation's seed (default the library's)")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python scripts/chain_retarget.py --rig RIGGED.glb --source kaiju --clip walk [--longer]`:
+    one library clip on a rig, written beside it as `<name>_<family>-<clip>.glb` with its
+    provenance, as `creature_clips.py` writes the whole set. Keying the clip needs Blender's
+    `bpy`, so run it with SkinTokens' Python (`vendor/SkinTokens/.venv`); `--list` does not."""
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from image_to_3dlab import clip_library as cl
+
+    args = build_parser().parse_args(argv)
+    if args.list:
+        for name, source in cl.SOURCES.items():
+            print(f"{name:8} {', '.join(source['clips'])}")
+        return 0
+    if not (args.rig and args.source and args.clip):
+        print("chain_retarget: give --rig, --source and --clip (or --list)", file=sys.stderr)
+        return 1
+    source = cl.SOURCES.get(args.source)
+    if source is None or args.clip not in source["clips"]:
+        known = ", ".join(source["clips"]) if source else ", ".join(cl.SOURCES)
+        print(f"chain_retarget: {args.source} has no clip {args.clip!r} ({known})", file=sys.stderr)
+        return 1
+    if args.longer and not source["clips"][args.clip][1]:
+        print(f"chain_retarget: {args.clip} does not loop, so it has no longer take", file=sys.stderr)
+        return 1
+    try:
+        import bpy  # noqa: F401 - keying the clip needs it
+    except ImportError:
+        print("chain_retarget: keying a clip needs Blender's bpy: run it with SkinTokens' Python "
+              "(vendor/SkinTokens/.venv)", file=sys.stderr)
+        return 1
+    import creature_clips  # pragma: no cover - needs bpy
+
+    factor = cl.LONGER_FACTOR if args.factor is None else args.factor
+    seed = cl.LONGER_SEED if args.seed is None else args.seed
+    chosen = None if args.family == "auto" else args.family
+    found = creature_clips.recognise(args.rig, chosen)
+    if found["family"] is None:
+        print(f"chain_retarget: {found['clips_error']}", file=sys.stderr)
+        return 1
+    motion = args.clip + (cl.LONGER if args.longer else "")
+    name = creature_clips._write_clip(args.rig, found["family"], motion, None, args.source, factor=factor, seed=seed)
+    clip = creature_clips.clip_path(args.rig, name)
+    creature_clips.write_provenance(args.rig, clip, name, found["family"], cl.motion_record(args.source, motion, factor, seed))
+    print(clip)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

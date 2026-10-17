@@ -144,11 +144,14 @@ def rig_run_of(glb: Path) -> Path | None:
 # ----------------------------------------------------------------------------- jobs
 
 
-def rig_commands(source: Path, result: Path, family: str = "auto") -> list[tuple[list[str], Path]]:
-    """SkinTokens and the skin-weight clean-up (image_to_3dlab/rigging.py), then the
-    creature's family and its test clips (viewer/creature_family_api.py)."""
+def rig_commands(source: Path, result: Path, family: str = "auto", clips: bool = True,
+                 variations: bool = True) -> list[tuple[list[str], Path]]:
+    """SkinTokens and the skin-weight clean-up (image_to_3dlab/rigging.py), then, unless
+    switched off, the creature's family and its test clips (with or without the longer
+    GenMM takes)."""
     return [*rigging.rig_commands(source, result),
-            creature_family_api.clip_command(venv_python(), result, family)]
+            *([creature_family_api.clip_command(venv_python(), result, family, variations=variations)]
+              if clips else [])]
 
 
 def _slug(value: str) -> str:
@@ -215,7 +218,7 @@ class AnimateJobManager:
         return job
 
     def create_rig(self, name: str, data: bytes, source: dict[str, Any] | None,
-                   origin: str, family: str = "auto") -> AnimateJob:
+                   origin: str, family: str = "auto", clips: bool = True, variations: bool = True) -> AnimateJob:
         with self.lock:
             if self.busy():
                 raise RuntimeError("an Animate job is already running")
@@ -231,7 +234,7 @@ class AnimateJobManager:
             source_glb.write_bytes(data)
             result = directory / f"{stem}_rigged.glb"
             job = AnimateJob(uuid.uuid4().hex, "rig", directory, result,
-                             rig_commands(source_glb, result, family), RIG_SECONDS,
+                             rig_commands(source_glb, result, family, clips, variations), RIG_SECONDS,
                              rig_record(name, data, source, origin))
             return self._claim(job)
 

@@ -101,9 +101,22 @@ def parse_family(value: Any) -> str:
     return family
 
 
-def clip_command(python: Path, rigged: Path, family: str = AUTO) -> tuple[list[str], Path]:
-    """The step after rigging: recognise the family, write the test clips."""
-    return [str(python), str(CLIPS_SCRIPT), "--rig", str(rigged), "--family", parse_family(family)], REPO
+def clip_command(python: Path, rigged: Path, family: str = AUTO, *, library: bool = True,
+                 variations: bool = True, variation_factor: float | None = None,
+                 variation_seed: int | None = None) -> tuple[list[str], Path]:
+    """The step after rigging: recognise the family, write the test clips (the CC0
+    library's, then procedural ones; `library=False` only the procedural; `variations=False`
+    no longer GenMM takes)."""
+    command = [str(python), str(CLIPS_SCRIPT), "--rig", str(rigged), "--family", parse_family(family)]
+    if not library:
+        command.append("--no-library")
+    if not variations:
+        command.append("--no-variations")
+    if variation_factor is not None:
+        command += ["--variation-factor", f"{variation_factor:g}"]
+    if variation_seed is not None:
+        command += ["--variation-seed", str(int(variation_seed))]
+    return command, REPO
 
 
 def animate_command(rigged: Path, motion: Path, result: Path, arm_spread: float,

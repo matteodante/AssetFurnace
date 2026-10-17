@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Creature families can be switched: the studio's Rig step has "Family test clips" and
+  "Longer takes" (GenMM), `creature_clips.py` takes `--no-library`, `--no-variations`,
+  `--variation-factor` and `--variation-seed`, `chain_retarget.py` has a command line
+  (`--list`, one library clip onto a rig), and batches have a `clips` step after `rig`.
 - Studio: every finished step (3D model, Finish, Rig) has "Redo…", which opens it with the
   values it was made with and makes only that step again; the steps before stay, the old
   result stays in the Library, and a later step made from the old one says so. The 3D seed

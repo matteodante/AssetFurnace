@@ -114,7 +114,7 @@ export function wireStep(card, stepId, asset, ctx) {
     const run = { model: () => startModel(asset, ctx, settings.backend, seed),
       finished: () => (asset.kind === 'prop set' ? startSplit(asset)
         : startFinish(asset, ctx, { faces: settings.faces, skip_photo: !settings.photo, texture_size: settings.texture })),
-      rigged: () => startRig(asset, settings.family),
+      rigged: () => startRig(asset, settings.family, { clips: k('clips')?.checked ?? true, variations: k('variations')?.checked ?? true }),
       animated: () => startAnimate(asset, settings.preset, settings.speed, settings.spread) }[stepId];
     await runInCard(card, run, ctx, stepId, '');
   });
@@ -143,10 +143,12 @@ async function startSplit(asset) {
   return { kind: 'props', start: await postStart('/api/props', form) };
 }
 
-async function startRig(asset, family = 'auto') {
+async function startRig(asset, family = 'auto', { clips = true, variations = true } = {}) {
   const form = new FormData();
   form.append('model', asset.finished || asset.model);
   form.append('family', family || 'auto');
+  form.append('clips', clips ? '1' : '0');
+  form.append('variations', variations ? '1' : '0');
   return { kind: 'animate', start: await postStart('/api/animate/rig', form) };
 }
 
