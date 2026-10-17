@@ -39,6 +39,12 @@ export function pickRows(picks, base = '/output/') {
       seed ${c.seed}${scoreText(c.score)}${c.seed === entry.auto ? (typeof c.score === 'number' ? ' · best' : ' · first') : ''}</span></label>`).join('')}</div></div>`).join('');
 }
 
+/** What the pick panel says about the judge that picked: nothing, or that it was missing. */
+export function judgeNote(judge) {
+  return String(judge || '').startsWith('shape only')
+    ? 'Picked by silhouette only: the picture judge is not installed. Setup & Status installs it.' : '';
+}
+
 export function slotLabel(name) {
   return SLOT_WORDS[name] || name;
 }
@@ -312,6 +318,7 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
     box.innerHTML = `<h3>${outfit ? 'Pick the outfit' : 'Pick the pictures'}: ${escape(job.set)} on ${escape(job.body)}</h3>
       <p class="meta">${outfit ? 'The outfit drawn on the body once per seed; the ticked one is cut into the pieces.'
         : 'The best-scored picture of each piece is ticked (a weapon or shield: the first); only the ticked ones go on to 3D.'}</p>
+      ${judgeNote(job.judge) ? `<p class="sp-problems">${escape(judgeNote(job.judge))}</p>` : ''}
       ${pickRows(job.picks, info.base || '/output/')}
       <div class="row"><button type="button" class="primary" data-make-3d>${outfit ? 'Go on with this outfit' : 'Make the 3D'}</button></div><div data-picks-result></div>`;
     box.querySelector('[data-make-3d]').addEventListener('click', async () => {

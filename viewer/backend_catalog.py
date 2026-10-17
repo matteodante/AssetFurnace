@@ -32,12 +32,14 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from image_to_3dlab import blender as _blender
 from image_to_3dlab import clip_library as _clips
 from image_to_3dlab import host as _host
 from image_to_3dlab import material_models as _material_models
 from image_to_3dlab import matte as _matte
 from image_to_3dlab.host import AMD, APPLE, NVIDIA
 from image_to_3dlab.provenance import QWEN_OUTPUT_RIGHTS
+from image_to_3dlab.style import models as _style_models
 
 HF_HUB_DIR = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
 
@@ -655,6 +657,10 @@ CATALOG: tuple[Backend, ...] = (
         },
         license_name="MIT",
         license_url="https://github.com/VAST-AI-Research/SkinTokens/blob/main/LICENSE",
+        caveat=(f"SkinTokens runs Blender's bpy {_blender.SKINTOKENS_BPY} (Python 3.11) in its own "
+                "venv; Finish and the exports use the Blender app found on this machine "
+                "(tested on 5.2 LTS). They meet only through GLB files, and each rig's record "
+                "names its bpy."),
         install="scripts/bootstrap_autorig.py",
         runs_on=(APPLE, NVIDIA, AMD),
         setup_minutes=10,
@@ -729,6 +735,32 @@ CATALOG: tuple[Backend, ...] = (
             WeightSet(_material_models.SAM21.label, _material_models.SAM21.repo, _material_models.SAM21.size,
                       HF_HUB_DIR / "models--facebook--sam2.1-hiera-large",
                       note="Apache-2.0, not gated: the fallback until SAM 3 is granted."),
+        ),
+    ),
+    Backend(
+        id="judge",
+        label="Picture judge (Qwen3-VL on llama.cpp)",
+        kind="tool",
+        best_for=("Picks the best of several pictures of each piece in Characters in pieces, by asking "
+                  "Qwen3-VL whether a picture shows the piece and how well it matches the cut."),
+        tradeoff=("Optional. Without it a set's pictures are picked by their silhouette only, and the run "
+                  "says so. It uses Qwen-Image's own Qwen3-VL model, so set up Qwen-Image first."),
+        license_name=_style_models.LLAMA_LICENSE,
+        license_url="https://github.com/ggml-org/llama.cpp/blob/master/LICENSE",
+        install="scripts/bootstrap_style.py --only llama",
+        runs_on=(APPLE, NVIDIA, AMD),
+        # llama.cpp publishes builds for Windows x64, Linux x64 and Apple Silicon only
+        automated_setup=_style_models.llama_build() is not None,
+        setup_minutes=1,
+        upstream=("ggml-org llama.cpp", "https://github.com/ggml-org/llama.cpp"),
+        weights=(
+            WeightSet(f"llama.cpp {_style_models.LLAMA_TAG}",
+                      _style_models.LLAMA_RELEASES + (_style_models.llama_build() or next(iter(
+                          _style_models.LLAMA_BUILDS.values()))).archive,
+                      (_style_models.llama_build() or next(iter(_style_models.LLAMA_BUILDS.values()))).size,
+                      _style_models.llama_dir(REPO),
+                      note="The prebuilt release for this machine (Vulkan, or Metal on a Mac), checked "
+                           "against its SHA-256."),
         ),
     ),
     Backend(

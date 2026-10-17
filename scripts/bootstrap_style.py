@@ -135,6 +135,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
     for key in chosen:
         if key == "llama":
+            if build is None:
+                print("llama.cpp has no prebuilt release for this machine (Windows x64, Linux x64 and Apple "
+                      "Silicon only): build it from https://github.com/ggml-org/llama.cpp into vendor/llama-cpp/",
+                      flush=True)
+                return 1
             if build is not None:
                 print("Downloading llama.cpp...", flush=True)
                 fetch_llama(build)
