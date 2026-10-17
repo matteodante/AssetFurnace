@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 import blender_versions as versions
 
+from image_to_3dlab import processes
 from image_to_3dlab.blender import find_blender
 from image_to_3dlab.blender_exchange import MAX_BYTES
 
@@ -124,10 +125,13 @@ def launch(output, session_id, blender=None, popen=None):
         args = [str(binary), "--factory-startup", "--disable-autoexec", "--python-exit-code", "1",
                 "--python", str(REPO / "scripts/blender_open_asset.py"), "--", "--source", str(source),
                 "--workspace", str(workspace), "--status", str(status_file)]
+        no_window = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         try:
             with (root / "blender.log").open("ab") as log:
-                process = (popen or subprocess.Popen)(args, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
-                                                      cwd=REPO, creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                # the desktop Blender someone edits in stays open when the server stops
+                process = (popen or subprocess.Popen)(
+                    args, stdin=subprocess.DEVNULL, stdout=log, stderr=log, cwd=REPO,
+                    creationflags=no_window | processes.outlive_kwargs().get("creationflags", 0))
         except OSError as exc:
             versions.write_json(status_file, {"state": "error", "error": "Blender could not start. Check its installation."})
             raise ValueError("Blender could not start. Check its installation.") from exc

@@ -356,6 +356,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces: the outfit concept names every chosen piece, as the design asks. A
+  helmet the outfit's words left out was not drawn, so its cut was the face and the piece
+  edit invented a helmet; the concept now adds the chosen pieces the outfit does not name,
+  in their own words when they have them.
 - A Studio request refused before its body was read gets its 403: the reference concept
   and Blender edit APIs now read the body first, as the batch and export APIs did, instead of
   closing on it (Windows then reset the connection and the page saw a network error).
@@ -365,6 +369,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
   Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
   only text to image took it.
+- On Windows the server's children die with it: sd-cli, llama-server and the material
+  workers are in a job object that kills them when the server ends, also when it is killed
+  from Task Manager. The desktop Blender being edited in and the pid-tracked background jobs
+  (batches, generations) still outlive it, as they are meant to. `Ferma-AssetFurnace.cmd`
+  stops the server the launcher started.
+- Blender runs fail when their script fails, and do not depend on who runs them: the
+  concept maps and the multiview render pass `--python-exit-code 1` (a raised error used to
+  exit 0), and neither reads pictures or views an earlier render left in a reused folder;
+  Finish and the rebind run with `--factory-startup`, without the user's preferences and
+  add-ons; an uploaded .blend opens with `--disable-autoexec`, so its scripts never run.
+  SkinTokens' bpy is pinned to 5.0.1, the last for Python 3.11, its record names it, and the
+  Setup card says it is not the Blender app the rest uses.
 - Unreal exports are one-sided: the material culls back faces (glTF `doubleSided` false),
   so Unreal no longer makes every piece a Two Sided material that draws the inside of a
   helmet through its openings. Cloth (a cloak, cape, mantle, scarf, banner, flag or veil,
