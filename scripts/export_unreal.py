@@ -293,7 +293,7 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
             "problems": problems, "unreal": sidecar}
 
 
-def main(argv=None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("source", type=Path, help="the finished GLB (for a creature: the rigged one)")
     parser.add_argument("--kind", required=True, choices=[*up.KINDS, *up.KIND_ALIASES])
@@ -316,7 +316,11 @@ def main(argv=None) -> int:
     parser.add_argument("--blender", type=Path, help="Blender executable (default: found like Finish finds it)")
     parser.add_argument("--check-in-unreal", action="store_true",
                         help="then import it in Unreal 5 with scripts/unreal_import_check.py")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
     if args.check_in_unreal and up.KIND_ALIASES.get(args.kind, args.kind) == "equipment":
         print("export_unreal: equipment is checked on its body's Skeleton, so check both exports together:\n"
               "    python scripts/unreal_import_check.py BODY_EXPORT_DIR PART_EXPORT_DIR", file=sys.stderr)

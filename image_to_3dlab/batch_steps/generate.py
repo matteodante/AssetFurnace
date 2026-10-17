@@ -47,10 +47,9 @@ def row_manifest(ctx: StepContext, images: list[Path]) -> dict:
         "input": {"path": str(images[0]), "source": "user-provided"},
         "model": {"backend": row.backend, "parameters": row.parameters},
         "output": {"directory": str(ctx.step_dir)},
-        "batch": {"id": row.id, "kind": row.kind, "faces": row.faces,
-                  "profile": row.profile, "steps": list(row.steps),
-                  "size_cm": row.size_cm, "measure": row.measure,
-                  "references": [str(image) for image in images[1:]]},
+        # only what the generation used: a row edited after it (another face budget, a
+        # real size) keeps this manifest, and it must not then name values it never had
+        "batch": {"id": row.id, "references": [str(image) for image in images[1:]]},
     }
 
 
