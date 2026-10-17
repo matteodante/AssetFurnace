@@ -356,6 +356,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces says when the picture judge is missing: Setup & Status lists it (llama.cpp
+  running Qwen3-VL) with its download, a run without it says in its log that pictures are
+  picked by silhouette only, and the pick panel and `pieces_status` show which judge picked.
 - Characters in pieces: a piece made on its own loses the small bits floating away from it
   (`scripts/drop_fragments.py`, after its finish). The first real set's glove carried a
   56-face fragment that hung in the air next to the hand in Unreal; bits touching the piece
