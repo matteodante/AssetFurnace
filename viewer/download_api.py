@@ -72,6 +72,7 @@ COMMANDS: dict[str, list[str]] = {
     "materials-zones": [sys.executable, str(REPO / "scripts" / "bootstrap_materials.py"),
                         "--only", "env,qwen35,sam21,sam31", "--yes"],
     "clip-library": [sys.executable, str(REPO / "scripts" / "bootstrap_clip_library.py"), "--yes"],
+    "moge": [sys.executable, str(REPO / "scripts" / "bootstrap_pixal3d.py"), "--moge", "--yes"],
     "judge": [sys.executable, str(REPO / "scripts" / "bootstrap_style.py"), "--only", "llama", "--yes"],
     # NVIDIA-only: Tencent's own Hunyuan3D-2.1, built for CUDA. The catalogue marks it
     # unsupported everywhere else, so start() refuses before this runs on a Mac.
@@ -136,6 +137,10 @@ def rebuild_reason(backend_id: str, source: Path | None = None,
     source = source or pixal3d_generate.FLOW_SOURCE
     cli = cli or pixal3d_generate.CLI
     if not cli.is_file() or not source.is_file():
+        return None
+    # The default is the official 12 steps, which every build runs: a rebuild is only for
+    # someone who asks for the faster 8, so Setup does not ask everyone for one.
+    if pixal3d_generate.resolve_steps(None, source, cli)[0] == pixal3d_generate.DEFAULT_STEPS:
         return None
     return pixal3d_generate.steps_problem(pixal3d_generate.FAST_STEPS, source, cli)
 

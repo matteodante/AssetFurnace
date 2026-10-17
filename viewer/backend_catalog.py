@@ -37,6 +37,7 @@ from image_to_3dlab import clip_library as _clips
 from image_to_3dlab import host as _host
 from image_to_3dlab import material_models as _material_models
 from image_to_3dlab import matte as _matte
+from image_to_3dlab import moge_fov as _moge
 from image_to_3dlab import prompt_rewrite as _prompt_rewrite
 from image_to_3dlab.host import AMD, APPLE, NVIDIA
 from image_to_3dlab.provenance import QWEN_OUTPUT_RIGHTS
@@ -346,6 +347,27 @@ CATALOG: tuple[Backend, ...] = (
                       _matte.model_file(_matte.LITE_MODEL),
                       note="Cuts the subject out before generation, keeping thin and "
                            "light-coloured parts. Shared with the other routes."),
+        ),
+    ),
+    Backend(
+        id="moge",
+        label="Pixal3D camera estimate (MoGe-2)",
+        kind="tool",
+        best_for=("Estimates each picture's field of view before Pixal3D makes it 3D, as Pixal3D's "
+                  "official recipe does."),
+        tradeoff=("Optional: without it Pixal3D uses a fixed 20 degree camera, and says so. Its own "
+                  "environment with PyTorch (about 2.5 GB with CUDA)."),
+        license_name=_moge.LICENSE,
+        license_url="https://huggingface.co/Ruicheng/moge-2-vitl",
+        install="scripts/bootstrap_pixal3d.py --moge",
+        runs_on=(APPLE, NVIDIA, AMD),
+        setup_minutes=5,
+        build_probes=(_moge.python(REPO),),
+        upstream=("Microsoft MoGe", "https://github.com/microsoft/MoGe"),
+        weights=(
+            WeightSet("MoGe-2 ViT-L (Ruicheng/moge-2-vitl)", _moge.REPO_ID, _moge.WEIGHTS_BYTES,
+                      HF_HUB_DIR / "models--Ruicheng--moge-2-vitl",
+                      note="At a pinned revision. Runs on the GPU where there is one."),
         ),
     ),
     Backend(
