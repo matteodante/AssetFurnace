@@ -2537,7 +2537,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parts == ["api", "image", "defaults"]:
             self._send_json(200, {
-                "defaults": image_api.DEFAULTS,
+                "defaults": image_api.T2I_DEFAULTS,
                 "samplers": list(image_api.SAMPLERS),
                 "installed": image_api.is_installed(),
                 "license": {"name": image_api.LICENSE_NAME, "url": image_api.LICENSE_URL,

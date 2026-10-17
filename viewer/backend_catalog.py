@@ -36,6 +36,7 @@ from image_to_3dlab import clip_library as _clips
 from image_to_3dlab import host as _host
 from image_to_3dlab import material_models as _material_models
 from image_to_3dlab import matte as _matte
+from image_to_3dlab import prompt_rewrite as _prompt_rewrite
 from image_to_3dlab.host import AMD, APPLE, NVIDIA
 from image_to_3dlab.provenance import QWEN_OUTPUT_RIGHTS
 
@@ -595,6 +596,10 @@ CATALOG: tuple[Backend, ...] = (
             WeightSet("Qwen-Image 2.1 VAE", "Comfy-Org/Qwen-Image-2.1", int(0.68 * GB),
                       HF_HUB_DIR / "models--Comfy-Org--Qwen-Image-2.1",
                       note="Turns the generated latent back into pixels."),
+            WeightSet("Prompt rewriting (QwenLM's system prompt)", _prompt_rewrite.SYSTEM_PROMPT_URL,
+                      _prompt_rewrite.SYSTEM_PROMPT_BYTES, _prompt_rewrite.SYSTEM_PROMPT_FILE,
+                      note="The official rewriting step, run on the text encoder above with "
+                           "llama.cpp. Without it pictures are drawn from the prompt as written."),
         ),
     ),
     Backend(
