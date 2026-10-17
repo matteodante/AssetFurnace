@@ -23,7 +23,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-TYPES = ("int", "float", "bool", "text", "choice", "file", "files", "vector3", "object")
+TYPES = ("int", "float", "bool", "text", "choice", "choices", "file", "files", "vector3", "object")
 FILE_TYPES = ("file", "files")
 
 
@@ -141,6 +141,28 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
         gpu=True,
     ),
     StepSpec(
+        name="rig", label="Rig", takes=("asset",), makes="asset",
+        params=(),
+        row_fields=(),
+        skip="the model stays without a skeleton", replace=("glb",),
+        cli="scripts/autorig.py rig", run="image_to_3dlab.batch_steps.rig:run", gpu=True,
+        note="SkinTokens and the skin-weight clean-up, as the studio's Animate tab. The "
+             "rigged GLB becomes the row's asset.",
+    ),
+    StepSpec(
+        name="animate", label="Animate", takes=("asset",), makes="clips",
+        params=(
+            Param("presets", "choices", None, help="the preset clips to play, e.g. [\"idle\", \"walk\"]"),
+            Param("speed", "float", None, range=(0.5, 2.0), help="playback speed; default each preset's own"),
+            Param("arm_spread", "float", 0.0, range=(0.0, 30.0), help="arms out from the body, degrees"),
+        ),
+        row_fields=(),
+        skip="no clips; a creature is exported with what its rig has", replace=("glb",),
+        cli="scripts/autorig.py animate", run="image_to_3dlab.batch_steps.animate:run",
+        note="Kimodo clips retargeted on the rig, CPU only. The row's asset stays the rigged "
+             "model; the export takes the clips.",
+    ),
+    StepSpec(
         name="export_unreal", label="Unreal export", feature=5, takes=("asset",), makes="export",
         params=(
             Param("kind", "choice", "prop", choices=("prop", "creature", "equipment"), row=True),
@@ -199,6 +221,10 @@ def get(name: str) -> StepSpec:
 def choices(param: Param) -> tuple[str, ...] | None:
     if param.name == "profile" and param.type == "choice" and param.choices is None:
         return _profiles()   # read from the checks' profile files, so a new one needs no edit
+    if param.name == "presets" and param.choices is None:
+        from image_to_3dlab.rigging import preset_ids
+
+        return preset_ids()   # the shipped clips, as image_to_3dlab/motions lists them
     if param.name == "material" and param.type == "choice" and param.choices is None:
         from image_to_3dlab.piece_materials import MATERIALS
 
@@ -243,6 +269,13 @@ def value_problem(param: Param, value: Any, files: bool = True) -> str | None:
         allowed = choices(param) or ()
         if value not in allowed:
             return f"{name} must be one of {', '.join(allowed)}, not {value!r}"
+    elif kind == "choices":
+        allowed = choices(param) or ()
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            return f"{name} must be a list of names, not {value!r}"
+        unknown = [item for item in value if item not in allowed]
+        if unknown:
+            return f"{name}: {', '.join(unknown)} not one of {', '.join(allowed)}"
     elif kind == "vector3":
         if not isinstance(value, (list, tuple)) or len(value) != 3 or not all(map(_number, value)):
             return f"{name} must be three numbers, like [0, -1, 0], not {value!r}"

@@ -147,3 +147,10 @@ def test_the_picture_settings_match_the_engine():
     assert spec.param("sampler").choices == text_image.SAMPLERS
     assert spec.param("seed").default == text_image.DEFAULTS["seed"]
     assert spec.param("width").range == (text_image.MIN_SIZE, text_image.MAX_SIZE)
+
+
+def test_a_list_of_choices_is_checked_name_by_name():
+    assert step_catalog.check("animate", {"presets": ["idle", "walk"], "arm_spread": 10}) == []
+    problems = step_catalog.check("animate", {"presets": ["idle", "moonwalk"]})
+    assert problems == [f"presets: moonwalk not one of {', '.join(step_catalog.choices(step_catalog.get('animate').param('presets')))}"]
+    assert step_catalog.check("animate", {"presets": "idle"})[0].startswith("presets must be a list")

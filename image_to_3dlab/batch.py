@@ -56,7 +56,7 @@ REPO = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = REPO / "output" / "batches"
 
 # Stable names: functions 5, 7 and 8 plug in under these. Order here is only for listing.
-STEP_NAMES = ("picture", "generate", "finish", "materials", "export_unreal", "checks")
+STEP_NAMES = ("picture", "generate", "finish", "rig", "animate", "materials", "export_unreal", "checks")
 STEP_PACKAGE = "image_to_3dlab.batch_steps"
 # Steps installed by hand, over the modules: tests use this for fakes.
 STEPS: dict[str, Any] = {}
@@ -1358,6 +1358,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
     # the row's picture: its first image, the one its asset's record leads to, or what a
     # step that draws one (`picture`) leaves
     picture = row.images[0] if row.images else row.concept
+    clips: list[Path] = []   # animated GLBs a step made, for the export
     steps = entry.setdefault("steps", {})
     for name in [name for name in steps if name not in row.steps]:
         del steps[name]   # a step taken out of the row is no longer part of its result
@@ -1371,6 +1372,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             asset = _absolute(done.get("asset"), directory) or asset
             sidecar = _absolute(done.get("sidecar"), directory) or sidecar
             picture = _absolute(done.get("picture"), directory) or picture
+            clips = [directory / clip for clip in done.get("clips", [])] or clips
             continue
         rerun = True
         step = load_step(name)
@@ -1394,7 +1396,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
         ctx = StepContext(row=row, row_dir=row_dir, step_dir=step_dir, asset=asset,
                           sidecar=sidecar, intent=spec.intent,
                           license_policy=spec.license_policy,
-                          options=row.options.get(name, {}), log=log, picture=picture)
+                          options=row.options.get(name, {}), log=log, picture=picture, clips=clips)
         try:
             result = step.run(ctx)
         except KeyboardInterrupt:
@@ -1420,6 +1422,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             return
         asset = result.asset or asset
         picture = result.picture or picture
+        clips = result.clips or clips
         sidecar = result.sidecar if result.asset else sidecar
         steps[name] = {
             "status": "done", "finished_at": now(), "fingerprint": fingerprints[name],
@@ -1428,6 +1431,7 @@ def _run_row(spec: BatchSpec, row: BatchRow, entry: dict[str, Any],
             "asset": _relative(result.asset, directory) if result.asset else None,
             "sidecar": _relative(result.sidecar, directory) if result.sidecar else None,
             **({"picture": _relative(result.picture, directory)} if result.picture else {}),
+            **({"clips": [_relative(clip, directory) for clip in result.clips]} if result.clips else {}),
             **({"record": result.record} if result.record else {}),
         }
         save()

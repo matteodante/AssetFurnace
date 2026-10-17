@@ -267,6 +267,7 @@ Stato reale, aggiornato a ogni PR: [sezione 13](#13-stato).
 | a | Unita (#60): impronte per passo, passi `export_unreal` e `checks`, catalogo |
 | a-fix | Unita (#63): i lotti vecchi non rigenerano più quando `checks` entra fra i predefiniti; file nelle opzioni per contenuto; controlli ripetuti ri-accodati |
 | b1 | Unita (#62): strumenti MCP per la coda di revisione e per i pezzi (`slot_parts/runs.py` condiviso con lo studio) |
+| b3a | In revisione: `image_to_3dlab/rigging.py` condiviso con lo studio, `scripts/autorig.py`, passi `rig` e `animate`; le clip arrivano all'export Unreal |
 | b2 | In revisione: testo-immagine nel pacchetto e `scripts/text_image.py`; passo `picture` con candidati, attesa (`waiting`, uscita 3) e scelta (`pick`, `picks.json`); MCP `describe_steps`, `run_steps`, `pick_candidate`, `rerun_step`; test di parità nei due sensi |
 
 ## Seguiti
