@@ -207,7 +207,7 @@ def _job_env() -> dict[str, str]:
     value in this server's environment (e.g. SPARSE_CONV_BACKEND=none exported earlier)
     would otherwise be inherited and silently break the run.
     """
-    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    env = processes.child_env()
     for key in BACKEND_ENV_KEYS:
         env.pop(key, None)
     return env
@@ -2528,7 +2528,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parts == ["api", "image", "defaults"]:
             self._send_json(200, {
-                "defaults": image_api.DEFAULTS,
+                "defaults": image_api.T2I_DEFAULTS,
                 "samplers": list(image_api.SAMPLERS),
                 "installed": image_api.is_installed(),
                 "license": {"name": image_api.LICENSE_NAME, "url": image_api.LICENSE_URL,

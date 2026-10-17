@@ -38,11 +38,15 @@ def test_warnings_alone_warn_and_a_clean_report_passes():
     assert validator.grade({"issues": {"numErrors": 0, "numWarnings": 0, "messages": []}})["status"] == "pass"
 
 
-def test_without_the_validator_the_check_is_skipped(tmp_path, monkeypatch):
+def test_without_the_validator_the_check_warns_that_it_did_not_run(tmp_path, monkeypatch):
+    """Skipped, it was invisible: on this PC every report said nothing about glTF validity
+    for weeks (audit 2026-10-17). A warn shows in the studio and in the review."""
     monkeypatch.setattr(asset_module, "find_validator", lambda *a, **k: None)
     report = checks.run_checks(checks.Asset(glb=fx.clean(tmp_path / "a.glb")), only=["gltf.valid"])
-    assert report["results"] == []
-    assert "bootstrap_gltf_validator" in report["skipped"][0]["reason"]
+    [found] = report["results"]
+    assert found["status"] == "warn" and found["value"] is None
+    assert "not run" in found["message"] and "bootstrap_gltf_validator" in found["message"]
+    assert report["skipped"] == []
 
 
 def test_find_validator_honours_the_override(tmp_path):

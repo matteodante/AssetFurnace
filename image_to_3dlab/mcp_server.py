@@ -472,11 +472,14 @@ def pieces_list() -> dict[str, Any]:
             "slots": runs.catalogue()}
 
 
-def pieces_add_body(name: str, picture: str, model: str, rigged: str, clips: dict[str, str] | None = None,
-                    labels: dict[str, str] | None = None) -> dict[str, Any]:
+def pieces_add_body(name: str, picture: str, model: str, rigged: str, dressing: str,
+                    clips: dict[str, str] | None = None, labels: dict[str, str] | None = None,
+                    dressing_words: str = "") -> dict[str, Any]:
     """Register a rigged humanoid as a base body: its front picture, the Pixal3D model it
     was made from (its saved camera puts the bones on the picture), the rigged GLB, and its
-    own animated clips ({"walk": "body_walk.glb"}) and labels ({"race": "elf"})."""
+    own animated clips ({"walk": "body_walk.glb"}) and labels ({"race": "elf"}). dressing:
+    how it is dressed under its pieces, "bodysuit", "clothes" (shirt, breeches, cloth shoes),
+    "underwear", or "other" with dressing_words; the person chooses, there is no default."""
     from .slot_parts import runs
 
     files = [picture, model, rigged, *(clips or {}).values()]
@@ -485,8 +488,8 @@ def pieces_add_body(name: str, picture: str, model: str, rigged: str, clips: dic
         return {"problem": f"{missing} does not exist"}
     try:
         return runs.register_body(OUTPUT, name, Path(picture), Path(model), Path(rigged),
-                                  {k: Path(v) for k, v in (clips or {}).items()}, labels)
-    except (ValueError, OSError) as exc:
+                                  {k: Path(v) for k, v in (clips or {}).items()}, labels, dressing, dressing_words)
+    except (ValueError, OSError, TypeError) as exc:   # a dressing that is not a word
         return {"problem": str(exc)}
 
 

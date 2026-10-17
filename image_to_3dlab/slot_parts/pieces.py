@@ -100,7 +100,8 @@ def picture_jobs(cut_record: dict, cuts_dir: Path, folder: Path, seeds: list[int
 
 
 def model_commands(picture: Path, folder: Path, slot: str, python: str, scripts: Path) -> list[list[str]]:
-    """Pixal3D, the finish to the slot's face budget with the photo projected back, then winding."""
+    """Pixal3D, the finish to the slot's face budget with the photo projected back, then winding
+    and the floating bits dropped."""
     glb, done = model_path(folder, slot), finished_path(folder, slot)
     views = glb.with_suffix(".svviews")
     return [
@@ -108,6 +109,7 @@ def model_commands(picture: Path, folder: Path, slot: str, python: str, scripts:
         [python, str(scripts / "retopo_repaint.py"), str(glb), str(picture), str(done),
          "--faces", str(slots.CATALOGUE[slot].faces), "--skip-paint", "--views", str(views)],
         [python, str(scripts / "fix_winding.py"), str(done)],
+        [python, str(scripts / "drop_fragments.py"), str(done)],   # a stray bit would float beside the piece
     ]
 
 

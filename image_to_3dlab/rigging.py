@@ -40,7 +40,7 @@ SPEED_RANGE = (0.5, 2.0)
 AUTO = "auto"
 FAMILY_CHOICES = (AUTO, *creature_family.FAMILIES)
 # What a run of SkinTokens is told, so it never fetches weights on its own.
-ENV = {"PYTHONUNBUFFERED": "1", "HF_HUB_OFFLINE": "1"}
+ENV = {**processes.UTF8_ENV, "HF_HUB_OFFLINE": "1"}
 
 SKINTOKENS_LICENSE = {
     "name": "MIT",
