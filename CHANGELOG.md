@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Studio: every finished step (3D model, Finish, Rig) has "Redo…", which opens it with the
+  values it was made with and makes only that step again; the steps before stay, the old
+  result stays in the Library, and a later step made from the old one says so. The 3D seed
+  can be kept (Steps panel and Create), and Create chooses Finish's triangle count.
 - Batches draw concepts from a reference: the `concept` step (feature 2), with candidates
   and picks like `picture`; agents reach it through `run_steps`. The studio, the command
   line and the step build the request with one `image_to_3dlab/concept/requests.py`. A pick

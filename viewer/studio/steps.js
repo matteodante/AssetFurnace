@@ -2,7 +2,7 @@
 // The job APIs live on the server; the studio sends them the asset's files. Prop sheets split here too.
 
 import { followJob, plainError, statusUrlFor, jobEnd } from './jobs.js';
-import { freshSeed } from './create.js';
+import { freshSeed, FACES } from './create.js';
 import { familyPicker, familyNote } from './creature-family.js';
 
 const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -21,18 +21,27 @@ export async function postStart(url, body) {
   return payload;
 }
 
-/** The body for the step the asset can take next. `ctx` has engines, presets, url(). */
-export function stepBody(stepId, asset, ctx) {
+/**
+ * The body for the step the asset can take next. `ctx` has engines, presets, url().
+ * With `{ redo: true }`, the body for making a finished step again with other values: it
+ * starts from what the step was made with (`asset.made`), and the steps before it stay.
+ */
+export function stepBody(stepId, asset, ctx, { redo = false } = {}) {
+  const made = (redo && asset.made?.[stepId]) || {};
   if (stepId === 'model') {
     if (!asset.picture) return '<p class="hint">This asset has no picture on disk to build from.</p>';
     const [best, ...others] = ctx.engines;
     if (!best) return '<p class="hint">No 3D engine is installed yet. <a href="./setup.html">Install one in Setup</a>.</p>';
-    return `<p class="hint">Builds a textured 3D model from the picture. Takes a few minutes.</p>
+    const engines = [best, ...others];
+    const seed = made.seed ?? 42;
+    return `<p class="hint">${redo ? 'Makes a new 3D model from the same picture; the old one stays in the Library.' : 'Builds a textured 3D model from the picture.'} Takes a few minutes.</p>
+      <label class="check"><input type="checkbox" data-k="newseed" ${redo ? '' : 'checked'}><span>New seed <span class="hint">untick to choose it: the same seed gives the same model</span></span></label>
+      <label class="field" data-seedbox ${redo ? '' : 'hidden'}>Seed<input type="number" data-k="seed" min="0" step="1" value="${esc(seed)}"></label>
       <details class="adv"><summary>Advanced</summary>
-        <label class="field">Engine<select data-k="engine">${[best, ...others].map((e, i) => `<option value="${esc(e.id)}">${i ? '' : 'Best quality: '}${esc(e.label)}</option>`).join('')}</select></label>
-        <p class="hint" data-k="licence">${esc(best.license)}</p>
+        <label class="field">Engine<select data-k="engine">${engines.map((e, i) => `<option value="${esc(e.id)}" ${made.engine === e.id ? 'selected' : ''}>${i ? '' : 'Best quality: '}${esc(e.label)}</option>`).join('')}</select></label>
+        <p class="hint" data-k="licence">${esc((engines.find((e) => e.id === made.engine) || best).license)}</p>
       </details>
-      <button class="primary" data-run="model">Make 3D model</button>`;
+      <button class="primary" data-run="model">${redo ? 'Make it again' : 'Make 3D model'}</button>`;
   }
   if (stepId === 'finished' && asset.kind === 'prop set') {
     return `<p class="hint">Cuts the sheet into one model per prop, each cleaned up with lighter versions for far away. A few minutes.</p>
@@ -40,18 +49,19 @@ export function stepBody(stepId, asset, ctx) {
   }
   if (stepId === 'finished') {
     if (!asset.picture) return '<p class="hint">Finishing needs the picture the model was made from, and this asset has none on disk.</p>';
-    return `<label class="field">Detail<select data-k="faces">
-        <option value="5000">5,000 triangles · phones, crowds</option><option value="15000">15,000 triangles · light</option>
-        <option value="40000" selected>40,000 triangles · game-ready</option><option value="100000">100,000 triangles · close-ups</option></select></label>
-      <label class="check"><input type="checkbox" data-k="photo" checked><span>Pixel Match <span class="hint">keeps your picture's sharp details on the front</span></span></label>
+    const faces = made.faces ?? 40000, texture = made.texture_size ?? 2048, photo = made.photo ?? true;
+    return `${redo ? '<p class="hint">Finishes the current 3D model again; the old finish stays in the Library.</p>' : ''}
+      <label class="field">Detail<select data-k="faces">
+        ${facesChoices(faces).map(([v, t]) => `<option value="${v}"${v === faces ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+      <label class="check"><input type="checkbox" data-k="photo" ${photo ? 'checked' : ''}><span>Pixel Match <span class="hint">keeps your picture's sharp details on the front</span></span></label>
       <details class="adv"><summary>Advanced</summary>
-        <label class="field">Texture size<select data-k="texture"><option value="1024">1024 px</option><option value="2048" selected>2048 px</option><option value="4096">4096 px</option></select></label>
+        <label class="field">Texture size<select data-k="texture">${[1024, 2048, 4096].map((v) => `<option value="${v}"${v === texture ? ' selected' : ''}>${v} px</option>`).join('')}</select></label>
       </details>
-      <button class="primary" data-run="finished">Finish model</button>`;
+      <button class="primary" data-run="finished">${redo ? 'Finish again' : 'Finish model'}</button>`;
   }
   if (stepId === 'rigged') {
-    return `<p class="hint">Adds a skeleton so it can move. About a minute. Works best on a character standing in a T-pose with empty hands.</p>
-      ${familyPicker()}`;
+    return `<p class="hint">${redo ? 'Rigs the current model again; the old rig and its moves stay in the Library.' : 'Adds a skeleton so it can move.'} About a minute. Works best on a character standing in a T-pose with empty hands.</p>
+      ${redo ? familyPicker('Rig again', asset.family_chosen ? asset.family : 'auto') : familyPicker()}`;
   }
   if (stepId === 'animated' && asset.fits_moves === false) {
     return familyNote(asset) || `<p class="hint">Rigged. Preset moves are for humanoids only for now: four-legged and other creatures can be rigged,
@@ -59,6 +69,12 @@ export function stepBody(stepId, asset, ctx) {
   }
   if (stepId === 'animated') return familyNote(asset) + movePicker(asset, ctx, asset.clips.length ? 'Add this move' : 'Animate');
   return '';
+}
+
+/** The triangle budgets to offer, with the one a step was made with when it is not one of them. */
+export function facesChoices(faces) {
+  if (FACES.some(([v]) => v === faces)) return FACES;
+  return [...FACES, [faces, `${Number(faces).toLocaleString('en-US')} triangles · as made`]].sort((a, b) => a[0] - b[0]);
 }
 
 function movePicker(asset, ctx, cta) {
@@ -79,7 +95,8 @@ export function wireStep(card, stepId, asset, ctx) {
   card.querySelectorAll('[data-preset]').forEach((chip) => chip.onclick = () => {
     card.querySelectorAll('[data-preset]').forEach((c) => c.setAttribute('aria-pressed', String(c === chip)));
   });
-  const speed = k('speed'), spread = k('spread'), engine = k('engine');
+  const speed = k('speed'), spread = k('spread'), engine = k('engine'), newseed = k('newseed');
+  if (newseed) newseed.onchange = () => { card.querySelector('[data-seedbox]').hidden = newseed.checked; };
   if (speed) speed.oninput = () => { card.querySelector('[data-o="speed"]').textContent = `${Number(speed.value).toFixed(2)}×`; };
   if (spread) spread.oninput = () => { card.querySelector('[data-o="spread"]').textContent = `${spread.value}°`; };
   if (engine) engine.onchange = () => { card.querySelector('[data-k="licence"]').textContent = ctx.engines.find((e) => e.id === engine.value)?.license || ''; };
@@ -93,7 +110,8 @@ export function wireStep(card, stepId, asset, ctx) {
       speed: Number(speed?.value || 1), spread: Number(spread?.value || 0), family: k('family')?.value,
     };
     card.dataset.lastPreset = settings.preset || '';
-    const run = { model: () => startModel(asset, ctx, settings.backend),
+    const seed = newseed && !newseed.checked ? Math.max(0, Math.trunc(Number(k('seed').value) || 0)) : freshSeed();
+    const run = { model: () => startModel(asset, ctx, settings.backend, seed),
       finished: () => (asset.kind === 'prop set' ? startSplit(asset)
         : startFinish(asset, ctx, { faces: settings.faces, skip_photo: !settings.photo, texture_size: settings.texture })),
       rigged: () => startRig(asset, settings.family),
@@ -102,10 +120,10 @@ export function wireStep(card, stepId, asset, ctx) {
   });
 }
 
-async function startModel(asset, ctx, backend) {
+async function startModel(asset, ctx, backend, seed = freshSeed()) {
   const form = new FormData();
   form.append('image', await fileFrom(ctx.url(asset.picture), fileName(asset.picture)));
-  form.append('settings', JSON.stringify({ backend, seed: freshSeed() }));  // each try differs
+  form.append('settings', JSON.stringify({ backend, seed }));  // a new try each time, unless a seed is kept
   return { kind: 'generate', start: await postStart('/api/generate', form) };
 }
 
