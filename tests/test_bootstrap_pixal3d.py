@@ -529,3 +529,26 @@ def test_weights_come_from_the_tested_revisions(monkeypatch, tmp_path):
     boot.install_weights(tmp_path)
     assert seen == {boot.WEIGHTS_REPO: boot.WEIGHTS_REVISION,
                     boot.MATTE_REPO: boot.MATTE_REVISION}
+
+
+def test_every_prebuilt_has_its_pinned_checksum():
+    for name, _ in boot.PREBUILTS.values():
+        digest = boot.PREBUILT_SHA256[name]
+        assert len(digest) == 64 and int(digest, 16) >= 0
+
+
+def test_a_prebuilt_with_the_wrong_checksum_is_deleted_and_never_unpacked(tmp_path, monkeypatch):
+    import json
+
+    name = boot.PREBUILTS["windows-nvidia"][0]
+    release = {"assets": [{"name": name, "browser_download_url": "https://example.test/x", "size": 1}]}
+    monkeypatch.setattr(boot, "VENDOR", tmp_path / "vendor")
+    monkeypatch.setattr(boot, "BUILD", tmp_path / "vendor" / "build")
+    monkeypatch.setattr(boot.urllib.request, "urlopen",
+                        lambda *a, **k: io.BytesIO(json.dumps(release).encode()))
+    monkeypatch.setattr(boot.urllib.request, "urlretrieve",
+                        lambda url, path: Path(path).write_bytes(b"tampered"))
+    monkeypatch.setattr(boot, "unpack_prebuilt", lambda *a: pytest.fail("unpacked"))
+    with pytest.raises(SystemExit, match="checksum"):
+        boot.install_prebuilt("windows-nvidia")
+    assert list((tmp_path / "vendor").iterdir()) == []

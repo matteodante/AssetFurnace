@@ -584,6 +584,9 @@ def orm_image(glb: EditGLB, material: dict, size: tuple[int, int], ao: np.ndarra
     else:
         rough, metal = np.full((height, width), rough_factor), np.full((height, width), metal_factor)
         maps["roughness"] = maps["metallic"] = "factor"
+        if "metallicFactor" not in pbr:
+            # a choice against the spec's default, so the record says it was one
+            maps["metallic"] = "assumed 0: the asset names no metal (glTF's default 1 would make it metal)"
     existing = fit(_texture_image(glb, material.get("occlusionTexture")))
     if ao is not None:
         occlusion, maps["occlusion"] = ao, "baked"

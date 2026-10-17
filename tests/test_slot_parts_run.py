@@ -100,7 +100,9 @@ def test_a_whole_set_on_a_stick_figure(tmp_path):
     parts = json.loads(path.read_text())
     assert path == tmp_path / "sets" / "red" / "stick" / "red.parts.json"
     assert parts["mode"] == "body_and_equipment" and parts["concept"]["seed"] == 3
-    assert parts["concept"]["prompt"].startswith("Add red plate armour to the character in image 1")
+    # every chosen piece is drawn: the outfit's words ("red plate armour") name none of them
+    assert parts["concept"]["prompt"].startswith("Add red plate armour, with a helmet, a breastplate, boots to the "
+                                                 "character in image 1")
     assert set(parts["pieces"]) == {"helmet", "torso", "boots", "weapon"}
     assert parts["pieces"]["weapon"]["held"] is True and "a longsword" in parts["pieces"]["weapon"]["prompt"]
     job = jobs[0]
@@ -216,4 +218,6 @@ def test_every_fitted_file_gets_a_licence_record_bound_to_it(tmp_path):
     record = json.loads(written[0].read_text())
     assert record["source"]["path"] == str(source) and record["source"]["sha256"]
     report = run_checks(Asset(glb=out / "gloves_R.glb"), profile="equipment_part", only=["license.components"])
-    assert report["results"][0]["status"] == "pass"
+    # bound and readable; it warns because the pieces come from Qwen pictures (non-commercial)
+    assert report["results"][0]["status"] == "warn"
+    assert "non-commercial" in report["results"][0]["message"]

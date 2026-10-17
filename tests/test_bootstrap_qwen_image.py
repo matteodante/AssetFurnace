@@ -8,6 +8,7 @@ that a non-interactive run cannot silently spend someone's bandwidth.
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import sys
 import zipfile
@@ -107,6 +108,7 @@ def test_an_existing_binary_is_not_redownloaded(monkeypatch, capsys):
     monkeypatch.setattr(boot, "install_binary", lambda *a, **k: pytest.fail("redownloaded"))
     monkeypatch.setattr(boot, "install_weights", lambda *a, **k: None)
     monkeypatch.setattr(boot, "binary_present", lambda: True)
+    monkeypatch.setattr(boot, "installed_commit", lambda *a: boot.RELEASE_COMMIT)
     # The probe still runs on a re-run (the binary may have been swapped for a dud).
     monkeypatch.setattr(boot, "probe_gpu", lambda *a: "ggml_vulkan: Found 1 Vulkan devices:")
     assert boot.main(["--yes"]) == 0
@@ -264,6 +266,7 @@ def test_a_link_to_a_sibling_stays_inside(tmp_path):
 def _nvidia_linux(monkeypatch):
     monkeypatch.setattr(boot, "target", lambda: "linux-nvidia")
     monkeypatch.setattr(boot, "binary_present", lambda: True)
+    monkeypatch.setattr(boot, "installed_commit", lambda *a: boot.RELEASE_COMMIT)
 
 
 def test_nvidia_install_stops_before_the_weights_if_the_gpu_is_unreachable(
@@ -289,6 +292,7 @@ def test_nvidia_install_continues_when_the_gpu_answers(monkeypatch):
 def _amd_linux(monkeypatch):
     monkeypatch.setattr(boot, "target", lambda: "linux-amd")
     monkeypatch.setattr(boot, "binary_present", lambda: True)
+    monkeypatch.setattr(boot, "installed_commit", lambda *a: boot.RELEASE_COMMIT)
 
 
 def test_amd_install_stops_before_the_weights_if_the_gpu_is_unreachable(
@@ -315,6 +319,7 @@ def test_amd_install_continues_when_the_gpu_answers(monkeypatch):
 def test_a_mac_is_not_probed(monkeypatch):
     monkeypatch.setattr(boot, "target", lambda: "macos-arm64")
     monkeypatch.setattr(boot, "binary_present", lambda: True)
+    monkeypatch.setattr(boot, "installed_commit", lambda *a: boot.RELEASE_COMMIT)
     monkeypatch.setattr(boot, "probe_gpu", lambda *a: pytest.fail("probed a Mac"))
     monkeypatch.setattr(boot, "install_weights", lambda: None)
     assert boot.main(["--yes"]) == 0
@@ -347,3 +352,110 @@ def test_every_file_fetched_is_one_the_catalogue_counts():
     folders = {w.source for w in backend_catalog.BY_ID["qwen-image"].weights if w.filename is None}
     for repo, filename, _ in boot.WEIGHTS:
         assert (repo, filename) in named or repo in folders, filename
+
+
+# ---- pinned: one sd.cpp release with its checksums, the weights at a revision ----------
+
+PINNED = [{"name": name, "browser_download_url": f"https://example.test/{name}", "size": 10}
+          for name in boot.ASSET_SHA256]
+
+
+def test_sd_cpp_is_a_pinned_release_new_enough_for_the_turbo_preset():
+    """`--sigmas qwen-image-2.1-turbo` exists from d637cfb (master-959, 2026-10-12); the pin
+    is the release measured here (master-961-60423ab), never `latest`."""
+    assert "latest" not in boot.RELEASES and boot.RELEASE_TAG in boot.RELEASES
+    assert int(boot.RELEASE_TAG.split("-")[1]) >= 959
+    assert boot.RELEASE_COMMIT == boot.RELEASE_TAG.rsplit("-", 1)[1]
+
+
+@pytest.mark.parametrize("key", sorted(boot.BUILDS))
+def test_every_archive_a_machine_needs_has_its_checksum(key):
+    picked = boot.pick_assets(PINNED, boot.BUILDS[key])
+    assert picked, key
+    for asset in picked:
+        digest = boot.ASSET_SHA256[asset["name"]]
+        assert len(digest) == 64 and int(digest, 16) >= 0
+
+
+def _fake_release(monkeypatch, tmp_path, content: bytes):
+    import io
+
+    monkeypatch.setattr(boot, "target", lambda: "macos-arm64")
+    name = next(a["name"] for a in boot.pick_assets(PINNED, boot.BUILDS["macos-arm64"]))
+    asked = []
+
+    def urlopen(url, timeout=0):
+        asked.append(url)
+        return io.BytesIO(json.dumps({"tag_name": boot.RELEASE_TAG, "assets": PINNED}).encode())
+
+    def urlretrieve(url, path):
+        Path(path).write_bytes(content)
+
+    monkeypatch.setattr(boot.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(boot.urllib.request, "urlretrieve", urlretrieve)
+    return name, asked
+
+
+def test_an_archive_with_the_wrong_checksum_is_deleted_and_never_unpacked(monkeypatch, tmp_path):
+    _, asked = _fake_release(monkeypatch, tmp_path, b"not the release")
+    with pytest.raises(SystemExit, match="checksum"):
+        boot.install_binary(tmp_path)
+    assert asked == [boot.RELEASES]
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_an_archive_with_the_right_checksum_is_unpacked(monkeypatch, tmp_path):
+    import hashlib
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as bundle:
+        bundle.writestr("sd-cli", "")
+    data = buffer.getvalue()
+    name, _ = _fake_release(monkeypatch, tmp_path, data)
+    monkeypatch.setitem(boot.ASSET_SHA256, name, hashlib.sha256(data).hexdigest())
+    monkeypatch.setattr(boot.host, "os_family", lambda *a: "macos")
+    assert boot.install_binary(tmp_path) == tmp_path / "sd-cli"
+
+
+def test_an_sd_cli_at_another_commit_is_replaced_by_the_pinned_one(monkeypatch, capsys):
+    called = []
+    monkeypatch.setattr(boot, "binary_present", lambda: True)
+    monkeypatch.setattr(boot, "installed_commit", lambda *a: boot.RELEASE_COMMIT)
+    monkeypatch.setattr(boot, "installed_commit", lambda *a: "28b454b")
+    monkeypatch.setattr(boot, "install_binary", lambda *a, **k: called.append("build"))
+    monkeypatch.setattr(boot, "install_weights", lambda *a, **k: None)
+    monkeypatch.setattr(boot, "target", lambda: "macos-arm64")
+    assert boot.main(["--yes"]) == 0
+    assert called == ["build"]
+    assert "28b454b" in capsys.readouterr().out
+
+
+def test_the_pinned_sd_cli_is_left_alone(monkeypatch, capsys):
+    monkeypatch.setattr(boot, "binary_present", lambda: True)
+    monkeypatch.setattr(boot, "installed_commit", lambda *a: boot.RELEASE_COMMIT)
+    monkeypatch.setattr(boot, "installed_commit", lambda *a: boot.RELEASE_COMMIT)
+    monkeypatch.setattr(boot, "install_binary", lambda *a, **k: pytest.fail("redownloaded"))
+    monkeypatch.setattr(boot, "install_weights", lambda *a, **k: None)
+    monkeypatch.setattr(boot, "target", lambda: "macos-arm64")
+    assert boot.main(["--yes"]) == 0
+
+
+def test_the_installed_commit_is_read_from_sd_cli_itself(tmp_path):
+    script = tmp_path / "fake.py"
+    script.write_text("print('stable-diffusion.cpp version unknown, commit 60423ab')\n")
+    assert boot.installed_commit([sys.executable, str(script)]) == "60423ab"
+    assert boot.installed_commit([str(tmp_path / "missing")]) is None
+
+
+def test_every_weight_is_fetched_at_its_pinned_revision(monkeypatch):
+    import types
+
+    seen = []
+    fake = types.SimpleNamespace(hf_hub_download=lambda **kw: seen.append(kw) or "/x")
+    monkeypatch.setitem(sys.modules, "huggingface_hub", fake)
+    boot.install_weights()
+    assert len(seen) == len(boot.WEIGHTS)
+    for call in seen:
+        assert len(call["revision"]) == 40 and call["revision"] == boot.REVISIONS[call["repo_id"]]

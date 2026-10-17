@@ -200,7 +200,7 @@ def test_a_one_route_run_without_pixal3d_skips_blender(tmp_path, monkeypatch):
     class FakeViewer:
         base = "https://pod"
 
-        def __init__(self, base):
+        def __init__(self, base, token=""):
             pass
 
         def call(self, method, path, body=None, content_type="", timeout=0):
@@ -256,7 +256,7 @@ def test_a_failed_blender_install_still_tests_finish(tmp_path, monkeypatch):
     class FakeViewer:
         base = "https://pod"
 
-        def __init__(self, base):
+        def __init__(self, base, token=""):
             pass
 
         def call(self, method, path, body=None, content_type="", timeout=0):
@@ -337,3 +337,27 @@ def test_pods_are_rented_with_a_driver_new_enough_for_the_pixal3d_prebuilt():
     """An older host driver silently turns a one-minute install into a 15-minute compile."""
     command = smoke.create_command("NVIDIA A40", "smoke", 2.0)
     assert command[command.index("--min-cuda-version") + 1] == "12.9"
+
+
+def test_the_lab_is_started_with_the_runs_own_access_token():
+    command = smoke.lab_command("pod123", "tok-123")
+    assert "ASSETFURNACE_TOKEN=tok-123" in command and "nohup ./lab" in command
+
+
+def test_the_viewer_calls_carry_the_access_token():
+    seen = {}
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen["auth"] = self.headers.get("Authorization", "")
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.handle_request, daemon=True).start()
+    smoke.Viewer(f"http://127.0.0.1:{server.server_port}", token="tok-123").call("GET", "/x")
+    server.server_close()
+    assert seen["auth"] == "Bearer tok-123"
