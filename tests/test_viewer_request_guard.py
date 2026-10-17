@@ -259,7 +259,7 @@ def test_the_request_marker_tags_same_origin_writes_only():
 def test_a_refused_post_with_a_body_gets_its_403_not_a_reset(server, path):
     """Closing on unread request bytes makes Windows reset the connection, so the client saw
     ConnectionAbortedError instead of the reason (a flaky test on 2026-10-17)."""
-    body = b"x" * 32 * 1024
+    body = b"x" * 8 * 1024    # under every API's own body limit
     for _ in range(10):
         status, _, _ = call(server, "POST", path, {"Origin": "http://evil.example"}, body=body)
         assert status == 403
