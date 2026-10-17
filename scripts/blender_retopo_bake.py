@@ -155,13 +155,14 @@ def unwrap_islands(bpy, mesh, angle_limit: float, rounds: int = UV_ROUNDS, margi
     over the check's 10% fail). Its islands are kept as seams and unwrapped conformally, then
     the faces that still overlap are cut along islands of half the angle and unwrapped again,
     a few rounds, and any still left become islands of their own. On those pieces: 0.06% and
-    0.08%, with about twice the islands. Call in edit mode, face select, every face selected.
+    0.08%, with about twice the islands. Call in edit mode with every face selected.
     """
     import bmesh
 
     settings = bpy.context.scene.tool_settings
-    synced = settings.use_uv_select_sync
+    synced, mode = settings.use_uv_select_sync, tuple(settings.mesh_select_mode)
     settings.use_uv_select_sync = True   # UV operators then select mesh faces
+    settings.mesh_select_mode = (False, False, True)   # whole faces: a vertex mode would grow the selection
     try:
         bpy.ops.uv.smart_project(angle_limit=angle_limit, island_margin=0.0002)
         bpy.ops.mesh.select_all(action="SELECT")
@@ -189,6 +190,7 @@ def unwrap_islands(bpy, mesh, angle_limit: float, rounds: int = UV_ROUNDS, margi
         return left
     finally:
         settings.use_uv_select_sync = synced
+        settings.mesh_select_mode = mode
 
 
 def main() -> int:

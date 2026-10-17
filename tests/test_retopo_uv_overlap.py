@@ -45,7 +45,9 @@ for name, fixed in (("plain", False), ("fixed", True)):
     bpy.ops.mesh.select_all(action="SELECT")
     angle = math.radians(89.0)
     if fixed:
+        bpy.context.scene.tool_settings.mesh_select_mode = (True, False, False)   # as Blender starts
         print("LEFT", rb.unwrap_islands(bpy, obj.data, angle))
+        print("MODE", tuple(bpy.context.scene.tool_settings.mesh_select_mode))
     else:
         bpy.ops.uv.smart_project(angle_limit=angle, island_margin=0.0002)
     bpy.ops.object.mode_set(mode="OBJECT")
@@ -82,6 +84,7 @@ def test_the_finish_unwraps_without_painting_a_texel_twice(tmp_path):
     done = subprocess.run([str(find_blender()), "--background", "--factory-startup", "--python", str(script)],
                           capture_output=True, text=True, timeout=600)
     assert done.returncode == 0, done.stdout[-2000:] + done.stderr[-2000:]
+    assert "MODE (True, False, False)" in done.stdout   # the person's select mode is given back
     plain, fixed = _overlap(tmp_path / "uv_plain.json"), _overlap(tmp_path / "uv_fixed.json")
     assert plain > 4.0, plain          # the wide-angle projection folds (the check warns from 4%)
     assert fixed < 1.0, fixed          # unwrapped, almost nothing is painted twice
