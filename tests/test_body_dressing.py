@@ -85,6 +85,9 @@ def test_the_studio_and_agents_register_with_the_dressing(tmp_path, monkeypatch)
     answer = mcp_server.pieces_add_body("orc", str(tmp_path / "a.png"), str(tmp_path / "m.glb"),
                                         str(tmp_path / "r.glb"), dressing="underwear")
     assert answer["name"] == "orc" and seen["dressing"] == {"kind": "underwear", "words": ""}
+    odd = mcp_server.pieces_add_body("orc", str(tmp_path / "a.png"), str(tmp_path / "m.glb"),
+                                     str(tmp_path / "r.glb"), dressing=["clothes"])
+    assert "problem" in odd   # an answer, not an exception
 
     import slot_parts_api
 

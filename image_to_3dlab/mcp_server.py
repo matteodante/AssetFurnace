@@ -487,7 +487,7 @@ def pieces_add_body(name: str, picture: str, model: str, rigged: str, dressing: 
     try:
         return runs.register_body(OUTPUT, name, Path(picture), Path(model), Path(rigged),
                                   {k: Path(v) for k, v in (clips or {}).items()}, labels, dressing, dressing_words)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, TypeError) as exc:   # a dressing that is not a word
         return {"problem": str(exc)}
 
 

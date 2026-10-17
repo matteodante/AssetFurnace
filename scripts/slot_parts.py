@@ -2,7 +2,7 @@
 """Characters in pieces (feature 4): register a base body, then cut a concept into slots.
 
     python scripts/slot_parts.py body knight --image body.png --rigged body_rigged.glb \
-        --views body.svviews [--label race=human --label sex=male]
+        --views body.svviews --dressing clothes [--label race=human --label sex=male]
     python scripts/slot_parts.py cuts --body output/bodies/knight/body.json --concept concept.png \
         --slots helmet,torso,shoulders:split,gloves,boots --out output/sets/red-knight/knight/cuts
     python scripts/slot_parts.py pieces --cuts output/sets/red-knight/knight/cuts/cuts.json \
