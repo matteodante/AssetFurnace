@@ -117,6 +117,9 @@ def overrides_of(given) -> dict | None:
     if not isinstance(given, dict):
         raise TypeError("set must be an object of check.setting: value")
     overrides = parse_overrides([f"{name}={json.dumps(value)}" for name, value in given.items()])
+    if any(check.startswith("license.") for check in overrides):
+        # the licence gate is not a threshold: approving rests on it
+        raise ValueError("the licence check's terms cannot be changed from the review sheet")
     load_profile("prop", overrides)   # a misspelt check or setting is refused, never ignored
     return overrides
 

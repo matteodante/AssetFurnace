@@ -67,13 +67,18 @@ export async function openReview(stage, { assets, onPick, onCount }) {
   el.querySelector('[data-close]').focus();
 
   let currentThresholds = [];
+  let asked = 0;   // only the latest request draws the grid: a slower earlier one is dropped
   const loadThresholds = async () => {
     const profile = el.querySelector('[data-k="profile"]').value;
     const grid = el.querySelector('[data-thresholds]');
+    const mine = ++asked;
+    let rows = [];
     try {
       const response = await fetch(`/api/review/thresholds?profile=${encodeURIComponent(profile)}`);
-      currentThresholds = (await response.json()).thresholds || [];
-    } catch { currentThresholds = []; }
+      rows = (await response.json()).thresholds || [];
+    } catch { rows = []; }
+    if (mine !== asked) return;
+    currentThresholds = rows;
     grid.innerHTML = thresholdRows(currentThresholds).map((r) => `<label class="field">${esc(r.label)}<input type="number" step="any" data-threshold="${esc(r.name)}" value="${esc(r.value)}"></label>`).join('')
       || '<p class="meta">The thresholds could not be read.</p>';
   };

@@ -106,6 +106,9 @@ def test_checks_run_from_the_sheet_with_other_thresholds(tmp_path):
                                                   "set": {"budget.faces.max": 10}})
     faces = next(r for r in item["report"]["results"] if r["check"] == "budget.faces")
     assert faces["status"] == "fail" and glb.is_file()
+    with pytest.raises(ValueError, match="licence"):
+        review_api.run_checks_request(output, {"asset": "barrel__pixal3d__1/barrel__pixal3d__1.glb",
+                                               "set": {"license.components.warn_only": True}})
     with pytest.raises(ValueError, match="budget.facez"):
         review_api.run_checks_request(output, {"asset": "barrel__pixal3d__1/barrel__pixal3d__1.glb",
                                                "set": {"budget.facez.max": 10}})
