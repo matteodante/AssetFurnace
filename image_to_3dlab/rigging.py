@@ -156,6 +156,15 @@ def clamp_spread(value: Any) -> float:
 
 # ------------------------------------------------------------------------- records
 
+def bpy_version(root: Path = SKINTOKENS) -> str | None:
+    """The bpy installed in SkinTokens' venv, read from its dist-info (no interpreter run)."""
+    for site in (root / ".venv" / "Lib" / "site-packages", *(root / ".venv" / "lib").glob("python*/site-packages")):
+        found = sorted(site.glob("bpy-*.dist-info")) if site.is_dir() else []
+        if found:
+            return found[-1].name[len("bpy-"):-len(".dist-info")]
+    return None
+
+
 def rig_record(name: str, data: bytes, source: dict[str, Any] | None, origin: str,
                tool: str = "viewer Animate tab: SkinTokens auto-rig") -> dict[str, Any]:
     """Provenance for a rigged model: the source's licence carries over, and the rigger's
@@ -169,7 +178,8 @@ def rig_record(name: str, data: bytes, source: dict[str, Any] | None, origin: st
         "license": (source or {}).get("license"),
         "classification": ((source or {}).get("output") or {}).get("classification")
         or (source or {}).get("classification"),
-        "rig": {"tool": "SkinTokens", "license": SKINTOKENS_LICENSE},
+        # the bpy SkinTokens ran, which is not the Blender app the rest of the chain uses
+        "rig": {"tool": "SkinTokens", "license": SKINTOKENS_LICENSE, "bpy": bpy_version()},
         "source_record": source,
     }
 

@@ -356,12 +356,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Library names and hidden flags are never lost: two changes at once (a rename and a hide)
+  no longer write over each other, the file is replaced whole so a crash cannot truncate it,
+  and a damaged one is kept aside as `.bad-<time>` instead of being overwritten.
 - The studio's jobs talk UTF-8 on Windows: their Python children run with `PYTHONUTF8=1`
   and their output is read as UTF-8, so a Chinese prompt or a name outside cp1252 no longer
   stops the script that prints it, or the loop that reads it.
 - The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
   Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
   only text to image took it.
+- Blender runs fail when their script fails, and do not depend on who runs them: the
+  concept maps and the multiview render pass `--python-exit-code 1` (a raised error used to
+  exit 0), and neither reads pictures or views an earlier render left in a reused folder;
+  Finish and the rebind run with `--factory-startup`, without the user's preferences and
+  add-ons; an uploaded .blend opens with `--disable-autoexec`, so its scripts never run.
+  SkinTokens' bpy is pinned to 5.0.1, the last for Python 3.11, its record names it, and the
+  Setup card says it is not the Blender app the rest uses.
+- Unreal exports are one-sided: the material culls back faces (glTF `doubleSided` false),
+  so Unreal no longer makes every piece a Two Sided material that draws the inside of a
+  helmet through its openings. Cloth (a cloak, cape, mantle, scarf, banner, flag or veil,
+  by name) stays two sided; `export_unreal(two_sided=)` decides by hand.
 - Studio pictures and reference concepts take the shared GPU lock while sd-cli runs, as the
   command line and the batches already did; while another session holds the GPU the job
   stays queued, says whom it waits for, and can be cancelled.
