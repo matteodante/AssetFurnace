@@ -315,14 +315,14 @@ questa lista prima del resoconto finale.
 | Parità: versioni Blender nella catena (d4) | unito (#77, #82) |
 | Parità: materiali, un materiale per asset o pezzo (e) | unito (#81); #79 chiusa |
 | Documento finale e tabella di parità | PR #80 (per ultima) |
-| Set vero 1: spada presa per la lama | PR #83 |
+| Set vero 1: spada presa per la lama | PR #83, da rifare dentro la decisione C (la review ha trovato P1 nella regola geometrica) |
 | Set vero 2: concept senza i pezzi scelti non nominati | PR #84 |
 | Set vero 3: UV sovrapposte del Finish | PR #85 |
 | Set vero 4: lucchetto GPU (Pixal3D, giudice, sd-cli) | PR #86 |
 | Set vero 5: arma senza candidati | unito (#75) |
 | Set vero 6: frammenti staccati | PR #87 |
 | Set vero 7: giudice mancante senza avviso | PR #88 |
-| Decisione A: come è vestito il corpo base (tutina, abiti semplici, intimo, testo libero), scelto alla registrazione su tre strade, in `body.json` | aperto |
+| Decisione A: come è vestito il corpo base (tutina, abiti semplici, intimo, testo libero), scelto alla registrazione su tre strade, in `body.json` | PR #93 |
 | Decisione B: nello studio un set si ferma dopo le immagini, scelta automatica evidenziata, un clic per il 3D; CLI e agenti con un flag | era già così; fissato con un test: PR #89 |
 | Decisione C: arma e scudo come static mesh su un socket della mano in Unreal (`hand_r` / `hand_l`), non pezzi skinnati | aperto |
 | C, collegato: l'arma segue l'osso del dito `middle_02_r` (i diti ereditano il ruolo "hand"); test sull'osso padre | aperto |
@@ -335,7 +335,7 @@ questa lista prima del resoconto finale.
 | MCP 5: solo percorsi sotto il repo, `output/` o le roots del client | aperto |
 | MCP 6: nome del server "assetfurnace", istruzioni, documentazione degli strumenti per funzione | aperto |
 | MCP 7: Streamable HTTP facoltativo su 127.0.0.1 con token, uso via tunnel SSH | aperto |
-| Pixal3D secondo la scheda ufficiale (12 passi, campo visivo stimato con MoGe-2) | aperto |
+| Pixal3D secondo la scheda ufficiale (12 passi, campo visivo stimato con MoGe-2) | PR #104 (MoGe-2 installato e provato: 23 s su GPU) |
 | Review finale con Codex di tutto il lavoro, correzioni, resoconto | aperto |
 
 ## Seguiti
