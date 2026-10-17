@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Studio Batches page: a row waiting for a pick shows its candidates and picks with a click;
+  every row can run one of its steps again. The page uses the MCP server's own
+  `pick_candidate` and `rerun_step`. A batch row that only draws (`picture`, `concept`)
+  needs no model, and its picture is in `outputs.json`.
 - Studio: every finished step (3D model, Finish, Rig) has "Redo…", which opens it with the
   values it was made with and makes only that step again; the steps before stay, the old
   result stays in the Library, and a later step made from the old one says so. The 3D seed
