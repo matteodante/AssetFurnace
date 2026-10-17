@@ -80,12 +80,12 @@ def test_body_candidates_and_set_lines():
       console.log(JSON.stringify({
         ids: m.bodyCandidates(assets).map((a) => a.id),
         line: m.setLine({ pieces: ['helmet', 'torso'], covered: 0.734, statuses: { helmet: 'pass', torso: 'warn' } }),
-        body: m.bodyPayload(assets[0], 'human-male', { race: 'human' }),
+        body: m.bodyPayload(assets[0], 'human-male', { race: 'human' }, 'clothes'),
       }));""")
     assert out["ids"] == ["a"]
     assert out["line"] == "2 pieces · body covered 73% · 1 to look at"
     assert out["body"] == {"name": "human-male", "picture": "p.png", "model": "m.glb", "rigged": "r.glb", "clips": [],
-                           "labels": {"race": "human"}}
+                           "labels": {"race": "human"}, "dressing": "clothes", "dressing_words": ""}
 
 
 def _body_json(output: Path) -> Path:
