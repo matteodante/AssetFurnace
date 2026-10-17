@@ -12,6 +12,9 @@ import ctypes
 import os
 import signal
 import subprocess
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import PureWindowsPath
 
 CREATE_NEW_PROCESS_GROUP = 0x00000200
@@ -198,6 +201,31 @@ def parse_pid_record(text: str) -> tuple[int, int | None]:
     if any(number <= 0 for number in numbers):
         raise ValueError("pid records require positive process ids")
     return numbers[0], numbers[1] if len(numbers) == 2 else None
+
+
+def _interrupted(signum, frame) -> None:
+    raise KeyboardInterrupt
+
+
+@contextmanager
+def sigterm_as_interrupt() -> Iterator[None]:
+    """For the block, SIGTERM unwinds this process the way Ctrl+C does, so the children it
+    started in their own group (SkinTokens, trellis-cli) are stopped before the GPU lock
+    is let go. terminate_group sends SIGTERM on POSIX, and Python's default for it ends
+    the process at once, cleanup and all. Only from the main thread, and only over the
+    default handler: one someone else set stays theirs."""
+    try:
+        installed = (threading.current_thread() is threading.main_thread()
+                     and signal.getsignal(signal.SIGTERM) is signal.SIG_DFL)
+        if installed:
+            signal.signal(signal.SIGTERM, _interrupted)
+    except (ValueError, OSError):                      # no signals here (an embedded interpreter)
+        installed = False
+    try:
+        yield
+    finally:
+        if installed:
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
 
 def terminate_group(pid: int, windows: bool = _IS_WINDOWS) -> None:

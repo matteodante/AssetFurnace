@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - a reference named like the staged concept no longer overwrites it;
   - a row that starts from a concept passes Finish's preflight;
   - an edited detail level found beside the model reruns its export.
+- Whatever stops a GPU job stops what it started before the shared GPU lock is let go: a
+  batch or a rig cancelled with SIGTERM (macOS and Linux) unwinds as on Ctrl+C, so SkinTokens
+  no longer runs on; an interrupted Pixal3D run ends trellis-cli, and a judge that fails to
+  start ends llama-server. A stale lock is removed by one waiter at a time, and only while it
+  is still the one judged stale, so two jobs can no longer hold the GPU together. In the
+  studio, a picture cancelled while its prompt rewriting waits for the GPU stops there.
 - The Unreal export passes the glTF validator without warnings: it writes a normal map's
   tangents, and a skinned mesh is a root node as the glTF spec asks (on the first real set
   the validator warned of both). The knight's body and helmet export with 0 errors and 0

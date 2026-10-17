@@ -261,11 +261,13 @@ def run_commands(commands: list[tuple[list[str], Path]], log_path: Path, *, gpu:
                         pass
                     raise
 
-            if index in (gpu or set()):
-                with gpu_lock.gpu(session, path=lock or gpu_lock.LOCK):
+            # a SIGTERM to this process (a cancelled job) reaches the except above, not past it
+            with processes.sigterm_as_interrupt():
+                if index in (gpu or set()):
+                    with gpu_lock.gpu(session, path=lock or gpu_lock.LOCK):
+                        code = run()
+                else:
                     code = run()
-            else:
-                code = run()
             if code != 0:
                 return code
     return 0

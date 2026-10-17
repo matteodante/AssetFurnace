@@ -127,13 +127,13 @@ def test_a_stale_lock_taken_over_by_someone_else_meanwhile_is_given_back(tmp_pat
     # it, and the second must not delete the first one's fresh lock
     path = tmp_path / "gpu.lock"
     path.write_text("4242 dead", encoding="utf-8")
-    real_rename = os.rename
+    real_open = os.open
 
-    def overtaken(src, dst):
-        if str(src) == str(path):
+    def overtaken(file, *args, **kwargs):
+        if str(file).endswith(".breaking") and path.read_text(encoding="utf-8") == "4242 dead":
             path.write_text("777 first", encoding="utf-8")   # the first job got there first
-        real_rename(src, dst)
-    monkeypatch.setattr(gpu_lock.os, "rename", overtaken)
+        return real_open(file, *args, **kwargs)
+    monkeypatch.setattr(gpu_lock.os, "open", overtaken)
     clock = iter(range(0, 100, 10))
     with pytest.raises(gpu_lock.GpuBusy, match="777 first"), gpu_lock.gpu(
             "second", path=path, wait=15, poll=10, alive=lambda pid: pid == 777,
