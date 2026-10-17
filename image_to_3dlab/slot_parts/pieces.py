@@ -55,10 +55,12 @@ def concept_outfit(outfit: str, chosen: dict) -> str:
 
 
 def held_prompt(slot: str, words: str = "", style: str = "") -> str:
-    """Text to image for a weapon or shield made on its own: alone, upright, front view."""
+    """Text to image for a weapon or shield, a game asset of its own: alone, in its canonical
+    pose, so its grip can be found on the picture (slot_parts/grip.py) and the picture judge can
+    check it (slot_parts/orient.py turns a weapon drawn the other way)."""
     what = words.strip() or HELD_WORDS[slot]
-    # held by its handle (the fit, the socket in Unreal); slot_parts/orient.py checks and turns it
-    pose = "upright with its handle at the bottom" if slot == "weapon" else "upright"
+    pose = ("upright, its grip at the bottom and its point or head at the top" if slot == "weapon"
+            else "upright, its front face to the viewer")
     parts = [f"{what}, a single standalone game asset shown alone, {pose}, front view, centred, complete",
              style.strip(), prompts.BACKGROUND]
     return ", ".join(p for p in parts if p) + "."

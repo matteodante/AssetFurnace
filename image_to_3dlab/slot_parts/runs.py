@@ -52,6 +52,23 @@ def list_bodies(output: Path) -> list[dict[str, Any]]:
     return found
 
 
+def grips_of(output: Path, parts: dict) -> dict[str, dict]:
+    """A set's weapon and shield grips as the studio shows them: the picture, the marker, the class."""
+    from image_to_3dlab.slot_parts import grip
+
+    out = {}
+    for slot, entry in (parts.get("pieces") or {}).items():
+        if slot not in slots.STANDALONE or not isinstance(entry, dict) or not entry.get("grip"):
+            continue
+        record = grip.load(Path(entry["grip"]))
+        if not record or not Path(record.get("picture", "")).is_file():
+            continue
+        out[slot] = {"picture": rel(output, Path(record["picture"])), "at": grip.picture_point(record),
+                     "class": record.get("class"), "size_cm": record.get("size_cm"), "by": record.get("by"),
+                     "classes": list(grip.CLASSES)}
+    return out
+
+
 def list_sets(output: Path) -> list[dict[str, Any]]:
     found = []
     for path in sorted((output / "sets").glob("*/*/*.parts.json")):
@@ -70,7 +87,7 @@ def list_sets(output: Path) -> list[dict[str, Any]]:
                       "covered": (parts.get("fit") or {}).get("covered_share"),
                       "statuses": {k: v.get("status") for k, v in checks.items()},
                       "preview": rel(output, preview) if preview.is_file() else None, "record": rel(output, path),
-                      "materials": materials})
+                      "materials": materials, "grips": grips_of(output, parts)})
     found.sort(key=lambda s: s["created"] or "", reverse=True)
     return found
 
@@ -150,7 +167,9 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     command = _base(body_json, set_name) + [
         "--slots-json", str(spec), "--seeds", ",".join(map(str, seeds)),
         "--concept-seeds", ",".join(map(str, concept_seeds)), "--root", str(output / "sets")]
-    if mode == 2:
+    if not raw:
+        pass   # weapons and shields only: nothing drawn on the body, no concept nor outfit
+    elif mode == 2:
         concept = payload.get("concept")
         if not concept or not Path(concept).is_file():
             raise ValueError("mode 2 needs the concept already drawn on the body")
@@ -210,6 +229,25 @@ def resume_command(output: Path, payload: dict) -> tuple[list[str], Path]:
     if picks:
         command += ["--pick", ",".join(f"{slot}={seed}" for slot, seed in picks.items())]
     return command, folder / "run.log"
+
+
+def save_grip(output: Path, payload: dict) -> dict:
+    """A person's correction of a set's weapon or shield grip ({"slot", "at": [x, y] on its picture,
+    "class", "size_cm"}); the record afterwards. The Unreal export reads it."""
+    from image_to_3dlab.slot_parts import grip
+
+    body, set_name = str(payload.get("body", "")), str(payload.get("set", ""))
+    if not body_mod.NAME.match(body) or not body_mod.NAME.match(set_name):
+        raise ValueError("name a set and its body: letters, digits, '.', '_' or '-'")
+    at = payload.get("at")
+    if at is not None and (not isinstance(at, list | tuple) or len(at) != 2):
+        raise ValueError("at is a point on the picture: [x, y], fractions of its width and height")
+    size = payload.get("size_cm")
+    record = grip.correct_in(output / "sets" / set_name / body, str(payload.get("slot", "")),
+                             at=tuple(float(v) for v in at) if at is not None else None,
+                             weapon_class=payload.get("class") or None,
+                             size_cm=float(size) if size not in (None, "") else None)
+    return {"set": set_name, "body": body, "slot": payload.get("slot"), "grip": record}
 
 
 def save_materials(output: Path, payload: dict) -> dict:
@@ -275,8 +313,17 @@ def refit_command(output: Path, payload: dict) -> tuple[list[str], Path]:
 
 
 def unreal_command(output: Path, payload: dict) -> tuple[list[str], Path]:
-    """Export a fitted set for Unreal 5.8: the masked body and every piece on its Skeleton."""
-    folder, body_json, fit = _fitted(output, payload)
+    """Export a set for Unreal 5.8: the masked body and every worn piece on its Skeleton, each
+    weapon and shield on its own. A set of weapons only has no fit."""
+    body_json = _body_json(output, payload.get("body"))
+    folder = output / "sets" / _set_name(payload.get("set")) / body_mod.load(body_json)["name"]
+    if (folder / "fit" / "fit.json").is_file():
+        folder, body_json, fit = _fitted(output, payload)
+    elif any(folder.glob("*.parts.json")):
+        fit = folder / "fit"
+    else:
+        raise ValueError(f"{payload.get('set')} has no fitted pieces on {payload.get('body')}, nor a weapon or "
+                         "shield made")
     size = float(payload.get("size_cm") or 180.0)
     if not 0 < size <= 100_000:
         raise ValueError("size_cm must be the body's real height in centimetres")

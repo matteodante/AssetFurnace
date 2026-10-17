@@ -32,10 +32,13 @@ CATALOGUE = {s.name: s for s in (
     Slot("gloves", ("forearm", "hand"), paired=True),
     Slot("legs", ("thigh", "shin"), faces=8000),
     Slot("boots", ("foot",), paired=True),
-    Slot("weapon", (), rigid="hand", faces=3000),
-    Slot("shield", (), rigid="forearm"),
+    Slot("weapon", (), faces=3000),
+    Slot("shield", ()),
 )}
 DRAWN = tuple(n for n, s in CATALOGUE.items() if s.roles)
+# Game assets of their own, made beside a set: never fitted to the body, never tied to it in
+# Unreal (the user's decision, 17/10/2026). Their grip is theirs (slot_parts/grip.py).
+STANDALONE = ("weapon", "shield")
 
 # Index of each name in a slot map (a uint8 picture): 0 is background, the last is bare body.
 LABELS = ("background", *DRAWN, "uncovered")

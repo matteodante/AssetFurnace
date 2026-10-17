@@ -96,9 +96,9 @@ default), `atlas`, `texture_size`, `metallic`, `roughness`, `ior`, `voxel`, `ski
 `export_unreal` settings: `name` (default the row's id), `collision` (`box`, `convex`,
 `unreal`; objects), `lods` (files, `[]` for none; default the `_LODn` files beside the
 model), `tint` (`false` for none), `forward` (three numbers, Blender axes), `body` and `body_name`
-(equipment, which needs its body), `socket` (an object held by `body`, as `NAME=BONE`:
-`"SOCKET_Weapon=hand_r"`; a static mesh in the body's space that hangs from that socket,
-which `scripts/unreal_import_check.py` makes on the body), `animations` (creatures). File paths are relative to
+(equipment, which needs its body), `grip` (a weapon's or shield's grip record, `grip.json`:
+the pivot on the grip, the blade or head along +Z, a `grip` socket there), `animations`
+(creatures). File paths are relative to
 the spec. `checks` settings: `profile` (default from `kind`), `set` (thresholds, as
 `--set`: `{"budget.faces.max": 20000}`), `reference` (compare with the row's picture,
 default true), `height`, `width`, `depth` in metres (default `size_cm` when it is a
@@ -108,7 +108,10 @@ Every step's settings are described once, with their types and ranges, in
 its first row.
 
 `picture` settings: `seed` (default 42), `count` (1 to 8), `pick` (the seed to keep),
-`width`, `height`, `cfg_scale`, `sampler`, `negative_prompt` (used only with `cfg_scale` above
+`width`, `height` (default 2048, as Qwen-Image 2.1 Turbo's card draws text alone; its other
+presets are 2400x1792, 1792x2400, 2528x1696, 1696x2528, 2752x1536 and 1536x2752, and 1024 is
+about five times faster), `transparent` and `rewrite` (the card's transparent background and
+prompt rewriting, both on by default), `cfg_scale`, `sampler`, `negative_prompt` (used only with `cfg_scale` above
 1: at the Turbo's default of 1 stable-diffusion.cpp skips it, and the provenance records it
 as not applied), `bible` (a style bible's
 words after the prompt: `"-"` for the active one, or its name; none by default; `concept`
@@ -310,7 +313,8 @@ for a CSV spec.
 | `pieces_list()`, `pieces_add_body(...)` | Base bodies, sets, slots; register a rigged humanoid as a body |
 | `pieces_run(body, set, mode, slots, outfit, concept, weapon, shield, style, seeds, choose)` | A set on a body, in the background, as the studio's Pieces page starts it; `choose` stops after the pictures |
 | `pieces_status()`, `pieces_pick(body, set, picks)` | The run's log and the pictures waiting (paths and scores); go on with your picks |
-| `pieces_fit`, `pieces_refit(body, set, to)`, `pieces_unreal(body, set, size_cm)`, `pieces_cancel()` | Fit again, carry a set to another body, export it for Unreal (worn pieces on the body's Skeleton, the weapon and shield as static meshes on the sockets `SOCKET_Weapon`/`SOCKET_Shield` of hand_r/hand_l, made by the Unreal check), stop the run |
+| `pieces_fit`, `pieces_refit(body, set, to)`, `pieces_unreal(body, set, size_cm)`, `pieces_cancel()` | Fit again, carry a set to another body, export it for Unreal (worn pieces on the body's Skeleton; each weapon and shield a static mesh of its own, pivot on its grip, a `grip` socket, its real length), stop the run |
+| `pieces_grip(body, set, slot, at, weapon_class, size_cm)` | Correct where a set's weapon or shield is held: `at` a point on its picture (`[x, y]`, fractions), its kind, its real length. The picture judge found it first; `pieces_unreal` then exports with it |
 | `pieces_materials(body, set, pieces)` | Correct the one material of pieces of a made set (`{"helmet": "leather"}`, `null` for the rule's again); `pieces_unreal` then exports with them |
 
 The review and pieces tools call the same code as the studio and the command line

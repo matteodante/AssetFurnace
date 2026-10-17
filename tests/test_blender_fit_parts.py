@@ -57,22 +57,13 @@ def test_a_paired_slot_takes_only_its_side():
     assert sorted(bf.slot_bones(ROLES, "helmet", None)) == ["b2", "b3"]
 
 
-def test_rigid_pieces_follow_the_first_head_bone_or_the_right_hand():
+def test_rigid_pieces_follow_the_first_head_bone_and_weapons_follow_none():
     assert bf.rigid_bone(ROLES, "helmet") == "b3"
-    assert bf.rigid_bone(ROLES, "weapon") == "b7"
-    assert bf.rigid_bone(ROLES, "shield") == "b10"  # the left forearm unless told the right
-    assert bf.rigid_bone(ROLES, "shield", side="R") == "b6"
+    # a weapon or shield is an asset of its own, never fitted (the user's decision, 17/10/2026)
+    assert bf.rigid_bone(ROLES, "weapon") is None and bf.rigid_bone(ROLES, "shield") is None
     assert bf.rigid_bone(ROLES, "torso") is None
     no_head = {b: r for b, r in ROLES.items() if r[0] != "head"}
     assert bf.rigid_bone(no_head, "helmet") == "b2"
-
-
-def test_the_weapon_follows_the_hand_not_a_finger():
-    """The fingers inherit the hand's role; a finger carrying more skin than the hand took the
-    weapon on the first real set (it followed middle_02_r). Only the head picks by skin."""
-    assert ROLES["b7"][0] == "hand" and ROLES["b8"][0] == "hand" and ROLES["b8"][1] > ROLES["b7"][1]
-    assert bf.rigid_bone(ROLES, "weapon", carried={"b7": 120, "b8": 900}) == "b7"
-    assert bf.rigid_bone(ROLES, "shield", carried={"b10": 50, "b11": 700}) == "b10"
 
 
 def test_the_head_bone_carrying_most_of_the_head_holds_the_helmet():

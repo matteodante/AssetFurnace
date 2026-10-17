@@ -34,7 +34,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import shutil
 import subprocess
 import sys
@@ -55,12 +54,15 @@ OUTPUT_ROOT = REPO / "output" / "unreal"
 BLENDER_TIMEOUT = 3600  # seconds; a reshape takes under a minute, a hung Blender would block forever
 
 
-def parse_socket(text: str) -> dict[str, str]:
-    """`SOCKET_Weapon=hand_r` -> {"name": "SOCKET_Weapon", "bone": "hand_r"}."""
-    name, _, bone = str(text).partition("=")
-    if not (name.strip() and bone.strip()):
-        raise ValueError("a socket is NAME=BONE, like SOCKET_Weapon=hand_r")
-    return {"name": name.strip(), "bone": bone.strip()}
+def read_grip(path: Path) -> dict:
+    """A grip record (`slot_parts/grip.py`): its point and axis on the model."""
+    try:
+        record = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"{path} is not a grip record: {exc}") from None
+    if not isinstance(record, dict) or not record.get("point"):
+        raise ValueError(f"{path} has no grip yet: place it with slot_parts.py grip")
+    return record
 
 
 def default_collision(kind: str) -> str:
@@ -78,13 +80,12 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
          out_dir: Path | None = None, lods: list[Path] | None = None, collision: str | None = None,
          body: Path | None = None, animations: list[Path] | None = None, tint: Path | None = None,
          forward: tuple[float, float, float] | None = None, body_name: str | None = None,
-         material: str | None = None, two_sided: bool | None = None,
-         socket: dict | None = None) -> dict[str, Any]:
+         material: str | None = None, two_sided: bool | None = None, grip: dict | None = None) -> dict[str, Any]:
     """Check the request and work out names, files and the Blender job. No side effects.
 
-    `socket` ({"name", "bone"}) makes an object held in a hand: a static mesh in the body's
-    own space (`body` is required), which Unreal hangs from that socket of the body's
-    skeleton, made at import (`unreal_import_check.py`)."""
+    `grip` (a weapon's or shield's, `image_to_3dlab/slot_parts/grip.py`: its `point` and `axis` on
+    the model, glTF frame) puts the pivot there, the blade or head along +Z, and a `grip` socket
+    on it; the size is then the real length (`measure` longest)."""
     source = Path(source)
     material = piece_materials.check(material) if material is not None else None
     kind = up.KIND_ALIASES.get(kind, kind)
@@ -97,19 +98,20 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
     collision = collision or default_collision(kind)
     if kind == "prop" and collision not in up.COLLISIONS:
         raise ValueError(f"--collision must be one of {', '.join(up.COLLISIONS)}")
-    if socket is not None:
-        if kind != "prop" or body is None:
-            raise ValueError("an object on a socket is a static mesh (kind prop) held by a body: give --body")
-        if not (re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", str(socket.get("name", "")))
-                and str(socket.get("bone", "")).strip()):
-            raise ValueError("the socket needs a name (SOCKET_Weapon) and the bone it is on (hand_r)")
-        socket = {"name": str(socket["name"]), "bone": str(socket["bone"])}
     if kind == "equipment" and body is None:
         raise ValueError("equipment needs --body, the rigged GLB it was cut from")
-    if kind != "equipment" and body is not None and socket is None:
-        raise ValueError("--body is only for equipment, or an object on a socket")
+    if kind != "equipment" and body is not None:
+        raise ValueError("--body is only for equipment")
     if kind == "prop" and animations:
         raise ValueError("objects carry no animations")
+    if grip is not None:
+        if kind != "prop":
+            raise ValueError("a grip is a weapon's or shield's: an object (--kind prop)")
+        numbers = [grip.get(key) for key in ("point", "axis")]
+        if not all(isinstance(v, list | tuple) and len(v) == 3 and all(isinstance(c, int | float) for c in v)
+                   for v in numbers):
+            raise ValueError("the grip needs its point and axis on the model (slot_parts/grip.py)")
+        grip = {"point": [float(c) for c in numbers[0]], "axis": [float(c) for c in numbers[1]]}
     for path in [source, *(lods or []), *(animations or []), *([body] if body else []), *([tint] if tint else [])]:
         if not Path(path).is_file():
             raise ValueError(f"{path} does not exist")
@@ -144,7 +146,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
         "source": str(source.resolve()), "kind": kind, "base": base, "size_cm": float(size_cm), "measure": measure,
         "lods": [str(p.resolve()) for p in lods], "collision": collision if kind == "prop" else "none",
         "body": str(Path(body).resolve()) if body else None,
-        "held": socket,
+        "grip": grip,
         "animations": [{"path": str(p.resolve()), "name": up.clip_name(p.stem, prefix, base)} for p in animations],
         "source_animation": up.clip_name(source.stem, prefix, base),
         "forward": list(forward) if forward else [0.0, -1.0, 0.0],
@@ -254,16 +256,16 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
                   out_dir: Path | None = None, lods: list[Path] | None = None, collision: str | None = None,
                   body: Path | None = None, animations: list[Path] | None = None, tint: Path | None = None,
                   forward: tuple[float, float, float] | None = None, body_name: str | None = None,
-                  material: str | None = None, socket: dict | None = None,
-                  blender: Path | None = None, run=subprocess.run,
-                  log=lambda message: print(message), two_sided: bool | None = None) -> dict[str, Any]:
+                  material: str | None = None, blender: Path | None = None, run=subprocess.run,
+                  log=lambda message: print(message), two_sided: bool | None = None,
+                  grip: dict | None = None) -> dict[str, Any]:
     """Export one asset for Unreal. Returns the paths written, the problems found and
     the sidecar. Raises ValueError for a bad request and RuntimeError when Blender fails."""
     from image_to_3dlab.blender import find_blender, missing_help
 
     p = plan(source, kind=kind, size_cm=size_cm, measure=measure, name=name, out_dir=out_dir, lods=lods,
              collision=collision, body=body, animations=animations, tint=tint, forward=forward,
-             body_name=body_name, material=material, two_sided=two_sided, socket=socket)
+             body_name=body_name, material=material, two_sided=two_sided, grip=grip)
     kind = p["job"]["kind"]
     blender = blender or find_blender()
     if blender is None:
@@ -304,10 +306,10 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
                          humanoid=bool(report.get("humanoid")), skeleton_from=p["skeleton_from"],
                          animations=report.get("animations", []), tint=p["tint"].name if p["tint"] else None,
                          problems=problems, orm=any(m.get("orm") for m in textures["materials"].values()),
+                         grip=bool(p["job"]["grip"]),
                          facing_bones=facing_bones(_family(Path(source)) if kind == "creature" else None,
                                                    report.get("bones") or {}),
-                         opacity_mask="vertex_alpha" if report.get("masked_materials") else None,
-                         socket=p["job"]["held"])
+                         opacity_mask="vertex_alpha" if report.get("masked_materials") else None)
     if p["materials_record"]:
         record = p["out_dir"] / f"{p['names']['mesh']}.materials.json"
         shutil.copyfile(p["materials_record"], record)
@@ -341,11 +343,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="objects: LOD1, LOD2... GLBs (default: <name>_LODn.glb beside a _LOD0 source)")
     parser.add_argument("--collision", choices=up.COLLISIONS,
                         help="objects: box (default), convex, or unreal (Interchange makes its own convex hull)")
-    parser.add_argument("--body", type=Path,
-                        help="equipment, or an object on a --socket: the rigged body GLB it belongs to")
-    parser.add_argument("--socket", metavar="NAME=BONE",
-                        help="an object held by --body, hung from this socket of its skeleton "
-                             "(SOCKET_Weapon=hand_r), made by unreal_import_check.py")
+    parser.add_argument("--body", type=Path, help="equipment: the rigged body GLB it belongs to")
     parser.add_argument("--body-name", help="equipment: the body's --name, if it was exported with one")
     parser.add_argument("--animations", type=Path, nargs="*", default=[], help="creatures: more animated GLBs")
     parser.add_argument("--tint", type=Path,
@@ -353,6 +351,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "none: no tint mask)")
     parser.add_argument("--forward", type=float, nargs=3, metavar=("X", "Y", "Z"),
                         help="non-humanoid creatures: which way the model faces in Blender (default 0 -1 0)")
+    parser.add_argument("--two-sided", action="store_const", const=True, default=None,
+                        help="draw both faces of every triangle (default: cloth two sided, the rest one sided)")
+    parser.add_argument("--grip", type=Path, help="a weapon or shield: its grip record (grip.json): the pivot "
+                                                   "there, a grip socket, the blade up")
     parser.add_argument("--material", choices=piece_materials.MATERIALS,
                         help="the one material of this piece: sets its roughness and metal (game materials)")
     parser.add_argument("--blender", type=Path, help="Blender executable (default: found like Finish finds it)")
@@ -363,19 +365,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    if args.check_in_unreal and (up.KIND_ALIASES.get(args.kind, args.kind) == "equipment" or args.socket):
-        print("export_unreal: equipment and held objects are checked on their body's Skeleton, so check both "
-              "exports together:\n"
+    if args.check_in_unreal and up.KIND_ALIASES.get(args.kind, args.kind) == "equipment":
+        print("export_unreal: equipment is checked on its body's Skeleton, so check both exports together:\n"
               "    python scripts/unreal_import_check.py BODY_EXPORT_DIR PART_EXPORT_DIR", file=sys.stderr)
         return 2
     try:
-        socket = parse_socket(args.socket) if args.socket is not None else None
         result = export_unreal(args.source, kind=args.kind, size_cm=args.size_cm, measure=args.measure,
                                name=args.name, out_dir=args.out, lods=args.lods, collision=args.collision,
                                body=args.body, body_name=args.body_name, animations=args.animations,
                                tint=False if args.tint is not None and str(args.tint).lower() == "none" else args.tint,
                                forward=tuple(args.forward) if args.forward else None, material=args.material,
-                               blender=args.blender, **({"socket": socket} if socket else {}))
+                               blender=args.blender, two_sided=args.two_sided,
+                               **({"grip": read_grip(args.grip)} if args.grip else {}))
     except (ValueError, RuntimeError) as exc:
         print(f"export_unreal: {exc}", file=sys.stderr)
         return 2

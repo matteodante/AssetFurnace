@@ -40,7 +40,6 @@ from image_to_3dlab import matte as _matte
 from image_to_3dlab import moge_fov as _moge
 from image_to_3dlab import prompt_rewrite as _prompt_rewrite
 from image_to_3dlab.host import AMD, APPLE, NVIDIA
-from image_to_3dlab.provenance import QWEN_OUTPUT_RIGHTS
 from image_to_3dlab.style import models as _style_models
 
 HF_HUB_DIR = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"

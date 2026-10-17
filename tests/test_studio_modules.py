@@ -509,7 +509,8 @@ def test_create_makes_a_fresh_picture_each_time_unless_a_seed_is_kept():
       const form = m.planForm({ steps: ['picture'], description: 'x', pictureSettings: kept });
       console.log(JSON.stringify({ fresh, kept, sent: JSON.parse(form.get('picture_settings')) }));""")
     assert out["fresh"] == {"width": 1024, "height": 1024, "steps": 16, "seed": 1073741823}
-    assert out["kept"] == {"width": 768, "height": 768, "steps": 50, "seed": 7}  # odd sizes fall back, steps are capped
+    # an odd size falls back to the card's square 2048, steps are capped
+    assert out["kept"] == {"width": 2048, "height": 2048, "steps": 50, "seed": 7}
     assert out["sent"] == out["kept"]
 
 
