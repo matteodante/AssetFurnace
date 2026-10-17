@@ -81,11 +81,62 @@ def parse(output: Path, data: dict) -> dict:
     name = data.get("name")
     if name:
         request["name"] = up.base_name(str(name))
+    request.update(options(output, data, kind))
     # One material per piece: the person's choice, else the rule's from the model's prompt.
     asked = data.get("material")
     request["material"] = (piece_materials.check(asked) if asked
                            else proposal(request["source"], kind)["material"])
     return request
+
+
+# Facing as the panel names it, in Blender axes (what --forward takes): "auto" is the
+# creature family's frame, else -Y.
+FACINGS = {"-y": (0.0, -1.0, 0.0), "y": (0.0, 1.0, 0.0), "x": (1.0, 0.0, 0.0), "-x": (-1.0, 0.0, 0.0)}
+
+
+def options(output: Path, data: dict, kind: str) -> dict:
+    """The export's other settings, as the command line and the batches have them; "auto"
+    (or nothing) leaves each to the export's own default."""
+    out: dict = {}
+    collision = data.get("collision") or "auto"
+    if collision != "auto":
+        if kind != "prop" or collision not in up.COLLISIONS:
+            raise ValueError(f"collision is for objects: {', '.join(up.COLLISIONS)} or auto")
+        out["collision"] = collision
+    lods = data.get("lods") or "auto"
+    if lods not in ("auto", "none"):
+        raise ValueError("detail levels are auto (the _LODn files beside the model) or none")
+    if lods == "none":
+        out["lods"] = []
+    tint = data.get("tint") or "auto"
+    if tint == "none":
+        out["tint"] = False
+    elif isinstance(tint, dict):
+        try:
+            out["tint"] = resolve_picture(output, tint.get("file"))
+        except ValueError as exc:
+            raise ValueError(f"tint mask: {exc}") from None
+    elif tint != "auto":
+        raise ValueError("the tint mask is auto, none, or a picture in the Library")
+    forward = data.get("forward") or "auto"
+    if forward != "auto":
+        if forward not in FACINGS:
+            raise ValueError(f"facing is auto or one of {', '.join(FACINGS)}")
+        out["forward"] = FACINGS[forward]
+    if kind == "equipment" and data.get("body_name"):
+        out["body_name"] = up.base_name(str(data["body_name"]))
+    return out
+
+
+def resolve_picture(output: Path, relative) -> Path:
+    """A picture inside `output/`, as the Library spells it."""
+    if not isinstance(relative, str) or not relative or "\\" in relative or relative.startswith("/"):
+        raise ValueError("choose a picture in the Library")
+    root = output.resolve()
+    path = (root / relative).resolve()
+    if not path.is_relative_to(root) or path.suffix.lower() not in (".png", ".jpg", ".jpeg") or not path.is_file():
+        raise ValueError(f"{relative} is not a picture in the Library")
+    return path
 
 
 def proposal(source: Path, kind: str) -> dict:

@@ -6,7 +6,7 @@ import { createModelViewport, disposeModelViewport } from '../components/model-v
 import { closeSheet } from './pages.js';
 import {
   STATE_LABELS, STATUS_LABELS, statusLabel, queueSections, summaryLine, checkRows, overlays, canDecide, canApprove, approveBlocker,
-  checkChoices, checksRequest,
+  checkChoices, checksRequest, thresholdRows,
 } from './review-model.js';
 
 const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -57,6 +57,7 @@ export async function openReview(stage, { assets, onPick, onCount }) {
         ${choices.map((c, i) => `<option value="${i}">${esc(choiceLabel(c))}</option>`).join('')}</select></label>
       <label class="field">Kind<select data-k="profile"><option value="prop">Prop</option><option value="creature">Creature</option><option value="equipment_part">Equipment part</option></select></label>
       <label class="field">Height in metres (optional)<input data-k="height" type="number" min="0" step="0.01" placeholder="1.8"></label>
+      <details class="adv rv-thresholds"><summary>Thresholds</summary><p class="meta">The profile's values; change one to check against it this time.</p><div data-thresholds class="rv-grid"></div></details>
       <button class="primary" data-run>Run the checks</button><p class="meta" data-status aria-live="polite"></p>
     </details>
     <div class="rv-queue" aria-live="polite"><p class="meta">Loading…</p></div></div>`;
@@ -64,6 +65,20 @@ export async function openReview(stage, { assets, onPick, onCount }) {
   el.querySelector('[data-close]').addEventListener('click', () => el.remove());
   el.addEventListener('keydown', (e) => { if (e.key === 'Escape') el.remove(); });
   el.querySelector('[data-close]').focus();
+
+  let currentThresholds = [];
+  const loadThresholds = async () => {
+    const profile = el.querySelector('[data-k="profile"]').value;
+    const grid = el.querySelector('[data-thresholds]');
+    try {
+      const response = await fetch(`/api/review/thresholds?profile=${encodeURIComponent(profile)}`);
+      currentThresholds = (await response.json()).thresholds || [];
+    } catch { currentThresholds = []; }
+    grid.innerHTML = thresholdRows(currentThresholds).map((r) => `<label class="field">${esc(r.label)}<input type="number" step="any" data-threshold="${esc(r.name)}" value="${esc(r.value)}"></label>`).join('')
+      || '<p class="meta">The thresholds could not be read.</p>';
+  };
+  el.querySelector('[data-k="profile"]')?.addEventListener('change', loadThresholds);
+  if (choices.length) loadThresholds();
 
   const box = el.querySelector('.rv-queue');
   const draw = (payload) => {
@@ -85,7 +100,9 @@ export async function openReview(stage, { assets, onPick, onCount }) {
     e.target.disabled = true;
     status.textContent = 'Checking… a few seconds, up to a minute for a raw model.';
     try {
-      const item = await postJson('/api/review/checks', checksRequest(choice, { reference, profile: value('profile'), height: value('height') }));
+      const edited = Object.fromEntries([...el.querySelectorAll('[data-threshold]')].map((i) => [i.dataset.threshold, i.value]));
+      const item = await postJson('/api/review/checks', checksRequest(choice, { reference, profile: value('profile'), height: value('height'),
+        thresholds: currentThresholds, edited }));
       el.remove();
       onPick(item.key);
     } catch (error) {

@@ -13,7 +13,7 @@ Writes one folder (default `output/unreal/<Name>__<time>/`) holding:
 - `<mesh>.unreal.json`: how to import it and what Unreal should measure afterwards;
 - `<mesh>.provenance.json`: the licences of everything it was made from;
 - `T_<Name>_Tint.png` and `<mesh>.materials.json` when the material step left a tint mask and
-  its record beside the model (or `--tint` names a mask).
+  its record beside the model (or `--tint` names a mask; `--tint none` ships none).
 
 `--material` gives the piece its one material (`metal`, `leather`, `cloth`...): its roughness and
 metal go into the ORM (`image_to_3dlab/piece_materials.py`).
@@ -92,7 +92,9 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
     for path in [source, *(lods or []), *(animations or []), *([body] if body else []), *([tint] if tint else [])]:
         if not Path(path).is_file():
             raise ValueError(f"{path} does not exist")
-    if tint is None:
+    if tint is False:
+        tint = None   # asked for none: no mask, even if one lies beside the model
+    elif tint is None:
         # The material step leaves `T_<model>_Tint.png` beside the model; only that one is
         # taken, never a mask that belongs to another model in the same folder.
         own = source.with_name(f"T_{source.stem}_Tint.png")
@@ -318,7 +320,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--body-name", help="equipment: the body's --name, if it was exported with one")
     parser.add_argument("--animations", type=Path, nargs="*", default=[], help="creatures: more animated GLBs")
     parser.add_argument("--tint", type=Path,
-                        help="a tint mask to ship as T_<Name>_Tint.png (default: the one T_*_Tint.png beside the model)")
+                        help="a tint mask to ship as T_<Name>_Tint.png (default: the one T_*_Tint.png beside the model; "
+                             "none: no tint mask)")
     parser.add_argument("--forward", type=float, nargs=3, metavar=("X", "Y", "Z"),
                         help="non-humanoid creatures: which way the model faces in Blender (default 0 -1 0)")
     parser.add_argument("--material", choices=piece_materials.MATERIALS,
@@ -338,7 +341,8 @@ def main(argv=None) -> int:
     try:
         result = export_unreal(args.source, kind=args.kind, size_cm=args.size_cm, measure=args.measure,
                                name=args.name, out_dir=args.out, lods=args.lods, collision=args.collision,
-                               body=args.body, body_name=args.body_name, animations=args.animations, tint=args.tint,
+                               body=args.body, body_name=args.body_name, animations=args.animations,
+                               tint=False if args.tint is not None and str(args.tint).lower() == "none" else args.tint,
                                forward=tuple(args.forward) if args.forward else None, material=args.material,
                                blender=args.blender)
     except (ValueError, RuntimeError) as exc:

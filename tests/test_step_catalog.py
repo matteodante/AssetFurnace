@@ -28,7 +28,7 @@ def test_the_catalogue_is_plain_json_for_the_studio_and_agents():
     finish = next(step for step in described if step["name"] == "finish")
     faces = next(param for param in finish["params"] if param["name"] == "faces")
     assert faces == {"name": "faces", "type": "int", "default": 40000, "range": [1000, 200000],
-                     "choices": None, "row": True, "help": faces["help"], "flag": None}
+                     "choices": None, "row": True, "help": faces["help"], "flag": None, "off": False}
     assert finish["skip"] and finish["replace"] == ["glb"]
 
 

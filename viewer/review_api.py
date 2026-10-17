@@ -2,7 +2,9 @@
 
     GET  /api/review/queue                 what waits, plus the latest decisions
     GET  /api/review/item/<key>            one asset: state, notes, history, its checks report
-    POST /api/review/checks                {"asset": <path under output/>, "key", "reference", "profile", "height"}
+    GET  /api/review/thresholds?profile=   a profile's number thresholds, for the sheet to edit
+    POST /api/review/checks                {"asset": <path under output/>, "key", "reference", "profile", "height",
+                                            "set": {"budget.faces.max": 20000}}
     POST /api/review/item/<key>/decision   {"decision": "approved"|"sent_back", "note": "..."}
 
 The record is `output/review-log.jsonl` (`image_to_3dlab/checks/review.py`); a decision is
@@ -101,8 +103,34 @@ def run_checks_request(output: Path, body: dict) -> dict:
     numbers = {k: float(body[k]) for k in ("height", "width", "depth") if body.get(k) not in (None, "")}
     asset = Asset(glb=glb, key=body.get("key"), reference=reference, reference_numbers=numbers or None,
                   output_root=output)
-    report, _ = review.check_and_enqueue(asset, log=_log(output), profile=profile, key=body.get("key"))
+    report, _ = review.check_and_enqueue(asset, log=_log(output), profile=profile, key=body.get("key"),
+                                         overrides=overrides_of(body.get("set")))
     return item_payload(output, report["asset_key"])
+
+
+def overrides_of(given) -> dict | None:
+    """The sheet's thresholds, `{"budget.faces.max": 20000}` as `--set` takes them."""
+    from image_to_3dlab.checks.registry import load_profile, parse_overrides
+
+    if not given:
+        return None
+    if not isinstance(given, dict):
+        raise TypeError("set must be an object of check.setting: value")
+    overrides = parse_overrides([f"{name}={json.dumps(value)}" for name, value in given.items()])
+    load_profile("prop", overrides)   # a misspelt check or setting is refused, never ignored
+    return overrides
+
+
+def thresholds(profile: str) -> list[dict]:
+    """The number thresholds of a profile, one row per check and setting, for the sheet to
+    edit. The licence check's terms are not thresholds and are left out."""
+    from image_to_3dlab.checks.registry import load_profile
+
+    checks = load_profile(profile)["checks"]
+    return [{"check": check, "setting": setting, "value": value}
+            for check, settings in sorted(checks.items()) if not check.startswith("license.")
+            for setting, value in sorted(settings.items())
+            if isinstance(value, (int, float)) and not isinstance(value, bool)]
 
 
 def decide_request(output: Path, key: str, body: dict) -> dict:
@@ -156,6 +184,11 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
             raise PermissionError("Use this Studio page to review assets")
         if not mutation and parts == ["api", "review", "queue"]:
             handler._send_json(200, queue_payload(output))
+        elif not mutation and parts == ["api", "review", "thresholds"]:
+            from urllib.parse import parse_qs
+
+            name = (parse_qs(url.query).get("profile") or ["prop"])[0]
+            handler._send_json(200, {"profile": name, "thresholds": thresholds(name)})
         elif not mutation and len(parts) == 4 and parts[2] == "item":
             handler._send_json(200, item_payload(output, parts[3]))
         elif mutation and parts == ["api", "review", "checks"]:

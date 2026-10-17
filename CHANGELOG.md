@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Studio: Export for Unreal has "More options" (name, collision and detail levels for
+  objects, tint mask auto or none, facing), and the review sheet's "Check an asset" can
+  change the profile's thresholds for that run, as `--set` does. `export_unreal.py --tint
+  none` and a batch's `"tint": false` ship no tint mask.
 - Batches draw concepts from a reference: the `concept` step (feature 2), with candidates
   and picks like `picture`; agents reach it through `run_steps`. The studio, the command
   line and the step build the request with one `image_to_3dlab/concept/requests.py`. A pick
