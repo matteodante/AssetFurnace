@@ -191,8 +191,9 @@ def _span(span: tuple[float, float]) -> str:
     return f"above {low}" if high == math.inf else f"from {low} to {high}"
 
 
-def value_problem(param: Param, value: Any) -> str | None:
-    """Why `value` will not do for `param`, or None. A None value means "the default"."""
+def value_problem(param: Param, value: Any, files: bool = True) -> str | None:
+    """Why `value` will not do for `param`, or None. A None value means "the default".
+    `files=False` checks a file option's shape but not that the file is there."""
     if value is None:
         return None
     name, kind = param.name, param.type
@@ -219,19 +220,23 @@ def value_problem(param: Param, value: Any) -> str | None:
         if not isinstance(value, dict):
             return f"{name} must be an object, not {value!r}"
     elif kind == "file":
-        if not isinstance(value, str) or not Path(value).is_file():
+        if not isinstance(value, str):
+            return f"{name} must be a file path, not {value!r}"
+        if files and not Path(value).is_file():
             return f"{name}: file does not exist: {value}"
     elif kind == "files":
         if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
             return f"{name} must be a list of file paths, not {value!r}"
         missing = [item for item in value if not Path(item).is_file()]
-        if missing:
+        if files and missing:
             return f"{name}: file does not exist: {', '.join(missing)}"
     return None
 
 
-def check(name: str, options: dict[str, Any]) -> list[str]:
-    """What is wrong with a step's options: unknown names, wrong types, out of range."""
+def check(name: str, options: dict[str, Any], files: bool = True) -> list[str]:
+    """What is wrong with a step's options: unknown names, wrong types, out of range, and
+    with `files`, files that are not there. A batch checks the files only for the steps it
+    will run: a finished row does not need the body it was exported with any more."""
     spec = get(name)
     known = {param.name: param for param in spec.options}
     problems = []
@@ -240,7 +245,7 @@ def check(name: str, options: dict[str, Any]) -> list[str]:
         problems.append(f"unknown {name} option(s) {', '.join(unknown)}; options are "
                         f"{', '.join(sorted(known))}")
     problems += [problem for key, value in options.items() if key in known
-                 for problem in [value_problem(known[key], value)] if problem]
+                 for problem in [value_problem(known[key], value, files)] if problem]
     return problems
 
 
