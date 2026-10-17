@@ -352,6 +352,21 @@ questa lista prima del resoconto finale.
 | Audit 6: `pixal3d_generate.py` cancella anche .ply e __matted.png una volta usati (811 MB inutili nel set vero) | unito (#114): .ply tolto; il ritaglio resta come solo contorno, perché la camera di corpo e arma lo legge |
 | Audit 7: export Unreal senza avvisi del validatore glTF: tangenti scritte (MESH_PRIMITIVE_GENERATED_TANGENT_SPACE), mesh skinnata come nodo radice (NODE_SKINNED_MESH_NON_ROOT) | unito (#115; corpo ed elmo del cavaliere: 0 errori, 0 avvisi; in UE tutto PASS) |
 | Lint F (ruff) entrato in main con #84, #87, #88 | unito (#112) |
+| Review finale 2 (coordinatore, d6f7057..106fd90), lotti: `validate_run_policy` senza `commercial_intent` (un lotto commerciale passa il cancello di Qwen) | aperto |
+| Review finale 2, lotti: i controlli misurano la sorgente non scalata contro la misura dell'export | aperto |
+| Review finale 2, lotti: lo staging del concept sovrascritto da un riferimento (`drawn_` che collide) | aperto |
+| Review finale 2, lotti: concept → generate → finish rifiutato dal preflight | aperto |
+| Review finale 2, lotti: i LOD trovati da soli fuori dall'impronta (un LOD cambiato non riesporta) | aperto |
+| Review finale 2, GPU: annullare il rig su macOS/Linux lascia vivo SkinTokens | aperto |
+| Review finale 2, GPU: Pixal3D e il giudice lasciano il lucchetto con il figlio ancora vivo | aperto |
+| Review finale 2, GPU: il recupero di un lucchetto stantio può togliere quello di un lavoro vivo | aperto |
+| Review finale 2, studio: un'immagine annullata aspetta e riscrive comunque il prompt | aperto |
+| Review finale 2, pezzi: due avvii insieme senza prenotazione (studio e MCP) | aperto |
+| Review finale 2, pezzi: il concept in cache ignora l'immagine del corpo | aperto |
+| Review finale 2, pezzi: solo armi in modo 2 chiede un concept (API dello studio) | aperto |
+| Review finale 2, MCP: i link di una cartella di rete non si leggono con `resources/read` | aperto |
+| Review finale 2, installer: torch 2.14.1 chiesto all'indice cu128, che arriva a 2.11.0 su Windows | aperto |
+| Review finale 2, installer: il ripiego su `requirements.txt` va in errore | aperto |
 
 ## Seguiti
 
