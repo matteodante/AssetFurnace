@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Batches, from the second final review:
+  - a batch with commercial intent is refused when it draws with Qwen-Image (research-only),
+    as the licence asks;
+  - the checks measure the size on the model as exported, never the source at its own size;
+  - a reference named like the staged concept no longer overwrites it;
+  - a row that starts from a concept passes Finish's preflight;
+  - an edited detail level found beside the model reruns its export.
 - The Unreal export passes the glTF validator without warnings: it writes a normal map's
   tangents, and a skinned mesh is a root node as the glTF spec asks (on the first real set
   the validator warned of both). The knight's body and helmet export with 0 errors and 0

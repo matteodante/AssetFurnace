@@ -129,12 +129,14 @@ def fake_checks(monkeypatch):
 def test_checks_use_the_kinds_profile_the_row_size_and_its_picture(tmp_path, fake_checks):
     row = _row(tmp_path, kind="equipment")
     ctx = _context(tmp_path, row, "checks", {"set": {"budget.faces.max": 20000}})
+    # the row's size is the export's: the model as exported is what is measured against it
+    exported = tiny_glb(ctx.row_dir / "export_unreal" / "SK_Cat.glb", "unreal")
     result = checks_step.run(ctx)
     (call,) = fake_checks
     assert call["profile"] == "equipment_part"
     assert call["overrides"] == {"budget.faces": {"max": 20000}}
     asset = call["asset"]
-    assert asset.glb == ctx.asset and asset.key == "SM_Cat" and asset.provenance == ctx.sidecar
+    assert asset.glb == exported and asset.key == "SM_Cat"
     assert asset.reference == row.images[0]
     assert asset.reference_numbers == {"height": 0.9}
     report = ctx.step_dir / "SM_Cat.checks.json"

@@ -62,9 +62,18 @@ def run(ctx: StepContext) -> StepResult:
     options = ctx.options
     numbers = {axis: options[axis] for axis in ("height", "width", "depth")
                if options.get(axis) is not None}
+    glb, record = ctx.asset, ctx.sidecar
     if "height" not in numbers and ctx.row.size_cm is not None and (ctx.row.measure or "height") == "height":
-        numbers["height"] = ctx.row.size_cm / 100
-    asset = Asset(glb=ctx.asset, key=ctx.row.id, provenance=ctx.sidecar,
+        # size_cm is the export's: the model as exported is measured against it, the source
+        # (as generated, any size) never is
+        exported = (sorted((ctx.row_dir / "export_unreal").glob("*.glb"))
+                    if "export_unreal" in ctx.row.steps else [])
+        if exported:
+            glb = exported[0]
+            sidecar = glb.with_suffix(".provenance.json")
+            record = sidecar if sidecar.is_file() else record
+            numbers["height"] = ctx.row.size_cm / 100
+    asset = Asset(glb=glb, key=ctx.row.id, provenance=record,
                   reference=_reference(ctx) if options.get("reference", True) else None,
                   reference_numbers=numbers or None)
     try:

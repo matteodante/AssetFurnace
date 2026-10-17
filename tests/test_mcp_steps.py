@@ -49,13 +49,13 @@ def test_run_steps_is_a_batch_of_one_row(tmp_path, monkeypatch, launched):
     install_fake_generator(monkeypatch)
     result = mcp_server.run_steps("SM_Barrel", ["picture", "generate"], prompt="a wooden barrel",
                                   backend="fake", options={"picture": {"count": 3, "seed": 5}},
-                                  use_case="game", commercial=True)
+                                  use_case="game", commercial=False)   # Qwen-Image is research-only
     assert result["started"] is True, result
     spec = json.loads(Path(result["spec"]).read_text(encoding="utf-8"))
     (row,) = spec["rows"]
     assert row == {"id": "SM_Barrel", "steps": ["picture", "generate"], "kind": "prop",
                    "prompt": "a wooden barrel", "backend": "fake", "picture": {"count": 3, "seed": 5}}
-    assert spec["use_case"] == "game" and spec["commercial_intent"] is True
+    assert spec["use_case"] == "game" and spec["commercial_intent"] is False
     assert launched[0][launched[0].index("--run-batch") + 1] == result["spec"]
     assert result["directory"] == str(tmp_path / "batches" / "SM_Barrel")
 

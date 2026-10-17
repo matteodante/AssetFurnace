@@ -163,10 +163,21 @@ class BatchRow:
         """The step options, with the files they name by content: a body or a LOD
         replaced in place is a change, the same files reached by another path are not."""
         out = {}
-        for name, options in self.options.items():
+        # an export with no options of its own still depends on the detail levels it finds
+        steps = {**({"export_unreal": {}} if "export_unreal" in self.steps else {}), **self.options}
+        for name, options in steps.items():
             options = dict(options)
             for key in step_catalog.file_options(name, options):
                 options[key] = _file_digests(options[key])
+            if name == "export_unreal" and "lods" not in options and self.asset is not None:
+                # the _LODn files beside the model, found by the export itself when none are named
+                from image_to_3dlab.unreal_profile import sibling_lods
+
+                found = sibling_lods(self.asset)
+                if found:
+                    options["found_lods"] = _file_digests([str(p) for p in found])
+            if not options and name not in self.options:
+                continue   # nothing it depends on beyond what every step does: as before
             if options.get("bible"):   # the bible by what it says (for this kind): edited, or another active one, is a change
                 options["bible"] = {"bible": _bible_digest(options["bible"]), "kind": self.kind}
             out[name] = options
@@ -598,7 +609,8 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
             try:
                 validate_run_policy(backend, resolved_intent["use_case"],
                                     resolved_intent["distribution"],
-                                    policy.get("allow_conditional", True))
+                                    policy.get("allow_conditional", True),
+                                    commercial_intent=bool(resolved_intent.get("commercial_intent")))
             except ValueError as exc:
                 problems.append(f"row {row.id}: license policy for {what}: {exc}")
         for step, files in row.replace.items():

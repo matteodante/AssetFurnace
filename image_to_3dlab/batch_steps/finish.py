@@ -65,7 +65,7 @@ def preflight(rows) -> list[str]:
                      for problem in step_catalog.check("finish", row.options.get("finish", {}))]
     for row in rows:
         image = row.images[0] if row.images else (row.concept or recorded_image(row.asset))
-        if image is None and "picture" not in row.steps:   # a row from words: its picture step draws it
+        if image is None and not {"picture", "concept"} & set(row.steps):   # a step before draws it
             problems.append(f"row {row.id}: finish needs the source image: give the row "
                             "an image, or an asset whose provenance names one that exists")
         elif image is not None and "generate" not in row.steps:   # generate checks its own input
