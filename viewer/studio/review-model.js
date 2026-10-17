@@ -115,11 +115,25 @@ export function approveBlocker(item) {
   return 'The licence check has not run: run every check before approving.';
 }
 
-/** The request body for POST /api/review/checks. `reference` is a path under output/, or ''. */
-export function checksRequest(choice, { reference = '', profile = 'prop', height = '' } = {}) {
+/** The request body for POST /api/review/checks. `reference` is a path under output/, or ''.
+ *  `thresholds` are the profile's (GET /api/review/thresholds) and `edited` the sheet's
+ *  inputs by "check.setting": only the ones changed are sent, as --set would take them. */
+export function checksRequest(choice, { reference = '', profile = 'prop', height = '', thresholds = [], edited = {} } = {}) {
   const body = { asset: choice.file, key: choice.id, profile };
   if (reference) body.reference = reference;
   const metres = Number(height);
   if (height !== '' && Number.isFinite(metres) && metres > 0) body.height = metres;
+  const set = {};
+  for (const row of thresholds) {
+    const name = `${row.check}.${row.setting}`;
+    const value = Number(edited[name]);
+    if (edited[name] !== undefined && edited[name] !== '' && Number.isFinite(value) && value !== row.value) set[name] = value;
+  }
+  if (Object.keys(set).length) body.set = set;
   return body;
+}
+
+/** The thresholds as the sheet's inputs, one per check and setting. */
+export function thresholdRows(thresholds) {
+  return thresholds.map((r) => ({ name: `${r.check}.${r.setting}`, label: `${r.check} · ${r.setting.replace(/_/g, ' ')}`, value: r.value }));
 }

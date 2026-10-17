@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Studio: Export for Unreal has "More options" (name, collision and detail levels for
+  objects, tint mask auto or none, facing), and the review sheet's "Check an asset" can
+  change the profile's thresholds for that run, as `--set` does. `export_unreal.py --tint
+  none` and a batch's `"tint": false` ship no tint mask.
 - Studio: every finished step (3D model, Finish, Rig) has "Redo…", which opens it with the
   values it was made with and makes only that step again; the steps before stay, the old
   result stays in the Library, and a later step made from the old one says so. The 3D seed

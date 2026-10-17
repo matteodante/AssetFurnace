@@ -93,7 +93,7 @@ default), `atlas`, `texture_size`, `metallic`, `roughness`, `ior`, `voxel`, `ski
 
 `export_unreal` settings: `name` (default the row's id), `collision` (`box`, `convex`,
 `unreal`; objects), `lods` (files, `[]` for none; default the `_LODn` files beside the
-model), `tint`, `forward` (three numbers, Blender axes), `body` and `body_name`
+model), `tint` (`false` for none), `forward` (three numbers, Blender axes), `body` and `body_name`
 (equipment, which needs its body), `animations` (creatures). File paths are relative to
 the spec. `checks` settings: `profile` (default from `kind`), `set` (thresholds, as
 `--set`: `{"budget.faces.max": 20000}`), `reference` (compare with the row's picture,
