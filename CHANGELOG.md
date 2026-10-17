@@ -356,6 +356,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces: the outfit concept names every chosen piece, as the design asks. A
+  helmet the outfit's words left out was not drawn, so its cut was the face and the piece
+  edit invented a helmet; the concept now adds the chosen pieces the outfit does not name,
+  in their own words when they have them.
 - Library names and hidden flags are never lost: two changes at once (a rename and a hide)
   no longer write over each other, the file is replaced whole so a crash cannot truncate it,
   and a damaged one is kept aside as `.bad-<time>` instead of being overwritten.
