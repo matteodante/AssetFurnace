@@ -331,6 +331,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Studio Batches page: a pick that is saved but whose batch cannot resume (its preflight
+  refuses) now says so, with the reasons, instead of leaving the row on "Pick one".
 - Batches: a batch made before per-step fingerprints no longer regenerates every row when
   `checks` joins its default steps or a row is edited; the row as it last ran is rebuilt
   from its spec copy and its still-valid steps are kept. A file named in a step's settings
