@@ -32,15 +32,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 
-import numpy as np
 from PIL import Image, UnidentifiedImageError
 
 import image_api
 from blender_edit_api import check_request
 
 from image_to_3dlab.blender import find_blender
-from image_to_3dlab.checks.silhouette import fit_mask, iou
-from image_to_3dlab.concept import edit, maps, prompts, sidecar
+from image_to_3dlab.concept import edit, maps, prompts, requests, sidecar
+from image_to_3dlab.concept.requests import reference_mask, result_mask  # noqa: F401 - the studio's names
 
 HEADER = "reference-concept"
 FOLDER = "concept"
@@ -158,91 +157,20 @@ def prepare(output: Path, source: str, kind: str, view: str = "front") -> dict[s
             "mask": _relative(output, mask) if mask else None}
 
 
-def _text(request: dict, key: str, label: str | None = None) -> str:
-    value = str(request.get(key) or "").strip()
-    if not value:
-        raise ValueError(f"the {label or key} is needed")
-    if len(value) > 400:
-        raise ValueError(f"the {label or key} is longer than 400 characters")
-    return value
-
-
 def build(output: Path, request: dict[str, Any]) -> dict[str, Any]:
-    """A request from the studio as the prompt, the pictures in order, and what the IoU is measured on."""
-    mode = request.get("mode")
-    if mode not in prompts.MODES:
+    """A request from the studio as the prompt, the pictures in order, and what the IoU is
+    measured on (`image_to_3dlab.concept.requests.plan`, once its pictures are found in the
+    output folder)."""
+    if request.get("mode") not in prompts.MODES:
         raise ValueError(f"the way is one of {', '.join(prompts.MODES)}")
-    depth = bool(request.get("depth"))
     shape = [inside(output, p) for p in request.get("shape") or []]
     style_refs = [inside(output, p) for p in request.get("style_refs") or []]
-    needed = prompts.shape_pictures(mode, depth=depth)
-    if len(shape) != needed:
-        raise ValueError(f"this way takes {needed} shape picture{'s' if needed > 1 else ''}, got {len(shape)}")
-    if len(shape) + len(style_refs) > edit.MAX_REFERENCES:
-        raise ValueError(f"at most {edit.MAX_REFERENCES} pictures in all")
-    style = str(request.get("style") or "").strip()[:400]
-    if mode == "redraw":
-        subject = _text(request, "subject")
-        prompt = prompts.redraw(subject, _text(request, "colours"), structure=request.get("structure") or "depth",
-                                parts=str(request.get("parts") or "")[:400], style=style)
-        name, against, fit = subject, shape[0], True
-    elif mode == "dress":
-        guide = request.get("guide") or "body"
-        outfit = _text(request, "outfit")
-        prompt = prompts.dress(outfit, guide=guide, style=style)
-        name, against, fit = outfit, shape[0] if guide == "body" else None, False
-    elif mode == "add_piece":
-        piece = _text(request, "piece")
-        prompt, name, against, fit = prompts.add_piece(piece, style=style), piece, shape[0], False
-    elif mode == "complete_piece":
-        # A cut-out piece on grey (function 4): no outline of its own to measure against.
-        piece = _text(request, "piece")
-        prompt, name, against, fit = prompts.complete_piece(piece, style=style), piece, None, False
-    else:
-        view = request.get("view")
-        prompt = prompts.other_view(view, depth=depth, style=style)
-        name, against, fit = f"{view} view", shape[1] if depth else None, True
-    prompt += prompts.style_sentence(len(shape) + 1, len(style_refs))
-    return {"mode": mode, "prompt": prompt, "name": f"concept {mode.replace('_', ' ')} {name}",
-            "references": [(p, "shape") for p in shape] + [(p, "style") for p in style_refs],
-            "iou_against": against, "fit": fit,
-            "inputs": {k: request[k] for k in ("structure", "guide", "view", "depth") if k in request}}
-
-
-def reference_mask(path: Path) -> np.ndarray | None:
-    """The subject of a shape picture, when it says so itself: a render's alpha, a depth map's non-black."""
-    image = Image.open(path)
-    if image.mode in ("RGBA", "LA"):
-        alpha = np.asarray(image.getchannel("A"))
-        if alpha.min() < 128 <= alpha.max():
-            return alpha > 127
-    if path.name.endswith("_depth_black.png"):
-        return np.asarray(image.convert("L")) > 0
-    sibling = path.with_name(path.name.replace("_colour_grey.png", "_colour.png"))
-    if sibling != path and sibling.is_file():
-        return reference_mask(sibling)
-    return None
-
-
-def result_mask(path: Path) -> np.ndarray:
-    """The generated subject, cut out with the project's background remover."""
-    from image_to_3dlab import matte
-
-    cut, _ = matte.cut_out(Image.open(path))
-    return np.asarray(cut)[..., 3] > 127
+    return requests.plan(request["mode"], shape, style_refs, request)
 
 
 def measure(reference: Path, result: Path, fit: bool) -> float | None:
-    """Silhouette IoU of the result against its shape picture, fitted to the frame or as framed."""
-    import cv2
-
-    wanted = reference_mask(reference)
-    if wanted is None:
-        return None
-    got = result_mask(result)
-    if got.shape != wanted.shape:
-        got = cv2.resize(got.astype(np.uint8), wanted.shape[::-1], interpolation=cv2.INTER_NEAREST) > 0
-    return round(iou(fit_mask(wanted), fit_mask(got)) if fit else iou(wanted, got), 3)
+    """Silhouette IoU of the result against its shape picture (`requests.measure`)."""
+    return requests.measure(reference, result, fit, cut=lambda path: result_mask(path))
 
 
 def _vision() -> Path:

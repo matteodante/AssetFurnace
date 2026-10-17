@@ -36,6 +36,13 @@ class Param:
     choices: tuple[str, ...] | None = None
     row: bool = False          # a batch row field, not an option under the step's name
     help: str = ""
+    # its flag on the step's command line when it is not --<name with dashes>; "" for none
+    # (a positional argument, or a choice the command line makes another way)
+    flag: str | None = None
+
+    @property
+    def cli_flag(self) -> str | None:
+        return (self.flag if self.flag is not None else f"--{self.name.replace('_', '-')}") or None
 
 
 @dataclass(frozen=True)
@@ -75,16 +82,21 @@ def _profiles() -> tuple[str, ...]:
 
 
 SAMPLERS = ("euler", "euler_a", "heun", "dpm2", "dpmpp2m", "lcm")   # text_image.SAMPLERS
+# image_to_3dlab.concept.prompts, written out so the catalogue imports nothing heavy
+MODES = ("redraw", "dress", "add_piece", "other_view", "complete_piece")
+STRUCTURES = ("depth", "lineart")
+GUIDES = ("body", "pose")
+VIEWS = ("side", "back")
 
 CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
     StepSpec(
         name="picture", label="Picture", takes=(), makes="picture",
         params=(
-            Param("prompt", "text", None, row=True, help="what to draw"),
+            Param("prompt", "text", None, row=True, help="what to draw", flag=""),
             Param("seed", "int", 42, range=(0, 2**31 - 1), help="same seed, same picture"),
             Param("count", "int", 1, range=(1, 8), help="pictures to pick from, seeds seed, seed+1..."),
             Param("pick", "int", None, range=(0, 2**31 - 1),
-                  help="the seed of the picture to keep, when there are several"),
+                  help="the seed of the picture to keep, when there are several", flag=""),
             Param("width", "int", 1024, range=(256, 1536), help="rounded to a multiple of 32"),
             Param("height", "int", 1024, range=(256, 1536)),
             Param("cfg_scale", "float", 1.0, range=(0.0, 20.0)),
@@ -97,6 +109,35 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
         candidates="count", gpu=True,
         note="Qwen-Image 2.1 Turbo, the studio's Create engine. With count above 1 the row "
              "waits for a pick; the candidates are kept, so picking draws nothing again.",
+    ),
+    StepSpec(
+        name="concept", label="Concept from a reference", feature=2, takes=("picture",), makes="picture",
+        params=(
+            Param("mode", "choice", None, choices=MODES, flag="",
+                  help="redraw, dress, add_piece, other_view or complete_piece"),
+            Param("shape", "files", None, help="shape pictures, in order; default the row's picture"),
+            Param("style_refs", "files", None, flag="--style-ref", help="style pictures, after the shape ones"),
+            Param("subject", "text", None, help="redraw: what to draw"),
+            Param("colours", "text", None, help="redraw: its colours"),
+            Param("parts", "text", None, help="redraw: parts to keep"),
+            Param("structure", "choice", None, choices=STRUCTURES, help="redraw: what the shape picture is"),
+            Param("outfit", "text", None, help="dress: the outfit"),
+            Param("guide", "choice", None, choices=GUIDES, help="dress: follow the body or only its pose"),
+            Param("piece", "text", None, help="add_piece, complete_piece: the piece"),
+            Param("view", "choice", None, choices=VIEWS, help="other_view: which side"),
+            Param("depth", "bool", None, help="other_view: the second shape picture is that side's depth"),
+            Param("style", "text", None, help="style words"),
+            Param("seed", "int", 42, range=(0, 2**31 - 1)),
+            Param("count", "int", 1, range=(1, 4), flag="--attempts", help="concepts to pick from, seed, seed+1..."),
+            Param("pick", "int", None, range=(0, 2**31 - 1), flag="",
+                  help="the seed of the concept to keep, when there are several"),
+        ),
+        row_fields=(),
+        skip="the row's own picture goes on as it is", replace=("png", "jpg"),
+        cli="scripts/reference_concept.py make", run="image_to_3dlab.batch_steps.concept:run",
+        candidates="count", gpu=True,
+        note="Qwen-Image 2.1 in edit mode, as the studio's Draw from a reference. The shape "
+             "pictures are the row's picture unless the settings name others.",
     ),
     StepSpec(
         name="generate", label="3D model", takes=("picture",), makes="asset",
@@ -203,7 +244,7 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
             Param("width", "float", None, range=(0, math.inf), help="wanted width (X), metres"),
             Param("depth", "float", None, range=(0, math.inf), help="wanted depth (Z), metres"),
             Param("stop_on_fail", "bool", False, help="a failed check fails the row; otherwise "
-                                                      "the reviewer decides"),
+                                                      "the reviewer decides", flag=""),
         ),
         row_fields=("kind", "size_cm", "measure"),
         skip="the row reaches the review queue without a report, and cannot be approved "

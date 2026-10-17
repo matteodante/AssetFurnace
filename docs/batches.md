@@ -76,6 +76,7 @@ step needs installed. A bad batch does not start, rather than stopping at row 7.
 | Step | What it does |
 |---|---|
 | `picture` | Draws the row's picture from its `prompt` with Qwen-Image 2.1 Turbo, the studio's Create engine (`scripts/text_image.py`); comes first. With `"count": 4` it draws four (seeds `seed`, `seed`+1...) and the row **waits for a pick** |
+| `concept` | A new concept drawn from the row's picture (feature 2: redraw, dress, add_piece, other_view, complete_piece), as the studio's "Draw from a reference" and `scripts/reference_concept.py make`. Before `generate`, which then draws from the concept, the row's images following as references. Candidates and picks as for `picture` |
 | `generate` | Writes the row's run manifest and runs it, exactly as `pipeline.py --run-manifest` would |
 | `finish` | The studio's Finish (`scripts/retopo_repaint.py`) at the row's face budget, with Pixel Match when the model kept its camera |
 | `rig` | A skeleton and skin weights (SkinTokens and the weight clean-up, as the studio's Animate tab; `scripts/autorig.py rig`). The rigged GLB becomes the row's asset. Holds the GPU lock while SkinTokens runs |
@@ -104,6 +105,11 @@ its first row.
 
 `picture` settings: `seed` (default 42), `count` (1 to 8), `pick` (the seed to keep),
 `width`, `height`, `cfg_scale`, `sampler`, `negative_prompt`.
+
+`concept` settings: `mode` (required), `shape` and `style_refs` (files; the shape default
+is the row's picture), the words the mode needs (`subject` and `colours` for redraw,
+`outfit` for dress, `piece`, `view`...), `structure`, `guide`, `depth`, `style`, `seed`,
+`count` (1 to 4), `pick`.
 
 **Picking.** A step that made several candidates leaves its row `waiting`; the rest of the
 batch goes on and the run ends with exit code 3. Pick with `"pick": <seed>` in the step's

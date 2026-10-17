@@ -233,7 +233,8 @@ def _offered(entry: dict[str, Any], step: str) -> tuple[list[Any], str | None]:
     if done.get("status") == "waiting":
         return [candidate["choice"] for candidate in done.get("candidates", [])], done.get("key")
     record = done.get("record") or {}
-    return list(record.get("candidates", [])), record.get("key")
+    # the key on the step, or in its record for a pick made by the first version of picture
+    return list(record.get("candidates", [])), done.get("key") or record.get("key")
 
 
 def _spec_pick(spec: str | None, row_id: str, step: str) -> bool:
