@@ -231,6 +231,36 @@ def smooth_spikes(fitted: np.ndarray, edges: np.ndarray, bad: np.ndarray, rounds
     return out
 
 
+def smooth_push(points: np.ndarray, edges: np.ndarray, need: np.ndarray, rounds: int = 80,
+                keep: float = 0.96) -> np.ndarray:
+    """The piece moved off the skin as one smooth surface: every vertex with a `need` (how far,
+    and which way, it must go to clear the skin) goes at least that far, and its neighbours
+    follow, less and less with distance, so a dent becomes a gentle bulge instead of a
+    crumple. A cage shrinkwrapped onto the body tore a breastplate into shards: each cage
+    vertex jumped to its own nearest skin point.
+    """
+    points = np.asarray(points, float)
+    need = np.asarray(need, float)
+    edges = np.asarray(edges, int).reshape(-1, 2)
+    length = np.linalg.norm(need, axis=1)
+    hard = length > 0
+    if not hard.any() or not len(edges):
+        return points + need
+    unit = np.zeros_like(need)
+    unit[hard] = need[hard] / length[hard, None]
+    degree = np.maximum(np.bincount(edges.ravel(), minlength=len(points)), 1)[:, None]
+    shift = need.copy()
+    for _ in range(rounds):
+        total = np.zeros_like(shift)
+        np.add.at(total, edges[:, 0], shift[edges[:, 1]])
+        np.add.at(total, edges[:, 1], shift[edges[:, 0]])
+        spread = keep * total / degree
+        along = np.einsum("ij,ij->i", spread, unit)
+        spread[hard] += np.maximum(0.0, length[hard] - along[hard])[:, None] * unit[hard]
+        shift = spread
+    return points + shift
+
+
 def inward_islands(vertices: np.ndarray, triangles: np.ndarray) -> list[np.ndarray]:
     """The triangles of each closed island whose signed volume is negative: it faces inward.
 

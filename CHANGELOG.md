@@ -249,6 +249,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces keep their shape when fitted. The cage shrinkwrapped onto the body
+  tore a breastplate into shards: a hollow piece's inner wall lies inside the body by design,
+  and was pushed out through the outer one. The fit now pushes only the outward-facing
+  surface off the skin, its neighbours following smoothly (`fit.smooth_push`), and leaves the
+  inner wall where it is. The cage stays as `fit_method: "cage"`. No fails on either pilot
+  body, for the route C set and the B0 set alike.
 - Game materials, from Codex's review: an interrupted `bootstrap_materials.py` no longer counts
   as installed (a marker is written after the last package); `pbr_trial.py` tries failed assets
   again; the label trials leave out a GLB regenerated since it was labelled; zone mean colours

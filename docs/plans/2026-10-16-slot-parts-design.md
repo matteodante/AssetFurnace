@@ -380,6 +380,44 @@ In più, trovati provando il modo 2 (B0) sui due corpi:
 
 Ora il set C e il set B0 passano senza fail su entrambi i corpi.
 
+## 14. L'adattamento tiene la forma dei pezzi (17/10/2026)
+
+Il coordinatore ha notato che i pezzi erano più semplici del concept. Sono andato a cercare il punto in cui si perde il
+dettaglio, rendendo ogni pezzo prima e dopo ogni passaggio.
+
+- **Immagine e 3D tengono il dettaglio.** Elmo con visiera e fori, stivale a placche, guanto: tutto c'è, anche nella
+  geometria in argilla.
+- **Lo perdeva l'adattamento.** La gabbia proiettata sul corpo (Shrinkwrap più Surface Deform) riduceva il pettorale a
+  schegge su entrambi i corpi, e i controlli non se ne accorgevano: compenetrazioni e buchi restavano bassi.
+- **La causa.** Il pettorale di Pixal3D è cavo e la sua parete interna sta, per costruzione, dentro il torace. La gabbia
+  e la spinta finale la portavano fuori dalla pelle, attraverso la parete esterna.
+- **Ora (`push_off_skin`, `fit.smooth_push`).**
+  - Si spinge fuori solo la superficie che guarda verso l'esterno.
+  - I vertici vicini seguono con uno spostamento lisciato, che cala con la distanza: un'ammaccatura diventa un
+    rigonfiamento morbido.
+  - Si ripete fino a tre volte.
+  - La parete interna resta dov'è, nascosta.
+  - La gabbia resta come `fit_method: "cage"`.
+- **Provato e scartato.**
+  - Spingere tutta la superficie.
+  - Dare prima spazio al pezzo con una scala: per liberare le spalle serviva un pettorale largo il 60% in più.
+  - Allentare il filtro della parete: le spalline del pettorale tornavano a svasarsi.
+
+| Set C | Primo corpo: compenetrazioni / buchi | Secondo corpo: compenetrazioni / buchi |
+|---|---|---|
+| Elmo | 0% / 0,1% | 0,9% / 0,4% |
+| Busto | 2,3% / 0% | 1,2% / 0% |
+| Spallacci (un pezzo) | 3,1% / 0,1% | 1,5% / 0,2% |
+| Guanto destro / sinistro | 0,3% / 0,9% · 0,3% / 0,1% | 1,4% / 1,1% · 2,4% / 0,5% |
+| Gambe | 0,5% / 0% | 0,4% / 0% |
+| Stivali | 0,1% / 0,1% | 0,1% / 0,1% |
+
+- Nessun fail. Con la gabbia il busto era allo 0,5%: misurava poco proprio perché il pezzo era schiacciato sulla pelle.
+- Corpo coperto: 82% e 80%.
+- Il set B0 è senza fail su entrambi i corpi.
+
+![Il pettorale: finito, adattato con la gabbia, con lo spostamento lisciato su tutta la superficie, e su quella esterna](img/slot-parts/5-fit-keeps-the-shape.jpg)
+
 ## Seguiti
 
 - Mantello: prova a parte, con la vista di schiena (funzione 2, caso 4) e la stoffa in Unreal.

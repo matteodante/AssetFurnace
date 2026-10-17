@@ -226,6 +226,43 @@ def main() -> None:  # pragma: no cover - runs inside Blender
         bpy.data.objects.remove(obj, do_unlink=True)
         return out
 
+    def push_off_skin(obj):
+        """Every vertex under the skin (or closer than the offset) moved out along the skin's
+        normal, its neighbours following smoothly (`fit.smooth_push`): the piece keeps its shape."""
+        offset = job.get("offset", 0.002)
+        mw = np.array(obj.matrix_world)
+        co = coords(obj) @ mw[:3, :3].T + mw[:3, 3]
+        obj.data.update()
+        normals = np.empty(len(obj.data.vertices) * 3)
+        obj.data.vertices.foreach_get("normal", normals)
+        normals = normals.reshape(-1, 3) @ mw[:3, :3].T
+
+        def needs(points):
+            """Only the piece's outward-facing surface is pushed: a hollow piece's inner wall lies
+            inside the body by design and stays hidden under the outer one; pushed, it went
+            through the outer wall (the shards of a breastplate)."""
+            need = np.zeros_like(points)
+            for i, p in enumerate(points):
+                loc, nrm, _, dist = body_bvh.find_nearest(Vector(p))
+                if loc is None or np.dot(normals[i], np.array(nrm)) <= job.get("inner_wall", 0.0):
+                    continue
+                gap = dist if (Vector(p) - loc).dot(nrm) >= 0 else -dist
+                if gap < offset:
+                    need[i] = (offset - gap) * np.array(nrm)
+            return need
+
+        edges = np.array([e.vertices[:] for e in obj.data.edges], int)
+        first = None
+        for _ in range(job.get("push_passes", 3)):  # the spread moves some neighbours back under: again
+            need = needs(co)
+            first = int((np.linalg.norm(need, axis=1) > 0).sum()) if first is None else first
+            if not need.any():
+                break
+            co = fit.smooth_push(co, edges, need, rounds=job.get("push_rounds", 80))
+        inv = np.linalg.inv(mw)
+        set_coords(obj, co @ inv[:3, :3].T + inv[:3, 3])
+        return f"push@{first}"
+
     def cage_fit(obj, body_obj):
         """Surface Deform onto a voxel cage, trying a few cage sizes: whether it binds hangs on
         small details of the cage's topology (one torso bound at 0.007 and not at 0.0065)."""
@@ -321,6 +358,7 @@ def main() -> None:  # pragma: no cover - runs inside Blender
     heads = {b.name: np.array(arm.matrix_world @ b.head_local) for b in arm.data.bones}
     mw = np.array(body_obj.matrix_world)
     body_co = coords(body_obj) @ mw[:3, :3].T + mw[:3, 3]
+    body_bvh = bvh_of([body_obj])  # the skin at rest, in world space, for pushing pieces off it
     groups = {g.name: g.index for g in body_obj.vertex_groups}
     weights = np.zeros((len(body_co), max(len(groups), 1)))
     for v in body_obj.data.vertices:
@@ -377,6 +415,7 @@ def main() -> None:  # pragma: no cover - runs inside Blender
             if job.get("debug_dir"):
                 Path(job["debug_dir"]).mkdir(parents=True, exist_ok=True)
                 export(Path(job["debug_dir"]) / f"{o.name}_{name}.glb", [o])
+                export(Path(job["debug_dir"]) / f"{o.name}_{name}_on_body.glb", [o, body_obj])
 
         stage("1_placed")
         if slot == "helmet":  # room for the head inside, whatever the outline gave
@@ -385,7 +424,10 @@ def main() -> None:  # pragma: no cover - runs inside Blender
                 m, grown = fit.enclose(coords(o), region(bones))
                 apply(o, m)
                 info["enclose_scale"] = round(grown, 3)
-        if bone is None:
+        if bone is None and job.get("fit_method", "push") == "push":  # the default since 17/10
+            info.setdefault("deform", {})[o.name] = push_off_skin(o)
+            stage("2_pushed_off")
+        elif bone is None:
             before = coords(o)
             info.setdefault("deform", {})[o.name] = cage_fit(o, body_obj)
             stage("2_caged")
@@ -399,13 +441,15 @@ def main() -> None:  # pragma: no cover - runs inside Blender
             stage("3_spikes")
         else:
             info.setdefault("deform", {})[o.name] = "rigid"
-        # last pass on the piece itself: only vertices still under the skin come out to it
-        push = o.modifiers.new("push", "SHRINKWRAP")
-        push.target, push.wrap_method, push.wrap_mode = body_obj, "NEAREST_SURFACEPOINT", "OUTSIDE"
-        push.offset = job.get("offset", 0.002)
-        with ctx(o):
-            bpy.ops.object.modifier_apply(modifier="push")
-        stage("4_pushed")
+        # last pass, for a rigid piece or the cage: vertices still under the skin come out to it
+        # one by one (the smooth push has done this already, and keeps a hollow piece's inner wall)
+        if bone is not None or job.get("fit_method", "push") != "push":
+            push = o.modifiers.new("push", "SHRINKWRAP")
+            push.target, push.wrap_method, push.wrap_mode = body_obj, "NEAREST_SURFACEPOINT", "OUTSIDE"
+            push.offset = job.get("offset", 0.002)
+            with ctx(o):
+                bpy.ops.object.modifier_apply(modifier="push")
+            stage("4_pushed")
         # a closed island the cage folded through itself faces inward: turned back out
         o.data.calc_loop_triangles()
         tris = np.array([lt.vertices[:] for lt in o.data.loop_triangles], int)

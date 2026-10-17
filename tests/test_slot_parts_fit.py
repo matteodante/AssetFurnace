@@ -176,3 +176,17 @@ def test_an_inward_shell_inside_the_piece_is_a_cavity_and_stays():
     outer = cube_v * 4 - 1.5  # a big outward box round a small inward one
     assert fit.inward_islands(np.vstack([outer, cube_v]), np.vstack([cube, cube[:, ::-1] + 8])) == []
 
+
+def test_a_dent_pushed_off_the_skin_becomes_a_smooth_bulge():
+    points = np.zeros((5, 3))
+    points[:, 0] = np.arange(5)
+    edges = np.array([[0, 1], [1, 2], [2, 3], [3, 4]])
+    need = np.zeros((5, 3))
+    need[2] = (0, 0, 1.0)  # only the middle vertex is under the skin
+    moved = fit.smooth_push(points, edges, need)
+    lift = moved[:, 2]
+    assert lift[2] >= 1.0 - 1e-9  # it clears the skin
+    assert lift[1] < lift[2] and lift[0] < lift[1] and lift[0] > 0  # the rest follows, less with distance
+    assert np.allclose(moved[:, :2], points[:, :2])  # nothing slides sideways
+    assert np.allclose(fit.smooth_push(points, edges, np.zeros((5, 3))), points)
+
