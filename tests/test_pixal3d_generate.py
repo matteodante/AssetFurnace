@@ -583,3 +583,56 @@ def test_the_manifest_records_the_licence_class_props_inherit(tmp_path):
     catalogue = resolve("pixal3d")
     assert (profile.license_name, profile.license_url) == (catalogue.license_name,
                                                            catalogue.license_url)
+
+
+# --- Leftovers (handed over by the audit, 17/10/2026: the real set kept 811 MB of .ply) -----
+
+def _run_leaving(tmp_path, monkeypatch, *extra):
+    from PIL import Image
+
+    image = tmp_path / "gnome.png"
+    Image.new("RGB", (64, 64), (200, 200, 200)).save(image)
+    output = tmp_path / "out" / "gnome.glb"
+    cutout = px.matte_path(image)
+
+    def fake_matte(path, destination=None):
+        rgba = Image.new("RGBA", (64, 64), (180, 40, 40, 0))
+        rgba.paste((180, 40, 40, 255), (16, 16, 48, 48))
+        rgba.save(cutout)
+        return cutout, "birefnet-lite"
+
+    class FakeProcess:
+        stdout = iter([])
+
+        def wait(self):
+            output.write_bytes(make_glb([[0.1, 0.2, 0.3]]))
+            output.with_suffix(".ply").write_bytes(b"ply" * 1000)   # what trellis-cli leaves beside it
+            return 0
+
+    monkeypatch.setattr(px, "has_alpha", lambda _: False)
+    monkeypatch.setattr(px, "matte", fake_matte)
+    monkeypatch.setattr(px, "readiness", lambda *a, **k: {"ready": True})
+    monkeypatch.setattr(px.subprocess, "Popen", lambda *a, **k: FakeProcess())
+    monkeypatch.setattr(sys, "argv", ["pixal3d_generate.py", str(image), str(output), *extra])
+    assert px.main() == 0
+    return output, cutout
+
+
+def test_the_ply_nothing_reads_is_removed_unless_kept(tmp_path, monkeypatch):
+    output, _ = _run_leaving(tmp_path, monkeypatch)
+    assert not output.with_suffix(".ply").exists()
+    (tmp_path / "k").mkdir()
+    kept, _ = _run_leaving(tmp_path / "k", monkeypatch, "--keep-ply")
+    assert kept.with_suffix(".ply").is_file()
+
+
+def test_the_cutout_is_kept_only_as_the_subjects_outline(tmp_path, monkeypatch):
+    from PIL import Image
+
+    from image_to_3dlab.slot_parts import camera
+
+    _, cutout = _run_leaving(tmp_path, monkeypatch)
+    with Image.open(cutout) as kept:
+        assert kept.mode == "LA"   # the colours gone: what reads it later is the outline
+    alpha = camera.subject_alpha(tmp_path / "gnome.png")   # a body's or a weapon's camera still finds it
+    assert alpha.sum() == 32 * 32 and alpha[20, 20] and not alpha[2, 2]

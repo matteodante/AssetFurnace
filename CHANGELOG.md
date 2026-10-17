@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Pixal3D leaves less behind (the first real set kept 811 MB of it): the `.ply` trellis-cli
+  writes beside the GLB, which nothing reads, is removed once the run ends (`--keep-ply` keeps
+  it), and the cut-out it made is kept only as the subject's outline, which a body's or a
+  weapon's camera still reads.
 - The final review of the step parity work (Codex, by area) found these, each fixed with a test:
   - a row that starts from words passes Finish's preflight before its picture is drawn;
   - Checks and Finish's repaint use the picture the model was made from (a concept step's),
