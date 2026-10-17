@@ -103,3 +103,15 @@ def test_a_version_queued_again_gets_its_old_labels_back(tmp_path):
     state = record(log, note="back to A")                                  # version A again
     assert state["asset_sha256"] == SHA
     assert state["baked_light"] is True and state["materials_look"] == "right" and state["note"] == "back to A"
+
+
+def test_a_regenerated_file_is_not_scored_against_the_old_labels(tmp_path):
+    import hashlib
+
+    asset = tmp_path / "knight.glb"
+    asset.write_bytes(b"version one")
+    row = {"key": "knight", "asset": str(asset), "asset_sha256": hashlib.sha256(b"version one").hexdigest()}
+    gone = {"key": "lost", "asset": str(tmp_path / "lost.glb"), "asset_sha256": "0" * 64}
+    assert ml.still_labelled([row, gone]) == ([row], [gone])
+    asset.write_bytes(b"version two")
+    assert ml.still_labelled([row]) == ([], [row])

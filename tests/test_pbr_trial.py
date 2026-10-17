@@ -105,3 +105,27 @@ def test_the_best_metal_threshold_is_reported_as_an_optimistic_bound():
     metal = pt.summarise([row])["metallic"]
     assert metal["f1"] == pytest.approx(2 * 16 / (2 * 16 + 16))
     assert metal["best_f1"] == pytest.approx(1.0) and 0.6 < metal["best_threshold"] <= 0.7
+
+
+def test_an_asset_that_failed_is_tried_again_and_its_retry_replaces_the_failure(tmp_path, monkeypatch):
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("pbr_trial_cli", Path(__file__).resolve().parents[1]
+                                                  / "scripts" / "pbr_trial.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    (tmp_path / "assets").mkdir()
+    for name in ("axe", "jug"):
+        make_glb(tmp_path / "assets" / f"{name}.glb", painted())
+    (tmp_path / "selection.json").write_text(json.dumps({"assets": ["axe", "jug"]}), encoding="utf-8")
+    (tmp_path / "results.jsonl").write_text(json.dumps({"asset": "axe", "error": "MissingModel: not downloaded"})
+                                            + "\n" + json.dumps({"asset": "jug", "texels": 1}) + "\n",
+                                            encoding="utf-8")
+    estimated = []
+    monkeypatch.setattr(cli.pe, "estimate_pbr", lambda path, out, **k: estimated.append(path.stem))
+    monkeypatch.setattr(cli, "score_asset", lambda folder, name: {"asset": name, "texels": 4})
+    cli.run(tmp_path, views=2)
+    assert estimated == ["axe"]                                     # jug was scored, axe failed: only axe again
+    rows = [json.loads(line) for line in (tmp_path / "results.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert rows[-1] == {"asset": "axe", "texels": 4}

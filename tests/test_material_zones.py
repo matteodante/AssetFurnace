@@ -239,3 +239,10 @@ def test_points_agree_where_the_vote_put_their_material(tmp_path):
     result = mz.point_agreement({0: zone}, points)
     assert result["points"] == 3 and result["agreement"] == pytest.approx(2 / 3)
     assert result["zone_points"] == 2 and result["zone_agreement"] == 1.0
+
+
+def test_a_zones_mean_colour_includes_the_base_colour_factor(tmp_path):
+    _, zone, _ = zoned(tmp_path)
+    white = np.full((SIZE, SIZE, 3), 255, np.uint8)
+    records = mz.zone_records(zone, white, factor=(0.5, 0.5, 0.5))
+    assert records[0]["mean_linear"] == pytest.approx([0.5, 0.5, 0.5])

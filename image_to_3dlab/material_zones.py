@@ -160,9 +160,12 @@ def status(count: int, profile: str | None) -> tuple[str, str]:
     return "fail", "fewer than 2 tint zones: recolouring would change the whole asset at once"
 
 
-def zone_records(zone: ZoneMap, albedo_srgb: np.ndarray, count: int = 3) -> list[dict]:
-    """The sidecar's zones: channel, material, area and mean linear colour (the tint formula's c)."""
-    linear = srgb_to_linear(albedo_srgb[..., :3] / 255.0)
+def zone_records(zone: ZoneMap, albedo_srgb: np.ndarray, count: int = 3, factor=(1.0, 1.0, 1.0)) -> list[dict]:
+    """The sidecar's zones: channel, material, area and mean linear colour (the tint formula's c).
+
+    The colour is the one the renderer shows: the texture times the material's baseColorFactor.
+    """
+    linear = srgb_to_linear(albedo_srgb[..., :3] / 255.0) * np.asarray(factor, dtype=np.float64)[:3]
     areas = zone.areas()
     out = []
     for channel, name in zip(CHANNELS, zone.zones(count)):

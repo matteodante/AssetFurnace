@@ -267,8 +267,12 @@ def human(folder: Path, labels: Path) -> int:
     """Score the user's labelled assets with the trained head; the only verdict that can admit it."""
     head, record = bl.load_head(folder / "head.json")
     variant = record.get("variant", "mean")
-    rows = json.loads(labels.read_text(encoding="utf-8"))
-    rows = [r for r in rows if r.get("baked_light") is not None]
+    from image_to_3dlab.material_labels import still_labelled
+
+    rows = [r for r in json.loads(labels.read_text(encoding="utf-8")) if r.get("baked_light") is not None]
+    rows, changed = still_labelled(rows)
+    for row in changed:
+        print(f"  {row.get('key')}: the file is not the version labelled; left out", flush=True)
     embed, _ = embedder()
     names, y, s = [], [], []
     for row in rows:
@@ -284,6 +288,7 @@ def human(folder: Path, labels: Path) -> int:
     cal, te = np.isin(names, split["train"] + split["calibration"]), np.isin(names, split["test"])
     result = evaluate(y[cal], s[cal], y[te], s[te], names[te], human=True)
     result["labelled_assets"] = len(names)
+    result["left_out_changed"] = [r.get("key") for r in changed]
     (folder / "report-human.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result, indent=2))
     return 0
