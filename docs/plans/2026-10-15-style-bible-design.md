@@ -357,8 +357,25 @@ Decisioni dell'utente (17/10/2026):
    nessun controllo `style.coherence`, nessun nuovo giro di etichette. Il motivo: con una descrizione giusta e senza
    riferimenti 22 concept su 25 escono buoni, e gli scarti dipendono dal contenuto (cosa è disegnato), che i giudici di
    stile non vedono; nessuno dei tre passava la regola su r1b, e un giudice sul contenuto sarebbe un altro progetto.
-4. Prova di controllo: i 25 soggetti rigenerati solo con il prompt e la descrizione nuova (stessi semi), messi accanto a
-   quelli di r1c in un foglio prima/dopo, senza voti.
+4. Prova di controllo, giudicata a occhio da me (l'utente non vuole altre valutazioni): i 25 soggetti di r1c
+   rigenerati solo con il prompt, stessi semi, e confrontati uno per uno con quelli di r1c.
+
+Le tre versioni della descrizione nuova (fuori da git, nella bibbia del progetto pilota):
+
+- **r1d**, con i colori elencati per nome ("rich red, golden yellow, royal blue and leaf green"): gemme, punte e
+  somiglianze sparite, ma i nomi diventano una tavolozza dipinta su tutto (lupo, ragno e cinghiale arcobaleno, orco
+  giallo, stivali da pagliaccio) e "leaf green" diventa foglie su pozione, guanto, libro e corazza. Anche i colori, non
+  solo i materiali, sono parole che diventano oggetti.
+- **r1e**, senza nomi di colori ("vivid saturated colours, each subject in its own natural colours made brighter"):
+  lupo, cinghiale, orco, cavaliere, scudo, forziere, pozzo e carro nei loro colori, solo più accesi.
+- **r1f** = r1e più "a few harmonious colours per subject", e il metallo dell'equipaggiamento non più "painted": a
+  parità di seme cambia poco. È la descrizione che resta.
+
+Esito su r1f, rispetto a r1c: **gemme** solo dove il soggetto le chiede (la spada "with a jewelled hilt", il libro "with
+a gem on the cover"); **punte** nessuna, e nessuna armatura su animali e oggetti; **somiglianze** sparite: lupo, ragno,
+cinghiale, drago e golem sono bestie diverse, la bancarella è finalmente una bancarella. Limiti rimasti: colori da
+caramella su 4 soggetti su 25 senza un colore proprio (ragno, stivali spaiati, guanto, cartello), effetto dei "colori
+accesi e saturi" chiesti; il drago è un po' tenero. Immagini in `output/style-acceptance-20261016/r4..r6/`.
 
 ## 8. Le PR
 
