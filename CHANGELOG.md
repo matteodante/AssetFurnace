@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Batches and agents can replace a step's output with a file of their own:
+  `"replace": {"finish": "my.glb"}` in a row, or `run_steps(..., replace=...)`. The step
+  does not run, the file (a Blender version, a model made elsewhere, your own rig or clips)
+  goes on with its own licence record, held to the batch's policy.
+- The `materials` step: a batch row (or an agent's `run_steps`) gets its one material, the
+  person's (`"materials": {"material": "leather"}`) or the rule's from the model's words and
+  kind, and `export_unreal` packs it into the ORM; left out, the model keeps its own maps.
+  Agents correct a set's pieces with `pieces_materials`, and the studio's Export for Unreal
+  can leave the material out ("Keep its own maps"). One material per piece, no zones.
 - Characters in pieces: the mode 3 outfit can be drawn once per seed and wait for a pick
   (`slot_parts.py run --stop-at-concept`, `pieces_run(concept_seeds=, choose_concept=)`,
   the Pieces page's "Outfit pictures"); the weapon and shield are picked among their seeds
@@ -341,6 +350,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helmet the outfit's words left out was not drawn, so its cut was the face and the piece
   edit invented a helmet; the concept now adds the chosen pieces the outfit does not name,
   in their own words when they have them.
+- Library: an asset with no picture or 3D model of its own keeps its id when a later finish
+  or rig joins it (one from a Blender version, say), so its versions, name and hidden flag
+  stay with it; and what is made from a Blender version of one of its moves joins it too.
 - Studio Batches page: a pick that is saved but whose batch cannot resume (its preflight
   refuses) now says so, with the reasons, instead of leaving the row on "Pick one".
 - Batches: a batch made before per-step fingerprints no longer regenerates every row when
@@ -429,6 +441,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   models and ignores late callbacks from a closed viewport. Dynamic error text is escaped.
 - Background-job cleanup rejects invalid process IDs. Update commands quote folder
   names safely, and prop metadata uses portable paths on Windows.
+
+### Security
+- The Studio server refuses what a web page could forge. Every older endpoint that changes
+  something (setup and weight removal, the Hugging Face sign-in, generate, image, finish,
+  props, rig, plans, Library names) now needs the Studio's own origin and request header,
+  as the newer pages already did; a page or file is only served to a loopback Host, so DNS
+  rebinding cannot read the repository. On any address other than loopback (RunPod, a LAN)
+  the server asks for an access token, which the printed link carries.
 
 ## [0.4.3] - 2026-10-10
 

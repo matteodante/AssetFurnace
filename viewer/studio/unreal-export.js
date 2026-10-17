@@ -80,6 +80,9 @@ export function requestBody({ source, kind, size, measure, body, moves, check, m
   return data;
 }
 
+// The material menu's own entries before the materials: Auto (the rule's) and none at all.
+export const MATERIAL_CHOICES = [['', 'Auto'], ['none', 'Keep its own maps']];
+
 export const COLLISIONS = [['auto', 'Auto (box)'], ['box', 'Box'], ['convex', 'Convex hull'], ['unreal', "Unreal's own"]];
 export const FACINGS = [['auto', 'Auto'], ['-y', 'Front (-Y)'], ['y', 'Back (+Y)'], ['x', 'Right (+X)'], ['-x', 'Left (-X)']];
 
@@ -120,7 +123,7 @@ export function createUnrealPanel({ root, url, assets }) {
       <label class="field">Measured as<select data-measure><option value="height">Height</option><option value="longest">Longest side</option></select></label>
     </div>
     <label class="field" data-body-label hidden>Worn by<select data-body></select></label>
-    <label class="field" title="One material for the whole model: it sets roughness and metal in Unreal">Material<select data-material><option value="">Auto</option></select></label>
+    <label class="field" title="One material for the whole model: it sets roughness and metal in Unreal">Material<select data-material>${MATERIAL_CHOICES.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
     <label class="check" data-moves-label hidden><input type="checkbox" data-moves checked> Include its moves</label>
     <details class="adv" data-more><summary>More options</summary>
       <label class="field">Name in Unreal<input data-name type="text" maxlength="40" placeholder="from the file name"></label>

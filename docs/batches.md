@@ -41,6 +41,7 @@ the spec file**, like in a run manifest.
 | `id` | Your name for the asset, unique in the batch. Letters, digits, `_ . -`: it names the row's folder and files |
 | `images` | The first is what the generator sees; the rest are kept as references for later steps |
 | `prompt` | Words to draw the picture from, for a row whose first step is `picture` (instead of `images`) |
+| `replace` | Steps whose output is a file of your own: `{"finish": "edits/knight.glb"}` (a list of GLBs for `animate`). The step does not run; the file goes on to the next one |
 | `asset` | An existing GLB, for a row that skips `generate` |
 | `kind` | `prop` (default), `creature` or `equipment` |
 | `faces` | Face budget for `finish`, 1,000 to 200,000 (default 40,000) |
@@ -84,7 +85,7 @@ step needs installed. A bad batch does not start, rather than stopping at row 7.
 | `animate` | Preset clips played on the rig (`"animate": {"presets": ["idle", "walk"]}`, `speed`, `arm_spread`; `scripts/autorig.py animate`). CPU only. The row's asset stays the rig; `export_unreal` takes the clips as a creature's animations |
 | `export_unreal` | The row's asset as Unreal 5.8 files (`scripts/export_unreal.py`), into `rows/<id>/export_unreal/`. Needs `size_cm`. The row's asset stays the finished model |
 | `checks` | The automatic checks of the review queue (`scripts/check_asset.py`): the row reaches the queue with its report and can be approved there |
-| `materials` | Reserved name: skipped with a warning until it exists |
+| `materials` | The asset's one material (function 8, `image_to_3dlab/piece_materials.py`): `"materials": {"material": "leather"}`, or the rule's proposal from the words the model was made from (its provenance) and the row's `kind`. Written to `rows/<id>/materials/material.json`; `export_unreal` packs its roughness and metal into the ORM (its own `material` wins). Left out: the export keeps the model's own maps. A set's pieces have theirs in the set's `materials.json` (`slot_parts.py materials`, MCP `pieces_materials`) |
 
 `finish` does **not** repaint: the repaint needs Hunyuan 2.1 Paint weights, whose licence
 excludes the EU, UK and South Korea, and runs on Apple Silicon only. A row that wants it
@@ -114,6 +115,18 @@ reruns the step.
 is the row's picture), the words the mode needs (`subject` and `colours` for redraw,
 `outfit` for dress, `piece`, `view`...), `structure`, `guide`, `depth`, `style`, `seed`,
 `count` (1 to 4), `pick`.
+
+**Your own file instead of a step's output.** `"replace": {"<step>": "file"}` in a row: the
+step does not run, the file (checked when the spec loads: a whole GLB, a skeleton for
+`rig`, a readable picture for `picture` and `concept`) is copied into the step's folder
+under the name the step would give it, with its own `.provenance.json` (a Blender version
+has one) or a record saying it is yours and its licence is not known, and the steps after
+it run on it. Its records are held to the batch's licence policy like any source.
+Changing the file, or the record beside it, reruns from that step; the steps before keep
+their results. A file inside the batch's own `rows/<id>/` folder is refused (the batch
+clears and rewrites it): copy an edit made there somewhere else first.
+`generate`, `finish`, `rig`, `animate`, `picture` and `concept` can be replaced; the
+others make nothing a file can stand in for.
 
 **Picking.** A step that made several candidates leaves its row `waiting`; the rest of the
 batch goes on and the run ends with exit code 3. Pick with `"pick": <seed>` in the step's
@@ -250,6 +263,7 @@ Then, in that repository's `.mcp.json`:
 | `pieces_run(body, set, mode, slots, outfit, concept, weapon, shield, style, seeds, choose)` | A set on a body, in the background, as the studio's Pieces page starts it; `choose` stops after the pictures |
 | `pieces_status()`, `pieces_pick(body, set, picks)` | The run's log and the pictures waiting (paths and scores); go on with your picks |
 | `pieces_fit`, `pieces_refit(body, set, to)`, `pieces_unreal(body, set, size_cm)`, `pieces_cancel()` | Fit again, carry a set to another body, export it for Unreal, stop the run |
+| `pieces_materials(body, set, pieces)` | Correct the one material of pieces of a made set (`{"helmet": "leather"}`, `null` for the rule's again); `pieces_unreal` then exports with them |
 | `describe_steps()` | Every step with its settings (types, defaults, ranges), what can be skipped or replaced, what makes candidates, and whether it is installed |
 | `run_steps(name, steps, prompt, images, asset, ..., options)` | One asset through some steps: a batch of one row, written to `output/batches/.agent/<name>.json` and started. Call it again with other settings to rerun from the first changed step |
 | `pick_candidate(batch_ref, row_id, step, choice)` | Pick one of the candidates a waiting row offers (`batch_status` lists them under `waiting`), or change a pick; resumes the batch |
