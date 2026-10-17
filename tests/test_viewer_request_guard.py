@@ -250,3 +250,16 @@ def test_the_request_marker_tags_same_origin_writes_only():
     result = subprocess.run([NODE, "--input-type=module", "--eval", program], check=True,
                             capture_output=True, text=True, encoding="utf-8")
     assert json.loads(result.stdout) == ["studio", None, None, "batch", "studio"]
+
+
+# ---- a refused request still gets its answer ---------------------------------------------
+
+@pytest.mark.parametrize("path", ["/api/blender-edit/sessions", "/api/review/decide", "/api/material-labels",
+                                  "/api/concept/jobs", "/api/batch", "/api/unreal-export/jobs"])
+def test_a_refused_post_with_a_body_gets_its_403_not_a_reset(server, path):
+    """Closing on unread request bytes makes Windows reset the connection, so the client saw
+    ConnectionAbortedError instead of the reason (a flaky test on 2026-10-17)."""
+    body = b"x" * 32 * 1024
+    for _ in range(10):
+        status, _, _ = call(server, "POST", path, {"Origin": "http://evil.example"}, body=body)
+        assert status == 403

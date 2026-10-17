@@ -41,6 +41,19 @@ def desktop_reason(handler):
     return None
 
 
+def drain(handler, limit=1024 * 1024):
+    """Read the body of a request refused before it was read, so the answer arrives: closing
+    on unread bytes makes Windows reset the connection, and the caller saw
+    ConnectionAbortedError instead of the reason. A body over `limit` is left unread."""
+    try:
+        length = int(handler.headers.get("Content-Length") or 0)
+    except ValueError:
+        length = 0
+    if 0 < length <= limit:
+        handler.rfile.read(length)
+    handler.close_connection = True
+
+
 def check_host(handler):
     """The Host a request names. A loopback server only answers loopback names, so a page
     that rebinds its own domain to 127.0.0.1 cannot read or drive it (DNS rebinding)."""
@@ -196,7 +209,7 @@ def handle(handler, output, *, mutation=False):
         else:
             handler._send_json(404, {"error": "Unknown Blender edit endpoint"})
     except PermissionError as exc:
-        handler.close_connection = True
+        drain(handler)
         handler._send_json(403, {"error": str(exc)})
     except (ValueError, KeyError, TypeError, OSError) as exc:
         handler.close_connection = True

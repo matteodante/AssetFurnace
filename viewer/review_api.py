@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from blender_edit_api import check_request
+from blender_edit_api import check_request, drain
 
 REPO = Path(__file__).resolve().parents[1]
 for extra in (REPO, REPO / "scripts"):  # the checks package, and review_queue's decide()
@@ -201,6 +201,7 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
         else:
             handler._send_json(404, {"error": "No such review request"})
     except PermissionError as exc:
+        drain(handler)   # refused before the body was read
         handler._send_json(403, {"error": str(exc)})
     except review_conflict() as exc:
         handler._send_json(409, {"error": str(exc)})
