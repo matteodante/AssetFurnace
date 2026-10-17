@@ -1,7 +1,7 @@
 # Funzione 8, materiali pronti per il gioco: progetto v2
 
 Data: 15 ottobre 2026 (aggiornato lo stesso giorno: SAM 3.1, lavori del 2026, video, Qwen3.5, togliere la luce, date).
-Stato: **chiusa il 17/10/2026**. Cosa è acceso, cosa è spento e perché: sezione 11; il lavoro rimasto: Seguiti.
+Stato: **costruita, in attesa delle etichette** (17/10/2026). Cosa è acceso, cosa aspetta la prova e perché: sezione 11; il lavoro rimasto: Seguiti.
 Sostituisce il metodo di [`2026-10-15-game-materials-design.md`](2026-10-15-game-materials-design.md) (v1), di cui
 tiene l'infrastruttura. La PR [#3](https://github.com/matteodante/AssetFurnace/pull/3) è in bozza e in pausa.
 
@@ -480,12 +480,16 @@ Download confermati dall'utente il 16/10/2026 ("permesso per tutto"): Qwen3.5-4B
   Per un gioco con armi di fantasia il testo non nomina i videogiochi: decide l'utente. Il riassunto sta nella scheda
   della pagina di installazione.
 
-## 11. Stato finale (17/10/2026)
+## 11. Stato (17/10/2026)
 
-Decisione dell'utente del 17/10/2026: niente altro lavoro per lui. SAM 3 non si aspetta, e non c'è l'ora di etichette.
-Quindi:
-- ogni passo che non ha superato la sua prova resta **spento**;
-- quelli che si possono giudicare senza etichette li ho giudicati io, con render prima e dopo e con le misure.
+L'utente farà le etichette (decisione del 17/10/2026, che annulla quella della stessa mattina di farne a meno): le prove
+della sezione 6 restano come scritte. Finché non ci sono:
+- ogni passo che non ha superato la sua prova resta **spento** o **su richiesta**;
+- dove si poteva giudicare senza etichette ho giudicato io, con render prima e dopo e con le misure.
+
+Il foglio di etichette è un artifact privato di claude.ai (https://claude.ai/artifact/Y9dN52YcLykmgsc3r6ymhH): si usa
+anche dal telefono e salva da solo. `scripts/label_sheet.py build` ne prepara le immagini, `import` porta le etichette
+in `output/material-labels.jsonl`, lo stesso registro del pannello dello studio.
 
 | Parte | PR | Stato | Perché |
 |---|---|---|---|
@@ -494,7 +498,7 @@ Quindi:
 | Luce tolta (Marigold-IID Lighting) | #26 | **spento**, su richiesta (`delight_materials.py`) | Giudizio mio sotto: non è un miglioramento netto |
 | Rugosità e metallo stimati (Marigold-IID Appearance) | #28 | **spento**, fuori dalla pagina di installazione | Bocciato su Poly Haven |
 | Controllo imparato della luce cotta | #43 | **spento**, nessun controllo | I tre candidati falliscono anche sul sintetico |
-| Zone per materiale (Qwen3.5 + SAM 2.1; SAM 3 pronto) | #45, #47 | **su richiesta** (`game_materials.py --zones`) | Giudizio mio sotto: utili da rivedere, non da accendere per default |
+| Zone per materiale (Qwen3.5 + SAM 3.1; SAM 2.1 come ripiego) | #45, #47, PR di SAM 3.1 | **su richiesta** (`game_materials.py --zones`) | Giudizio mio sotto: utili da rivedere, non da accendere per default |
 | Rugosità e metallo per materiale, dalle zone | #45 | **spento** | Bocciato su Poly Haven |
 
 **Il mio giudizio** su tre asset veri di `output/compare-20261015` (cavaliere, lupo mannaro, forziere):
@@ -516,31 +520,58 @@ Quindi:
   - luce tolta: 93-112 s per asset con 18 viste;
   - zone: 150-210 s con 8 + 2 viste, quasi tutti per i nomi delle regioni.
 
-**SAM 2.1 è il segmentatore predefinito** delle zone (`find_zones(segmenter="sam2")`, `game_materials.py --zones`).
-SAM 3 si usa con `--zones sam3` non appena l'account ha l'accesso: il codice e la scheda d'installazione sono pronti.
+### SAM 3.1 (17/10/2026): il segmentatore predefinito delle zone
+
+- **Accesso**: approvato da Meta il 17/10/2026 su richiesta dell'utente. Lo stesso modulo apre tutta la collezione SAM 3,
+  `facebook/sam3` compreso. La licenza è lo stesso file di SAM 3, identico byte per byte (sezione PR 3).
+- **Cosa c'è nel repo**: `facebook/sam3.1` pubblica solo `sam3.1_multiplex.pt`, nel formato di Meta (3,5 GB), e non ha
+  integrazione con `transformers`, nemmeno nella 5.20.1. La configurazione è identica byte per byte a quella di SAM 3.
+- **Che cosa cambia rispetto a SAM 3** (note di rilascio e `model_builder.py` di Meta, letti il 17/10/2026):
+  - Object Multiplex rende più veloce il tracciamento video di molti oggetti;
+  - il rilevatore delle immagini però **non è identico**: confrontato tensore per tensore con quello di SAM 3, 1459 tensori
+    su 1464 differiscono, con differenza relativa intorno allo 0,6 %. Entrambi sono in fp32, quindi non è
+    arrotondamento: è stato aggiornato.
+- **Come si usa qui**:
+  - l'installazione (`bootstrap_materials.py --only sam31`) scarica il checkpoint e ne converte il rilevatore nei file
+    di `Sam3Model` di `transformers`, in `vendor/materials/sam3.1-transformers` (8 s, 3,36 GB);
+  - la mappatura dei nomi è quella dello script ufficiale di `transformers` (`scripts/sam3_keys.py`, Apache-2.0,
+    copiata dal commit 22278df);
+  - il checkpoint si carica con `weights_only=True`, quindi non esegue codice;
+  - SAM 3.1 non ha il quarto livello del collo FPN, ma il rilevatore delle immagini non lo legge: azzerarlo in SAM 3
+    non cambia nessun punteggio. Le chiavi in più sono buffer e convoluzioni del tracciamento video.
+- **Confronto sulle stesse viste** (8 + 2, Qwen3.5 per il vocabolario):
+
+  | Asset | SAM 2.1 (regioni nominate da Qwen) | SAM 3.1 |
+  |---|---|---|
+  | Cavaliere | metallo 68 %, cuoio 22 %; giusto davanti, sbagliato dietro | cuoio 77 %, pelle 8 %, metallo 6 %: corazza rossa letta come cuoio, solo l'elmo metallo |
+  | Forziere | legno 93 %, metallo 6 %: le fasce di metallo restano nel legno | legno 96 %, metallo 4 %: **fasce e lucchetto separati** |
+  | Lupo mannaro | pelliccia 88 %, macchie sparse | pelle 89 %, pelliccia 9 % (la coda) |
+  | Tempo per asset | 150-210 s | 74-91 s |
+
+  SAM 3.1 dà regioni coerenti fra le viste (tutta la superficie di un materiale, non frammenti) e separa le parti
+  fini. Sbaglia però il nome dove la vernice inganna (corazza rossa, pelo grigio liscio). Lo decide la prova con le
+  etichette: SAM 3.1 è il predefinito (`find_zones(segmenter="sam31")`, `game_materials.py --zones`) e SAM 2.1 resta
+  il ripiego senza accesso.
 
 ## Seguiti
 
-- **SAM 3 quando ci sarà l'accesso.**
-  1. Il proprietario dell'account compila il modulo su https://huggingface.co/facebook/sam3.
-  2. Si scaricano i pesi con `python scripts/bootstrap_materials.py --only sam3` (3,21 GB).
-  3. Si prova `game_materials.py --zones sam3`. `segment_sam3` non è mai girato con i pesi veri: va verificato per
-     primo.
-  4. Lo si confronta con SAM 2.1 con `zones_trial.py pbr --segmenter sam3` e, se ci sono etichette, `human`.
-- **Prove che hanno bisogno delle etichette dell'utente**, tutte pronte e mai lanciate. I passi restano spenti finché
+- **SAM 3 / 3.1**: fatto il 17/10/2026, vedi sopra. Da provare ancora:
+  - la segmentazione come video con Object Multiplex. Gira solo con il codice di Meta (Python 3.12, Flash Attention 3,
+    errori aperti su Windows), quindi in WSL2;
+  - i nomi: SAM 3.1 per frase sbaglia dove la vernice inganna; si potrebbe far scegliere a Qwen3.5 fra le frasi per
+    ogni regione di SAM 3.1, invece di prendere il punteggio più alto.
+- **Prove che hanno bisogno delle etichette dell'utente**, tutte pronte. I passi restano spenti o su richiesta finché
   non passano:
   - la luce tolta (#26);
   - le zone (`zones_trial.py human`, almeno il 75 % dei punti);
   - il controllo della luce cotta (`baked_light_trial.py human`).
 
-  Servono i 60 asset generati (20 umanoidi, 20 creature, 20 oggetti) e la coda
-  `scripts/material_label_set.py queue`.
+  Il foglio di etichette ha già 18 asset esistenti (7 umanoidi, 1 creatura, 10 oggetti). Per arrivare a 60 (20 umanoidi,
+  20 creature, 20 oggetti) mancano le generazioni nuove, che aspettano il via per le ore di GPU.
 - **Rugosità e metallo**: nessuno stimatore passa (Marigold Appearance, valori per materiale). Per un modello nuovo
   basta `pbr_trial.py`, con i 30 asset già in `output/pbr-trial/`.
-- **Zone, nomi incoerenti fra le viste**: oggi ogni regione di SAM 2.1 prende il nome vista per vista. Due strade da
-  provare:
-  - dare il nome una volta per parte 3D, unendo le regioni che si sovrappongono sulle UV prima di chiedere a Qwen;
-  - la segmentazione come video (`Sam3VideoModel`, sezione 2).
+- **Zone con SAM 2.1, nomi incoerenti fra le viste**: ogni regione prende il nome vista per vista. Si potrebbe dare il
+  nome una volta per parte 3D, unendo le regioni che si sovrappongono sulle UV prima di chiedere a Qwen.
 - **Luce tolta**: aiuta dove la luce dipinta è forte (cavaliere), sporca dove non c'è (lupo mannaro). Si potrebbe
   applicarla solo quando Marigold trova molta ombreggiatura, ma è proprio il controllo che non ha passato la prova.
 - I punti rimandati della v1 restano nella sezione "Seguiti" di

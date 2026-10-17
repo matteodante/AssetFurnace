@@ -22,6 +22,7 @@ model but not this script; ``materials_worker.py convert_sam31`` uses it to load
 detector, which has no transformers files of its own.
 """
 
+# ruff: noqa: SIM118 - kept as upstream wrote it
 import re
 
 import torch

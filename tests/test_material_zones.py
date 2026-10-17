@@ -271,3 +271,15 @@ def test_a_zones_mean_colour_includes_the_base_colour_factor(tmp_path):
     white = np.full((SIZE, SIZE, 3), 255, np.uint8)
     records = mz.zone_records(zone, white, factor=(0.5, 0.5, 0.5))
     assert records[0]["mean_linear"] == pytest.approx([0.5, 0.5, 0.5])
+
+
+def test_sam31_segments_through_the_same_task_and_is_named_in_the_provenance(tmp_path):
+    asset = make_glb(tmp_path / "knight.glb", painted())
+    calls = []
+    zones, record = mz.find_zones(asset, tmp_path / "work", "sam31", vocabulary=["leather", "metal", "cloth"],
+                                  render=fake_render(painted()), around=2, runner=fake_runner(calls))
+    assert calls == [("segment_sam3", "sam31")]
+    assert zones[0].zones() == ["leather", "metal", "cloth"]
+    assert {c["component"].split("@")[0] for c in record["components"]} == {mm.QWEN35.repo, mm.SAM31.repo}
+    assert all(c["commercial_status"] == "commercial-conditional" for c in record["components"]
+               if c["component"].startswith(mm.SAM31.repo))

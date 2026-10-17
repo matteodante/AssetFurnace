@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- SAM 3.1 segments the tint zones by default: setup converts the image detector of Meta's
+  checkpoint into transformers' Sam3Model files (`bootstrap_materials.py --only sam31`); SAM 2.1
+  stays the fallback without the gated access.
 - Tint zones use SAM 2.1 by default (`game_materials.py --zones`); `--zones sam3` once its gated
   access is granted. Game materials v2 is closed: what is on, what stays off and why is in design
   section 11.
