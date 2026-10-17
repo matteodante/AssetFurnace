@@ -101,3 +101,18 @@ def test_uv_overlap_counts_every_surface_use_of_a_shared_pixel():
     faces = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
     reused, used = uv_overlap_pixels([(uv, faces)], resolution=512)
     assert reused / used == pytest.approx(0.15, abs=0.01)
+
+
+def test_a_copy_sharing_the_texture_counts_once_when_copies_are_allowed():
+    """A pair of pauldrons in one file: the mirrored one repeats the other's UVs exactly."""
+    from image_to_3dlab.checks.mesh_checks import uv_overlap_pixels, without_copied_uvs
+
+    square = np.array([[0.1, 0.1], [0.5, 0.1], [0.5, 0.5], [0.1, 0.5]])
+    shifted = square + (0.4 * 0.85, 0.0)
+    pair = [(np.vstack([square, square]), np.array([[0, 1, 2], [0, 2, 3], [4, 6, 5], [4, 7, 6]]))]
+    reused, used = uv_overlap_pixels(pair, resolution=512)
+    assert reused / used == pytest.approx(1.0)
+    assert uv_overlap_pixels(without_copied_uvs(pair), resolution=512)[0] == 0.0
+    near = [(np.vstack([square, shifted]), np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]]))]
+    reused, used = uv_overlap_pixels(without_copied_uvs(near), resolution=512)
+    assert reused / used == pytest.approx(0.15, abs=0.01)  # a real overlap still counts

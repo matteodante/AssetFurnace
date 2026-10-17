@@ -358,6 +358,28 @@ compenetrazioni (5–7%), come nella PR 8. La spada non era in questo giro: la m
 
 ![In Unreal 5.8.3: a sinistra il corpo da solo, che mostra solo la pelle che i pezzi non coprono; a destra il set intero a metà passo](img/slot-parts/4-unreal-opacity-mask.jpg)
 
+### Review di Codex del lavoro unito (17/10/2026)
+
+Ogni punto verificato sulle righe citate; tutti veri, corretti con un test ciascuno.
+
+- Uscita per Unreal senza alfa (il `covered` reimportato si chiama `Color`): già risolto in #46, che sceglie il colore
+  dall'alfa, non dal nome.
+- Stop fermava solo lo script: ora ferma tutto l'albero dei processi e aspetta prima di lasciar partire un altro set.
+- Dita omesse dal classificatore lette come busto: ora prendono il ruolo dell'osso classificato più vicino.
+- `shoulders:split` non arrivava all'adattamento: senza "due pezzi" gli spallacci escono in un file solo, anche dopo
+  il refit. I due lati condividono texture e UV per specchio, quindi `equipment_part` conta una volta i triangoli UV
+  copiati (`uv.overlap` con `copies_ok`).
+- Selettore del corpo vuoto dopo la registrazione: si ridisegna quando cambia l'elenco dei corpi.
+- Concept o corpo già trasparenti: la sagoma viene dalla loro trasparenza.
+- Set con sola arma o scudo: non nasconde pelle. Un rig con un solo giunto testa/collo: l'elmo si adatta a quel giunto.
+
+In più, trovati provando il modo 2 (B0) sui due corpi:
+- i tappi dei tagli stendevano le UV su tutto l'atlante (`uv.overlap` 70–100%);
+- le gambe superavano il budget di facce;
+- un refit girava al contrario un'isola chiusa di uno spallaccio.
+
+Ora il set C e il set B0 passano senza fail su entrambi i corpi.
+
 ## Seguiti
 
 - Mantello: prova a parte, con la vista di schiena (funzione 2, caso 4) e la stoffa in Unreal.

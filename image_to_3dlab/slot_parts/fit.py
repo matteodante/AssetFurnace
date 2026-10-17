@@ -231,6 +231,65 @@ def smooth_spikes(fitted: np.ndarray, edges: np.ndarray, bad: np.ndarray, rounds
     return out
 
 
+def inward_islands(vertices: np.ndarray, triangles: np.ndarray) -> list[np.ndarray]:
+    """The triangles of each closed island whose signed volume is negative: it faces inward.
+
+    A cage fit can fold a small closed part of a piece (a strap, a rivet cut out of a whole
+    model) through itself, and a refit can do it on one body and not the other. An island
+    with open edges says nothing by its volume, so it is left alone.
+    """
+    triangles = np.asarray(triangles, int)
+    if not len(triangles):
+        return []
+    edges = np.sort(np.concatenate([triangles[:, [0, 1]], triangles[:, [1, 2]], triangles[:, [2, 0]]]), axis=1)
+    owner = np.tile(np.arange(len(triangles)), 3)
+    _, edge_id, uses = np.unique(edges, axis=0, return_inverse=True, return_counts=True)
+    edge_id = edge_id.reshape(-1)
+    # union-find over triangles sharing an edge
+    parent = np.arange(len(triangles))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    order = np.argsort(edge_id, kind="stable")
+    for a, b in zip(order[:-1], order[1:]):
+        if edge_id[a] == edge_id[b]:
+            ra, rb = find(owner[a]), find(owner[b])
+            if ra != rb:
+                parent[ra] = rb
+    roots = np.array([find(i) for i in range(len(triangles))])
+    open_edge = uses[edge_id] == 1  # as mesh.flipped_faces reads it: an edge with three faces is not open
+    vertices = np.asarray(vertices, float)
+    v = vertices[triangles]
+    volume = np.einsum("ij,ij->i", v[:, 0], np.cross(v[:, 1], v[:, 2])) / 6.0
+    out = []
+    for root in np.unique(roots):
+        faces = np.nonzero(roots == root)[0]
+        if open_edge[np.isin(owner, faces)].any() or volume[faces].sum() >= 0:
+            continue
+        # an inward shell inside the rest of the piece is a cavity's wall, which is right
+        others = np.setdiff1d(np.arange(len(triangles)), faces)
+        if len(others) and np.median(winding_number(vertices[triangles[faces[:3], 0]], vertices[triangles[others]])) > 0.5:
+            continue
+        out.append(faces)
+    return out
+
+
+def winding_number(points: np.ndarray, triangles: np.ndarray) -> np.ndarray:
+    """How many times the triangles (n, 3, 3) wrap each point: about 1 inside a closed outward surface."""
+    total = np.zeros(len(points))
+    for i, p in enumerate(np.asarray(points, float)):
+        a, b, c = (triangles[:, k] - p for k in range(3))
+        la, lb, lc = (np.linalg.norm(x, axis=1) for x in (a, b, c))
+        num = np.einsum("ij,ij->i", a, np.cross(b, c))
+        den = la * lb * lc + np.einsum("ij,ij->i", a, b) * lc + np.einsum("ij,ij->i", b, c) * la             + np.einsum("ij,ij->i", c, a) * lb
+        total[i] = np.arctan2(num, den).sum() / (2 * np.pi)
+    return total
+
+
 def pose_frames(start: int, end: int, count: int = 8) -> list[int]:
     """`count` frames spread evenly over a clip, its first and last included."""
     if end <= start or count <= 1:

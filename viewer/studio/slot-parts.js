@@ -19,6 +19,13 @@ const SLOT_WORDS = { helmet: 'Helmet', torso: 'Torso', shoulders: 'Shoulders', g
   boots: 'Boots', weapon: 'Weapon', shield: 'Shield' };
 
 /** A slot's name in words. */
+// The base-body choices; redrawn whenever the list of bodies changes, so a body just
+// registered can be picked at once.
+export function bodyOptions(bodies) {
+  return (bodies || []).map((b) => `<option value="${escape(b.name)}">${escape(b.name)}${Object.values(b.labels || {}).length
+    ? ` (${escape(Object.values(b.labels).join(', '))})` : ''}</option>`).join('') || '<option value="">none yet</option>';
+}
+
 export function slotLabel(name) {
   return SLOT_WORDS[name] || name;
 }
@@ -136,9 +143,8 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
       fields.querySelector('[data-create]').addEventListener('click', () => { close(); create(); });
       return;
     }
-    const bodies = info.bodies.map((b) => `<option value="${escape(b.name)}">${escape(b.name)}${Object.values(b.labels || {}).length ? ` (${escape(Object.values(b.labels).join(', '))})` : ''}</option>`).join('');
     fields.innerHTML = `
-      <div class="row"><label>Base body <select name="body">${bodies || '<option value="">none yet</option>'}</select></label>
+      <div class="row"><label>Base body <select name="body" data-names="${escape(info.bodies.map((b) => b.name).join('|'))}">${bodyOptions(info.bodies)}</select></label>
         <label>Set name <input type="text" name="set" placeholder="red-knight"></label></div>
       ${mode() === 2
         ? '<div class="row"><input type="text" name="concept" placeholder="Concept drawn on that body, a picture under output/ (e.g. images/knight.png)"></div>'
@@ -151,6 +157,16 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
       <div class="row"><label>Seeds <input type="text" name="seeds" value="3" size="8"></label>
         <label>Style <input type="text" name="style" placeholder="optional, e.g. hand-painted"></label>
         <button type="submit" class="primary">Make the set</button></div>`;
+  }
+
+  function updateBodies() {
+    const select = el.querySelector('[data-fields] select[name=body]');
+    const names = info.bodies.map((b) => b.name).join('|');
+    if (!select || select.dataset.names === names) return;
+    const chosen = select.value;
+    select.innerHTML = bodyOptions(info.bodies);
+    select.dataset.names = names;
+    if (info.bodies.some((b) => b.name === chosen)) select.value = chosen;
   }
 
   function state() {
@@ -220,6 +236,7 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
       return;
     }
     if (!el.querySelector('[data-fields]').children.length) drawForm();
+    else updateBodies();
     drawLists();
     drawJob();
     if (info.job?.running) timer = setTimeout(refresh, 4000);

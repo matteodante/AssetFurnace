@@ -155,3 +155,24 @@ def test_a_helmet_the_size_of_the_head_grows_to_hold_it():
 def test_pose_frames_spread_over_the_clip():
     assert fit.pose_frames(1, 30, 4) == [1, 11, 20, 30]
     assert fit.pose_frames(5, 5, 8) == [5]
+
+
+def test_a_closed_island_turned_inward_is_found_and_an_open_one_is_left():
+    cube_v = np.array([[x, y, z] for x in (0, 1) for y in (0, 1) for z in (0, 1)], float)
+    cube = np.array([[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5], [0, 4, 5], [0, 5, 1],
+                     [2, 3, 7], [2, 7, 6], [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]])
+    assert fit.inward_islands(cube_v, cube) == []  # wound outward
+    inside_out = cube[:, ::-1]
+    second = inside_out + 8  # a second, inward cube beside an outward one
+    found = fit.inward_islands(np.vstack([cube_v, cube_v + 3]), np.vstack([cube, second]))
+    assert len(found) == 1 and sorted(found[0].tolist()) == list(range(12, 24))
+    assert fit.inward_islands(cube_v, inside_out[:-1]) == []  # open: its volume says nothing
+
+
+def test_an_inward_shell_inside_the_piece_is_a_cavity_and_stays():
+    cube_v = np.array([[x, y, z] for x in (0, 1) for y in (0, 1) for z in (0, 1)], float)
+    cube = np.array([[0, 1, 3], [0, 3, 2], [4, 6, 7], [4, 7, 5], [0, 4, 5], [0, 5, 1],
+                     [2, 3, 7], [2, 7, 6], [0, 2, 6], [0, 6, 4], [1, 5, 7], [1, 7, 3]])
+    outer = cube_v * 4 - 1.5  # a big outward box round a small inward one
+    assert fit.inward_islands(np.vstack([outer, cube_v]), np.vstack([cube, cube[:, ::-1] + 8])) == []
+

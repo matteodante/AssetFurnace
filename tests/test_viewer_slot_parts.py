@@ -34,6 +34,12 @@ def test_three_modes_and_slot_names_in_words():
 
 
 @needs_node
+def test_the_body_choices_come_from_the_list_and_say_when_there_is_none():
+    out = _run("console.log(JSON.stringify([m.bodyOptions([]), m.bodyOptions([{ name: 'human', labels: { sex: 'male' } }])]));")
+    assert out == ['<option value="">none yet</option>', '<option value="human">human (male)</option>']
+
+
+@needs_node
 def test_the_run_request_follows_the_mode():
     out = _run("""
       const slots = { helmet: { on: true, route: 'C', prompt: ' a visor ' }, shoulders: { on: true, route: 'B0', split: true },
@@ -117,13 +123,19 @@ def test_one_run_at_a_time_and_its_status(tmp_path):
         def poll(self):
             return self.code
 
+        pid = 4242
+
         def terminate(self):
             self.code = -15
 
-    started = []
+        def wait(self, timeout=None):
+            return self.code
+
+    started, stopped = [], []
 
     def popen(command, **kwargs):
         started.append(command)
+        assert kwargs.keys() & {"creationflags", "start_new_session"}  # its own process group
         kwargs["stdout"].write("cuts: 3 slots\n")
         kwargs["stdout"].flush()
         return Process()
@@ -135,7 +147,8 @@ def test_one_run_at_a_time_and_its_status(tmp_path):
     with pytest.raises(ValueError, match="already"):
         slot_parts_api.start_run(output, payload, popen=popen)
     assert slot_parts_api.job_status(output)["log"] == ["cuts: 3 slots"]
-    slot_parts_api.cancel_run()
+    slot_parts_api.cancel_run(stop=stopped.append)
+    assert stopped == [4242]  # the whole tree, not only the script
     assert slot_parts_api.job_status(output)["running"] is False
     slot_parts_api._JOB.clear()
 

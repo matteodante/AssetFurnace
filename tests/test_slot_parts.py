@@ -67,6 +67,17 @@ def test_roles_of_a_humanoid_from_its_tree_alone():
     assert roles[names["legL0"]][0] == "thigh" and roles[names["legL3"]][0] == "foot"
 
 
+def test_fingers_the_classifier_left_out_belong_to_the_hand():
+    parents, heads, names, found = _found(humanoid())
+    hand = names["armR2"]
+    parents = dict(parents, f1=hand, f1b="f1", f2=hand)  # a three-finger hand, two left out
+    heads = dict(heads, f1=(-0.55, 1.42, 0.02), f1b=(-0.6, 1.42, 0.02), f2=(-0.55, 1.42, -0.02))
+    roles = skeleton.inherit_roles(skeleton.bone_roles(found), parents)
+    assert roles["f1"] == ("hand", roles[hand][1] + 1, "R") and roles["f1b"][1] == roles[hand][1] + 2
+    segments = {s.bone: s for s in skeleton.joint_segments(parents, heads, skeleton.bone_roles(found))}
+    assert skeleton.slot_for(segments["f2"].role, 0.5) == "gloves"  # not the breastplate
+
+
 def test_a_long_arm_starts_with_a_clavicle_and_ends_in_hand_bones():
     assert skeleton.arm_roles(7) == ["clavicle", "upperarm", "forearm", "hand", "hand", "hand", "hand"]
     assert skeleton.arm_roles(2) == ["upperarm", "forearm"]
@@ -267,3 +278,19 @@ def test_a_body_record_round_trips_and_projects_into_any_concept_size(tmp_path):
 def test_a_body_name_must_be_a_plain_folder_name(tmp_path):
     with pytest.raises(ValueError, match="name"):
         body.write({"name": "../escape"}, tmp_path)
+
+
+def test_the_subject_comes_from_the_cut_out_or_from_a_picture_already_cut_out(tmp_path):
+    from PIL import Image
+
+    flat = tmp_path / "flat.png"
+    Image.new("RGB", (8, 8), "grey").save(flat)
+    with pytest.raises(ValueError, match="no cut-out"):
+        camera.subject_alpha(flat)
+    matte = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+    matte.paste((255, 255, 255, 255), (2, 2, 6, 6))
+    matte.save(tmp_path / "flat__matted.png")
+    assert camera.subject_alpha(flat).sum() == 16  # Pixal3D's cut-out beside the picture
+    clear = tmp_path / "clear.png"
+    matte.save(clear)  # a concept that arrived cut out: Pixal3D writes no __matted.png for it
+    assert camera.subject_alpha(clear).sum() == 16

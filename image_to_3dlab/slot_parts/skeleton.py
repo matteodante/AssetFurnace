@@ -51,6 +51,28 @@ def bone_roles(found: dict) -> dict[str, tuple[str, int, str]]:
     return roles
 
 
+def inherit_roles(roles: dict, parents: dict[str, str | None]) -> dict[str, tuple[str, int, str]]:
+    """Bones the classifier left out take the role and side of their nearest classified ancestor.
+
+    The classifier keeps one chain per limb, so the other fingers of a hand are not in it;
+    left out, they read as spine, the gloves lost them and B0 cut them into the breastplate.
+    Further down a chain, the index goes on counting. A bone with no classified ancestor
+    (a root above the hips) stays out.
+    """
+    out = {b: tuple(r) for b, r in roles.items()}
+    for bone in parents:
+        chain, up = [], bone
+        while up is not None and up not in out:
+            chain.append(up)
+            up = parents.get(up)
+        if up is None:
+            continue
+        role, index, side = out[up]
+        for depth, b in enumerate(reversed(chain), start=1):
+            out[b] = (role, index + depth, side)
+    return out
+
+
 def slot_for(role: str, t: float, shoulder_t: float = SHOULDER_T, boot_t: float = BOOT_T) -> str:
     """The slot of a point nearest a bone of `role`, at fraction t (0 head, 1 end) along it."""
     if role in ("neck", "head"):
@@ -74,6 +96,7 @@ def joint_segments(parents: dict[str, str | None], heads: dict, roles: dict) -> 
     The hips and spine end at the next spine bone, not between the thighs and the arms. A
     bone with no children is a point.
     """
+    roles = inherit_roles(roles, parents)
     kids: dict[str | None, list[str]] = {}
     for bone, parent in parents.items():
         kids.setdefault(parent, []).append(bone)

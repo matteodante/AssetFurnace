@@ -93,6 +93,12 @@ def rigid_bone(roles: dict, slot: str, side: str | None = None, carried: dict | 
     return min(found)[1]
 
 
+def head_bones(roles: dict) -> list[str]:
+    """The bones whose skin the helmet must hold. A rig with one head-and-neck joint has no
+    "head" bone: that joint carries the head. With neither, nothing, never the whole body."""
+    return [b for b, (r, _, _) in roles.items() if r == "head"] or [b for b, (r, _, _) in roles.items() if r == "neck"]
+
+
 # ------------------------------------------------------------------ Blender from here
 
 
@@ -366,14 +372,23 @@ def main() -> None:  # pragma: no cover - runs inside Blender
         """Cage fit (not for a rigid piece: a helmet keeps its shape and only follows the head),
         spikes put back, sunken vertices pushed out, then skinned."""
         bone = rigid_bone(roles, slot, carried=carried)
+
+        def stage(name):  # with "debug_dir" in the job: the piece after each step, to see where it goes wrong
+            if job.get("debug_dir"):
+                Path(job["debug_dir"]).mkdir(parents=True, exist_ok=True)
+                export(Path(job["debug_dir"]) / f"{o.name}_{name}.glb", [o])
+
+        stage("1_placed")
         if slot == "helmet":  # room for the head inside, whatever the outline gave
-            head = region([b for b, (r, _, _) in roles.items() if r == "head"])
-            m, grown = fit.enclose(coords(o), head)
-            apply(o, m)
-            info["enclose_scale"] = round(grown, 3)
+            bones = head_bones(roles)
+            if bones:  # region() of no bones is the whole body: the helmet would grow round it
+                m, grown = fit.enclose(coords(o), region(bones))
+                apply(o, m)
+                info["enclose_scale"] = round(grown, 3)
         if bone is None:
             before = coords(o)
             info.setdefault("deform", {})[o.name] = cage_fit(o, body_obj)
+            stage("2_caged")
             after = coords(o)
             edges = np.array([e.vertices[:] for e in o.data.edges])
             bad = (fit.spikes(before, after, edges) | fit.stretched(before, after, edges)) if len(edges) \
@@ -381,6 +396,7 @@ def main() -> None:  # pragma: no cover - runs inside Blender
             if bad.any():
                 set_coords(o, fit.smooth_spikes(after, edges, bad))
             info.setdefault("spikes_fixed", {})[o.name] = int(bad.sum())
+            stage("3_spikes")
         else:
             info.setdefault("deform", {})[o.name] = "rigid"
         # last pass on the piece itself: only vertices still under the skin come out to it
@@ -389,6 +405,23 @@ def main() -> None:  # pragma: no cover - runs inside Blender
         push.offset = job.get("offset", 0.002)
         with ctx(o):
             bpy.ops.object.modifier_apply(modifier="push")
+        stage("4_pushed")
+        # a closed island the cage folded through itself faces inward: turned back out
+        o.data.calc_loop_triangles()
+        tris = np.array([lt.vertices[:] for lt in o.data.loop_triangles], int)
+        owner = np.array([lt.polygon_index for lt in o.data.loop_triangles], int)
+        co = np.empty(len(o.data.vertices) * 3)
+        o.data.vertices.foreach_get("co", co)
+        islands = fit.inward_islands(co.reshape(-1, 3), tris) if len(tris) else []
+        if islands:
+            flip = set(np.unique(owner[np.concatenate(islands)]).tolist())
+            b = bmesh.new()
+            b.from_mesh(o.data)
+            b.faces.ensure_lookup_table()
+            bmesh.ops.reverse_faces(b, faces=[b.faces[i] for i in flip])
+            b.to_mesh(o.data)
+            b.free()
+            info.setdefault("islands_turned_out", {})[o.name] = len(islands)
         if bone is not None:
             one_bone(o, bone, arm)
             info["rigid_bone"] = bone
@@ -401,17 +434,19 @@ def main() -> None:  # pragma: no cover - runs inside Blender
         info = {"faces": len(obj.data.polygons)}
         paired = slots.CATALOGUE[slot].paired
         if piece.get("transfer") and slot not in fit.HELD:  # refit: carried over region to region
-            side = None
             stem = Path(piece["glb"]).stem
-            if slots.CATALOGUE[slot].paired:
-                side = "L" if stem.endswith("_L") else "R"
-                obj.name = f"{slot}_{side}"
-            src = source_region(slot_bones(source["roles"], slot, side))
-            dst = region(slot_bones(roles, slot, side))
-            apply(obj, fit.region_transfer((src.min(0), src.max(0)), (dst.min(0), dst.max(0))))
-            info["placement"] = {obj.name: "transferred"}
-            group = [(obj, side)]
-            for o, _ in group:
+            if paired and stem == slot:  # one file holding both shoulders: each side carried on its own
+                group = split_sides(obj, slot, float(np.median(source["co"][:, 0])))
+            else:
+                side = ("L" if stem.endswith("_L") else "R") if paired else None
+                if side:
+                    obj.name = f"{slot}_{side}"
+                group = [(obj, side)]
+            for o, side in group:
+                src = source_region(slot_bones(source["roles"], slot, side))
+                dst = region(slot_bones(roles, slot, side))
+                apply(o, fit.region_transfer((src.min(0), src.max(0)), (dst.min(0), dst.max(0))))
+                info.setdefault("placement", {})[o.name] = "transferred"
                 shape_and_skin(o, slot, info)
             merged = report["pieces"].setdefault(slot, {})
             for key, value in info.items():  # the two sides of a pair arrive one at a time
@@ -469,7 +504,7 @@ def main() -> None:  # pragma: no cover - runs inside Blender
     # every sampled moment of the body's clips. Hidden by its rest pose alone, the skin a shoulder
     # piece lifts off in a swing showed through (holes of 6-10% in the acceptance); a weapon or
     # shield is held, and the hand under its grip must stay visible
-    worn = [o for o in fitted if o.name.split("_")[0] not in fit.HELD] or fitted
+    worn = [o for o in fitted if o.name.split("_")[0] not in fit.HELD]  # a weapon-only set hides nothing
     gap = job.get("cover_gap", 0.06)
 
     def covered_now(depsgraph=None):
@@ -501,14 +536,14 @@ def main() -> None:  # pragma: no cover - runs inside Blender
                 e.to_mesh_clear()
         return out
 
-    covered = covered_now()
+    covered = covered_now() if worn else np.zeros(len(body_obj.data.vertices))
     poses = 0
-    for clip in job.get("clips", []):
+    for clip in job.get("clips", []) if worn else []:
         before = set(bpy.data.objects)
         bpy.ops.import_scene.gltf(filepath=str(clip))
         imported = [o for o in bpy.data.objects if o not in before]
-        source = next((o for o in imported if o.type == "ARMATURE" and o.animation_data and o.animation_data.action), None)
-        action = source.animation_data.action if source else None
+        clip_arm = next((o for o in imported if o.type == "ARMATURE" and o.animation_data and o.animation_data.action), None)
+        action = clip_arm.animation_data.action if clip_arm else None
         if action is not None:
             action.use_fake_user = True
         for o in imported:
@@ -536,6 +571,18 @@ def main() -> None:  # pragma: no cover - runs inside Blender
     colour.data.foreach_set("color", rgba.ravel())
     body_obj.data.color_attributes.active_color = colour
     report["covered_share"] = float(covered.mean())
+
+    # the two shoulder pieces stay two files only when the person asked (`split`); fitted per
+    # side all the same, then joined into one piece skinned to both shoulders
+    for slot in {p["slot"] for p in job["pieces"] if p["slot"] == "shoulders" and not p.get("split", False)}:
+        sides = [o for o in fitted if o.name in (f"{slot}_L", f"{slot}_R")]
+        if len(sides) == 2:
+            with bpy.context.temp_override(active_object=sides[0], object=sides[0], selected_objects=sides,
+                                           selected_editable_objects=sides):
+                bpy.ops.object.join()
+            sides[0].name = slot
+            fitted[:] = [o for o in fitted if o is not sides[1]]
+            report["pieces"][slot]["joined"] = True
 
     # a trimmed body too: faces wholly under a piece removed, for viewers and engines that
     # do not read the mask (and the studio's preview, `preview.glb`)
