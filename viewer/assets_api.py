@@ -40,7 +40,7 @@ RIG_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__rig__\d{8}-\d{6}(?:-\d+)?$")
 PROPS_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__props__\d{8}-\d{6}(?:-\d+)?$")
 # Folders under output/ that hold other steps' runs, not 3D generations.
 NOT_GENERATED = {"finish", "props", "images", "rig-rebind", "animate", "blender-edits", "editor-feasibility",
-                 "batches"}
+                 "batches", "materials"}
 # A second take of a preset (`_b`) is a choice between versions, not another move.
 TAKE_SUFFIX = re.compile(r"_[b-z]$")
 STAGES = ("picture", "model", "finished", "rigged", "animated")

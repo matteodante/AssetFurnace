@@ -231,6 +231,29 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
              "model; the export takes the clips.",
     ),
     StepSpec(
+        name="materials", label="Game materials", feature=8, takes=("asset",), makes="glb",
+        params=(
+            Param("zones", "choice", "off", choices=("off", "sam31", "sam3", "sam2"),
+                  help="tint zones by material: off, or the segmenter that finds them (GPU)"),
+            Param("materials", "choices", None, choices=None,
+                  help="the zones' materials instead of asking Qwen3.5, e.g. [\"leather\", \"metal\"]"),
+            Param("zones_file", "file", None, help="zones of your own: a JSON {zone: material}, or a run's "
+                                                   ".materials.json corrected by hand"),
+            Param("zones_mask", "file", None, help="with zones_file: the PNG of its zone indices in UV space, "
+                                                   "or that run's _Tint.png"),
+            Param("texture_prefix", "text", None, help="texture file prefix; default T_<model>"),
+            Param("ao", "file", None, help="an AO bake (blender_bake_ao.py), packed into the ORM's red"),
+            Param("profile", "choice", None, choices=None, row=True,
+                  help="creature and equipment_part need three zones"),
+        ),
+        row_fields=("profile",),
+        skip="the model keeps its maps as they are, with no tint mask", replace=(),
+        cli="scripts/game_materials.py", run="image_to_3dlab.batch_steps.materials:run",
+        gpu=True,
+        note="Packing the ORM is image maths; only zones found by a segmenter use the GPU. The packed "
+             "model becomes the row's asset, its tint mask and record beside it for the export.",
+    ),
+    StepSpec(
         name="export_unreal", label="Unreal export", feature=5, takes=("asset",), makes="export",
         params=(
             Param("kind", "choice", "prop", choices=("prop", "creature", "equipment"), row=True),
@@ -293,6 +316,10 @@ def choices(param: Param) -> tuple[str, ...] | None:
         from image_to_3dlab.rigging import preset_ids
 
         return preset_ids()   # the shipped clips, as image_to_3dlab/motions lists them
+    if param.name == "materials" and param.type == "choices" and param.choices is None:
+        from image_to_3dlab.piece_materials import MATERIALS
+
+        return tuple(MATERIALS)   # the zones' closed list
     if param.name == "material" and param.type == "choice" and param.choices is None:
         from image_to_3dlab.piece_materials import MATERIALS
 

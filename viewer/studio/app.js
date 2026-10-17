@@ -17,6 +17,7 @@ import { openReview, renderReviewPanel, fetchQueue, fetchItem } from './review.j
 import { waitingCount } from './review-model.js';
 import { createLabelPanel } from './material-labels.js';
 import { createUnrealPanel } from './unreal-export.js';
+import { createMaterialsPanel } from './game-materials.js';
 
 const $ = (id) => document.getElementById(id);
 const LOGO = './studio/mark.svg';
@@ -39,12 +40,14 @@ const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onModelLoa
   setDownload(clip.file);
   blenderPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
   unrealPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
+  materialsPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
 } });
 
 const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const url = (relative) => servedUrl(base, relative);
 const fileName = (relative) => relative?.split('/').pop() ?? '';
 const unrealPanel = createUnrealPanel({ root: $('unrealPanel'), url, assets: () => assets });
+const materialsPanel = createMaterialsPanel({ root: $('materialsPanel'), url, onMade: () => unrealPanel.refreshTints() });
 const blenderPanel = createBlenderPanel({ root: $('blenderPanel'), url,
   onVersion: (id) => { if (current) { selectedVersions.set(current.id, id); show(current); } },
   onImported: async (assetId, versionId, isActive) => {
@@ -160,6 +163,7 @@ function show(asset) {
   if (!asset) {
     blenderPanel.update(null);
     unrealPanel.update(null);
+    materialsPanel.update(null);
     viewer.showEmpty('Nothing to show yet. Pick an asset on the left.');
     $('steps').innerHTML = '';
     return;
@@ -185,6 +189,7 @@ function show(asset) {
     setDownload(revision.file);
     blenderPanel.update(asset, revision.file, revision);
     unrealPanel.update(asset, revision.file, revision);
+    materialsPanel.update(asset, revision.file, revision);
     return;
   }
   displayedFile = displayModel(asset);
@@ -207,6 +212,7 @@ function show(asset) {
   }
   blenderPanel.update(asset, displayedFile);
   unrealPanel.update(asset, displayedFile);
+  materialsPanel.update(asset, displayedFile);
 }
 
 $('assetList').addEventListener('click', (event) => {
@@ -314,6 +320,7 @@ function showMaking() {
   if (!making) return;
   blenderPanel.update(null);
   unrealPanel.update(null);
+  materialsPanel.update(null);
   closeSheet($('stage'));
   viewingMaking = true;
   renderLibrary();
@@ -455,6 +462,7 @@ function openFile(file) {
   if (!file) return;
   blenderPanel.update(null);
   unrealPanel.update(null);
+  materialsPanel.update(null);
   closeSheet($('stage'));
   current = null;
   viewingMaking = false;
@@ -509,6 +517,7 @@ function showSet(file, title) {
   renderLibrary();
   blenderPanel.update(null);
   unrealPanel.update(null);
+  materialsPanel.update(null);
   $('hideBtn').hidden = true;
   $('steps').innerHTML = '<li class="meta">Each piece of this set is in Review, with its checks.</li>';
   $('sideKind').textContent = 'Set';
@@ -554,6 +563,7 @@ async function showReview(key) {
   renderLibrary();
   blenderPanel.update(null);
   unrealPanel.update(null);
+  materialsPanel.update(null);
   $('hideBtn').hidden = true;
   $('download').hidden = true;
   $('vTitle').textContent = item.name || item.key;

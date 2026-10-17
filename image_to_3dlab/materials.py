@@ -429,8 +429,9 @@ def source_provenance(source: Path) -> dict:
 
 def write_provenance(source: Path, source_sha256: str, record: dict, output: Path,
                      staged: Path | None = None, target: Path | None = None,
-                     components: list[dict] | None = None) -> Path:
-    """Carry the source's licence record to the result, adding only the models in `components`.
+                     components: list[dict] | None = None, zones_from: dict | None = None) -> Path:
+    """Carry the source's licence record to the result, adding only the models in `components`
+    (and, for zones a person gave, `zones_from`: their files, by name and sha256).
 
     Packing ORM is image maths, so without zones the result is licensed exactly as its source.
     `source_sha256` and `record` are taken when the source is read, so a file replaced
@@ -440,6 +441,8 @@ def write_provenance(source: Path, source_sha256: str, record: dict, output: Pat
     record["operation"] = OPERATION
     if components:
         record["components"] = [*(record.get("components") or []), *components]
+    if zones_from:
+        record["zones_from"] = zones_from
     record["input"] = {"path": str(source), "sha256": source_sha256}
     # finalize_output keeps the licence classification under "output": update, never replace
     record["output"] = {**(record.get("output") or {}), "path": str(output),
@@ -741,6 +744,8 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
                "untextured": untextured_materials(glb.document)}
     _publish(out_dir, images, build_glb(document, binary), glb_path, sidecar, sidecar_path,
              lambda staged, target: write_provenance(asset, source_sha256, licence, glb_path, staged, target,
-                                                     (zone_record or {}).get("components")))
+                                                     (zone_record or {}).get("components"),
+                                                     {k: zone_record[k] for k in ("zones_file", "zones_mask")
+                                                      if k in (zone_record or {})} or None))
     return MaterialsResult(status, glb_path, sidecar_path,
                            {kind: out_dir / name for kind, name in first["textures"].items()}, first["maps"])

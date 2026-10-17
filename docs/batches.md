@@ -84,7 +84,7 @@ step needs installed. A bad batch does not start, rather than stopping at row 7.
 | `animate` | Preset clips played on the rig (`"animate": {"presets": ["idle", "walk"]}`, `speed`, `arm_spread`; `scripts/autorig.py animate`). CPU only. The row's asset stays the rig; `export_unreal` takes the clips as a creature's animations |
 | `export_unreal` | The row's asset as Unreal 5.8 files (`scripts/export_unreal.py`), into `rows/<id>/export_unreal/`. Needs `size_cm`. The row's asset stays the finished model |
 | `checks` | The automatic checks of the review queue (`scripts/check_asset.py`): the row reaches the queue with its report and can be approved there |
-| `materials` | Reserved name: skipped with a warning until it exists |
+| `materials` | The model's own maps packed as a game ORM, as `scripts/game_materials.py` (feature 8). Tint zones only when asked: `"zones": "sam31"` (or `sam3`, `sam2`; GPU, Qwen3.5 names the materials unless `"materials"` lists them), or zones of your own: `"zones_file"` (a JSON `{"1": "metal", "2": "leather"}`, or an earlier run's `.materials.json` corrected by hand) with `"zones_mask"` (the PNG of those zone indices in UV space, or that run's `_Tint.png`). The packed model becomes the row's asset, so `export_unreal` ships its mask and record. Left out: the maps stay as they are |
 
 `finish` does **not** repaint: the repaint needs Hunyuan 2.1 Paint weights, whose licence
 excludes the EU, UK and South Korea, and runs on Apple Silicon only. A row that wants it

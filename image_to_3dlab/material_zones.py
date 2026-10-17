@@ -312,6 +312,128 @@ def find_zones(asset: Path, work: Path, segmenter: str = "sam31", vocabulary: li
     return zones, record
 
 
+def readiness(segmenter: str, ask: bool = True) -> list[str]:
+    """What finding zones with `segmenter` still needs (and Qwen3.5 when it must name the
+    materials), named with the command that gets it; never fetched here."""
+    from image_to_3dlab.blender import find_blender, missing_help
+
+    problems = []
+    needed = [{"sam31": None, "sam3": mm.SAM3, "sam2": mm.SAM21}.get(segmenter, mm.SAM21)]
+    needed += [mm.QWEN35] if ask else []
+    checks = [mm.require_env, *((mm.require_sam31,) if segmenter == "sam31" else ()),
+              *((lambda m=model: mm.require(m)) for model in needed if model is not None)]
+    for check in checks:
+        try:
+            check()
+        except mm.MissingModel as exc:
+            problems.append(str(exc))
+    if find_blender() is None:   # the views are rendered with Blender
+        problems.append(missing_help())
+    return problems
+
+
+# --------------------------------------------------------------------------- zones of the person's own
+
+MAX_ZONES_FILE = 1024 * 1024
+
+
+def zones_from_file(asset: Path, zones_file: Path, zones_mask: Path | None) -> tuple[dict[int, ZoneMap], dict]:
+    """Zones a person gives instead of the segmenter's, read as `find_zones` returns them.
+
+    `zones_file` is either a JSON ``{"zones": {"1": "metal", "2": "leather"}}`` (optionally
+    ``"material": <glTF material index>`` when the asset has several textured materials), with
+    `zones_mask` a PNG of those zone indices in the material's UV space (0: no zone); or a
+    run's own ``.materials.json``, corrected by hand, with `zones_mask` its ``_Tint.png``
+    (R, G, B: the zones it names, in that order). The mask is scaled to the atlas, nearest
+    texel. Raises ValueError with what is wrong; nothing is guessed.
+    """
+    from image_to_3dlab.edit_glb import EditGLB
+    from image_to_3dlab.materials import SIDECAR_SCHEMA, surfaces
+    from image_to_3dlab.provenance import sha256_file
+
+    zones_file = Path(zones_file)
+    if zones_mask is None:
+        raise ValueError("a zones file needs its mask: --zones-mask, the PNG of its zones in UV space")
+    zones_mask = Path(zones_mask)
+    for path in (zones_file, zones_mask):
+        if not path.is_file():
+            raise ValueError(f"zones file does not exist: {path}")
+    if zones_file.stat().st_size > MAX_ZONES_FILE:
+        raise ValueError(f"{zones_file.name} is larger than a zones file can be")
+    try:
+        data = json.loads(zones_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"{zones_file.name} is not JSON: {exc}") from None
+    if not isinstance(data, dict):
+        raise ValueError(f"{zones_file.name} must be a JSON object")
+    found = surfaces(EditGLB(Path(asset).read_bytes()))
+    if not found:
+        raise ValueError(f"{Path(asset).name} has no textured material to put zones on")
+    try:
+        with Image.open(zones_mask) as opened:
+            mask = opened.convert("RGB")
+            mask.load()
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"{zones_mask.name} is not a readable picture: {exc}") from None
+
+    if data.get("schema") == SIDECAR_SCHEMA:   # a run's own record, with its tint mask
+        entries = [m for m in data.get("materials") or [] if isinstance(m, dict) and m.get("zones")]
+        entry = next((m for m in entries if (m.get("textures") or {}).get("tint") == zones_mask.name),
+                     entries[0] if len(entries) == 1 else None)
+        if entry is None:
+            raise ValueError(f"{zones_file.name} names no zones for {zones_mask.name}")
+        material = entry.get("material")
+        names = {CHANNELS.index(z["channel"]) + 1: z["material"] for z in entry["zones"]
+                 if isinstance(z, dict) and z.get("channel") in CHANNELS}
+        rgb = np.asarray(mask)
+        # the first channel lit wins; a texel with none lit is no zone
+        lit = rgb >= 128
+        index = np.where(lit.any(axis=-1), lit.argmax(axis=-1) + 1, 0).astype(np.int64)
+    else:
+        raw = data.get("zones")
+        if not isinstance(raw, dict) or not raw:
+            raise ValueError(f'{zones_file.name}: "zones" maps each zone index of the mask to a material, '
+                             'e.g. {"1": "metal", "2": "leather"}')
+        names = {}
+        for key, word in raw.items():
+            if not str(key).isdigit() or not 1 <= int(key) <= 255:
+                raise ValueError(f"{zones_file.name}: zone {key!r} is not a zone index of the mask (1 to 255)")
+            names[int(key)] = word
+        material = data.get("material")
+        index = np.asarray(mask.convert("L"), dtype=np.int64)
+    wrong = sorted({str(w) for w in names.values() if w not in VOCABULARY})
+    if wrong:
+        raise ValueError(f"{zones_file.name}: {', '.join(wrong)} is not one of the materials ({', '.join(VOCABULARY)})")
+    if material is None:
+        if len(found) > 1:
+            raise ValueError(f'{Path(asset).name} has {len(found)} textured materials: say which one with '
+                             f'"material" (one of {", ".join(map(str, sorted(found)))})')
+        material = next(iter(found))
+    if not isinstance(material, int) or material not in found:
+        raise ValueError(f"{zones_file.name}: material {material!r} is not one of the asset's textured "
+                         f"materials ({', '.join(map(str, sorted(found)))})")
+    surface = found[material]
+    height, width = surface.image.shape[:2]
+    if index.shape != (height, width):
+        rows = (np.arange(height) * index.shape[0] // height).clip(0, index.shape[0] - 1)
+        cols = (np.arange(width) * index.shape[1] // width).clip(0, index.shape[1] - 1)
+        index = index[rows][:, cols]
+    phrases = list(dict.fromkeys(names.values()))
+    labels = np.full((height, width), -1, np.int64)
+    for zone, word in names.items():
+        labels[index == zone] = phrases.index(word)
+    coverage = surface.coverage()
+    labels[~coverage] = -1
+    if not (labels >= 0).any():
+        raise ValueError(f"{zones_mask.name} puts no zone on {Path(asset).name}'s texture")
+    zone_map = ZoneMap(material, phrases, labels, np.ones((height, width)), coverage)
+    record = {"segmenter": None, "by": "person", "vocabulary": phrases, "views": 0,
+              "zones_file": {"name": zones_file.name, "sha256": sha256_file(zones_file)},
+              "zones_mask": {"name": zones_mask.name, "sha256": sha256_file(zones_mask)},
+              "components": []}
+    return {material: zone_map}, record
+
+
 # --------------------------------------------------------------------------- the test against the user's points
 
 POINT_AGREEMENT = 0.75

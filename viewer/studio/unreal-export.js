@@ -75,9 +75,16 @@ export function requestBody({ source, kind, size, measure, body, moves, check, m
   if (String(name).trim()) data.name = String(name).trim();
   if (kind === 'prop' && collision !== 'auto') data.collision = collision;
   if (kind === 'prop' && lods !== 'auto') data.lods = lods;
-  if (tint !== 'auto') data.tint = tint;
+  // auto: the mask beside the model; none; or one a Game materials run made for it
+  if (tint === 'none') data.tint = 'none';
+  else if (tint && tint !== 'auto') data.tint = { file: tint };
   if (forward !== 'auto') data.forward = forward;
   return data;
+}
+
+/** The tint masks Game materials made for this model, newest first, as [file, label] options. */
+export function tintOptions(runs = []) {
+  return runs.filter((run) => run.tint).map((run) => [run.tint, `Game materials: ${(run.zones || []).join(', ') || 'zones'}`]);
 }
 
 export const COLLISIONS = [['auto', 'Auto (box)'], ['box', 'Box'], ['convex', 'Convex hull'], ['unreal', "Unreal's own"]];
@@ -170,6 +177,20 @@ export function createUnrealPanel({ root, url, assets }) {
     } catch (error) { message(error.message, true); }
     controls();
   }
+  async function fillTints() {
+    // Auto, None, then the masks the Game materials panel made from this very model.
+    const ctx = context;
+    const keep = el('tint').value;
+    let runs = [];
+    try {
+      const response = await fetch(`/api/materials?file=${encodeURIComponent(ctx?.source.file || '')}`);
+      if (response.ok) runs = (await response.json()).runs || [];
+    } catch { runs = []; }
+    if (context !== ctx) return;
+    while (el('tint').options.length > 2) el('tint').remove(2);
+    for (const [value, label] of tintOptions(runs)) el('tint').add(new Option(label, value));
+    el('tint').value = [...el('tint').options].some((o) => o.value === keep) ? keep : 'auto';
+  }
   function fillBodies(asset) {
     // Rebuilt on every update: other assets may have been rigged since.
     const chosen = el('body').value;
@@ -209,6 +230,7 @@ export function createUnrealPanel({ root, url, assets }) {
     el('source').textContent = `From ${basename(source.file)}${source.moves.length ? ` and ${source.moves.length} move(s)` : ''}`;
     el('result').hidden = true;
     el('material').value = '';
+    fillTints();
     for (const key of ['collision', 'lods', 'tint', 'forward']) el(key).value = 'auto';
     el('name').value = '';
     message('');
@@ -341,5 +363,5 @@ export function createUnrealPanel({ root, url, assets }) {
       finish();
     }
   });
-  return { update };
+  return { update, refreshTints: () => { if (context) fillTints(); } };
 }

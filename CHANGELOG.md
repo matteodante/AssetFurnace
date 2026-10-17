@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The `materials` step: batches and agents (`run_steps`) pack a model's own maps as a game
+  ORM, with tint zones only when asked (`"zones": "sam31"`), or zones of your own:
+  `zones_file` (a JSON `{zone: material}`, or an earlier run's `.materials.json` corrected by
+  hand) with `zones_mask`, the PNG of the zones in UV space. `game_materials.py` takes
+  `--zones-file` and `--zones-mask`; the provenance names the files. The studio's Game
+  materials panel runs it on the model shown, and Export for Unreal offers the tint masks
+  it made for that model.
 - A version made in Blender goes on through Finish, Rig and Animate. The studio shows the
   steps on a chosen version, Rig and Animate list versions among their models (a version
   that kept its skeleton is animated as a rig, copied once and not rigged again), and what
