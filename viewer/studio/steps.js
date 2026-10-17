@@ -35,8 +35,8 @@ export function stepBody(stepId, asset, ctx, { redo = false } = {}) {
     const engines = [best, ...others];
     const seed = made.seed ?? 42;
     return `<p class="hint">${redo ? 'Makes a new 3D model from the same picture; the old one stays in the Library.' : 'Builds a textured 3D model from the picture.'} Takes a few minutes.</p>
-      <label class="check"><input type="checkbox" data-k="newseed" ${redo ? '' : 'checked'}><span>New seed <span class="hint">untick to choose it: the same seed gives the same model</span></span></label>
-      <label class="field" data-seedbox ${redo ? '' : 'hidden'}>Seed<input type="number" data-k="seed" min="0" step="1" value="${esc(seed)}"></label>
+      <label class="check"><input type="checkbox" data-k="newseed" checked><span>New seed <span class="hint">untick to choose it${redo && made.seed != null ? ` (it was ${esc(made.seed)})` : ''}: the same seed gives the same model</span></span></label>
+      <label class="field" data-seedbox hidden>Seed<input type="number" data-k="seed" min="0" step="1" value="${esc(seed)}"></label>
       <details class="adv"><summary>Advanced</summary>
         <label class="field">Engine<select data-k="engine">${engines.map((e, i) => `<option value="${esc(e.id)}" ${made.engine === e.id ? 'selected' : ''}>${i ? '' : 'Best quality: '}${esc(e.label)}</option>`).join('')}</select></label>
         <p class="hint" data-k="licence">${esc((engines.find((e) => e.id === made.engine) || best).license)}</p>

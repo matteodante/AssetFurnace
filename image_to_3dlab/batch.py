@@ -214,6 +214,8 @@ def _file_digests(value: Any) -> Any:
     """A file option by its content: the same path holding another file is a change."""
     if isinstance(value, list):
         return [_file_digests(item) for item in value]
+    if value is False:
+        return value   # a file option turned off
     if isinstance(value, str):
         # a file gone is an input gone, as for the row's own images: a done row keeps its
         # result, a row still to run fails on it
@@ -728,7 +730,8 @@ def _parse_row(raw: Any, defaults: dict[str, Any], base: Path, number: int,
             problems.append(f"{label}: generate needs an image")
         if asset is not None:
             problems.append(f"{label}: has both an asset and a generate step; pick one")
-    elif steps and asset is None:
+    elif steps and asset is None and not set(steps) <= set(PICTURE_STEPS):
+        # a row that only draws (picture, concept) makes a picture, and needs no model
         problems.append(f"{label}: without generate, the row needs an asset (a GLB)")
 
     kind = value.get("kind", "prop")
@@ -1652,9 +1655,17 @@ def _index(spec: BatchSpec, rows: dict[str, Any]) -> dict[str, Any]:
             "files": [record["path"] for step in entry["steps"].values()
                       for record in step.get("files", [])],
             "finished_at": entry.get("finished_at"),
+            **_drawn(directory, entry["steps"]),
             **_extra_outputs(directory, directory / "rows" / row.id, entry["steps"]),
         })
     return {"schema_version": 1, "batch": spec.name, "updated_at": now(), "rows": listed}
+
+
+def _drawn(directory: Path, steps: dict[str, Any]) -> dict[str, Any]:
+    """The picture the row's last drawing step (picture, concept) chose, if any."""
+    drawn = [step.get("picture") for name, step in steps.items()
+             if name in PICTURE_STEPS and step.get("status") == "done" and step.get("picture")]
+    return {"picture": drawn[-1]} if drawn else {}
 
 
 def _extra_outputs(directory: Path, row_dir: Path, steps: dict[str, Any]) -> dict[str, Any]:

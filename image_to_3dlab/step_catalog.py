@@ -36,6 +36,7 @@ class Param:
     choices: tuple[str, ...] | None = None
     row: bool = False          # a batch row field, not an option under the step's name
     help: str = ""
+    off: bool = False          # a file option that `false` turns off (no file, not the default)
     # its flag on the step's command line when it is not --<name with dashes>; "" for none
     # (a positional argument, or a choice the command line makes another way)
     flag: str | None = None
@@ -236,8 +237,8 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
                   help="objects only; default box"),
             Param("lods", "files", None, help="detail levels; default the _LODn files beside "
                                               "the model, [] for none"),
-            Param("tint", "file", None, help="tint mask; default the material step's, beside "
-                                             "the model"),
+            Param("tint", "file", None, off=True, help="tint mask; default the material step's, beside "
+                                                       "the model; false for none"),
             Param("forward", "vector3", None, help="which way the model faces, in Blender axes; "
                                                    "default from the creature family, else 0 -1 0"),
             Param("body", "file", None, help="equipment: the rigged body it belongs to"),
@@ -344,6 +345,8 @@ def value_problem(param: Param, value: Any, files: bool = True) -> str | None:
         if not isinstance(value, dict):
             return f"{name} must be an object, not {value!r}"
     elif kind == "file":
+        if value is False and param.off:
+            return None
         if not isinstance(value, str):
             return f"{name} must be a file path, not {value!r}"
         if files and not Path(value).is_file():
