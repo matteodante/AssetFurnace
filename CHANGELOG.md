@@ -346,6 +346,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- The shared GPU lock is now held by Pixal3D (`pixal3d_generate.py`, every route), by the
+  Qwen3-VL judge while its server runs, and by sd-cli when a set of pieces draws; before,
+  only text to image took it.
 - Unreal exports are one-sided: the material culls back faces (glTF `doubleSided` false),
   so Unreal no longer makes every piece a Two Sided material that draws the inside of a
   helmet through its openings. Cloth (a cloak, cape, mantle, scarf, banner, flag or veil,
