@@ -62,6 +62,19 @@ def test_picking_on_the_page_records_the_pick_and_resumes(server, waiting, launc
     assert status == 422 and "5, 6, 7" in body["error"]
 
 
+def test_a_pick_kept_but_not_resumed_says_why(server, waiting, monkeypatch):
+    """The pick is saved; when the batch then cannot resume (its preflight refuses), the
+    page is told, with the reasons, instead of a silent "Pick one"."""
+    from image_to_3dlab import mcp_server
+
+    monkeypatch.setattr(mcp_server, "resume_batch",
+                        lambda ref: {"started": False, "problems": ["sd-cli is missing"]})
+    status, body = request(server, "POST", "/api/batches/words/pick", {"row": "SM_Barrel", "step": "picture",
+                                                                      "choice": 6})
+    assert status == 422 and body["picked"] is True
+    assert "saved" in body["error"] and "sd-cli is missing" in body["error"]
+
+
 def test_rerunning_a_rows_step_from_the_page(server, waiting, launched):
     status, body = request(server, "POST", "/api/batches/words/rerun", {"row": "SM_Crate", "step": "generate"})
     assert status == 202 and body["started"] is True
