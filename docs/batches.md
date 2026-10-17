@@ -251,31 +251,103 @@ Then, in that repository's `.mcp.json`:
   "cwd": "C:/path/to/AssetFurnace"}}}
 ```
 
+The server is called `assetfurnace`. It follows the MCP specification 2025-11-25 through the
+official Python SDK (`MCPServer`, version 2.x):
+
+- Every tool has annotations: a title, whether it only reads, whether it can stop work or
+  replace files an earlier run made (destructive), whether calling it twice changes nothing
+  more (idempotent), and that it acts on this machine only.
+- Every tool publishes the shape of its result (`outputSchema`) and answers with it
+  (`structuredContent`), with the same JSON as text for clients that read only text.
+- Files a result names (models, pictures, reports, logs) under `output/` or a root the client
+  shares also come back as resource links, with their `mimeType` (`model/gltf-binary` for a
+  GLB). `resources/read` hands each one out by its `file:` URI, and nothing else: the
+  repository's own files stay out of reach.
+- `wait_batch` sends progress notifications while it follows a batch: rows settled out of
+  all of them.
+- Paths must be inside this repository, its `output/` folder, or a root the client shares
+  (MCP roots). Any other path is refused before anything runs, and the refusal names it.
+  This also covers the paths a spec holds: its batch folder (`output.directory`) and its
+  rows' pictures, models, replacements and step files.
+
+### Batches
+
 | Tool | What it does |
 |---|---|
 | `validate_batch(spec)` | Checks a spec and its installs; runs nothing |
 | `submit_batch(spec, retry_failed)` | Starts `pipeline.py --run-batch` in the background and answers at once |
 | `resume_batch(batch_ref, retry_failed)` | Starts a stopped batch again with the spec and intent it ran with |
 | `batch_status(batch_ref)` | Counts and per-row status, with the reason for failures. `batch_ref` is the batch folder or its spec |
-| `list_outputs(batch_ref, row_id)` | Finished rows and their files, as absolute paths on this machine |
+| `wait_batch(batch_ref, timeout_s, every_s)` | Follows a running batch until its runner ends (or at most an hour), with progress; answers as `batch_status`, plus `finished` and `timed_out` |
+| `list_outputs(batch_ref, row_id)` | Finished rows and their files, as absolute paths on this machine and as resource links |
 | `cancel_batch(batch_ref)` | Stops the runner; the row in progress goes back in the queue |
-| `list_steps()` | Step names and which exist yet |
-| `review_queue()`, `review_item(key)` | What waits for review, the latest approvals; one item with its notes, history and checks report |
-| `check_asset(glb, key, profile, set, reference, height, width, depth)` | The checks on a GLB, as `scripts/check_asset.py`: report beside it, item in the queue. `set` takes thresholds: `{"budget.faces.max": 20000}` |
-| `review_decide(key, decision, asset_sha256, note)` | `approved`, or `sent_back` with a note; the version you looked at, as the queue gives it. Also a verdict in `verdicts.jsonl` |
-| `pieces_list()`, `pieces_add_body(...)` | Characters in pieces: base bodies, sets, slots; register a rigged humanoid as a body |
-| `pieces_run(body, set, mode, slots, outfit, concept, weapon, shield, style, seeds, choose)` | A set on a body, in the background, as the studio's Pieces page starts it; `choose` stops after the pictures |
-| `pieces_status()`, `pieces_pick(body, set, picks)` | The run's log and the pictures waiting (paths and scores); go on with your picks |
-| `pieces_fit`, `pieces_refit(body, set, to)`, `pieces_unreal(body, set, size_cm)`, `pieces_cancel()` | Fit again, carry a set to another body, export it for Unreal (worn pieces on the body's Skeleton, the weapon and shield as static meshes on the sockets `SOCKET_Weapon`/`SOCKET_Shield` of hand_r/hand_l, made by the Unreal check), stop the run |
-| `pieces_materials(body, set, pieces)` | Correct the one material of pieces of a made set (`{"helmet": "leather"}`, `null` for the rule's again); `pieces_unreal` then exports with them |
+
+`validate_batch` and `submit_batch` also take `use_case`, `distribution` and `commercial`
+for a CSV spec.
+
+### Steps
+
+| Tool | What it does |
+|---|---|
 | `describe_steps()` | Every step with its settings (types, defaults, ranges), what can be skipped or replaced, what makes candidates, and whether it is installed |
+| `list_steps()` | Step names and which exist yet |
 | `run_steps(name, steps, prompt, images, asset, ..., options)` | One asset through some steps: a batch of one row, written to `output/batches/.agent/<name>.json` and started. Call it again with other settings to rerun from the first changed step |
 | `pick_candidate(batch_ref, row_id, step, choice)` | Pick one of the candidates a waiting row offers (`batch_status` lists them under `waiting`), or change a pick; resumes the batch |
 | `rerun_step(batch_ref, row_id, step)` | Run one step of a row again, and what follows, with the same settings |
 
-`validate_batch` and `submit_batch` also take `use_case`, `distribution` and `commercial`
-for a CSV spec. The review and pieces tools call the same code as the studio and the
-command line (`checks/review.py`, `scripts/review_queue.py`, `slot_parts/runs.py`); one set
-is made at a time on the machine, whether the studio or an agent started it
-(`output/sets/.run.json`). It speaks stdio, uses the official MCP Python SDK (`MCPServer`, version 2.x) and never
-downloads weights: a spec that needs a missing install comes back with the problems.
+### Review
+
+| Tool | What it does |
+|---|---|
+| `check_asset(glb, key, profile, set, reference, height, width, depth)` | The checks on a GLB, as `scripts/check_asset.py`: report beside it, item in the queue. `set` takes thresholds: `{"budget.faces.max": 20000}` |
+| `review_queue()`, `review_item(key)` | What waits for review, the latest approvals; one item with its notes, history and checks report |
+| `review_decide(key, decision, asset_sha256, note)` | `approved`, or `sent_back` with a note; the version you looked at, as the queue gives it. Also a verdict in `verdicts.jsonl` |
+
+### Characters in pieces
+
+| Tool | What it does |
+|---|---|
+| `pieces_list()`, `pieces_add_body(...)` | Base bodies, sets, slots; register a rigged humanoid as a body |
+| `pieces_run(body, set, mode, slots, outfit, concept, weapon, shield, style, seeds, choose)` | A set on a body, in the background, as the studio's Pieces page starts it; `choose` stops after the pictures |
+| `pieces_status()`, `pieces_pick(body, set, picks)` | The run's log and the pictures waiting (paths and scores); go on with your picks |
+| `pieces_fit`, `pieces_refit(body, set, to)`, `pieces_unreal(body, set, size_cm)`, `pieces_cancel()` | Fit again, carry a set to another body, export it for Unreal (worn pieces on the body's Skeleton, the weapon and shield as static meshes on the sockets `SOCKET_Weapon`/`SOCKET_Shield` of hand_r/hand_l, made by the Unreal check), stop the run |
+| `pieces_materials(body, set, pieces)` | Correct the one material of pieces of a made set (`{"helmet": "leather"}`, `null` for the rule's again); `pieces_unreal` then exports with them |
+
+The review and pieces tools call the same code as the studio and the command line
+(`checks/review.py`, `scripts/review_queue.py`, `slot_parts/runs.py`). One set is made at a
+time on the machine, whether the studio or an agent started it (`output/sets/.run.json`).
+Nothing here downloads weights: a spec that needs a missing install comes back with the
+problems.
+
+### Over HTTP, and from another machine
+
+The server speaks stdio by default. For a client that wants a URL instead, it can run over
+Streamable HTTP, on this machine only:
+
+```bash
+python -m image_to_3dlab.mcp_server --http --port 8765
+```
+
+- It listens on `127.0.0.1` (or `localhost`, `::1`), and refuses any other `--host`.
+- Every request needs `Authorization: Bearer <token>`. The token is `ASSETFURNACE_MCP_TOKEN`;
+  without it the server makes one and prints it once.
+- Requests whose `Host` or `Origin` is not this machine's name are refused, so a web page
+  cannot reach the server under another name.
+
+The endpoint is `http://127.0.0.1:8765/mcp`. From another machine, reach it through an SSH
+tunnel, never by opening the port:
+
+```bash
+ssh -N -L 8765:127.0.0.1:8765 you@the-furnace-machine
+```
+
+Then point the client at `http://127.0.0.1:8765/mcp` with the same bearer token. Paths are
+still paths on the machine that runs the server.
+
+### Long work, and MCP tasks
+
+A batch or a set runs for hours, so the tools that start one answer at once and the work
+goes on in the background. `batch_status` and `pieces_status` read it, and `wait_batch`
+follows it with progress. The specification 2025-11-25 also has experimental "tasks"
+(`tasks/get`, `tasks/result`). The official SDK leaves them out on purpose (version 2.3), and
+the background runs already do what they would do here, so the server does not use them.
