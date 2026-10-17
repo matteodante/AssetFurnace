@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -110,9 +111,9 @@ def test_the_pose_map_is_drawn_on_black_with_coloured_limbs(tmp_path):
 
 def test_the_render_command_runs_blender_headless_on_our_script(tmp_path):
     command = maps.render_command("blender.exe", tmp_path / "wolf.glb", tmp_path / "out", ("front", "side"), 512)
-    assert command[:4] == ["blender.exe", "-b", "--factory-startup", "-P"]
-    assert command[4].endswith("blender_concept_views.py")
-    assert command[5:] == ["--", str(tmp_path / "wolf.glb"), str(tmp_path / "out"), "front,side", "512"]
+    assert command[:6] == ["blender.exe", "-b", "--factory-startup", "--python-exit-code", "1", "-P"]
+    assert command[6].endswith("blender_concept_views.py")
+    assert command[7:] == ["--", str(tmp_path / "wolf.glb"), str(tmp_path / "out"), "front,side", "512"]
     with pytest.raises(ValueError, match="view"):
         maps.render_command("blender.exe", tmp_path / "w.glb", tmp_path, ("three_quarter",), 512)
 
@@ -157,3 +158,23 @@ def test_lineart_of_a_wide_picture_keeps_its_proportions(tmp_path):
     width, height = cols.max() - cols.min(), rows.max() - rows.min()
     assert abs(width / height - 1) < 0.15, (width, height)
     assert lines[5, 80] == 255 and lines[155, 80] == 255  # the padding is empty paper
+
+
+def test_a_python_error_in_the_render_is_a_failed_exit_not_zero():
+    """Blender 5.2 `--help`: without --python-exit-code a raised exception exits 0."""
+    command = maps.render_command("blender", Path("a.glb"), Path("out"))
+    assert command[command.index("--python-exit-code") + 1] == "1"
+    assert command.index("--python-exit-code") < command.index("-P")
+
+
+def test_pictures_left_by_an_earlier_render_are_not_taken_for_new_ones(tmp_path):
+    folder = tmp_path / "maps"
+    folder.mkdir()
+    for name in ("front_colour.png", "front_depth.png"):
+        (folder / name).write_bytes(b"old")
+
+    class Done:
+        returncode, stdout, stderr = 0, "", ""
+
+    with pytest.raises(RuntimeError, match="did not render"):
+        maps.render(tmp_path / "a.glb", folder, blender=Path("blender"), run=lambda *a, **k: Done())

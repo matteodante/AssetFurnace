@@ -88,6 +88,21 @@ def strictest_class(classes: Iterable[str | None]) -> str | None:
 _MESH_NAME = re.compile(r"(SM|SK)_[A-Za-z0-9][A-Za-z0-9_]*")
 
 
+# Cloth is seen from both sides (the inside of a cloak when it swings); armour, bodies and
+# props are closed or worn, and drawing their back faces costs pixels and shows the
+# inside of a helmet through its openings. glTF 2.0.1: `doubleSided` false enables
+# back-face culling, and UE 5.8's Interchange turns true into a Two Sided material.
+TWO_SIDED_WORDS = ("cloak", "cape", "mantle", "scarf", "banner", "flag", "veil")
+
+
+def two_sided(base: str, asked: bool | None = None) -> bool:
+    """Whether the exported material is two sided: as asked, else only for cloth."""
+    if asked is not None:
+        return bool(asked)
+    lowered = base.lower()
+    return any(word in lowered for word in TWO_SIDED_WORDS)
+
+
 def safe_mesh_name(mesh: str) -> str:
     """A sidecar's mesh name, refused unless it is a plain `SM_`/`SK_` name: it becomes a
     folder the Unreal check empties."""

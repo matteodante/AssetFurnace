@@ -36,6 +36,8 @@ import generate_api
 from blender_edit_api import local_address
 from generate_api import OUTPUT_ROOT, Handler, _reconcile_orphaned_jobs, _terminate_active_job
 
+from image_to_3dlab import processes
+
 REPO = Path(__file__).resolve().parents[1]
 
 
@@ -90,6 +92,26 @@ def launch_plan(env: Mapping[str, str], port: int = 8777, token: str | None = No
     return LaunchPlan("127.0.0.1", True, f"Opening {local}")
 
 
+JOURNAL = REPO / "journal"
+
+
+def write_pid_file(port: int, folder: Path = JOURNAL) -> Path:
+    """`journal/server-<port>.pid`: `<pid> <port>`, where Ferma-AssetFurnace.ps1 looks."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / f"server-{port}.pid"
+    path.write_text(f"{os.getpid()} {port}", encoding="utf-8")
+    return path
+
+
+def remove_pid_file(path: Path) -> None:
+    """Only this server's: another one may have started on the port since."""
+    try:
+        if path.read_text(encoding="utf-8").split()[0] == str(os.getpid()):
+            path.unlink()
+    except (OSError, IndexError):
+        pass
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--host", default="127.0.0.1", help="interface address to bind")
@@ -127,9 +149,14 @@ def main() -> int:
     signal.signal(signal.SIGTERM, _handle_shutdown_signal)
     signal.signal(signal.SIGINT, _handle_shutdown_signal)
 
+    # Windows: sd-cli, llama-server and the workers die with this server, also when it is
+    # killed from Task Manager (TerminateProcess runs none of the handlers above).
+    processes.kill_children_with_this_process()
+
     import functools
     handler = functools.partial(Handler, directory=str(REPO))
     with ThreadingHTTPServer((args.host, args.port), handler) as httpd:
+        pid_file = write_pid_file(args.port)
         if plan is not None:
             print(plan.message, flush=True)
             if plan.open_browser and not args.no_browser:
@@ -139,6 +166,8 @@ def main() -> int:
             httpd.serve_forever()
         except (KeyboardInterrupt, SystemExit):
             print("\nstopped")
+        finally:
+            remove_pid_file(pid_file)
     return 0
 
 

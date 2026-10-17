@@ -24,8 +24,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -418,17 +421,39 @@ def _read_meta(output: Path) -> dict[str, Any]:
         return {}
 
 
+# One change at a time: the threaded server can take a rename and a hide together, and
+# each would otherwise write over the other's read.
+_META_LOCK = threading.Lock()
+
+
+def _write_meta(output: Path, meta: dict[str, Any]) -> None:
+    """Replace the file whole (written aside, then os.replace), so a crash mid-write leaves
+    the old file, not a truncated one. A file that does not parse is moved aside as
+    `.bad-<time>` first: it may hold names a person chose, and starting over must not
+    erase them for good."""
+    path = output / META_NAME
+    if path.is_file():
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            path.replace(path.with_name(f"{META_NAME}.bad-{time.strftime('%Y%m%d-%H%M%S')}"))
+    aside = path.with_name(f"{META_NAME}.{os.getpid()}.tmp")
+    aside.write_text(json.dumps(meta, indent=1), encoding="utf-8")
+    os.replace(aside, path)
+
+
 def set_hidden(output: Path, asset_id: str, hidden: bool) -> None:
     """Hide an asset from the Library, or bring it back. Never touches its files."""
     if not ASSET_ID.fullmatch(asset_id or ""):
         raise ValueError(f"not an asset id: {asset_id!r}")
     if asset_id not in {a["id"] for a in list_assets(output)}:
         raise ValueError(f"no such asset: {asset_id}")
-    meta = _read_meta(output)
-    ids = set(meta.get("hidden", []))
-    ids.add(asset_id) if hidden else ids.discard(asset_id)
-    meta["hidden"] = sorted(ids)
-    (output / META_NAME).write_text(json.dumps(meta, indent=1), encoding="utf-8")
+    with _META_LOCK:
+        meta = _read_meta(output)
+        ids = set(meta.get("hidden", []))
+        ids.add(asset_id) if hidden else ids.discard(asset_id)
+        meta["hidden"] = sorted(ids)
+        _write_meta(output, meta)
 
 
 NAME_LIMIT = 80
@@ -443,14 +468,15 @@ def set_name(output: Path, asset_id: str, name: str) -> str:
     if asset_id not in found:
         raise ValueError(f"no such asset: {asset_id}")
     clean = " ".join(str(name or "").split())[:NAME_LIMIT]
-    meta = _read_meta(output)
-    names = meta.get("names") if isinstance(meta.get("names"), dict) else {}
-    if clean:
-        names[asset_id] = clean
-    else:
-        names.pop(asset_id, None)
-    meta["names"] = names
-    (output / META_NAME).write_text(json.dumps(meta, indent=1), encoding="utf-8")
+    with _META_LOCK:
+        meta = _read_meta(output)
+        names = meta.get("names") if isinstance(meta.get("names"), dict) else {}
+        if clean:
+            names[asset_id] = clean
+        else:
+            names.pop(asset_id, None)
+        meta["names"] = names
+        _write_meta(output, meta)
     return clean or next(a["name"] for a in list_assets(output) if a["id"] == asset_id)
 
 
