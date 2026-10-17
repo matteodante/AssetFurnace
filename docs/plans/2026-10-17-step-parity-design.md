@@ -337,21 +337,21 @@ questa lista prima del resoconto finale.
 | MCP 7: Streamable HTTP facoltativo su 127.0.0.1 con token, uso via tunnel SSH | unito (#109; provato davvero: 401 senza token, 200 con) |
 | Pixal3D secondo la scheda ufficiale (12 passi, campo visivo stimato con MoGe-2) | unito (#104; MoGe-2 installato e provato: 23 s su GPU) |
 | Review finale con Codex di tutto il lavoro, correzioni, resoconto | unito (#110): review per aree (lotti, MCP, studio, pezzi, Unreal, motori), 19 difetti veri corretti con un test ciascuno; due di #103 (altra sessione) segnalati, non toccati |
-| Armi e scudi come asset autonomi, generati bene: posa canonica nel prompt (dritta, impugnatura in basso, punta in alto, fondo piatto) | aperto (in main da #108: da tenere) |
-| Armi: controllo dell'orientamento con il giudice Qwen3-VL, girata se l'impugnatura è in alto | aperto (in main da #108: da tenere) |
-| Armi: candidati con punteggio come gli altri pezzi, pausa per la scelta nello studio | aperto |
-| Armi: socket "grip" sull'SM_ dell'arma, trovato con il grounding di Qwen3-VL sull'immagine canonica e proiettato sul 3D; correggibile su tre strade (studio, CLI, MCP) | aperto |
-| Armi: export Unreal come SM_ con il socket grip, scala reale, pivot sull'impugnatura, collisione sensata; in un set fatte accanto, come asset separati, non agganciate | aperto |
-| Armi: togliere il legame al corpo messo da #108 (socket SOCKET_Weapon/SOCKET_Shield sul corpo, "Held by", altezza del portatore, fit alla mano, GRIP_REACH_CM) | aperto |
-| Armi: prova in UE di spada, ascia, arco e scudo come asset singoli (socket presente sull'impugnatura, pivot giusto, scala plausibile) | aperto |
-| Audit 1: `batch.class_problem` rifiuta research-only anche senza intento commerciale; allinearlo a validate_run_policy (rifiuta solo se commerciale, altrimenti avvisa e registra) | aperto |
-| Audit 2: `slot_parts/sidecar.py` scrive la classe di licenza fissa (commercial-conditional); prenderla dal catalogo | aperto |
-| Audit 3: catalogo dei passi: aiuto di negative_prompt ("solo con cfg sopra 1"), dimensioni del passo picture fino a 2048 con i preset ufficiali (2048 senza riferimenti, 1024 con), parametri transparent e rewrite di #103, opzione two_sided dell'export Unreal | aperto |
-| Audit 4: Create nello studio offre i preset della scheda, 2048 predefinito per il solo testo | aperto |
-| Audit 5: le immagini dei pezzi senza riferimenti usano T2I_DEFAULTS | aperto |
-| Audit 6: `pixal3d_generate.py` cancella anche .ply e __matted.png una volta usati (811 MB inutili nel set vero) | aperto |
-| Audit 7: export Unreal senza avvisi del validatore glTF: tangenti scritte (MESH_PRIMITIVE_GENERATED_TANGENT_SPACE), mesh skinnata come nodo radice (NODE_SKINNED_MESH_NON_ROOT) | aperto |
-| Lint F (ruff) entrato in main con #84, #87, #88 | aperto |
+| Armi e scudi come asset autonomi, generati bene: posa canonica nel prompt (dritta, impugnatura in basso, punta in alto, fondo piatto) | PR #111 |
+| Armi: controllo dell'orientamento con il giudice Qwen3-VL, girata se l'impugnatura è in alto | PR #111 (sul set vero una spada su due girata) |
+| Armi: candidati con punteggio come gli altri pezzi, pausa per la scelta nello studio | PR #111 |
+| Armi: socket "grip" sull'SM_ dell'arma, trovato con il grounding di Qwen3-VL sull'immagine canonica e proiettato sul 3D; correggibile su tre strade (studio, CLI, MCP) | PR #111 (grounding provato con llama.cpp: 0,5 s, riquadri giusti; sul manico lungo la classe dice dove si chiude la mano) |
+| Armi: export Unreal come SM_ con il socket grip, scala reale, pivot sull'impugnatura, collisione sensata; in un set fatte accanto, come asset separati, non agganciate | PR #111 (il socket lo fa il controllo in UE: l'import glTF non legge SOCKET_grip) |
+| Armi: togliere il legame al corpo messo da #108 (socket SOCKET_Weapon/SOCKET_Shield sul corpo, "Held by", altezza del portatore, fit alla mano, GRIP_REACH_CM) | PR #111 |
+| Armi: prova in UE di spada, ascia, arco e scudo come asset singoli (socket presente sull'impugnatura, pivot giusto, scala plausibile) | PR #111: tutte e quattro PASS in UE 5.8 (100, 80, 140, 75 cm) |
+| Audit 1: `batch.class_problem` rifiuta research-only anche senza intento commerciale; allinearlo a validate_run_policy (rifiuta solo se commerciale, altrimenti avvisa e registra) | PR #112 |
+| Audit 2: `slot_parts/sidecar.py` scrive la classe di licenza fissa (commercial-conditional); prenderla dal catalogo | PR #112 (research-only) |
+| Audit 3: catalogo dei passi: aiuto di negative_prompt ("solo con cfg sopra 1"), dimensioni del passo picture fino a 2048 con i preset ufficiali (2048 senza riferimenti, 1024 con), parametri transparent e rewrite di #103, opzione two_sided dell'export Unreal | PR #113 |
+| Audit 4: Create nello studio offre i preset della scheda, 2048 predefinito per il solo testo | PR #113 |
+| Audit 5: le immagini dei pezzi senza riferimenti usano T2I_DEFAULTS | PR #113 |
+| Audit 6: `pixal3d_generate.py` cancella anche .ply e __matted.png una volta usati (811 MB inutili nel set vero) | PR #114: .ply tolto; il ritaglio resta come solo contorno, perché la camera di corpo e arma lo legge |
+| Audit 7: export Unreal senza avvisi del validatore glTF: tangenti scritte (MESH_PRIMITIVE_GENERATED_TANGENT_SPACE), mesh skinnata come nodo radice (NODE_SKINNED_MESH_NON_ROOT) | PR #115 (corpo ed elmo del cavaliere: 0 errori, 0 avvisi; in UE tutto PASS) |
+| Lint F (ruff) entrato in main con #84, #87, #88 | PR #112 |
 
 ## Seguiti
 
