@@ -33,6 +33,13 @@ def export_unreal(source: Path, **settings):
     return export(source, **settings)
 
 
+def parse_socket(text: str) -> dict[str, str]:
+    sys.path.insert(0, str(REPO / "scripts"))
+    from export_unreal import parse_socket as parse
+
+    return parse(text)
+
+
 def preflight(rows) -> list[str]:
     problems = []
     for row in rows:
@@ -60,6 +67,7 @@ def run(ctx: StepContext) -> StepResult:
         paths["animations"] = list(ctx.clips)   # the clips the steps before made
     forward = options.get("forward")
     try:
+        held = {"socket": parse_socket(options["socket"])} if options.get("socket") else {}
         result = export_unreal(
             ctx.asset, kind=ctx.row.kind, size_cm=ctx.row.size_cm,
             measure=ctx.row.measure or "height", name=options.get("name") or ctx.row.id,
@@ -68,7 +76,8 @@ def run(ctx: StepContext) -> StepResult:
             animations=paths["animations"],
             tint=False if options.get("tint") is False else Path(options["tint"]) if options.get("tint") else None,
             forward=tuple(float(value) for value in forward) if forward else None,
-            body_name=options.get("body_name"), material=options.get("material") or ctx.material, log=ctx.log)
+            body_name=options.get("body_name"), material=options.get("material") or ctx.material, log=ctx.log,
+            **held)
     except (ValueError, RuntimeError) as exc:
         return StepResult(ok=False, reason=str(exc))
     if not result["ok"]:

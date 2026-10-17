@@ -260,7 +260,9 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
                                                        "the model; false for none"),
             Param("forward", "vector3", None, help="which way the model faces, in Blender axes; "
                                                    "default from the creature family, else 0 -1 0"),
-            Param("body", "file", None, help="equipment: the rigged body it belongs to"),
+            Param("body", "file", None, help="equipment, or an object on a socket: the rigged body it belongs to"),
+            Param("socket", "text", None, help="an object held by the body (a weapon, a shield): NAME=BONE, "
+                                               "the socket of its skeleton it hangs from in Unreal"),
             Param("body_name", "text", None, help="equipment: the body's export name"),
             Param("animations", "files", None, help="creatures: more animated GLBs"),
             Param("material", "choice", None, choices=None,

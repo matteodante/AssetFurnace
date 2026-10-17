@@ -96,7 +96,9 @@ default), `atlas`, `texture_size`, `metallic`, `roughness`, `ior`, `voxel`, `ski
 `export_unreal` settings: `name` (default the row's id), `collision` (`box`, `convex`,
 `unreal`; objects), `lods` (files, `[]` for none; default the `_LODn` files beside the
 model), `tint` (`false` for none), `forward` (three numbers, Blender axes), `body` and `body_name`
-(equipment, which needs its body), `animations` (creatures). File paths are relative to
+(equipment, which needs its body), `socket` (an object held by `body`, as `NAME=BONE`:
+`"SOCKET_Weapon=hand_r"`; a static mesh in the body's space that hangs from that socket,
+which `scripts/unreal_import_check.py` makes on the body), `animations` (creatures). File paths are relative to
 the spec. `checks` settings: `profile` (default from `kind`), `set` (thresholds, as
 `--set`: `{"budget.faces.max": 20000}`), `reference` (compare with the row's picture,
 default true), `height`, `width`, `depth` in metres (default `size_cm` when it is a
@@ -304,7 +306,7 @@ for a CSV spec.
 | `pieces_list()`, `pieces_add_body(...)` | Base bodies, sets, slots; register a rigged humanoid as a body |
 | `pieces_run(body, set, mode, slots, outfit, concept, weapon, shield, style, seeds, choose)` | A set on a body, in the background, as the studio's Pieces page starts it; `choose` stops after the pictures |
 | `pieces_status()`, `pieces_pick(body, set, picks)` | The run's log and the pictures waiting (paths and scores); go on with your picks |
-| `pieces_fit`, `pieces_refit(body, set, to)`, `pieces_unreal(body, set, size_cm)`, `pieces_cancel()` | Fit again, carry a set to another body, export it for Unreal, stop the run |
+| `pieces_fit`, `pieces_refit(body, set, to)`, `pieces_unreal(body, set, size_cm)`, `pieces_cancel()` | Fit again, carry a set to another body, export it for Unreal (worn pieces on the body's Skeleton, the weapon and shield as static meshes on the sockets `SOCKET_Weapon`/`SOCKET_Shield` of hand_r/hand_l, made by the Unreal check), stop the run |
 | `pieces_materials(body, set, pieces)` | Correct the one material of pieces of a made set (`{"helmet": "leather"}`, `null` for the rule's again); `pieces_unreal` then exports with them |
 
 The review and pieces tools call the same code as the studio and the command line

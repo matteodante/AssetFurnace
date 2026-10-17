@@ -76,9 +76,10 @@ def slot_bones(roles: dict, slot: str, side: str | None) -> list[str]:
 
 def rigid_bone(roles: dict, slot: str, side: str | None = None, carried: dict | None = None) -> str | None:
     """The one bone a rigid piece follows: the helmet a head bone, the weapon the right hand, the
-    shield the left forearm, unless `side` says otherwise. With `carried` (body vertices each bone
-    carries most), the bone carrying most wins: a rig can split the head over two bones, and a
-    helmet on the small one turned apart from the head (31% holes on a second body)."""
+    shield the left forearm, unless `side` says otherwise. For the helmet, with `carried` (body
+    vertices each bone carries most), the bone carrying most wins: a rig can split the head over
+    two bones, and a helmet on the small one turned apart from the head (31% holes on a second
+    body). A hand or forearm is always the root of its chain, never a finger."""
     role = slots.CATALOGUE[slot].rigid
     side = side or ("L" if slot == "shield" else "R")
     if role is None:
@@ -88,8 +89,10 @@ def rigid_bone(roles: dict, slot: str, side: str | None = None, carried: dict | 
         found = [(i, b) for b, (r, i, _) in roles.items() if r == "neck"]
     if not found:
         return None
-    if carried:
+    if carried and role == "head":
         return max(found, key=lambda f: (carried.get(f[1], 0), -f[0]))[1]
+    # a hand or forearm: the root of its chain. The fingers inherit the hand's role, and one of
+    # them could carry more skin than the hand, which took the weapon on the first real set.
     return min(found)[1]
 
 
