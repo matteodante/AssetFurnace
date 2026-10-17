@@ -51,10 +51,21 @@ def seeds_of(options: dict) -> list[int]:
     return [first + offset for offset in range(int(options.get("count", 1)))]
 
 
+def legacy_key(prompt: str | None, options: dict) -> str:
+    """The candidates' key as the first version of this step made it (the words, the
+    settings, the seeds): candidates and picks from then still count."""
+    import hashlib
+    import json
+
+    payload = {"prompt": prompt or "", "settings": settings_of(options), "seeds": seeds_of(options)}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
 def run(ctx: StepContext) -> StepResult:
     def draw(seed, path):
         text_image.generate(ctx.row.prompt or "", {**settings_of(ctx.options), "seed": seed}, path,
                             log=ctx.log, session=f"batch picture {ctx.row.id}")
 
-    pictures = _candidates.draw_all(ctx, "picture", seeds_of(ctx.options), draw)
+    pictures = _candidates.draw_all(ctx, "picture", seeds_of(ctx.options), draw,
+                                    legacy=legacy_key(ctx.row.prompt, ctx.options))
     return _candidates.choose(ctx, pictures)

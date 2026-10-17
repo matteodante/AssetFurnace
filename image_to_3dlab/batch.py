@@ -225,14 +225,28 @@ def with_picks(row: BatchRow, picks: dict[str, Any]) -> BatchRow:
     """The row with the picks made through the MCP server or the studio (`picks.json`),
     each only while the candidates it was made among are still the ones the step would
     make (its candidate key): new words, settings or inputs before it make it wait again.
-    A pick the spec gives itself always wins."""
-    options = dict(row.options)
-    for step, made in picks.items():
-        if (step not in row.steps or not isinstance(made, dict) or "pick" in options.get(step, {})
-                or made.get("key") != row.candidate_key(step)):
+    A pick the spec gives itself always wins. Applied in the row's step order: a step's
+    key covers the picks of the steps before it, as it did when the step ran."""
+    current = row
+    for step in row.steps:
+        made = picks.get(step)
+        if not isinstance(made, dict) or "pick" in current.options.get(step, {}):
             continue
-        options[step] = {**options.get(step, {}), "pick": made.get("choice")}
-    return row if options == row.options else replace(row, options=options)
+        if made.get("key") not in (current.candidate_key(step), *_legacy_keys(current, step)):
+            continue
+        current = replace(current, options={**current.options,
+                                            step: {**current.options.get(step, {}), "pick": made.get("choice")}})
+    return current
+
+
+def _legacy_keys(row: BatchRow, step: str) -> tuple[str, ...]:
+    """The key a pick on a `picture` step had before keys were step fingerprints (the
+    words, the settings and the seeds), so those picks still hold."""
+    if step != "picture":
+        return ()
+    from .batch_steps.picture import legacy_key
+
+    return (legacy_key(row.prompt, row.options.get(step, {})),)
 
 
 def recorded_sidecar(asset: Path | None) -> Path | None:
