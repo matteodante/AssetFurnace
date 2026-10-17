@@ -1,6 +1,7 @@
 # Ogni passo saltabile, correggibile e rilanciabile, da studio, riga di comando e agenti (progetto)
 
-Data: 17 ottobre 2026. Stato: **proposto**, in costruzione a piccole PR (sezione 9).
+Data: 17 ottobre 2026. Stato: **fatto**. Le mancanze 1-11 sono chiuse; la parità sulle tre strade è nella
+sezione 12, le PR nella sezione 13, quello che resta fuori nei Seguiti.
 
 Richiesta dell'utente: "dobbiamo dare la possibilità a agenti e UI di fare queste cose". Ogni passo della pipeline si
 deve poter **saltare**, il suo risultato **correggere o sostituire**, e lo si deve poter **rilanciare da solo** senza
@@ -236,31 +237,38 @@ l'attesa di una scelta. Le funzioni che lo prendono già da sé (zone, luce tolt
 
 Ogni PR aggiorna il catalogo, la tabella della sezione 12 e il test di parità.
 
-## 12. Tabella di parità (obiettivo)
+## 12. Tabella di parità
 
-S = saltare, C = correggere o sostituire l'uscita, R = rilanciare da solo. Si aggiorna PR dopo PR; "sì" ovunque è la
-fine del lavoro.
+S = saltare, C = correggere o sostituire l'uscita, R = rilanciare da solo. "Sì" ovunque: ogni casella dice come.
+Nei lotti e per gli agenti saltare è togliere il passo dalla riga, rilanciare è `rerun_step` (o cambiare la riga:
+riparte dal primo passo la cui impronta cambia), sostituire è `"replace": {"<passo>": "file"}` o la scelta fra i
+candidati (`pick_candidate`, `picks.json`). Gli agenti usano gli stessi lotti (`run_steps`, una riga) più gli
+strumenti MCP dei pezzi e della revisione.
 
 | Funzione | Studio S/C/R | Riga di comando S/C/R | Agenti S/C/R |
 |---|---|---|---|
-| Testo-immagine | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| 2 Concept da riferimento | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| 3 Bibbia dello stile (opzionale) | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| Modello 3D | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| Finish | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| Versione Blender nella catena | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| Rig | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| 6 Clip della famiglia | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| Animazione | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| 4 Pezzi (concept, pezzi, arma/scudo, fit, refit, Unreal) | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| 8 Materiali | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| 5 Esportazione Unreal | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| 7 Controlli e revisione | sì/sì/sì | sì/sì/sì | sì/sì/sì |
-| 1 Lotti | sì/sì/sì | sì/sì/sì | sì/sì/sì |
+| Testo-immagine | sì/sì/sì: Create parte anche da un'immagine propria; più immagini da scegliere; si rifà da Create | sì/sì/sì: `text_image.py` (`--count`, `--seed`) | sì/sì/sì: passo `picture` con candidati e scelta, `replace` |
+| 2 Concept da riferimento | sì/sì/sì: pannello "Draw from a reference", facoltativo, si rifà | sì/sì/sì: `reference_concept.py make` | sì/sì/sì: passo `concept` con candidati, `replace` |
+| 3 Bibbia dello stile (opzionale) | sì/sì/sì: casella in Create, nel pannello del concept e nei pezzi, spenta di base | sì/sì/sì: `--bible` su `text_image.py`, `reference_concept.py`, `slot_parts.py` | sì/sì/sì: `bible` in `picture`, `concept`, `pieces_run` |
+| Modello 3D | sì/sì/sì: "Open GLB"; "Redo…" con il seme | sì/sì/sì: `pipeline.py` | sì/sì/sì: passo `generate`, `replace` |
+| Finish | sì/sì/sì: "Redo…" con i triangoli; una versione Blender al suo posto | sì/sì/sì: `retopo_repaint.py` | sì/sì/sì: passo `finish`, `replace` |
+| Versione Blender nella catena | sì/sì/sì: i passi dopo partono dalla versione scelta (#77) | sì/sì/sì: il suo `model.glb` è un file come gli altri | sì/sì/sì: `replace` con il `model.glb` e la sua provenienza |
+| Rig | sì/sì/sì: "Redo…"; un rig da Blender si anima senza rifarlo | sì/sì/sì: `autorig.py rig` | sì/sì/sì: passo `rig`, `replace` |
+| 6 Clip della famiglia | sì/sì/sì: "Family test clips" e "Longer takes" nel Rig | sì/sì/sì: `creature_clips.py --no-clips/--no-library/--no-variations`, `chain_retarget.py` | sì/sì/sì: passo `clips`, `replace` |
+| Animazione | sì/sì/sì: le mosse si aggiungono, una per volta | sì/sì/sì: `autorig.py animate` | sì/sì/sì: passo `animate`, `replace` con una lista di GLB |
+| 4 Pezzi (concept, pezzi, arma/scudo, fit, refit, Unreal) | sì/sì/sì: scelta del vestito, dei pezzi, di arma e scudo; "Fit again", "Carry to body", "Export for Unreal"; materiale per pezzo | sì/sì/sì: `slot_parts.py run --stop-at-concept/--stop-at-pictures/--resume --pick`, `fit`, `refit`, `unreal`, `materials` | sì/sì/sì: `pieces_run`, `pieces_pick`, `pieces_fit`, `pieces_refit`, `pieces_unreal` |
+| 8 Materiali | sì/sì/sì: pannello "Game materials" (zone facoltative, "From my own file…") | sì/sì/sì: `game_materials.py --zones/--zones-file --zones-mask` | sì/sì/sì: passo `materials` con `zones_file` e `zones_mask` |
+| 5 Esportazione Unreal | sì/sì/sì: "More options" (nome, collisione, LOD, maschera di tinta, direzione) | sì/sì/sì: `export_unreal.py` | sì/sì/sì: passo `export_unreal` |
+| 7 Controlli e revisione | sì/sì/sì: soglie per esecuzione nel foglio di revisione, decisione della persona | sì/sì/sì: `check_asset.py --set` | sì/sì/sì: passo `checks`, `review_queue`, `review_item`, `review_decide` in MCP |
+| 1 Lotti | sì/sì/sì: pagina Batches con scelta dei candidati e "rifai un passo" | sì/sì/sì: `pipeline.py --run-batch` con ripresa e `--retry-failed` | sì/sì/sì: `submit_batch`, `run_steps`, `pick_candidate`, `rerun_step` |
 
-Stato reale, aggiornato a ogni PR: [sezione 13](#13-stato).
+Il test di parità (`tests/test_step_catalog.py` e i test di ogni passo) confronta il catalogo con i flag delle righe
+di comando nei due sensi.
 
 ## 13. Stato
+
+Tutte le PR hanno avuto una revisione indipendente con un agente; i P1 trovati sono stati corretti prima del merge
+(quelli trovati dopo, in PR di seguito).
 
 | PR | Stato |
 |---|---|
@@ -270,11 +278,28 @@ Stato reale, aggiornato a ogni PR: [sezione 13](#13-stato).
 | b2 | Unita (#66): testo-immagine nel pacchetto e `scripts/text_image.py`; passo `picture` con candidati, attesa (`waiting`, uscita 3) e scelta (`pick`, `picks.json`); MCP `describe_steps`, `run_steps`, `pick_candidate`, `rerun_step`; test di parità nei due sensi |
 | b3a | Unita (#67): `image_to_3dlab/rigging.py` condiviso con lo studio, `scripts/autorig.py`, passi `rig` e `animate`; le clip arrivano all'export Unreal |
 | b3b | Unita (#68): passo `concept` (funzione 2) con candidati; `concept/requests.py` condiviso con lo studio; chiave dei candidati = impronta del passo senza la scelta; flag della riga di comando nel catalogo |
-| b3c | In revisione (#69): `replace` nei lotti e in `run_steps` (sostituire l'uscita di un passo con un proprio file, versione Blender compresa) |
-| c1 | In revisione: studio, "Redo…" su 3D, Finish e Rig con i valori usati; passi "fatti da una versione precedente"; seme del 3D in Create e nel passo; triangoli del Finish in Create |
+| b3c | #69: `replace` nei lotti e in `run_steps` (sostituire l'uscita di un passo con un proprio file, versione Blender compresa) |
+| c1 | Unita (#70): "Redo…" su 3D, Finish e Rig con i valori usati; passi "fatti da una versione precedente"; seme del 3D in Create e nel passo; triangoli del Finish in Create |
+| c2 | Unita (#71): opzioni dell'export Unreal nello studio; soglie dei controlli nel foglio di revisione (le condizioni di licenza no) |
+| c3 | Unita (#72, seguito #76): pagina Batches, scelta dei candidati e "rifai un passo"; righe che disegnano soltanto |
+| d1 | Unita (#73, seguito #78): passo `clips`, interruttori nel Rig, `creature_clips.py --no-clips`, riga di comando di `chain_retarget.py` |
+| d2 | Unita (#74): bibbia dello stile su tre strade, spenta di base |
+| d3 | #75: scelta del vestito (`--stop-at-concept`), arma e scudo fra i candidati, "Fit again", "Carry to body", "Export for Unreal" nei pezzi |
+| d4 | Unita (#77): una versione Blender va avanti a Finish, Rig e Animate, e quello che se ne fa resta nel suo asset |
+| e | #79: passo `materials` sulle tre strade, zone proprie (`zones_file` e `zones_mask`), pannello "Game materials" |
 
 ## Seguiti
 
-- Codex non ha revisionato le PR di questo lavoro (limite d'uso raggiunto): ognuna ha avuto una revisione indipendente con un agente, e i P1 trovati sono stati corretti prima del merge.
+- Codex non ha revisionato le PR di questo lavoro (limite d'uso raggiunto): ognuna ha avuto una revisione indipendente
+  con un agente. Una revisione di Codex, quando torna disponibile, è facoltativa.
 - Lo studio non usa il lucchetto della GPU e non vede i lotti in corso (`docs/batches.md`): resta così finché lo
   studio non ha un gestore di lavori unico. Fuori da questo lavoro.
+- Piccole cose trovate dalle revisioni e lasciate (P2, nessuna cambia un risultato):
+  - con le clip spente il Rig lancia comunque `creature_clips.py --no-clips` per il file della famiglia: se quel
+    passo si rompe, il rig risulta fallito anche se il GLB è scritto;
+  - con le clip spente il messaggio finale di un rig non umanoide dice "No test clips for this family yet";
+  - una bibbia senza parole per quel tipo disegna di nuovo i candidati di una riga invece di riusarli.
+- Un set portato su un altro corpo ("Carry to body", `refit`) non ha controlli su quel corpo: i controlli del primo
+  corpo non valgono lì e non vengono copiati. Rifarli sul nuovo corpo è un passo da aggiungere ai pezzi.
+- Il Finish dello studio non scrive la licenza del modello che riceve (anche per una versione Blender): è così da
+  prima di questo lavoro, e la licenza resta nella versione e nel rig.
