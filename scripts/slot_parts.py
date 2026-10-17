@@ -289,11 +289,16 @@ def make_b0(cut_record: dict, chosen: list[str], folder: Path, run=_run, blender
 
 
 def text_command(prompt: str, picture: Path, seed: int) -> list[str]:
-    """sd-cli's text to image of the day, for a weapon or shield made on its own."""
-    from viewer import image_api
+    """sd-cli's text to image, for a weapon or shield made on its own: as the card says, its size,
+    transparent background and prompt rewriting (`text_image.T2I_DEFAULTS`; the rewriting takes
+    the GPU lock itself)."""
+    from image_to_3dlab import text_image
 
-    settings = image_api.clean_settings({"seed": seed})
-    return image_api.build_command(prompt, settings, picture, image_api.resolve_weights())
+    settings = text_image.clean_settings({**text_image.T2I_DEFAULTS, "seed": seed})
+    weights = text_image.resolve_weights()
+    sent, _ = text_image.prepare_prompt(prompt, settings, weights=weights, references=False,
+                                        lock_path=text_image.GPU_LOCK)
+    return text_image.build_command(sent, settings, Path(picture), weights)
 
 
 def orient_held(pictures: list[Path], ask) -> dict[Path, bool | None]:

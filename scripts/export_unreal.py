@@ -351,6 +351,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "none: no tint mask)")
     parser.add_argument("--forward", type=float, nargs=3, metavar=("X", "Y", "Z"),
                         help="non-humanoid creatures: which way the model faces in Blender (default 0 -1 0)")
+    parser.add_argument("--two-sided", action="store_const", const=True, default=None,
+                        help="draw both faces of every triangle (default: cloth two sided, the rest one sided)")
     parser.add_argument("--grip", type=Path, help="a weapon or shield: its grip record (grip.json): the pivot "
                                                    "there, a grip socket, the blade up")
     parser.add_argument("--material", choices=piece_materials.MATERIALS,
@@ -373,7 +375,8 @@ def main(argv=None) -> int:
                                body=args.body, body_name=args.body_name, animations=args.animations,
                                tint=False if args.tint is not None and str(args.tint).lower() == "none" else args.tint,
                                forward=tuple(args.forward) if args.forward else None, material=args.material,
-                               blender=args.blender, **({"grip": read_grip(args.grip)} if args.grip else {}))
+                               blender=args.blender, two_sided=args.two_sided,
+                               **({"grip": read_grip(args.grip)} if args.grip else {}))
     except (ValueError, RuntimeError) as exc:
         print(f"export_unreal: {exc}", file=sys.stderr)
         return 2

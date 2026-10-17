@@ -83,6 +83,8 @@ def _profiles() -> tuple[str, ...]:
 
 
 SAMPLERS = ("euler", "euler_a", "heun", "dpm2", "dpmpp2m", "lcm")   # text_image.SAMPLERS
+# text_image.T2I_DEFAULTS and MAX_SIZE: the Turbo's card draws text alone at 2048, up to its widest preset
+PICTURE_SIZE, PICTURE_MAX = 2048, 2752
 # image_to_3dlab.concept.prompts, written out so the catalogue imports nothing heavy
 MODES = ("redraw", "dress", "add_piece", "other_view", "complete_piece")
 STRUCTURES = ("depth", "lineart")
@@ -100,11 +102,18 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
             Param("count", "int", 1, range=(1, 8), help="pictures to pick from, seeds seed, seed+1..."),
             Param("pick", "int", None, range=(0, 2**31 - 1),
                   help="the seed of the picture to keep, when there are several", flag=""),
-            Param("width", "int", 1024, range=(256, 1536), help="rounded to a multiple of 32"),
-            Param("height", "int", 1024, range=(256, 1536)),
+            Param("width", "int", PICTURE_SIZE, range=(256, PICTURE_MAX),
+                  help="rounded to a multiple of 32; the card's presets: 2048x2048, 2400x1792, 1792x2400, "
+                       "2528x1696, 1696x2528, 2752x1536, 1536x2752 (1024 is about 5x faster)"),
+            Param("height", "int", PICTURE_SIZE, range=(256, PICTURE_MAX)),
+            Param("transparent", "bool", True, flag="--opaque",
+                  help="the card's template for a transparent background (--opaque turns it off)"),
+            Param("rewrite", "bool", True, flag="--no-rewrite",
+                  help="the card's prompt rewriting, on this machine (--no-rewrite turns it off)"),
             Param("cfg_scale", "float", 1.0, range=(0.0, 20.0)),
             Param("sampler", "choice", "euler", choices=SAMPLERS),
-            Param("negative_prompt", "text", None, help="what to keep out"),
+            Param("negative_prompt", "text", None, help="what to keep out; only with cfg_scale above 1 (at 1 the "
+                                                        "engine leaves it out)"),
             Param("bible", "text", None, help="a style bible's words after the prompt: - for the active "
                                               "one, or its name; none by default"),
             Param("kind", "text", None, row=True, help="the asset's kind, for the bible's words for that kind"),
@@ -266,6 +275,8 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
             Param("material", "choice", None, choices=None,
                   help="the one material of a piece (metal, leather, cloth...): its roughness "
                        "and metal in the ORM"),
+            Param("two_sided", "bool", None, help="draw both faces of every triangle; unset: cloth is two "
+                                                  "sided, the rest one sided"),
             Param("grip", "file", None, help="a weapon or shield: its grip record (grip.json, from a set or "
                                              "slot_parts/grip.py): the pivot there, a grip socket, the blade up"),
         ),

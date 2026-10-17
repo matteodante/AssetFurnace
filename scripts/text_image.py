@@ -52,6 +52,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bible", help="add a style bible's words: - for the active one, or its name")
     parser.add_argument("--kind", help="the bible's words for this kind too: prop, creature, character, "
                                        "equipment_part, map_object")
+    parser.add_argument("--opaque", action="store_true",
+                        help="no transparent background (by default the card's template asks for one)")
+    parser.add_argument("--no-rewrite", action="store_true",
+                        help="the prompt as written (by default the card's rewriting runs first)")
     parser.add_argument("--json", action="store_true", help="print the result as JSON")
     return parser
 
@@ -83,7 +87,8 @@ def main(argv: list[str] | None = None) -> int:
     # text to image as the model card says: a transparent background and the rewriting
     settings = {"width": args.width, "height": args.height, "seed": args.seed, "cfg_scale": args.cfg_scale,
                 "sampler": args.sampler, "negative_prompt": args.negative_prompt,
-                "transparent": text_image.T2I_DEFAULTS["transparent"], "rewrite": text_image.T2I_DEFAULTS["rewrite"]}
+                "transparent": text_image.T2I_DEFAULTS["transparent"] and not args.opaque,
+                "rewrite": text_image.T2I_DEFAULTS["rewrite"] and not args.no_rewrite}
     quiet = args.json
     try:
         made = make(args.prompt, args.out, settings, args.count,
