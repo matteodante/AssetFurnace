@@ -383,6 +383,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helmet the outfit's words left out was not drawn, so its cut was the face and the piece
   edit invented a helmet; the concept now adds the chosen pieces the outfit does not name,
   in their own words when they have them.
+- The GPU lock is let go even when another job is reading it at that moment: Windows
+  refused to delete the open file, the release gave up without a word, and every other GPU
+  job then waited on a lock nobody held (the suite hung on it on 2026-10-17).
 - A Studio request refused before its body was read gets its 403: the reference concept
   and Blender edit APIs now read the body first, as the batch and export APIs did, instead of
   closing on it (Windows then reset the connection and the page saw a network error).
