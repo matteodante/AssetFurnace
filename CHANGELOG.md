@@ -244,6 +244,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bible design.
 
 ### Fixed
+- Characters in pieces keep their shape when fitted. The cage shrinkwrapped onto the body
+  tore a breastplate into shards: a hollow piece's inner wall lies inside the body by design,
+  and was pushed out through the outer one. The fit now pushes only the outward-facing
+  surface off the skin, its neighbours following smoothly (`fit.smooth_push`), and leaves the
+  inner wall where it is. The cage stays as `fit_method: "cage"`. No fails on either pilot
+  body, for the route C set and the B0 set alike.
 - Creature clips: `-long` takes keep the motion of a bone that moves under a still root (a
   snake's head, a fox's bounce), with windows at most half a short clip; a foot is held on
   its side of the body only as much as the source's own foot is, measured from the hips;
