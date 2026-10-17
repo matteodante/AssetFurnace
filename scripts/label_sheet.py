@@ -71,7 +71,8 @@ def build(listing: Path, out: Path) -> int:
             uv.write_bytes((folder / "views" / f"view_{view.index:02d}_uv.npz").read_bytes())
             entry["views"].append({"index": view.index, "file": f"{key}/{picture.name}", "uv": f"{key}/{uv.name}"})
         for name, light in LIGHTS.items():
-            lit = mv.render_views(path, folder / f"lit_{name}", size=SIZE, around=4, lit=True, light=light)[0]
+            # View 1 of a 4-view ring looks at the model's front (glTF +Z faces Blender's -Y).
+            lit = mv.render_views(path, folder / f"lit_{name}", size=SIZE, around=4, lit=True, light=light)[1]
             picture = folder / f"lit_{name}.jpg"
             Image.fromarray(np.where((lit.material >= 0)[..., None], lit.lit, 238).astype(np.uint8)).save(
                 picture, quality=86)
