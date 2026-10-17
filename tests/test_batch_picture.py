@@ -214,3 +214,18 @@ def test_a_stopped_drawing_keeps_the_pictures_it_made(tmp_path, drawn, generator
     monkeypatch.setattr(picture_step.text_image, "generate", real)
     batch.run_batch(batch.load_batch(spec_path))
     assert drawn == [5, 6, 7]   # 5 and 6 once each
+
+
+def test_candidates_and_picks_from_the_first_version_still_count(tmp_path, drawn, generator, monkeypatch):
+    """Picture rows made before candidate keys were step fingerprints: their drawn pictures
+    are not drawn again, and a pick saved then still holds."""
+    rows = [{"id": "SM_Barrel", "prompt": "a barrel", "picture": {"seed": 5, "count": 2}}]
+    spec_path = _spec(tmp_path, rows)
+    batch.run_batch(batch.load_batch(spec_path))
+    folder = spec_path.parent / "out" / "words"
+    old = picture_step.legacy_key("a barrel", {"seed": 5, "count": 2})
+    index = folder / "rows" / "SM_Barrel" / "picture.candidates" / "candidates.json"
+    index.write_text(json.dumps({"key": old, "seeds": [5, 6]}))   # as the first version wrote it
+    (folder / batch.PICKS_FILE).write_text(json.dumps({"SM_Barrel": {"picture": {"choice": 6, "key": old}}}))
+    report = batch.run_batch(batch.load_batch(spec_path))
+    assert report.exit_code == 0 and drawn == [5, 6]

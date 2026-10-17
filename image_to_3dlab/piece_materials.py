@@ -116,8 +116,8 @@ def propose(*, slot: str | None = None, kind: str | None = None, words: str = ""
         raise ValueError(f"unknown kind {kind!r}; the kinds are {', '.join(KIND_DEFAULTS)}")
     found = material_in(words)
     if found:
-        whose = "the piece's words" if slot else "the prompt"
-        return {"material": found, "by": "rule", "reason": f"{whose} say {found!r}"}
+        whose = "the piece's words say" if slot else "the prompt says"
+        return {"material": found, "by": "rule", "reason": f"{whose} {found!r}"}
     if slot is not None:
         clause = _clause_for(slot, outfit)
         if clause:
@@ -126,6 +126,27 @@ def propose(*, slot: str | None = None, kind: str | None = None, words: str = ""
     if kind is not None:
         return {"material": KIND_DEFAULTS[kind], "by": "rule", "reason": f"default for a {kind}"}
     return {"material": DEFAULT, "by": "rule", "reason": "default"}
+
+
+def prompt_for(path: Path, depth: int = 4) -> str:
+    """The words a single asset was made from: the prompt in its provenance record, or in its
+    input's, following the chain of inputs (model <- picture). Empty when none is found."""
+    path = Path(path)
+    for _ in range(depth):
+        record = path.with_name(path.stem + ".provenance.json")
+        if not record.is_file():
+            return ""
+        try:
+            data = json.loads(record.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return ""
+        if isinstance(data.get("prompt"), str) and data["prompt"].strip():
+            return data["prompt"]
+        source = (data.get("input") or {}).get("path") if isinstance(data.get("input"), dict) else None
+        if not source:
+            return ""
+        path = Path(source)
+    return ""
 
 
 def piece_of(file_name: str) -> str | None:
@@ -150,6 +171,12 @@ def corrections(folder: Path) -> dict[str, str]:
     return {slot: check(word) for slot, word in (data.get("pieces") or {}).items()}
 
 
+def outfit_words(concept_prompt: str) -> str:
+    """The outfit's own words inside the concept's edit prompt ("Add <outfit> to the character in image 1...")."""
+    found = re.match(r"\s*Add (.*?) to the character in image 1", str(concept_prompt or ""), re.S)
+    return found.group(1) if found else str(concept_prompt or "")
+
+
 def set_materials(folder: Path) -> dict[str, dict]:
     """Every piece of the set in `folder` (``output/sets/<set>/<body>/``) with its material.
 
@@ -157,7 +184,7 @@ def set_materials(folder: Path) -> dict[str, dict]:
     then the rule.
     """
     parts = _parts(folder)
-    outfit = (parts.get("concept") or {}).get("prompt", "")
+    outfit = outfit_words((parts.get("concept") or {}).get("prompt", ""))
     fixed = corrections(folder)
     out = {}
     for slot, asked in (parts.get("slots") or {}).items():

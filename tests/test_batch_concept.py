@@ -149,3 +149,32 @@ def test_the_concept_step_is_described_with_its_command_line():
     spec = step_catalog.get("concept")
     assert spec.candidates == "count" and spec.feature == 2 and spec.cli == "scripts/reference_concept.py make"
     assert spec.param("count").flag == "--attempts" and spec.param("style_refs").flag == "--style-ref"
+
+
+def test_picks_on_a_picture_and_then_its_concept_both_hold(tmp_path, monkeypatch, drawn):
+    """Each step's key covers the picks before it: the concept pick is checked against the
+    row with the picture pick in, as it was when the concept ran."""
+    install_fake_generator(monkeypatch)
+    monkeypatch.setattr(mcp_server, "resume_batch", lambda ref, retry_failed=False: {"started": True})
+    spec_path = _spec(tmp_path, [{"id": "SM_Shield", "prompt": "a shield", "picture": {"count": 2, "seed": 1},
+                                  "concept": {"mode": "other_view", "view": "side", "count": 2, "seed": 7}}],
+                      steps=("picture", "concept", "generate"))
+    batch.run_batch(batch.load_batch(spec_path))
+    assert mcp_server.pick_candidate(str(spec_path), "SM_Shield", "picture", 2)["picked"]
+    assert batch.run_batch(batch.load_batch(spec_path)).waiting == ["SM_Shield"]   # now the concept
+    assert mcp_server.pick_candidate(str(spec_path), "SM_Shield", "concept", 8)["picked"]
+    row = batch.load_batch(spec_path).rows[0]
+    assert row.options["picture"]["pick"] == 2 and row.options["concept"]["pick"] == 8
+    assert batch.run_batch(batch.load_batch(spec_path)).exit_code == 0
+
+
+def test_a_row_named_like_its_picture_draws_3d_from_the_concept(tmp_path, monkeypatch, drawn):
+    generator = install_fake_generator(monkeypatch)
+    tiny_png(tmp_path / "chair.png", 3)
+    spec_path = _spec(tmp_path, [{"id": "chair", "images": ["chair.png"],
+                                  "concept": {"mode": "other_view", "view": "back"}}])
+    assert batch.run_batch(batch.load_batch(spec_path)).exit_code == 0
+    manifest = json.loads((spec_path.parent / "out" / "concepts" / "rows" / "chair" / "manifest.json").read_text())
+    assert Path(manifest["input"]["path"]).name == "drawn_chair.png"
+    assert [Path(p).name for p in manifest["batch"]["references"]] == ["chair.png"]
+    assert generator.calls == ["drawn_chair"]
