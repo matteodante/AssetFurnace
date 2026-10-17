@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The MCP server follows the MCP specification 2025-11-25 and is called `assetfurnace`:
+  - every tool has annotations (title, read only, destructive, idempotent, this machine only);
+  - every tool publishes the shape of its result and answers with it (`structuredContent`);
+  - the files a result names come back as resource links with their `mimeType`;
+  - the new `wait_batch` follows a batch with progress notifications;
+  - paths outside the repository, its `output/` and the client's roots are refused;
+  - optional Streamable HTTP on 127.0.0.1 with a bearer token, reached from another machine
+    through an SSH tunnel (`--http`, `docs/batches.md`).
 - A base body says how it is dressed under its pieces, the person's choice when it is
   registered on every route: a bodysuit, simple clothes (shirt, breeches, cloth shoes), minimal
   underwear, or words of their own (`slot_parts.py body --dressing`, `pieces_add_body(dressing=)`,
