@@ -61,10 +61,13 @@ def run(ctx: StepContext) -> StepResult:
     # as references; or the row's images as they are
     drawn_first = ctx.picture is not None and (not ctx.row.images or ctx.picture != ctx.row.images[0])
     given = ((ctx.picture, *ctx.row.images) if drawn_first else ctx.row.images)
+    taken = {other.name.lower() for other in ctx.row.images}
     for index, image in enumerate(given):
         name = image.name
-        if drawn_first and index == 0 and any(other.name.lower() == name.lower() for other in ctx.row.images):
-            name = f"drawn_{name}"   # a row image of the same name must not overwrite it
+        if drawn_first and index == 0:
+            while name.lower() in taken:   # a row image of the same name must not overwrite it, nor be overwritten
+                name = f"drawn_{name}"
+            taken.add(name.lower())
         copy = inputs / name
         if image.resolve() != copy.resolve():   # a resume may read the staged copy itself
             shutil.copyfile(image, copy)
