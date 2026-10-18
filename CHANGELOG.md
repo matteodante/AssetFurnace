@@ -27,8 +27,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `models--black-forest-labs--FLUX.2-small-decoder`) until you delete them.
 - Create's Steps field under the picture settings: the Turbo's schedule always runs 8 steps,
   so the number did nothing.
+- The batch runner's reading of what its first versions left (17/10/2026): a state whose done
+  steps have no fingerprint, and picture candidates or picks under the picture step's first
+  key. Such a batch is refused with what to do (a new name, or removing the folder it names),
+  never read or drawn again without a word.
 
 ### Fixed
+- A piece's material: a word that only says how a thing looks (golden, metallic, chrome) gives
+  way to the garment or material beside it, so "a golden silk tunic" is cloth, no longer
+  metal; with nothing else in the clause, "a golden crown" is still metal. A set's concept
+  saves the outfit's words it was drawn from (`concept.outfit`), no longer read back out of
+  its edit prompt; a set made before is refused until `python scripts/migrate_set_outfits.py`
+  writes them in, once.
 - From the code read of 18/10/2026 ([backlog](docs/plans/2026-10-18-code-read-fixes.md)):
   - the Pieces page follows a run from `output/sets/.run.json`: after a restart, or for a run
     an agent started, it shows it and can stop it; its exit code is kept beside its log;
@@ -503,6 +513,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concept record and `output/concept/judgements.jsonl`.
 
 ### Changed
+- The studio's pages share one HTML escape (`viewer/components/html.js`, escaping as before)
+  instead of nine copies; `slot_parts.body.record` and `register` take the dressing as
+  `dressed`, a name that no longer hides the `dressing()` function.
 - Pixal3D follows its official recipe (TencentARC/Pixal3D `inference.py`, master, read
   2026-10-17): 12 sampling steps in every flow (8 only when asked), and the camera's field
   of view estimated per picture with MoGe-2 (`Ruicheng/moge-2-vitl`, MIT) instead of a
