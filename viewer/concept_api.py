@@ -13,7 +13,8 @@ stream and provenance; this module adds the inputs, the request, and the
     POST /api/concept/jobs               {mode, ..., shape: [...], style_refs: [...], seed}
     POST /api/concept/judge              {picture, verdict: keep | discard, note}: the user's judgement
 
-Every path is relative to the output folder, and nothing outside it is read. The job's
+Every path is relative to the output folder, and nothing outside it is read but the style
+bible a request names, which must be a registered one (or "-", the active one). The job's
 progress, status and picture come from `/api/image/<job id>/...`, like any picture.
 
 `generate(prompt, references, seed)` is the same edit as one call, for scripts and other
@@ -168,7 +169,8 @@ def build(output: Path, request: dict[str, Any]) -> dict[str, Any]:
     from image_to_3dlab.style import apply
 
     # the style bible when the request names one ("-": the active one), opt-in
-    style = apply.resolve(request.get("bible"), request.get("kind"), references=3, output=Path(output))
+    style = apply.resolve(request.get("bible"), request.get("kind"), references=3, output=Path(output),
+                          allow_path=False)
     return requests.plan(request["mode"], shape, style_refs, request, bible=style)
 
 
@@ -304,9 +306,8 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
     query = parse_qs(url.query)
     output = Path(output)
     try:
-        check_request(handler)
-        if mutation and (not handler.headers.get("Origin") or handler.headers.get("X-AssetFurnace-Request") != HEADER):
-            raise PermissionError("Use the Studio page to draw from a reference")
+        check_request(handler, mutation=mutation, header=HEADER,
+                      refusal="Use the Studio page to draw from a reference")
         if not mutation and parts == ["api", "concept"]:
             handler._send_json(200, info(output))
         elif not mutation and parts == ["api", "concept", "record"]:

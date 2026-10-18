@@ -2424,10 +2424,11 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if unreal_export_api.handle(self, OUTPUT_ROOT):
             return
-        if (batch_api.handle(self, OUTPUT_ROOT) or slot_parts_api.handle(self, OUTPUT_ROOT)
-                or style_api.handle(self, OUTPUT_ROOT)):
+        if batch_api.handle(self, OUTPUT_ROOT) or slot_parts_api.handle(self, OUTPUT_ROOT):
             return
         if not self._allowed(mutation=False):
+            return
+        if style_api.handle(self, OUTPUT_ROOT):
             return
         if urlparse(self.path).path in ("", "/", "/viewer", "/viewer/"):
             self.send_response(HTTPStatus.FOUND)  # the front door is the studio

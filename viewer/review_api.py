@@ -182,9 +182,7 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
     output = Path(output)
     raw = _read_body(handler) if mutation else b""
     try:
-        check_request(handler)
-        if mutation and (not handler.headers.get("Origin") or handler.headers.get("X-AssetFurnace-Request") != "review"):
-            raise PermissionError("Use this Studio page to review assets")
+        check_request(handler, mutation=mutation, header="review", refusal="Use this Studio page to review assets")
         if not mutation and parts == ["api", "review", "queue"]:
             handler._send_json(200, queue_payload(output))
         elif not mutation and parts == ["api", "review", "thresholds"]:

@@ -175,8 +175,26 @@ def _made(directory: Path, steps: dict[str, Any], step: str) -> Path | None:
     return path if path is not None and path.is_file() else None
 
 
-def submit(output: Path, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
-    """Check or start a spec given by its path on disk or uploaded as text."""
+HELD = ("outside this repository and its output folder: a server open to the network (an access token) "
+        "reads specs, and the files they name, from there only. Put the file in output/.")
+
+
+def submit(output: Path, payload: dict[str, Any], held: bool = False) -> tuple[int, dict[str, Any]]:
+    """Check or start a spec given by its path on disk or uploaded as text.
+
+    `held` (a server on an address other than loopback, where anyone with the link can call
+    this): the spec's path and every path it holds (its rows' pictures, models, step files and
+    batch folder) must be inside this repository or its output folder, as over MCP."""
+    if not held:
+        return _submit(output, payload)
+    token = mcp_server._ROOTS.set([])   # MCP's own check, with no folder shared beyond the repository
+    try:
+        return _submit(output, payload, held=True)
+    finally:
+        mcp_server._ROOTS.reset(token)
+
+
+def _submit(output: Path, payload: dict[str, Any], held: bool = False) -> tuple[int, dict[str, Any]]:
     if not isinstance(payload, dict):
         raise ValueError("Send a JSON object")
     if payload.get("content") is not None:
@@ -194,6 +212,8 @@ def submit(output: Path, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         spec.write_text(content, encoding="utf-8")
     elif payload.get("path"):
         spec = Path(str(payload["path"])).expanduser()
+        if held and not mcp_server._allowed(spec, []):
+            raise ValueError(f"{spec}: {HELD}")
         if spec.suffix.lower() not in (".json", ".csv") or not spec.is_file():
             raise ValueError(f"No JSON or CSV spec at {spec}")
     else:
@@ -260,7 +280,8 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
             detail = batch_detail(output, parts[2])
             handler._send_json(200 if detail else 404, detail or {"error": "No such batch"})
         elif mutation and parts == ["api", "batches"]:
-            handler._send_json(*submit(output, _body(handler)))
+            held = not blender_edit_api.local_address(handler.server.server_address[0])
+            handler._send_json(*submit(output, _body(handler), held=held))
         elif mutation and len(parts) == 4 and parts[3] in ("pick", "rerun"):
             directory = _directory(output, parts[2])
             if directory is None:

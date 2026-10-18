@@ -11,6 +11,8 @@ import importlib.util
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+import pytest
+
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -93,7 +95,17 @@ def test_a_loopback_server_needs_no_token():
 def test_a_network_server_always_has_a_token():
     first = serve.access_token("0.0.0.0", {})
     assert first and len(first) >= 32 and first != serve.access_token("0.0.0.0", {})
-    assert serve.access_token("100.64.0.7", {"ASSETFURNACE_TOKEN": "chosen-token"}) == "chosen-token"
+    chosen = "chosen-token-of-24-chars-or-more"
+    assert serve.access_token("100.64.0.7", {"ASSETFURNACE_TOKEN": chosen}) == chosen
+
+
+@pytest.mark.parametrize("bad", ["short-token", "a token with spaces in it ok", "semi;colon-token-long-enough",
+                                 'quoted"token-long-enough-xx'])
+def test_a_chosen_token_a_cookie_cannot_carry_is_refused_at_start(bad):
+    """Code read 18/10/2026: the token goes into the cookie as it is; one with ; , a space or a
+    quote was cut short by the browser and the page fell back to 401 after every redirect."""
+    with pytest.raises(SystemExit, match="ASSETFURNACE_TOKEN"):
+        serve.access_token("0.0.0.0", {"ASSETFURNACE_TOKEN": bad})
 
 
 def test_the_runpod_link_carries_the_token():

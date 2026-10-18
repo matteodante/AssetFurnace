@@ -38,12 +38,13 @@ def bible_kind(kind: str | None) -> str | None:
 
 
 def resolve(bible: str | None, kind: str | None = None, references: int = 0,
-            output: Path | None = None) -> Style | None:
+            output: Path | None = None, allow_path: bool = True) -> Style | None:
     """The bible a route asked for, or None when it asked for none. BibleError when the
-    name is unknown or "-" is asked and no bible is active."""
+    name is unknown or "-" is asked and no bible is active. `allow_path=False` (the studio's
+    requests) takes a registered name or "-" only, never a folder on the disk."""
     if not bible:
         return None
-    root = Path(registry.find(output or OUTPUT, bible))
+    root = Path(registry.find(output or OUTPUT, bible, allow_path=allow_path))
     data = load(root)
     wanted = bible_kind(kind)
     words = [(data.get("style") or {}).get("wording", ""),

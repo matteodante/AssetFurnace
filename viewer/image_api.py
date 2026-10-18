@@ -256,7 +256,7 @@ def with_style(prompt: str, payload: dict[str, Any]) -> tuple[str, dict[str, Any
     for the active one, and the asset's `kind`), and the provenance that says so."""
     from image_to_3dlab.style import apply
 
-    style = apply.resolve(payload.get("bible"), payload.get("kind"))
+    style = apply.resolve(payload.get("bible"), payload.get("kind"), allow_path=False)
     return (apply.styled(prompt, style), {"style": apply.record(style)}) if style else (prompt, {})
 
 

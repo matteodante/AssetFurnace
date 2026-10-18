@@ -470,3 +470,20 @@ def test_a_batch_picture_with_a_library_pictures_bytes_keeps_two_assets(output, 
     native = next(a for a in assets if a["finished"])
     assert native["picture"] == "images/knight/knight.png" and native["model"] is None
     assert len(assets) == 2
+
+
+def test_a_held_spec_cannot_name_files_outside_the_repository(output, tmp_path):
+    """On a networked server the paths a spec holds are held like MCP's (no roots shared)."""
+    from batch_fakes import write_spec
+
+    spec = json.loads(write_spec(tmp_path / "spec", rows=1, name="lot").read_text())
+    outside = Path(spec["rows"][0]["images"][0])
+    outside = (tmp_path / "spec" / outside).resolve()
+    spec["rows"][0]["images"] = [str(outside)]
+    spec["output"] = {}
+    content = json.dumps(spec)
+    status, result = batch_api.submit(output, {"filename": "lot.json", "content": content, "check_only": True},
+                                      held=True)
+    assert status == 422 and any(str(outside) in problem for problem in result["problems"])
+    status, result = batch_api.submit(output, {"filename": "lot.json", "content": content, "check_only": True})
+    assert not any("outside this repository" in problem for problem in result.get("problems", []))

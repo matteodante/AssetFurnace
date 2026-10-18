@@ -118,7 +118,8 @@ def test_every_missing_or_foreign_header_is_refused(server, path, headers):
     assert server[1] == []
 
 
-@pytest.mark.parametrize("path", ["/AGENTS.md", "/api/catalog", "/api/assets", "/viewer/studio.html"])
+@pytest.mark.parametrize("path", ["/AGENTS.md", "/api/catalog", "/api/assets", "/viewer/studio.html",
+                                  "/api/style-bible"])
 def test_a_dns_rebinding_host_cannot_read_the_repository_or_the_api(server, path):
     status, _, body = call(server, "GET", path, {"Host": "evil.example:8777", "Origin": None})
     assert status == 403
@@ -263,3 +264,27 @@ def test_a_refused_post_with_a_body_gets_its_403_not_a_reset(server, path):
     for _ in range(10):
         status, _, _ = call(server, "POST", path, {"Origin": "http://evil.example"}, body=body)
         assert status == 403
+
+
+def test_the_bearer_token_opens_every_endpoint_not_only_the_old_ones(guarded):
+    """Code read 18/10/2026: serve.py promises scripts the Bearer header, but the newer
+    endpoints (batches, review, concept, pieces...) still asked for a browser's Origin."""
+    for path in ("/api/batches", "/api/review/x/decision", "/api/slot-parts/run"):
+        status, _, body = call(guarded, "POST", path, {"Authorization": "Bearer s3cret-token", "Origin": None,
+                                                        "X-AssetFurnace-Request": None})
+        assert status != 403, (path, body)
+    status, _, _ = call(guarded, "POST", "/api/batches", {"Authorization": "Bearer nope", "Origin": None,
+                                                           "X-AssetFurnace-Request": None})
+    assert status == 401
+
+
+def test_a_networked_server_reads_a_batch_spec_from_the_repository_only(guarded, monkeypatch, tmp_path):
+    """Code read 18/10/2026: `POST /api/batches {"path"}` ran any JSON or CSV of the pod's disk."""
+    httpd, _ = guarded
+    monkeypatch.setattr(httpd, "server_address", ("0.0.0.0", httpd.server_port))
+    spec = tmp_path / "elsewhere" / "lot.json"
+    spec.parent.mkdir()
+    spec.write_text("{}", encoding="utf-8")
+    status, _, body = call(guarded, "POST", "/api/batches", {"Authorization": "Bearer s3cret-token"},
+                           body=json.dumps({"path": str(spec), "check_only": True}).encode())
+    assert status == 422 and b"outside this repository" in body

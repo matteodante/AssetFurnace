@@ -105,9 +105,7 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
     output = Path(output)
     raw = _read_body(handler) if mutation else b""
     try:
-        check_request(handler)
-        if mutation and (not handler.headers.get("Origin") or handler.headers.get("X-AssetFurnace-Request") != HEADER):
-            raise PermissionError("Use this Studio page to label materials")
+        check_request(handler, mutation=mutation, header=HEADER, refusal="Use this Studio page to label materials")
         if not mutation and parts == ["api", "material-labels"]:
             handler._send_json(200, overview(output))
         elif len(parts) == 4 and parts[2] == "item":

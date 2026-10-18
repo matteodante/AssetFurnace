@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- From the code read of 18/10/2026:
+  - `GET /api/style-bible` checks the Host like every other API read (DNS rebinding);
+  - a style bible named by a studio request is a registered one or "-", never a folder of the
+    disk (the command line still takes a folder);
+  - the Bearer token opens every endpoint, as `serve.py` says, through the one shared request
+    check; each page keeps its own refusal message;
+  - a chosen `ASSETFURNACE_TOKEN` that a cookie cannot carry unchanged, or shorter than 24
+    characters, is refused at start;
+  - on a server open to the network, `POST /api/batches` reads a spec, and the files it names,
+    from the repository only.
+
 ### Fixed
 - From the code read of 18/10/2026 ([backlog](docs/plans/2026-10-18-code-read-fixes.md)):
   - a set's weapons and shields are checked as assets of their own (the `weapon_or_shield`

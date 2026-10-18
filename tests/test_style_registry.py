@@ -73,3 +73,22 @@ def test_registry_edits_wait_for_another_process(tmp_path, monkeypatch):
     (tmp_path / "styles" / registry.LOCK_FILE).unlink()
     registry.register(tmp_path, root)
     assert not (tmp_path / "styles" / registry.LOCK_FILE).exists()
+
+
+def test_the_studio_names_registered_bibles_only_never_a_folder(tmp_path, monkeypatch):
+    """Code read 18/10/2026: a request's `bible` could be any folder holding a bible.json,
+    whose pictures then went to sd-cli. Over HTTP only a registered name or "-" is taken."""
+    import image_api
+
+    from image_to_3dlab.style import apply
+
+    root = sb.create(tmp_path / "anywhere" / "style", "loose")
+    assert registry.find(tmp_path, str(root)) == root.resolve()   # the command line keeps its folder
+    with pytest.raises(sb.BibleError, match="registered"):
+        registry.find(tmp_path, str(root), allow_path=False)
+    monkeypatch.setattr(apply, "OUTPUT", tmp_path)
+    with pytest.raises(sb.BibleError, match="registered"):
+        image_api.with_style("a helmet", {"bible": str(root)})
+    registry.register(tmp_path, root)
+    prompt, extra = image_api.with_style("a helmet", {"bible": "loose"})
+    assert extra["style"]
