@@ -296,10 +296,6 @@ def text_command(prompt: str, picture: Path, seed: int) -> list[str]:
     return text_image.build_command(sent, settings, Path(picture), weights)
 
 
-def orient_held(pictures: list[Path], ask) -> dict[Path, bool | None]:
-    return orient.orient_held(pictures, ask)
-
-
 def held_pictures(slot: str, words: str, folder: Path, seeds: list[int], style: str = "", run=_run,
                   generate=text_command) -> dict[int, Path]:
     """A weapon's or shield's pictures, one per seed; those already made for these words are

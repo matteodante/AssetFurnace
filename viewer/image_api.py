@@ -194,7 +194,8 @@ def run_job(job: ImageJob, manager: ImageJobManager,
                            if gap is None else f"Drawing without prompt rewriting: {gap} is not installed "
                                                f"({prompt_rewrite.SETUP_HINT})")
         sent, notes = prepare_prompt(job.prompt, job.settings, weights=weights, references=bool(job.extra_args),
-                                     log=job.log_lines.append, lock_path=text_image.GPU_LOCK, lock=gpu)
+                                     log=job.log_lines.append, lock_path=text_image.GPU_LOCK, lock=gpu,
+                                     on_process=lambda process: setattr(job, "process", process))
         if job.cancel_requested:
             raise _Cancelled
         command = build_command(sent, job.settings, job.output_path, weights)

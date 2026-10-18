@@ -554,14 +554,6 @@ def test_stage_without_a_usable_sun_looks_from_the_front():
     assert stage["camera"][1] > 0 and stage["camera_yaw"] == pytest.approx(-90)
 
 
-@pytest.mark.parametrize("samples, expected", [
-    ([0.1, 0.4, 0.2], 0.4),
-    ([], 0.0),
-])
-def test_stride_is_the_widest_step_of_the_cycle(samples, expected):
-    assert up.stride(samples) == expected
-
-
 def test_feet_cross_when_a_foot_changes_side():
     assert up.feet_cross([-20.0, -5.0, 3.0], rest=-18.0)  # the left foot swung past the right
     assert not up.feet_cross([-20.0, -2.0, -15.0], rest=-18.0)  # close, but never across

@@ -5,7 +5,8 @@ picture (`grip.py`) and the Unreal mesh points its blade or head along +Z from t
 picture is asked for that way, but the picture model
 drew the first real set's sword point down in three seeds out of three. So Qwen3-VL (the
 picture judge, `image_to_3dlab/style/judge.py`) is asked where the handle is, at the top or
-at the bottom, and a picture with it at the top is flipped top to bottom. A learned check,
+at the bottom, and a picture with it at the top is turned half a turn: a mirror would make a
+scimitar or an axe its own mirror image, with the painted light coming from below. A learned check,
 not a rule about shapes: an axe, a mace and a sword are told apart by what they look like.
 
 Each picture is checked once (`<picture>.orient.json`). Without the judge the pictures stay
@@ -36,7 +37,7 @@ def handle_at_top(picture: Path, ask: Callable[[Path, str], float]) -> tuple[boo
 
 def orient_held(pictures: list[Path], ask: Callable[[Path, str], float] | None) -> dict[Path, bool | None]:
     """{picture: turned (True/False), or None when there is no judge}; each picture once."""
-    from PIL import Image, ImageOps
+    from PIL import Image
 
     from image_to_3dlab.slot_parts import candidates
 
@@ -52,7 +53,7 @@ def orient_held(pictures: list[Path], ask: Callable[[Path, str], float] | None) 
         top, answers = handle_at_top(picture, ask)
         if top:
             with Image.open(picture) as opened:
-                ImageOps.flip(opened.copy()).save(picture)
+                opened.copy().rotate(180).save(picture)
         done.write_text(json.dumps({"handle": "top" if top else "bottom", "turned": top, "answers": answers,
                                     "by": candidates.JUDGE}, indent=1) + "\n", encoding="utf-8")
         out[picture] = top

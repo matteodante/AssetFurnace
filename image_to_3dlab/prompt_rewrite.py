@@ -104,6 +104,20 @@ def install_system_prompt(fetch: Callable[[str], bytes] | None = None) -> Path:
     return SYSTEM_PROMPT_FILE
 
 
+def _watched(command: list[str], on_process: Callable, popen: Callable) -> subprocess.CompletedProcess:
+    """`command` run as `subprocess.run` would, its process handed to `on_process` first."""
+    process = popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL,
+                    text=True, encoding="utf-8", errors="replace")
+    on_process(process)
+    try:
+        out, err = process.communicate(timeout=TIMEOUT)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
+        raise
+    return subprocess.CompletedProcess(command, process.returncode, out, err)
+
+
 def parse_answer(text: str) -> dict[str, Any] | None:
     """The last JSON object in the answer that has a `rewritten_prompt` (the official answer
     contract: {"rewritten_prompt": ..., "wh_ratio": ...} at the end)."""
@@ -141,9 +155,11 @@ def parse_answer(text: str) -> dict[str, Any] | None:
 
 def rewrite(brief: str, *, model: Path, log: Callable[[str], None] = lambda line: None,
             run: Callable = subprocess.run, lock: Callable = gpu_lock.gpu,
-            lock_path: Path | None = None) -> dict[str, Any] | None:
+            lock_path: Path | None = None, on_process: Callable | None = None,
+            popen: Callable = subprocess.Popen) -> dict[str, Any] | None:
     """The rewritten prompt and the ratio the rewriter chose, or None (and a line in `log`)
-    when it is not installed or gave nothing usable. Holds the shared GPU lock while it runs."""
+    when it is not installed or gave nothing usable. Holds the shared GPU lock while it runs.
+    `on_process` gets llama-completion's process as it starts, so a cancelled picture can stop it."""
     system, binary = system_prompt_path(), llama_completion()
     if system is None or binary is None:
         gap = "the rewriting prompt" if system is None else "llama.cpp"
@@ -157,8 +173,11 @@ def rewrite(brief: str, *, model: Path, log: Callable[[str], None] = lambda line
     started = time.monotonic()
     try:
         with lock("prompt-rewrite", **({"path": lock_path} if lock_path else {})):
-            done = run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       stdin=subprocess.DEVNULL, timeout=TIMEOUT, check=False)
+            if on_process is None:
+                done = run(command, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           stdin=subprocess.DEVNULL, timeout=TIMEOUT, check=False)
+            else:
+                done = _watched(command, on_process, popen)
     except (OSError, subprocess.SubprocessError) as exc:
         log(f"prompt rewriting failed ({exc}); drawing without rewriting")
         return None

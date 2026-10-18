@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     of a set: it goes on without it and says so, where scoring the pieces stopped the run;
   - a gauntlet lies along the forearm, no longer turned toward the thumb;
   - a library clip that loops ends on its first pose, as the procedural clips do;
+  - a weapon drawn upside down is turned half a turn, no longer mirrored;
+  - Cancel stops the prompt rewriting too, not only the wait for the GPU;
+  - installing MoGe-2 on an NVIDIA driver older than CUDA 12.8 says it would run on the CPU;
+  - the Batches page names and counts skipped rows;
   - a set's weapons and shields are checked as assets of their own (the `weapon_or_shield`
     profile), with a provenance record bound to the finished file, and each goes to the review
     queue; before, only the fitted pieces were checked;

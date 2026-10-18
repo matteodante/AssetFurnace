@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from image_to_3dlab.slot_parts import pieces
+from image_to_3dlab.slot_parts import orient, pieces
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "scripts"))
@@ -39,22 +39,28 @@ def test_a_weapon_drawn_point_down_is_turned_grip_down(tmp_path):
         top = rows[:32].sum() > rows[32:].sum()
         return 0.95 if ("top" in question) == top else 0.02
 
-    turned = slot_parts.orient_held([down, up_], ask)
+    turned = orient.orient_held([down, up_], ask)
     assert turned == {down: True, up_: False}
-    assert (np.asarray(Image.open(down)) == before[::-1]).all()                 # flipped top to bottom
+    # turned half a turn, never mirrored (code read 18/10/2026: a mirror makes a scimitar its own mirror image)
+    assert (np.asarray(Image.open(down)) == before[::-1, ::-1]).all()
     assert json.loads(down.with_name("s1.png.orient.json").read_text())["handle"] == "top"
 
 
 def test_without_the_judge_the_pictures_are_kept_and_it_is_said(tmp_path, capsys):
     picture = _sword(tmp_path / "s1.png", point_down=True)
     before = picture.read_bytes()
-    assert slot_parts.orient_held([picture], None) == {picture: None}
+    assert orient.orient_held([picture], None) == {picture: None}
     assert picture.read_bytes() == before and "picture judge" in capsys.readouterr().out
 
 
 def test_a_picture_already_checked_is_not_asked_again(tmp_path):
     picture = _sword(tmp_path / "s1.png", point_down=True)
-    slot_parts.orient_held([picture], lambda p, q: 0.95 if "top" in q else 0.02)
+    orient.orient_held([picture], lambda p, q: 0.95 if "top" in q else 0.02)
     asked = []
-    slot_parts.orient_held([picture], lambda p, q: asked.append(q) or 0.5)
+    orient.orient_held([picture], lambda p, q: asked.append(q) or 0.5)
     assert asked == []
+
+
+def test_the_studio_names_no_game():
+    text = (Path(__file__).resolve().parents[1] / "viewer" / "studio" / "slot-parts.js").read_text(encoding="utf-8")
+    assert "4Story" not in text

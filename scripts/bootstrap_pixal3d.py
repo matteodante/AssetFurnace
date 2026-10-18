@@ -562,10 +562,27 @@ def moge_commands(python: str = sys.executable, platform: str | None = None,
             [py, "-m", "pip", "install", moge_fov.CODE_URL]]
 
 
+def moge_driver_warning(driver=None, platform: str | None = None) -> str | None:
+    """What to say when this NVIDIA driver cannot run MoGe-2's CUDA 12.8 PyTorch: torch would
+    load without the GPU, and one estimate takes minutes on the CPU instead of seconds."""
+    from image_to_3dlab import host
+
+    if (platform or host.host_platform()) != host.NVIDIA:
+        return None
+    driver = driver if driver is not None else host.driver_cuda_version()
+    if driver is None or driver >= (12, 8):
+        return None
+    return (f"MoGe-2's PyTorch is built for CUDA 12.8, and this driver supports CUDA {driver[0]}.{driver[1]}: "
+            "it would run on the CPU (minutes a picture). Update the NVIDIA driver, then run this again.")
+
+
 def install_moge(runner=subprocess.run, download=None) -> None:
     """The environment and the pinned MoGe-2 weights (Ruicheng/moge-2-vitl, MIT, 1.3 GB)."""
     from image_to_3dlab import moge_fov
 
+    driver = moge_driver_warning()
+    if driver:
+        print(driver, flush=True)
     wrong = False
     if torch_index() == TORCH_INDEX["nvidia"] and moge_fov.python().is_file():
         found = subprocess.run([str(moge_fov.python()), "-c", "import torch; print(torch.version.cuda or '')"],

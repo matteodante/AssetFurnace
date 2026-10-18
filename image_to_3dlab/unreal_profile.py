@@ -809,11 +809,6 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
     return results
 
 
-def stride(widths: Iterable[float]) -> float:
-    """The widest step in a walk cycle, from the feet's fore-aft spread sampled over it."""
-    return max(widths, default=0.0)
-
-
 def feet_cross(sides: Iterable[float], rest: float) -> bool:
     """True when, at some point in a walk, the left foot is on the right of the right foot.
 

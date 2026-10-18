@@ -78,7 +78,7 @@ def user_agent() -> str:
     sys.path.insert(0, str(REPO))
     from image_to_3dlab import __version__
 
-    return f"image-to-3dlab/{__version__} (+https://github.com/Bingeljell/image-to-3dlab)"
+    return f"AssetFurnace/{__version__} (+https://github.com/matteodante/AssetFurnace)"
 
 
 def download(url: str) -> bytes:

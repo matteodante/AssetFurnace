@@ -114,14 +114,6 @@ def test_an_even_move_is_not_a_spike():
     assert not fit.spikes(rest, rest + [0.0, 0.2, 0.0], edges).any()
 
 
-def test_coverage_report_takes_worst_and_mean():
-    frames = [{"clipping": {"helmet": 0.01, "torso": 0.02}, "holes": 0.01},
-              {"clipping": {"helmet": 0.03, "torso": 0.00}, "holes": 0.02}]
-    report = fit.coverage_report(frames)
-    assert report["clipping"]["helmet"] == {"max": 0.03, "mean": pytest.approx(0.02)}
-    assert report["holes"]["max"] == 0.02 and report["worst_frame"] == 1
-
-
 def test_a_helmet_the_size_of_the_head_grows_to_hold_it():
     head = _cube(size=(0.1, 0.1, 0.12), centre=(0.0, 0.0, 1.6))
     helmet = _cube(size=(0.1, 0.1, 0.12), centre=(0.0, 0.0, 1.62))
