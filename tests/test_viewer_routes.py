@@ -99,3 +99,29 @@ def test_a_route_matches_its_parts_and_hands_over_the_others():
     assert route.match(["api", "setup", "trellis"]) is None
     assert route.match(["api", "setup", "trellis", "status", "x"]) is None
     assert generate_api.Route(("api", "catalog"), "_get_catalog").match(["api", "catalog"]) == []
+
+
+def test_a_route_that_answers_next_leaves_the_path_to_the_later_ones():
+    seen = []
+
+    class Fake:
+        _route = generate_api.Handler._route
+        path = "/api/setup/trellis/status"
+
+        def _path_parts(self):
+            return generate_api.Handler._path_parts(self)
+
+        def first(self, backend, action):
+            seen.append(("first", backend, action))
+            return generate_api.NEXT
+
+        def second(self, backend):
+            seen.append(("second", backend))
+
+    routes = (generate_api.Route(("api", "setup", generate_api.ANY, ("events", "status")), "first"),
+              generate_api.Route(("api", "setup", generate_api.ANY, "status"), "second"),
+              generate_api.Route(("api", "setup", generate_api.ANY, "status"), "first"))
+    assert Fake()._route(routes) is True
+    assert seen == [("first", "trellis", "status"), ("second", "trellis")]   # the third is never asked
+    seen.clear()
+    assert Fake()._route(routes[:1]) is False and seen == [("first", "trellis", "status")]
