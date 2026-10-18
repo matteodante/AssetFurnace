@@ -5,8 +5,8 @@
 // this exact file.
 
 import { followJob, plainError, readableLog } from './jobs.js';
+import { escapeHTML as esc } from '../components/html.js';
 
-const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const HEADERS = { 'X-AssetFurnace-Request': 'reference-concept' };
 export const PICTURE = /\.(png|jpe?g|webp)$/i;
 export const MODEL = /\.glb$/i;

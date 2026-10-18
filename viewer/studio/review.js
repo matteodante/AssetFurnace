@@ -8,8 +8,8 @@ import {
   STATE_LABELS, STATUS_LABELS, statusLabel, queueSections, summaryLine, checkRows, overlays, canDecide, canApprove, approveBlocker,
   checkChoices, checksRequest, thresholdRows,
 } from './review-model.js';
+import { escapeHTML as esc } from '../components/html.js';
 
-const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const HEADERS = { 'Content-Type': 'application/json', 'X-AssetFurnace-Request': 'review' };
 
 async function getJson(url) {

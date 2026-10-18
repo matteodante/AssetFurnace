@@ -3,8 +3,8 @@
 
 import { HAVES, WANTS, ALLOWED, STEP_LABELS, planFor, stopAfter, composePrompt, troubleFor } from './plan.js';
 import { plainError } from './jobs.js';
+import { escapeHTML as esc } from '../components/html.js';
 
-const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const PICTURE_TYPES = /\.(png|jpe?g|webp)$/i;
 // Finish's triangle budgets, as the Steps panel offers them.
 export const FACES = [[5000, '5,000 triangles · phones, crowds'], [15000, '15,000 triangles · light'],

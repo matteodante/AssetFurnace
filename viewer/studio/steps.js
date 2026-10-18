@@ -4,8 +4,8 @@
 import { followJob, plainError, statusUrlFor, jobEnd } from './jobs.js';
 import { freshSeed, FACES } from './create.js';
 import { familyPicker, familyNote } from './creature-family.js';
+import { escapeHTML as esc } from '../components/html.js';
 
-const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fileName = (path) => path?.split('/').pop() ?? '';
 
 export async function fileFrom(url, name) {

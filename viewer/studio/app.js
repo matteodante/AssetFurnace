@@ -17,6 +17,7 @@ import { openReview, renderReviewPanel, fetchQueue, fetchItem } from './review.j
 import { waitingCount } from './review-model.js';
 import { createLabelPanel } from './material-labels.js';
 import { createUnrealPanel } from './unreal-export.js';
+import { escapeHTML as escape } from '../components/html.js';
 
 const $ = (id) => document.getElementById(id);
 const LOGO = './studio/mark.svg';
@@ -42,7 +43,6 @@ const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onModelLoa
   unrealPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
 } });
 
-const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const url = (relative) => servedUrl(base, relative);
 const fileName = (relative) => relative?.split('/').pop() ?? '';
 const unrealPanel = createUnrealPanel({ root: $('unrealPanel'), url, assets: () => assets });

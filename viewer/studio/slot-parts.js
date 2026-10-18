@@ -6,8 +6,7 @@
 // first, with no DOM, so Node tests import this exact file.
 
 import { closeSheet } from './pages.js';
-
-const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+import { escapeHTML as escape } from '../components/html.js';
 
 export const MODES = [
   { id: 1, title: 'One piece', text: 'The whole character as one model, as + Create makes it. Nothing to split.' },
