@@ -291,10 +291,11 @@ def test_sets_and_bodies_are_listed(tmp_path):
 def test_the_page_is_in_the_studio():
     html = (REPO / "viewer" / "studio.html").read_text(encoding="utf-8")
     app = (REPO / "viewer" / "studio" / "app.js").read_text(encoding="utf-8")
-    server = (REPO / "viewer" / "generate_api.py").read_text(encoding="utf-8")
     assert 'id="piecesBtn"' in html
     assert "import { openSlotParts } from './slot-parts.js';" in app and "$('piecesBtn')" in app
-    assert server.count("slot_parts_api.handle(self, OUTPUT_ROOT") == 2
+    import generate_api   # the server asks the page for its GETs and POSTs
+
+    assert slot_parts_api in generate_api.PAGE_APIS
 
 
 def _made_set(output):

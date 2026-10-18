@@ -947,14 +947,13 @@ def test_terminate_active_job_also_kills_a_running_finish(tmp_path, monkeypatch)
 
 
 def test_handler_exposes_typed_rig_rebind_routes():
-    source = MODULE_PATH.read_text()
+    routes = {(route.text(), route.handler) for route in (*api.GET_ROUTES, *api.POST_ROUTES)}
 
-    assert '["api", "rig", "rebind"]' in source
-    assert "_create_rig_job" in source
-    assert "_rig_events" in source
-    assert "_rig_status" in source
-    assert "_rig_artifact" in source
-    assert "_cancel_rig_job" in source
+    assert ("/api/rig/rebind", "_create_rig_job") in routes
+    assert ("/api/rig/rebind/{}/events", "_rig_events") in routes
+    assert ("/api/rig/rebind/{}/status", "_rig_status") in routes
+    assert any(handler == "_rig_artifact" for _, handler in routes)
+    assert ("/api/rig/rebind/{}/cancel", "_cancel_rig_job") in routes
 
 
 def test_terminate_active_job_is_a_noop_when_process_already_exited(tmp_path, monkeypatch):

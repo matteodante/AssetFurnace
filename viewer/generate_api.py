@@ -27,7 +27,7 @@ from http import HTTPStatus
 from http.cookies import CookieError, SimpleCookie
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
-from typing import Any, Callable, ClassVar
+from typing import Any, Callable, ClassVar, NamedTuple
 from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 # Sibling import must also work when tests load this file directly via importlib.
@@ -2056,6 +2056,115 @@ def _job_status_payload(job: Job) -> dict[str, Any]:
     return {"status": job.status, "last_event": job.events[-1] if job.events else None, "model": model}
 
 
+# ----------------------------------------------------------------------------- routes
+
+# The studio's own pages, asked first and in this order: each answers the paths it knows and
+# checks its requests itself (request_utils), so it comes before the checks below.
+PAGE_APIS = (blender_edit_api, review_api, material_labels_api, concept_api, unreal_export_api, batch_api,
+             slot_parts_api)
+FRONT_DOOR = ("", "/", "/viewer", "/viewer/")   # these paths open the studio
+ANY = None   # in a route's parts: any one part, handed to the handler
+NEXT = object()   # a route handler's answer for a path it leaves to the routes after it
+
+
+class Route(NamedTuple):
+    """One path the handler answers. `parts` are the path's parts: a literal, ANY, or a
+    collection of literals (one of them); the parts that are not literals go to `handler`,
+    the name of a Handler method, in order. A handler that returns NEXT leaves the path to
+    the routes after it, as if it did not know it."""
+
+    parts: tuple
+    handler: str
+
+    def match(self, parts: list[str]) -> list[str] | None:
+        if len(parts) != len(self.parts):
+            return None
+        given = []
+        for want, part in zip(self.parts, parts):
+            if isinstance(want, str):
+                if part != want:
+                    return None
+            elif want is ANY or part in want:
+                given.append(part)
+            else:
+                return None
+        return given
+
+    def text(self) -> str:
+        """The route as the route list shows it: /api/setup/{}/{events|status}."""
+        return "/" + "/".join(want if isinstance(want, str) else "{}" if want is ANY
+                              else "{" + "|".join(sorted(want)) + "}" for want in self.parts)
+
+
+# Every GET the handler answers after the pages' own, in the order they are tried; a path
+# none of them takes is a file of the repository.
+GET_ROUTES = (
+    Route(("api", "hf", "status"), "_get_hf_status"),
+    Route(("api", "catalog"), "_get_catalog"),
+    Route(("api", "recipes"), "_get_recipes"),
+    Route(("api", "chains"), "_get_chains"),
+    Route(("api", "chains", ANY), "_get_chain"),
+    Route(("api", "thumb"), "_get_thumb"),
+    Route(("api", "activity"), "_get_activity"),
+    Route(("api", "assets"), "_get_assets"),
+    Route(("api", "update-check"), "_get_update_check"),
+    Route(("api", "welcome"), "_get_welcome"),
+    Route(("api", "setup"), "_get_setup"),
+    Route(("api", "image", ANY, ANY), "_get_image"),
+    Route(("api", "image", "defaults"), "_get_image_defaults"),
+    Route(("api", "backends"), "_get_backends"),
+    Route(("api", "setup", ANY, ("events", "status")), "_get_download"),
+    # /api/setup/run/<id>/events: five parts, as _start_setup and the Blender install hand it out
+    Route(("api", "setup", "run", ANY, "events"), "_get_setup_events"),
+    Route(("api", "generate", ANY, "events"), "_events"),
+    Route(("api", "generate", ANY, "status"), "_status"),
+    Route(("api", "generate", ANY, ("result.glb", "manifest.json")), "_artifact"),
+    Route(("api", "finish", "capabilities"), "_get_finish_capabilities"),
+    Route(("api", "finish", "runs"), "_get_finish_runs"),
+    Route(("api", "finish", ANY, "events"), "_finish_events"),
+    Route(("api", "finish", ANY, "status"), "_finish_status"),
+    Route(("api", "finish", ANY, FINISH_ARTIFACTS), "_finish_artifact"),
+    Route(("api", "animate", "models"), "_get_animate_models"),
+    Route(("api", "animate", ANY, ANY), "_get_animate"),
+    Route(("api", "props", "tools"), "_get_props_tools"),
+    Route(("api", "props", "runs"), "_get_props_runs"),
+    Route(("api", "props", ANY, ANY), "_get_props"),
+    Route(("api", "rig", "rebind", ANY, "events"), "_rig_events"),
+    Route(("api", "rig", "rebind", ANY, "status"), "_rig_status"),
+    Route(("api", "rig", "rebind", ANY, RIG_ARTIFACTS), "_rig_artifact"),
+)
+
+# Every POST the handler answers after the pages' own; each changes something (weights, the
+# HF token, jobs, names), so the request is checked as a mutation first. Any other path is 404.
+POST_ROUTES = (
+    Route(("api", "chains"), "_post_chain"),
+    Route(("api", "chains", ANY, "cancel"), "_cancel_chain"),
+    Route(("api", "blender", "install"), "_start_blender_install"),
+    Route(("api", "gltfpack", "install"), "_start_gltfpack_install"),
+    Route(("api", "hf", "sign-in"), "_post_hf_sign_in"),
+    Route(("api", "setup", "run"), "_start_setup"),
+    Route(("api", "setup", ANY, ("download", "rebuild", "cancel", "remove")), "_backend_download"),
+    Route(("api", "generate"), "_create_job"),
+    Route(("api", "trellis", "input-advice"), "_trellis_input_advice"),
+    Route(("api", "rig", "rebind"), "_create_rig_job"),
+    Route(("api", "generate", ANY, "cancel"), "_cancel_job"),
+    Route(("api", "rig", "rebind", ANY, "cancel"), "_cancel_rig_job"),
+    Route(("api", "finish"), "_create_finish_job"),
+    Route(("api", "finish", ANY, "cancel"), "_cancel_finish_job"),
+    Route(("api", "finish", "runs", ANY, "resume"), "_resume_finish_job"),
+    Route(("api", "props"), "_create_props_job"),
+    Route(("api", "animate", "rig"), "_create_animate_rig"),
+    Route(("api", "animate", "play"), "_create_animate_play"),
+    Route(("api", "animate", ANY, "cancel"), "_cancel_animate"),
+    Route(("api", "props", ANY, "cancel"), "_cancel_props_job"),
+    Route(("api", "props", "runs", ANY, "turn"), "_turn_prop"),
+    Route(("api", "image"), "_create_image_job"),
+    Route(("api", "assets", ANY, "name"), "_post_asset_name"),
+    Route(("api", "assets", ANY, "hidden"), "_post_asset_hidden"),
+    Route(("api", "image", ANY, "cancel"), "_cancel_image_job"),
+)
+
+
 class Handler(SimpleHTTPRequestHandler):
     """Static repository server plus the local Generate job endpoints."""
 
@@ -2155,138 +2264,82 @@ class Handler(SimpleHTTPRequestHandler):
         if self._admitted() and self._allowed(mutation=False):
             super().do_HEAD()
 
+    def _route(self, routes: tuple[Route, ...]) -> bool:
+        """The first of `routes` that takes this request's path answers it; False when none does."""
+        parts = self._path_parts()
+        for route in routes:
+            given = route.match(parts)
+            if given is not None and getattr(self, route.handler)(*given) is not NEXT:
+                return True
+        return False
+
     def do_POST(self) -> None:
         if not self._admitted():
             return
-        if blender_edit_api.handle(self, OUTPUT_ROOT, mutation=True) or review_api.handle(self, OUTPUT_ROOT, mutation=True):
-            return
-        if material_labels_api.handle(self, OUTPUT_ROOT, mutation=True):
-            return
-        if concept_api.handle(self, OUTPUT_ROOT, mutation=True):
-            return
-        if unreal_export_api.handle(self, OUTPUT_ROOT, mutation=True):
-            return
-        if batch_api.handle(self, OUTPUT_ROOT, mutation=True) or slot_parts_api.handle(self, OUTPUT_ROOT, mutation=True):
+        if any(page.handle(self, OUTPUT_ROOT, mutation=True) for page in PAGE_APIS):
             return
         # every endpoint below changes something: weights, the HF token, jobs, names
         if not self._allowed(mutation=True):
             return
-        parts = self._path_parts()
-        if parts == ["api", "chains"]:
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-                chain = chain_from_form(parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length)))
-                self._chains().submit(chain)
-            except RuntimeError as exc:
-                self._send_json(409, {"error": str(exc)})
-                return
-            except ValueError as exc:
-                self._send_json(400, {"error": str(exc)})
-                return
-            self._send_json(202, chain.to_dict())
+        if not self._route(POST_ROUTES):
+            self.send_error(HTTPStatus.NOT_FOUND)
+
+    def _post_chain(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            chain = chain_from_form(parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length)))
+            self._chains().submit(chain)
+        except RuntimeError as exc:
+            self._send_json(409, {"error": str(exc)})
             return
-        if len(parts) == 4 and parts[:2] == ["api", "chains"] and parts[3] == "cancel":
-            ok = self._chains().cancel(parts[2])
-            self._send_json(200 if ok else 404, {"cancelled": ok})
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
             return
-        if parts == ["api", "blender", "install"]:
-            self._start_blender_install()
+        self._send_json(202, chain.to_dict())
+
+    def _cancel_chain(self, chain_id: str) -> None:
+        ok = self._chains().cancel(chain_id)
+        self._send_json(200 if ok else 404, {"cancelled": ok})
+
+    def _post_hf_sign_in(self) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length)) if 0 < length <= 4096 else None
+        except (ValueError, json.JSONDecodeError):
+            payload = None
+        self._send_json(*hf_sign_in_response(payload))
+
+    def _cancel_animate(self, job_id: str) -> None:
+        job = ANIMATE_JOBS.get(job_id)
+        if job is None:
+            self.send_error(HTTPStatus.NOT_FOUND)
             return
-        if parts == ["api", "gltfpack", "install"]:
-            self._start_gltfpack_install()
+        try:
+            cancel_animate_job(job)
+        except RuntimeError as exc:
+            self._send_json(409, {"error": str(exc)})
             return
-        if parts == ["api", "hf", "sign-in"]:
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-                payload = json.loads(self.rfile.read(length)) if 0 < length <= 4096 else None
-            except (ValueError, json.JSONDecodeError):
-                payload = None
-            self._send_json(*hf_sign_in_response(payload))
+        self._send_json(202, {"job_id": job.id, "status": job.status})
+
+    def _post_asset_name(self, asset_id: str) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            body = json.loads(self.rfile.read(length)) if 0 < length <= 2048 else {}
+            name = set_asset_name(OUTPUT_ROOT, asset_id, str(body.get("name", "")))
+        except (ValueError, json.JSONDecodeError) as exc:
+            self._send_json(422, {"error": str(exc)})
             return
-        if parts == ["api", "setup", "run"]:
-            self._start_setup()
+        self._send_json(200, {"id": asset_id, "name": name})
+
+    def _post_asset_hidden(self, asset_id: str) -> None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            body = json.loads(self.rfile.read(length)) if 0 < length <= 1024 else {}
+            set_asset_hidden(OUTPUT_ROOT, asset_id, bool(body.get("hidden", True)))
+        except (ValueError, json.JSONDecodeError) as exc:
+            self._send_json(422, {"error": str(exc)})
             return
-        if len(parts) == 4 and parts[:2] == ["api", "setup"] and parts[3] in {"download", "rebuild", "cancel", "remove"}:
-            self._backend_download(parts[2], parts[3])
-            return
-        if parts == ["api", "generate"]:
-            self._create_job()
-            return
-        if parts == ["api", "trellis", "input-advice"]:
-            self._trellis_input_advice()
-            return
-        if parts == ["api", "rig", "rebind"]:
-            self._create_rig_job()
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "generate"] and parts[3] == "cancel":
-            self._cancel_job(parts[2])
-            return
-        if len(parts) == 5 and parts[:3] == ["api", "rig", "rebind"] and parts[4] == "cancel":
-            self._cancel_rig_job(parts[3])
-            return
-        if parts == ["api", "finish"]:
-            self._create_finish_job()
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "finish"] and parts[3] == "cancel":
-            self._cancel_finish_job(parts[2])
-            return
-        if len(parts) == 5 and parts[:3] == ["api", "finish", "runs"] and parts[4] == "resume":
-            self._resume_finish_job(parts[3])
-            return
-        if parts == ["api", "props"]:
-            self._create_props_job()
-            return
-        if parts == ["api", "animate", "rig"]:
-            self._create_animate_rig()
-            return
-        if parts == ["api", "animate", "play"]:
-            self._create_animate_play()
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "animate"] and parts[3] == "cancel":
-            job = ANIMATE_JOBS.get(parts[2])
-            if job is None:
-                self.send_error(HTTPStatus.NOT_FOUND)
-                return
-            try:
-                cancel_animate_job(job)
-            except RuntimeError as exc:
-                self._send_json(409, {"error": str(exc)})
-                return
-            self._send_json(202, {"job_id": job.id, "status": job.status})
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "props"] and parts[3] == "cancel":
-            self._cancel_props_job(parts[2])
-            return
-        if len(parts) == 5 and parts[:3] == ["api", "props", "runs"] and parts[4] == "turn":
-            self._turn_prop(parts[3])
-            return
-        if parts == ["api", "image"]:
-            self._create_image_job()
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "assets"] and parts[3] == "name":
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-                body = json.loads(self.rfile.read(length)) if 0 < length <= 2048 else {}
-                name = set_asset_name(OUTPUT_ROOT, parts[2], str(body.get("name", "")))
-            except (ValueError, json.JSONDecodeError) as exc:
-                self._send_json(422, {"error": str(exc)})
-                return
-            self._send_json(200, {"id": parts[2], "name": name})
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "assets"] and parts[3] == "hidden":
-            try:
-                length = int(self.headers.get("Content-Length", "0"))
-                body = json.loads(self.rfile.read(length)) if 0 < length <= 1024 else {}
-                set_asset_hidden(OUTPUT_ROOT, parts[2], bool(body.get("hidden", True)))
-            except (ValueError, json.JSONDecodeError) as exc:
-                self._send_json(422, {"error": str(exc)})
-                return
-            self._send_json(200, {"id": parts[2], "hidden": bool(body.get("hidden", True))})
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "image"] and parts[3] == "cancel":
-            self._cancel_image_job(parts[2])
-            return
-        self.send_error(HTTPStatus.NOT_FOUND)
+        self._send_json(200, {"id": asset_id, "hidden": bool(body.get("hidden", True))})
 
     def _create_image_job(self) -> None:
         """Start one text-to-image run. The prompt is the only required field."""
@@ -2416,242 +2469,205 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         if not self._admitted():
             return
-        if blender_edit_api.handle(self, OUTPUT_ROOT) or review_api.handle(self, OUTPUT_ROOT):
-            return
-        if material_labels_api.handle(self, OUTPUT_ROOT):
-            return
-        if concept_api.handle(self, OUTPUT_ROOT):
-            return
-        if unreal_export_api.handle(self, OUTPUT_ROOT):
-            return
-        if batch_api.handle(self, OUTPUT_ROOT) or slot_parts_api.handle(self, OUTPUT_ROOT):
+        if any(page.handle(self, OUTPUT_ROOT) for page in PAGE_APIS):
             return
         if not self._allowed(mutation=False):
             return
         if style_api.handle(self, OUTPUT_ROOT):
             return
-        if urlparse(self.path).path in ("", "/", "/viewer", "/viewer/"):
+        if urlparse(self.path).path in FRONT_DOOR:
             self.send_response(HTTPStatus.FOUND)  # the front door is the studio
             self.send_header("Location", "/viewer/studio.html")
             self.end_headers()
             return
-        parts = self._path_parts()
-        if parts == ["api", "hf", "status"]:
-            self._send_json(200, hf_api.status())
+        if not self._route(GET_ROUTES):
+            super().do_GET()
+
+    def _get_hf_status(self) -> None:
+        self._send_json(200, hf_api.status())
+
+    def _get_catalog(self) -> None:
+        self._send_json(200, catalog_payload())
+
+    def _get_recipes(self) -> None:
+        # what we know about prompting each goal; the CLI and MCP read the same file
+        try:
+            self._send_json(200, json.loads((REPO / "image_to_3dlab" / "prompt_recipes.json").read_text(encoding="utf-8")))
+        except (OSError, ValueError) as exc:
+            self._send_json(500, {"error": f"prompt recipes unreadable: {exc}"})
+
+    def _get_chains(self) -> None:
+        # the plan running now, else the newest few (so a reopened tab can pick its run back up)
+        runner = self._chains()
+        self._send_json(200, {"running": (c.to_dict() if (c := runner.running()) else None),
+                              "recent": [c.to_dict() for c in runner.recent(5)]})
+
+    def _get_chain(self, chain_id: str) -> None:
+        chain = self._chains().chains.get(chain_id)
+        self._send_json(200 if chain else 404, chain.to_dict() if chain else {"error": "no such run"})
+
+    def _get_thumb(self) -> None:
+        relative = parse_qs(urlparse(self.path).query).get("path", [""])[0]
+        try:
+            data = asset_thumbnail(OUTPUT_ROOT, relative).read_bytes()
+        except (ValueError, OSError) as exc:
+            self._send_json(404, {"error": str(exc)})
             return
-        if parts == ["api", "catalog"]:
-            self._send_json(200, catalog_payload())
+        self.send_response(200)
+        self.send_header("Content-Type", "image/png")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _get_activity(self) -> None:
+        self._send_json(200, {"history": read_history(OUTPUT_ROOT)})
+
+    def _get_assets(self) -> None:
+        try:
+            self._send_json(200, assets_payload(OUTPUT_ROOT))
+        except Exception as exc:  # a broken run folder must not take the whole Library down
+            self._send_json(500, {"error": str(exc)})
+
+    def _get_update_check(self) -> None:
+        self._send_json(200, update_check())
+
+    def _get_welcome(self) -> None:
+        since = parse_qs(urlparse(self.path).query).get("since", [None])[0]
+        self._send_json(200, welcome_payload(since))
+
+    def _get_setup(self) -> None:
+        query = parse_qs(urlparse(self.path).query)
+        backend_id = query.get("backend", ["trellis"])[0]
+        # The catalogue decides what a route *is*; a backend spec, where one exists,
+        # adds the live detail only it can probe (which Hunyuan checkpoint is on disk,
+        # how many of the nine GGUF files arrived). Asking the specs first is what made
+        # the image route, which has no spec because it makes pictures rather than
+        # meshes, answer "unknown backend" for something the catalogue lists.
+        payload = catalog_readiness(backend_id)
+        if payload is None:
+            self._send_json(422, {"error": f"unknown backend {backend_id!r}"})
             return
-        if parts == ["api", "recipes"]:
-            # what we know about prompting each goal; the CLI and MCP read the same file
-            try:
-                self._send_json(200, json.loads((REPO / "image_to_3dlab" / "prompt_recipes.json").read_text(encoding="utf-8")))
-            except (OSError, ValueError) as exc:
-                self._send_json(500, {"error": f"prompt recipes unreadable: {exc}"})
+        spec = BACKENDS.get(backend_id)
+        if spec is not None:
+            live = spec.readiness()
+            # A spec that reports no weights is not saying "this backend has none",
+            # it is saying it does not track them -- SF3D and the dgrauet Hunyuan
+            # route both return an empty dict. Letting that overwrite the catalogue
+            # would hide the weight rows the Setup page shows for the same backend.
+            for key in ("weights", "missing_weights"):
+                if not live.get(key):
+                    live.pop(key, None)
+            payload = {**payload, **live, "backend": spec.id}
+        self._send_json(200, payload)
+
+    def _get_image(self, job_id: str, action: str) -> None:
+        job = image_api.MANAGER.jobs.get(job_id) if _safe_id(job_id) else None
+        if job is None:
+            self.send_error(HTTPStatus.NOT_FOUND)
             return
-        if parts == ["api", "chains"]:
-            # the plan running now, else the newest few (so a reopened tab can pick its run back up)
-            runner = self._chains()
-            self._send_json(200, {"running": (c.to_dict() if (c := runner.running()) else None),
-                                  "recent": [c.to_dict() for c in runner.recent(5)]})
+        if action == "events":
+            self._image_events(job_id)
             return
-        if len(parts) == 3 and parts[:2] == ["api", "chains"]:
-            chain = self._chains().chains.get(parts[2])
-            self._send_json(200 if chain else 404, chain.to_dict() if chain else {"error": "no such run"})
+        if action == "status":
+            self._send_json(200, job.describe())
             return
-        if parts == ["api", "thumb"]:
-            relative = parse_qs(urlparse(self.path).query).get("path", [""])[0]
-            try:
-                data = asset_thumbnail(OUTPUT_ROOT, relative).read_bytes()
-            except (ValueError, OSError) as exc:
-                self._send_json(404, {"error": str(exc)})
+        if action == "result.png":
+            if job.status != "done" or not job.output_path.exists():
+                self.send_error(HTTPStatus.NOT_FOUND)
                 return
-            self.send_response(200)
+            data = job.output_path.read_bytes()
+            self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "image/png")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
             return
-        if parts == ["api", "activity"]:
-            self._send_json(200, {"history": read_history(OUTPUT_ROOT)})
-            return
-        if parts == ["api", "assets"]:
-            try:
-                self._send_json(200, assets_payload(OUTPUT_ROOT))
-            except Exception as exc:  # a broken run folder must not take the whole Library down
-                self._send_json(500, {"error": str(exc)})
-            return
-        if parts == ["api", "update-check"]:
-            self._send_json(200, update_check())
-            return
-        if parts == ["api", "welcome"]:
-            since = parse_qs(urlparse(self.path).query).get("since", [None])[0]
-            self._send_json(200, welcome_payload(since))
-            return
-        if parts == ["api", "setup"]:
-            query = parse_qs(urlparse(self.path).query)
-            backend_id = query.get("backend", ["trellis"])[0]
-            # The catalogue decides what a route *is*; a backend spec, where one exists,
-            # adds the live detail only it can probe (which Hunyuan checkpoint is on disk,
-            # how many of the nine GGUF files arrived). Asking the specs first is what made
-            # the image route, which has no spec because it makes pictures rather than
-            # meshes, answer "unknown backend" for something the catalogue lists.
-            payload = catalog_readiness(backend_id)
-            if payload is None:
-                self._send_json(422, {"error": f"unknown backend {backend_id!r}"})
-                return
-            spec = BACKENDS.get(backend_id)
-            if spec is not None:
-                live = spec.readiness()
-                # A spec that reports no weights is not saying "this backend has none",
-                # it is saying it does not track them -- SF3D and the dgrauet Hunyuan
-                # route both return an empty dict. Letting that overwrite the catalogue
-                # would hide the weight rows the Setup page shows for the same backend.
-                for key in ("weights", "missing_weights"):
-                    if not live.get(key):
-                        live.pop(key, None)
-                payload = {**payload, **live, "backend": spec.id}
-            self._send_json(200, payload)
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "image"]:
-            job = image_api.MANAGER.jobs.get(parts[2]) if _safe_id(parts[2]) else None
-            if job is None:
-                self.send_error(HTTPStatus.NOT_FOUND)
-                return
-            if parts[3] == "events":
-                self._image_events(parts[2])
-                return
-            if parts[3] == "status":
-                self._send_json(200, job.describe())
-                return
-            if parts[3] == "result.png":
-                if job.status != "done" or not job.output_path.exists():
-                    self.send_error(HTTPStatus.NOT_FOUND)
-                    return
-                data = job.output_path.read_bytes()
-                self.send_response(HTTPStatus.OK)
-                self.send_header("Content-Type", "image/png")
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-                return
+        self.send_error(HTTPStatus.NOT_FOUND)
+
+    def _get_image_defaults(self) -> None:
+        self._send_json(200, {
+            "defaults": image_api.T2I_DEFAULTS,
+            "rewrite": _prompt_rewrite_state(),
+            "samplers": list(image_api.SAMPLERS),
+            "installed": image_api.is_installed(),
+            "license": {"name": image_api.LICENSE_NAME, "url": image_api.LICENSE_URL,
+                        "attribution": image_api.ATTRIBUTION},
+        })
+
+    def _get_backends(self) -> None:
+        self._send_json(200, backends_payload())
+
+    def _get_download(self, backend_id: str, action: str) -> object:
+        run = DOWNLOADS.get(backend_id)
+        if run is None:
+            return NEXT
+        if action == "events":
+            self._stream_events(run)
+        else:
+            self._send_json(200, download_status_payload(run))
+        return None
+
+    def _get_setup_events(self, run_id: str) -> None:
+        run = SETUP_RUNS.get(run_id) if _safe_id(run_id) else None
+        if run is None:
             self.send_error(HTTPStatus.NOT_FOUND)
             return
-        if parts == ["api", "image", "defaults"]:
-            self._send_json(200, {
-                "defaults": image_api.T2I_DEFAULTS,
-                "rewrite": _prompt_rewrite_state(),
-                "samplers": list(image_api.SAMPLERS),
-                "installed": image_api.is_installed(),
-                "license": {"name": image_api.LICENSE_NAME, "url": image_api.LICENSE_URL,
-                            "attribution": image_api.ATTRIBUTION},
-            })
+        self._stream_events(run)
+
+    def _get_finish_capabilities(self) -> None:
+        self._send_json(200, finish_capabilities())
+
+    def _get_finish_runs(self) -> None:
+        self._send_json(200, {"runs": list_finish_runs(FINISH_JOBS.output_root)})
+
+    def _get_animate_models(self) -> None:
+        try:
+            self._send_json(200, {"models": animate_models(OUTPUT_ROOT),
+                                  "presets": animate_presets(),
+                                  "installed": autorig_installed()})
+        except Exception as exc:
+            self._send_json(500, {"error": str(exc)})
+
+    def _get_animate(self, job_id: str, action: str) -> object:
+        job = ANIMATE_JOBS.get(job_id)
+        if job is None:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return None
+        if action == "events":
+            self._stream_events(job)
+            return None
+        if action == "status":
+            self._send_json(200, animate_status_payload(job))
+            return None
+        return NEXT
+
+    def _get_props_tools(self) -> None:
+        self._send_json(200, props_tools_payload())
+
+    def _get_props_runs(self) -> None:
+        try:
+            payload = {
+                "runs": list_props_runs(PROPS_JOBS.output_root),
+                "generated": generated_models(OUTPUT_ROOT),
+                "tools": props_tools_payload(),
+            }
+        except Exception as exc:
+            self._send_json(500, {"error": str(exc)})
             return
-        if parts == ["api", "backends"]:
-            self._send_json(200, backends_payload())
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "setup"] and parts[3] in {"events", "status"}:
-            run = DOWNLOADS.get(parts[2])
-            if run is not None:
-                if parts[3] == "events":
-                    self._stream_events(run)
-                else:
-                    self._send_json(200, download_status_payload(run))
-                return
-        # /api/setup/run/<id>/events: five parts, as _start_setup and the Blender
-        # install hand it out.
-        if len(parts) == 5 and parts[:3] == ["api", "setup", "run"] and parts[4] == "events":
-            run = SETUP_RUNS.get(parts[3]) if _safe_id(parts[3]) else None
-            if run is None:
-                self.send_error(HTTPStatus.NOT_FOUND)
-                return
-            self._stream_events(run)
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "generate"]:
-            job_id, action = parts[2], parts[3]
-            if action == "events":
-                self._events(job_id)
-                return
-            if action == "status":
-                self._status(job_id)
-                return
-            if action in {"result.glb", "manifest.json"}:
-                self._artifact(job_id, action)
-                return
-        if parts == ["api", "finish", "capabilities"]:
-            self._send_json(200, finish_capabilities())
-            return
-        if parts == ["api", "finish", "runs"]:
-            self._send_json(200, {"runs": list_finish_runs(FINISH_JOBS.output_root)})
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "finish"]:
-            job_id, action = parts[2], parts[3]
-            if action == "events":
-                self._finish_events(job_id)
-                return
-            if action == "status":
-                self._finish_status(job_id)
-                return
-            if action in FINISH_ARTIFACTS:
-                self._finish_artifact(job_id, action)
-                return
-        if parts == ["api", "animate", "models"]:
-            try:
-                self._send_json(200, {"models": animate_models(OUTPUT_ROOT),
-                                      "presets": animate_presets(),
-                                      "installed": autorig_installed()})
-            except Exception as exc:
-                self._send_json(500, {"error": str(exc)})
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "animate"]:
-            job = ANIMATE_JOBS.get(parts[2])
-            if job is None:
-                self.send_error(HTTPStatus.NOT_FOUND)
-                return
-            if parts[3] == "events":
-                self._stream_events(job)
-                return
-            if parts[3] == "status":
-                self._send_json(200, animate_status_payload(job))
-                return
-        if parts == ["api", "props", "tools"]:
-            self._send_json(200, props_tools_payload())
-            return
-        if parts == ["api", "props", "runs"]:
-            try:
-                payload = {
-                    "runs": list_props_runs(PROPS_JOBS.output_root),
-                    "generated": generated_models(OUTPUT_ROOT),
-                    "tools": props_tools_payload(),
-                }
-            except Exception as exc:
-                self._send_json(500, {"error": str(exc)})
-                return
-            self._send_json(200, payload)
-            return
-        if len(parts) == 4 and parts[:2] == ["api", "props"]:
-            job = PROPS_JOBS.get(parts[2])
-            if job is None:
-                self.send_error(HTTPStatus.NOT_FOUND)
-                return
-            if parts[3] == "events":
-                self._stream_events(job)
-                return
-            if parts[3] == "status":
-                self._send_json(200, props_status_payload(job))
-                return
-        if len(parts) == 5 and parts[:3] == ["api", "rig", "rebind"]:
-            job_id, action = parts[3], parts[4]
-            if action == "events":
-                self._rig_events(job_id)
-                return
-            if action == "status":
-                self._rig_status(job_id)
-                return
-            if action in RIG_ARTIFACTS:
-                self._rig_artifact(job_id, action)
-                return
-        super().do_GET()
+        self._send_json(200, payload)
+
+    def _get_props(self, job_id: str, action: str) -> object:
+        job = PROPS_JOBS.get(job_id)
+        if job is None:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return None
+        if action == "events":
+            self._stream_events(job)
+            return None
+        if action == "status":
+            self._send_json(200, props_status_payload(job))
+            return None
+        return NEXT
 
     def _create_job(self) -> None:
         try:
@@ -3385,13 +3401,6 @@ class Handler(SimpleHTTPRequestHandler):
             "setup_run_id": setup_id,
             "events_url": f"/api/setup/run/{setup_id}/events",
         })
-
-    def _status(self, job_id: str) -> None:
-        job = self._find_job(job_id)
-        if job is None:
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-        self._send_json(200, _job_status_payload(job))
 
     def _status(self, job_id: str) -> None:
         job = self._find_job(job_id)
