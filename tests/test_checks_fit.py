@@ -84,15 +84,32 @@ def test_a_strip_on_itself_neither_clips_nor_leaves_holes(tmp_path):
     assert all(p["clipping"] == pytest.approx(0.0) for p in measured["poses"])
 
 
-def test_a_held_weapon_has_no_holes_to_measure(tmp_path):
-    glb = write_skinned_glb(tmp_path / "weapon.glb")
-    body = write_skinned_glb(tmp_path / "body.glb")
-    report = run_checks(Asset(glb=glb, body=body), profile="equipment_part", only=["fit.holes"])
-    assert not report["results"] and "held in the hand" in report["skipped"][0]["reason"]
-
-
 def test_the_worn_set_is_the_pieces_beside_the_body(tmp_path):
-    for name in ("body_masked", "set", "preview", "body_trimmed", "weapon", "helmet", "torso", "gloves_L"):
+    for name in ("body_masked", "set", "preview", "body_trimmed", "helmet", "torso", "gloves_L"):
         (tmp_path / f"{name}.glb").write_bytes(b"glb")
     found = fit_checks.worn_set(Asset(glb=tmp_path / "helmet.glb", body=tmp_path / "body_masked.glb"))
     assert [p.name for p in found] == ["helmet.glb", "gloves_L.glb", "torso.glb"]
+
+
+def test_a_piece_of_the_set_that_cannot_be_read_is_named(tmp_path):
+    """Code read 18/10/2026: an unreadable piece was skipped without a word, and the holes
+    read larger than they are."""
+    body = write_skinned_glb(tmp_path / "body_masked.glb")
+    piece = write_skinned_glb(tmp_path / "helmet.glb")
+    (tmp_path / "torso.glb").write_bytes(b"not a glb")
+    fit_checks._CACHE.clear()
+    report = run_checks(Asset(glb=piece, body=body), profile="equipment_part", only=["fit.holes"])
+    assert report["results"][0]["details"]["pieces_not_read"] == ["torso.glb"]
+
+
+def test_the_worn_set_is_the_fits_own_never_an_older_fits_file(tmp_path):
+    """Code read 18/10/2026: a set made again with other slots left `shoulders.glb` beside
+    `shoulders_L/_R.glb`, and fit.holes counted it as covering the body."""
+    import json
+
+    for name in ("body_masked", "set", "helmet", "shoulders", "shoulders_L", "shoulders_R"):
+        (tmp_path / f"{name}.glb").write_bytes(b"glb")
+    (tmp_path / "fit.json").write_text(json.dumps(
+        {"files": ["set.glb", "body_masked.glb", "helmet.glb", "shoulders_L.glb", "shoulders_R.glb"]}))
+    found = fit_checks.worn_set(Asset(glb=tmp_path / "helmet.glb", body=tmp_path / "body_masked.glb"))
+    assert [p.name for p in found] == ["helmet.glb", "shoulders_L.glb", "shoulders_R.glb"]

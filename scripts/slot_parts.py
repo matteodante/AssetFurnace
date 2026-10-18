@@ -439,6 +439,20 @@ def review_key(set_name: str, body_name: str, piece: str) -> str:
     return f"{key[:111]}-{hashlib.sha256(key.encode()).hexdigest()[:8]}"
 
 
+def fitted_files(report: dict) -> list[str]:
+    """The worn pieces' files a fit.json lists, without the body's. A weapon or shield there was
+    fitted by a run from before they became assets of their own (17/10/2026): refused, so the
+    set is made again rather than carried or exported half the old way."""
+    from image_to_3dlab.slot_parts.sidecar import BODY_FILES
+
+    names = [name for name in report.get("files", []) if name not in BODY_FILES]
+    old = [name for name in names if Path(name).stem in slots.STANDALONE]
+    if old:
+        raise ValueError(f"the fit lists {', '.join(old)}: fitted by a run from before weapons and shields became "
+                         "assets of their own (17/10/2026); run the set again")
+    return names
+
+
 def check_pieces(fit_dir: Path, body_json: Path, set_name: str) -> dict:
     """The equipment_part checks on every fitted piece, each queued for review."""
     from image_to_3dlab.checks import Asset, check_and_enqueue
@@ -447,9 +461,7 @@ def check_pieces(fit_dir: Path, body_json: Path, set_name: str) -> dict:
     report = json.loads((Path(fit_dir) / "fit.json").read_text())
     body_glb = Path(fit_dir) / "body_masked.glb"
     out = {}
-    for name in report["files"]:
-        if name in ("set.glb", "preview.glb", "body_masked.glb", "body_trimmed.glb"):
-            continue
+    for name in fitted_files(report):
         asset = Asset(glb=Path(fit_dir) / name, key=review_key(set_name, record["name"], Path(name).stem),
                       body=body_glb, body_clips=tuple(record.get("clips", {}).values()))
         checked, _ = check_and_enqueue(asset, profile="equipment_part")
@@ -667,13 +679,9 @@ def refit_job(fit_dir: Path, source_body: Path, body_json: Path, out: Path) -> d
     """The job that moves a fitted set onto another body: every fitted piece, carried over."""
     report = json.loads((Path(fit_dir) / "fit.json").read_text())
     pieces_out = []
-    for name in report["files"]:
-        if name in ("set.glb", "preview.glb", "body_masked.glb", "body_trimmed.glb"):
-            continue
+    for name in fitted_files(report):
         stem = Path(name).stem
         slot = stem.removesuffix("_L").removesuffix("_R")
-        if slot in slots.STANDALONE:   # fitted by a run from before: an asset of its own now, not carried
-            continue
         # one shoulders file was fitted unsplit; two (_L and _R) were split on purpose
         pieces_out.append({"slot": slot, "glb": str((Path(fit_dir) / name).resolve()), "transfer": True,
                            "split": stem != slot})
@@ -718,11 +726,7 @@ def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0
     exported = ({"body": exporter(body_glb, kind="creature", size_cm=size_cm, name=base, out_dir=Path(out) / base)}
                 if fitted else {})
     pieces_out = {}
-    for name in report["files"]:
-        if name in ("set.glb", "preview.glb", "body_masked.glb", "body_trimmed.glb"):
-            continue
-        if Path(name).stem in slots.STANDALONE:   # fitted by a run from before: exported on its own below
-            continue
+    for name in fitted_files(report):
         piece = "".join(part.capitalize() for part in Path(name).stem.split("_"))
         slot = piece_materials.piece_of(name)
         if slot is not None:
@@ -800,17 +804,13 @@ def carried_record(fit_dir: Path, body_json: Path, out: Path, report: dict) -> P
 def fit_job(pieces_json: Path, body_json: Path, out: Path, options: dict | None = None) -> dict:
     """The job `blender_fit_parts.py` reads: the body, the concept's size and each piece's box."""
     record = json.loads(Path(pieces_json).read_text())
-    cuts = Path(record["cuts"])
-    if cuts.is_file():
-        cut_record = json.loads(cuts.read_text())
-        with Image.open(cut_record["concept"]) as concept:
-            size = list(concept.size)
-    else:   # a weapon or shield alone: nothing was cut from a concept, nothing is placed by one
-        cut_record, size = {"slots": {}}, [1, 1]
     if not record["slots"]:
         raise ValueError(f"{pieces_json} has no pieces: run the pieces command first")
     if not any(slot not in slots.STANDALONE for slot in record["slots"]):
         raise ValueError(f"{pieces_json} has no worn pieces to fit: a weapon or shield is an asset of its own")
+    cut_record = json.loads(Path(record["cuts"]).read_text())
+    with Image.open(cut_record["concept"]) as concept:
+        size = list(concept.size)
     entries = [{"slot": slot, "glb": entry["glb"],
                 "split": bool(cut_record["slots"].get(slot, {}).get("split", False)),
                 **{k: entry[k] for k in ("concept_box", "frame") if k in entry}}

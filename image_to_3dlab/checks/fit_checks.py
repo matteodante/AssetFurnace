@@ -12,13 +12,14 @@ bone by name, at rest and at evenly spaced times of each clip.
   from hidden skin meets the piece within `gap`), the share that a pose leaves bare: the ray
   misses every worn piece of the set within `reach`. Skin a shoulder piece lifts off but the
   torso still covers does not show, so it is not a hole. The set is the other piece GLBs beside
-  the masked body (the fit step's folder), weapons and shields left out.
+  the masked body (the fit step's folder, as its fit.json lists them).
 
 Geometry only, measured by rays and nearest points: no pixels.
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -107,15 +108,20 @@ def rays_hit(origins: np.ndarray, directions: np.ndarray, target, reach: float) 
     return hit
 
 
-# The fit step writes these beside the pieces; none is a worn piece.
-NOT_WORN = ("set", "preview", "body_masked", "body_trimmed", "weapon", "shield")
-
-
 def worn_set(asset) -> list[Path]:
-    """This piece and every other worn piece fitted to the same body (the GLBs beside it)."""
+    """This piece and every other worn piece of the same fit: the files its `fit.json` lists,
+    never an older fit's GLB left in the folder. Without a fit.json (a body checked outside
+    the fit step), the GLBs beside the body."""
+    from image_to_3dlab.slot_parts.sidecar import BODY_FILES
+
     folder = Path(asset.body).parent
-    others = [p for p in sorted(folder.glob("*.glb")) if p.stem not in NOT_WORN and p.resolve() != Path(asset.glb).resolve()]
-    return [Path(asset.glb), *others]
+    try:
+        listed = json.loads((folder / "fit.json").read_text(encoding="utf-8"))["files"]
+        candidates = [folder / name for name in listed if name not in BODY_FILES]
+    except (OSError, ValueError, KeyError, TypeError):
+        candidates = [p for p in sorted(folder.glob("*.glb")) if p.name not in BODY_FILES]
+    mine = Path(asset.glb).resolve()
+    return [Path(asset.glb), *(p for p in candidates if p.resolve() != mine)]
 
 
 def measure(asset, config: dict) -> dict:
@@ -126,12 +132,12 @@ def measure(asset, config: dict) -> dict:
     if key in _CACHE:
         return _CACHE[key]
     piece_rig, body_rig = SkinnedGLB(asset.glb), SkinnedGLB(asset.body)
-    worn_rigs = []
+    worn_rigs, unread = [], []
     for path in worn_set(asset)[1:]:
         try:
             worn_rigs.append(SkinnedGLB(path))
         except (LookupError, ValueError, OSError):
-            continue
+            unread.append(path.name)   # said in the details: without it the holes read larger
     alpha = vertex_alpha(body_rig)
     masked_faces = (alpha[body_rig.mesh.faces] < 0.5).all(axis=1)
     rng = np.random.default_rng(0)
@@ -142,7 +148,7 @@ def measure(asset, config: dict) -> dict:
     rest_body = _mesh(body_rig.mesh.vertices, body_rig.mesh.faces)
     rest_piece = _mesh(piece_rig.mesh.vertices, piece_rig.mesh.faces)
     origins = rest_body.vertices + rest_body.vertex_normals * 1e-4
-    # only skin the mask hides can show through: a held weapon hides none, so it has no holes
+    # only skin the mask hides can show through
     region = np.nonzero(rays_hit(origins, rest_body.vertex_normals, rest_piece, gap) & (alpha < 0.5))[0]
     if len(region) > config.get("region_sample", 3000):
         region = rng.choice(region, config.get("region_sample", 3000), replace=False)
@@ -164,7 +170,7 @@ def measure(asset, config: dict) -> dict:
             every = trimesh.util.concatenate(meshes) if len(meshes) > 1 else piece
             bare = ~rays_hit(body.vertices[region] + n * 1e-4, n, every, reach)
         found.append({"pose": label, "clipping": clipping, "holes": float(bare.mean()) if len(bare) else 0.0})
-    _CACHE[key] = {"poses": found, "region": len(region)}
+    _CACHE[key] = {"poses": found, "region": len(region), "unread": unread}
     return _CACHE[key]
 
 
@@ -180,7 +186,7 @@ def clipping(asset, config):
                   {"poses": [{"pose": p["pose"], "percent": round(100 * p["clipping"], 2)} for p in measured["poses"]]})
 
 
-@register("fit.holes", needs=("body", "worn"))
+@register("fit.holes", needs=("body",))
 def holes(asset, config):
     measured = measure(asset, config)
     worst = max(measured["poses"], key=lambda p: p["holes"])
@@ -190,4 +196,5 @@ def holes(asset, config):
                   f"{value:.2f}% of the body this piece covers shows through at worst "
                   f"({worst['pose']}, {len(measured['poses'])} poses)",
                   {"region_vertices": measured["region"],
-                   "poses": [{"pose": p["pose"], "percent": round(100 * p["holes"], 2)} for p in measured["poses"]]})
+                   "poses": [{"pose": p["pose"], "percent": round(100 * p["holes"], 2)} for p in measured["poses"]],
+                   **({"pieces_not_read": measured["unread"]} if measured.get("unread") else {})})

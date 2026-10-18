@@ -42,6 +42,20 @@ def test_refit_job_carries_every_fitted_piece(tmp_path):
     assert [p["split"] for p in job["pieces"]] == [False, True, True]  # an _L/_R pair stays two files
 
 
+def test_a_fit_from_before_weapons_were_their_own_is_refused_not_half_carried(tmp_path):
+    """Weapons and shields became assets of their own on 17/10/2026; a fit that still lists
+    one is made again, never carried or exported with the weapon quietly left out."""
+    folder = _fit_dir(tmp_path)
+    report = json.loads((folder / "fit.json").read_text())
+    (folder / "weapon.glb").write_bytes(b"glb")
+    (folder / "fit.json").write_text(json.dumps(dict(report, files=[*report["files"], "weapon.glb"])))
+    second, *_ = _body(tmp_path)
+    with pytest.raises(ValueError, match="run the set again"):
+        cli.refit_job(folder, tmp_path / "first.json", second, tmp_path / "out")
+    with pytest.raises(ValueError, match="run the set again"):
+        cli.unreal_set(folder, second, tmp_path / "unreal", exporter=lambda *a, **k: {"glb": "x", "problems": []})
+
+
 def test_a_transferred_piece_needs_the_first_body(tmp_path):
     job = {"body": "b.json", "concept_size": [1, 1], "out": "o", "pieces": [{"slot": "helmet", "glb": "h.glb", "transfer": True}]}
     path = tmp_path / "job.json"

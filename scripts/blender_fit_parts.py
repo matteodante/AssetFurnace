@@ -11,11 +11,10 @@ another body: then `source_body` names the first body's body.json and every piec
                 {"slot": "torso", "glb": ".../torso.glb", "concept_box": [...], "frame": [x0, z0, x1, z1, yc]}],
      "offset": 0.002, "cage_voxel": 0.007, "cage_faces": 5000}
 
-A weapon or shield made on its own has no `concept_box`: it goes in the right hand or on the
-left forearm, sized from the body's height. `concept_box` is where any other piece sits on
-the concept (route C), or the whole subject's box
-when the piece was cut from a whole-character model (route B0); then `frame` is that
-model's extent (Blender x0, z0, x1, z1 and depth centre) and places it. Per piece: placement through the body's camera (`slot_parts.fit`); paired
+Only worn pieces are fitted: a weapon or shield is an asset of its own, never fitted to a
+body, and a job naming one is refused. `concept_box` is where a piece sits on the concept
+(route C), or the whole subject's box when the piece was cut from a whole-character model
+(route B0); then `frame` is that model's extent (Blender x0, z0, x1, z1 and depth centre) and places it. Per piece: placement through the body's camera (`slot_parts.fit`); paired
 pieces fitted per side; gauntlets turned onto the forearm; a low-poly cage shrinkwrapped
 just outside the body drives the piece by Surface Deform (Mesh Deform when that will not
 bind); cage spikes put back; any vertex still under the skin pushed out to it; skin weights copied from the body (at most 4 per vertex), or
@@ -61,7 +60,9 @@ def load_job(path: Path) -> dict:
     for piece in job["pieces"]:
         if piece.get("slot") not in slots.CATALOGUE:
             raise ValueError(f"unknown slot {piece.get('slot')!r}")
-        if "concept_box" not in piece and not piece.get("transfer") and piece["slot"] not in slots.STANDALONE:
+        if piece["slot"] in slots.STANDALONE:
+            raise ValueError(f"{piece['slot']}: a weapon or shield is an asset of its own, never fitted to a body")
+        if "concept_box" not in piece and not piece.get("transfer"):
             raise ValueError(f"{piece['slot']}: give concept_box")
         if piece.get("transfer") and "source_body" not in job:
             raise ValueError("a transferred piece needs the job's source_body")
@@ -75,12 +76,11 @@ def slot_bones(roles: dict, slot: str, side: str | None) -> list[str]:
 
 
 def rigid_bone(roles: dict, slot: str, side: str | None = None, carried: dict | None = None) -> str | None:
-    """The one bone a rigid piece follows: the helmet a head bone (a weapon or shield is an asset
-    of its own, never fitted, so it follows none). With `carried` (body vertices each bone
-    carries most), the bone carrying most wins: a rig can split the head over two bones, and a
-    helmet on the small one turned apart from the head (31% holes on a second body)."""
+    """The one bone a rigid piece follows: the helmet a head bone; None for a piece with no rigid
+    bone. With `carried` (body vertices each bone carries most), the bone carrying most wins: a
+    rig can split the head over two bones, and a helmet on the small one turned apart from the
+    head (31% holes on a second body)."""
     role = slots.CATALOGUE[slot].rigid
-    side = side or ("L" if slot == "shield" else "R")
     if role is None:
         return None
     found = [(i, b) for b, (r, i, s) in roles.items() if r == role and (role == "head" or s in (side, ""))]
@@ -499,8 +499,6 @@ def main() -> None:  # pragma: no cover - runs inside Blender
                 else:
                     merged[key] = value
             continue
-        if slot in slots.STANDALONE:   # an asset of its own: a job from before keeps it, the fit does not
-            continue
         box = fit.concept_to_body(piece["concept_box"], job["concept_size"], body_size)
         if "frame" in piece:  # route B0: placed by the whole-character model's extent
             m, place = fit.placement(coords(obj), box, cam, float((body_co[:, 1].min() + body_co[:, 1].max()) / 2),
@@ -537,8 +535,7 @@ def main() -> None:  # pragma: no cover - runs inside Blender
 
     # the covered mask: a body vertex is hidden only where a worn piece lies over it at rest and in
     # every sampled moment of the body's clips. Hidden by its rest pose alone, the skin a shoulder
-    # piece lifts off in a swing showed through (holes of 6-10% in the acceptance); a weapon or
-    # shield is held, and the hand under its grip must stay visible
+    # piece lifts off in a swing showed through (holes of 6-10% in the acceptance)
     worn = fitted
     gap = job.get("cover_gap", 0.06)
 

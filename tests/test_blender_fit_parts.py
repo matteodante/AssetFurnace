@@ -40,10 +40,8 @@ def test_load_job_checks_what_it_needs(tmp_path):
     path = tmp_path / "job.json"
     path.write_text(json.dumps(job))
     assert bf.load_job(path)["pieces"][0]["slot"] == "helmet"
-    held = dict(job, pieces=[{"slot": "weapon", "glb": "w.glb"}])  # made on its own: no box needed
-    path.write_text(json.dumps(held))
-    assert bf.load_job(path)["pieces"][0]["slot"] == "weapon"
     for broken, words in ((dict(job, pieces=[{"slot": "cape", "concept_box": [0, 0, 1, 1]}]), "cape"),
+                          (dict(job, pieces=[{"slot": "weapon", "glb": "w.glb"}]), "asset of its own"),
                           (dict(job, pieces=[{"slot": "helmet"}]), "concept_box"),
                           ({k: v for k, v in job.items() if k != "out"}, "out")):
         path.write_text(json.dumps(broken))

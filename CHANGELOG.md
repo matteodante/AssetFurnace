@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     prompt rewriting (on by default) runs on: with Qwen-Image alone it never ran. Setup counts
     it for Qwen-Image, and an install without it is told on the Create sheet, in the job and in
     the picture's record, with where to install it.
+  - `fit.holes` counts only the pieces the fit's own `fit.json` lists, never an older fit's
+    file left in the folder, and names a piece it cannot read;
+  - a fit from before weapons and shields became assets of their own is refused by refit and
+    the Unreal export with "run the set again", instead of being carried without them;
   - llama.cpp's Linux build keeps its library links when unpacked (they were dropped, so on Linux
     neither the rewriting nor the picture judge could start).
 - The Windows installer, from the second final review:

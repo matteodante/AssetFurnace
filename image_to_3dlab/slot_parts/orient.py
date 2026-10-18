@@ -1,7 +1,8 @@
 """A weapon's picture turned handle down before it becomes 3D, checked by the picture judge.
 
-The fit holds a weapon low on its height, and in Unreal it hangs from a socket on the hand:
-both need the handle at the bottom. The picture is asked for that way, but the picture model
+A weapon is made in its canonical pose, handle at the bottom: its grip is found on the upright
+picture (`grip.py`) and the Unreal mesh points its blade or head along +Z from the grip. The
+picture is asked for that way, but the picture model
 drew the first real set's sword point down in three seeds out of three. So Qwen3-VL (the
 picture judge, `image_to_3dlab/style/judge.py`) is asked where the handle is, at the top or
 at the bottom, and a picture with it at the top is flipped top to bottom. A learned check,

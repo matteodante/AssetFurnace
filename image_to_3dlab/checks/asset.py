@@ -151,9 +151,6 @@ class Asset:
             "body": lambda: ("no base body given (only armour pieces fitted to one have it)" if self.body is None
                              else f"{self.body} does not exist" if not self.body.is_file()
                              else None if self.document.get("skins") else "the piece is not skinned to the body"),
-            # a weapon or shield is held, not worn: it hides no skin, so nothing can show through
-            "worn": lambda: "held in the hand, not worn: it hides no skin" if self.glb.stem in ("weapon", "shield")
-            else None,
             "animation": lambda: None if rig_checks.has_clips(self.glb) else "the rig has no animation to play",
             "texture": lambda: None if self.has_texture else "the model has no texture",
             "gltf_validator": lambda: None if self.validator_path else
