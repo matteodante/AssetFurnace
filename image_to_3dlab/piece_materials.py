@@ -57,8 +57,8 @@ WORDS = {
 # Words that say how a thing looks, not what it is made of: in "a golden silk tunic" the silk
 # and the tunic decide (cloth). They name the material only when nothing else in the clause does.
 LOOK_WORDS = frozenset({"golden", "metallic", "chrome"})
-# What splits words into clauses: "red plate and leather boots" is two.
-CLAUSES = re.compile(r",|;|\band\b|\bwith\b|\bplus\b")
+# What splits words into clauses: "red plate and leather boots" is two, and so is the end of a sentence.
+CLAUSES = re.compile(r"[,;.!?\n]|\band\b|\bwith\b|\bplus\b")
 
 SLOT_DEFAULTS = {"helmet": "metal", "torso": "metal", "shoulders": "metal", "gloves": "metal", "legs": "metal",
                  "boots": "metal", "weapon": "metal", "shield": "wood"}
@@ -221,7 +221,7 @@ def outfit_words(parts: dict, folder: Path) -> str:
         return ""
     if not isinstance(concept.get("outfit"), str):
         raise ValueError(f"the set {parts.get('set')!r} was made before the outfit's words were saved with its "
-                         f"concept: run `python {MIGRATION} {folder}` once to write them in")
+                         f"concept: run `python {MIGRATION} \"{folder}\"` once to write them in")
     return concept["outfit"]
 
 

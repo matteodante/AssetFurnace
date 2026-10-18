@@ -38,6 +38,7 @@ def test_garment_nouns_read_as_cloth():
     ("a golden crown", "metal"),             # nothing else to go on
     ("a golden helmet with a silk plume", "metal"),   # the first clause that names a material decides
     ("red and gold plate armour", "metal"),
+    ("a golden helmet. It has a silk plume.", "metal"),   # a sentence ends a clause too
 ])
 def test_a_word_for_the_look_gives_way_to_what_the_thing_is(text, found):
     assert pm.material_in(text) == found
@@ -166,4 +167,4 @@ def test_a_set_saved_before_the_outfit_words_says_how_to_migrate_it(tmp_path):
     path.write_text(json.dumps(record))
     with pytest.raises(ValueError, match="migrate_set_outfits.py") as refused:
         pm.set_materials(folder)
-    assert str(refused.value).endswith(f"migrate_set_outfits.py {folder}` once to write them in")
+    assert str(refused.value).endswith(f'migrate_set_outfits.py "{folder}"` once to write them in')
