@@ -45,7 +45,8 @@ onto that rig); the checks pose the pieces with them.
 the concept on the body (Qwen edit with the body picture, `--outfit` words) unless
 `--concept` gives one, the cuts, the pieces, the weapon and shield made on their own
 (`--weapon`, `--shield`), the fit, the checks (`fit.clipping`, `fit.holes` and the rest of
-the `equipment_part` profile; every piece goes to the review queue) and
+the `equipment_part` profile for the fitted pieces, the `weapon_or_shield` profile for each
+weapon and shield; every piece goes to the review queue) and
 `<set>.parts.json`. Everything lands in `output/sets/<set>/<body>/`.
 
 `refit` carries a fitted set over to another registered body: each piece moves from its
@@ -419,9 +420,23 @@ def make_held(slot: str, words: str, folder: Path, seeds: list[int], style: str 
     for command in pieces.model_commands(picture, folder, slot, sys.executable, REPO / "scripts"):
         run(command)
     glb = pieces.finished_path(folder, slot)
+    from image_to_3dlab.slot_parts import sidecar
+
+    sidecar.standalone_provenance(glb, picture, pieces.model_path(folder, slot))
     record = grip.write(find_grip(slot, words, picture, glb), grip.path_for(picture))
     return {"seed": seed, "picture": str(picture), "glb": str(glb), "prompt": prompt, "held": True,
             "standalone": True, "grip": str(record), "scores": {str(k): v for k, v in scores.items()}}
+
+
+def review_key(set_name: str, body_name: str, piece: str) -> str:
+    """`<set>-<body>-<piece>`, the piece's key in the review queue, kept within the queue's 120
+    characters: a longer one ends in a short hash of the whole, so two keys stay apart."""
+    import hashlib
+
+    key = f"{set_name}-{body_name}-{piece}"
+    if len(key) <= 120:
+        return key
+    return f"{key[:111]}-{hashlib.sha256(key.encode()).hexdigest()[:8]}"
 
 
 def check_pieces(fit_dir: Path, body_json: Path, set_name: str) -> dict:
@@ -435,12 +450,42 @@ def check_pieces(fit_dir: Path, body_json: Path, set_name: str) -> dict:
     for name in report["files"]:
         if name in ("set.glb", "preview.glb", "body_masked.glb", "body_trimmed.glb"):
             continue
-        asset = Asset(glb=Path(fit_dir) / name, key=f"{set_name}-{record['name']}-{Path(name).stem}",
+        asset = Asset(glb=Path(fit_dir) / name, key=review_key(set_name, record["name"], Path(name).stem),
                       body=body_glb, body_clips=tuple(record.get("clips", {}).values()))
         checked, _ = check_and_enqueue(asset, profile="equipment_part")
         out[Path(name).stem] = {"status": checked["status"],
                                 "fit": {r["check"]: r["value"] for r in checked["results"] if r["check"].startswith("fit.")}}
     return out
+
+
+STANDALONE_PROFILE = "weapon_or_shield"
+
+
+def check_standalone(made: dict, set_name: str, body_name: str) -> dict:
+    """The checks on each weapon and shield of a set, as an asset of its own (its own profile,
+    its picture as the silhouette reference), each queued for review."""
+    from image_to_3dlab.checks import Asset, check_and_enqueue, review
+
+    out = {}
+    for slot in slots.STANDALONE:
+        entry = made.get(slot)
+        if not entry:
+            continue
+        picture = Path(entry["picture"])
+        matted = picture.with_name(f"{picture.stem}__matted.png")   # Pixal3D's cut-out of it
+        reference = matted if matted.is_file() else picture if picture.is_file() else None
+        asset = Asset(glb=Path(entry["glb"]), key=review_key(set_name, body_name, slot), reference=reference)
+        checked, _ = check_and_enqueue(asset, log=review.LOG, profile=STANDALONE_PROFILE)
+        out[slot] = {"status": checked["status"], "profile": STANDALONE_PROFILE}
+    return out
+
+
+def check_set(folder: Path, body_json: Path, set_name: str, made: dict, fitted: bool) -> dict:
+    """Every piece of a set checked and queued for review: the fitted ones on the body
+    (`equipment_part`), each weapon and shield on its own (`weapon_or_shield`)."""
+    checks = check_pieces(Path(folder) / "fit", body_json, set_name) if fitted else {}
+    checks.update(check_standalone(made, set_name, body_mod.load(body_json)["name"]))
+    return checks
 
 
 def make_concept(body_json: Path, outfit: str, folder: Path, seeds: list[int], style: str = "", run=_run,
@@ -607,10 +652,10 @@ def _finish_set(body_json, record, set_name, folder, chosen, drawn, made, concep
     (folder / "pieces").mkdir(parents=True, exist_ok=True)
     pieces_json = folder / "pieces" / "pieces.json"
     pieces.write_record(pieces_json, {"cuts": str(folder / "cuts" / "cuts.json"), "seeds": list(seeds), "slots": made})
-    fit_report, checks = None, {}
+    fit_report = None
     if drawn:   # the worn pieces only: a weapon or shield is an asset of its own, never fitted
         fit_report = (fitter or run_fit)(fit_job(pieces_json, body_json, folder / "fit"))
-        checks = (checker or check_pieces)(folder / "fit", body_json, set_name)
+    checks = (checker or check_set)(folder, body_json, set_name, made, bool(drawn))
     parts = sidecar.parts_record(mode=mode, set_name=set_name, body=record, body_json=body_json,
                                  concept=Path(concept) if concept else None,
                                  concept_info=concept_info, chosen=chosen, pieces=made, fit=fit_report, checks=checks,

@@ -1,0 +1,7 @@
+{
+  "description": "A weapon or shield made on its own: a static mesh of its own with a grip socket, never worn on a body. One material.",
+  "checks": {
+    "budget.faces": {"max": 4000},
+    "budget.materials": {"warn": 1, "fail": 2}
+  }
+}
