@@ -111,7 +111,7 @@ def register_body(output: Path, name: str, picture: Path, model: Path, rigged: P
     labels = {str(k): str(v) for k, v in (labels or {}).items() if str(k).strip()}
     path = body_mod.register(str(name), Path(picture), Path(rigged), Path(model).with_suffix(".svviews"), None,
                              labels, output / "bodies", {str(k): Path(v) for k, v in (clips or {}).items()},
-                             dressing=dressed)
+                             dressed=dressed)
     return {"name": body_mod.load(path)["name"], "record": rel(output, path)}
 
 

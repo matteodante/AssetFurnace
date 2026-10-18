@@ -58,11 +58,11 @@ def test_the_command_line_asks_how_the_body_is_dressed():
 def _registered(monkeypatch):
     seen = {}
 
-    def register(name, image, rigged, views=None, matte=None, labels=None, root=None, clips=None, dressing=None):
-        seen.update(name=name, dressing=dressing)
+    def register(name, image, rigged, views=None, matte=None, labels=None, root=None, clips=None, dressed=None):
+        seen.update(name=name, dressing=dressed)
         path = Path(root) / name / "body.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"schema_version": body_mod.SCHEMA_VERSION, "name": name, "dressing": dressing}))
+        path.write_text(json.dumps({"schema_version": body_mod.SCHEMA_VERSION, "name": name, "dressing": dressed}))
         return path
 
     monkeypatch.setattr(body_mod, "register", register)
