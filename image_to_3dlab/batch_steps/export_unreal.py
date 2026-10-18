@@ -9,8 +9,8 @@ its own.
 
 Options (`"export_unreal": {...}` in the spec), described in `step_catalog`: name (default
 the row's id), collision, lods, tint, forward, body, body_name, animations, material (default
-the one a `materials` step before chose; none: the model's own maps). Files are relative to
-the spec.
+the one a `materials` step before chose; none: the model's own maps), grip, opacity_mask (a
+set's fitted body). Files are relative to the spec.
 """
 
 from __future__ import annotations
@@ -76,6 +76,7 @@ def run(ctx: StepContext) -> StepResult:
             tint=False if options.get("tint") is False else Path(options["tint"]) if options.get("tint") else None,
             forward=tuple(float(value) for value in forward) if forward else None,
             body_name=options.get("body_name"), material=options.get("material") or ctx.material, log=ctx.log,
+            opacity_mask=bool(options.get("opacity_mask")),
             **({"grip": read_grip(Path(options["grip"]))} if options.get("grip") else {}))
     except (ValueError, RuntimeError) as exc:
         return StepResult(ok=False, reason=str(exc))

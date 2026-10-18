@@ -136,3 +136,15 @@ def test_a_new_class_moves_the_grip_by_its_own_rule(tmp_path):
     placed = grip.correct(staff, at=(0.5, 0.5))
     assert grip.correct(placed, weapon_class="axe")["point"] == placed["point"]   # the person's point stays
     assert grip.correct(shield, weapon_class="sword")["point"] is not None       # the judge's box is kept
+
+
+def test_a_grip_corrected_before_the_judges_box_was_kept_survives_a_class_change(tmp_path):
+    """Codex review: a record saved by a person before `placed` and `judge_box` existed lost its
+    grip when only its class changed."""
+    model = _sword(tmp_path / "weapon.glb")
+    picture = _picture(tmp_path / "s1.png")
+    old = {"slot": "weapon", "class": "staff", "size_cm": 170, "picture": str(picture), "model": str(model),
+           "camera": CAM.to_dict(), "box": [490, 600, 510, 620], "point": [0, -0.1, 0], "axis": [0, 1, 0],
+           "by": "person"}
+    corrected = grip.correct(old, weapon_class="axe")
+    assert corrected["point"] == [0, -0.1, 0] and corrected["axis"] == [0, 1, 0]

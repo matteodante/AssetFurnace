@@ -203,13 +203,16 @@ def _regrip(record: dict, new_class: str) -> dict:
     if new_class == "shield":
         point, axis = shield_grip(mesh_points(Path(record["model"])))
         return {"point": point, "axis": axis}
-    if record.get("placed") and record.get("class") != "shield":
+    was_shield = record.get("class") == "shield"
+    if record.get("placed") and not was_shield:
         return {}
     judged = record.get("judge_box") or (record.get("box") if record.get("by") == "judge" else None)
     if judged and record.get("camera"):
         point, axis = from_box(mesh_points(Path(record["model"])), Camera.from_dict(record["camera"]), judged,
                                CLASSES[new_class].hold)
         return {"point": point, "axis": axis, "box": list(judged)}
+    if record.get("point") and not was_shield:
+        return {}   # a grip of unknown origin (a record from before `placed`): kept, never erased
     return {"point": None, "axis": None, "box": None}
 
 

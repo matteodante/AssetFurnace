@@ -279,6 +279,8 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
                                                   "sided, the rest one sided"),
             Param("grip", "file", None, help="a weapon or shield: its grip record (grip.json, from a set or "
                                              "slot_parts/grip.py): the pivot there, a grip socket, the blade up"),
+            Param("opacity_mask", "bool", None, help="a set's fitted body (body_masked.glb): its vertex alpha "
+                                                     "hides the skin under the pieces"),
         ),
         row_fields=("kind", "size_cm", "measure", "profile"),
         skip="no Unreal files are written", replace=(),
