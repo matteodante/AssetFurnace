@@ -103,6 +103,8 @@ def test_a_whole_set_on_a_stick_figure(tmp_path):
     # every chosen piece is drawn: the outfit's words ("red plate armour") name none of them
     assert parts["concept"]["prompt"].startswith("Add red plate armour, with a helmet, a breastplate, boots to the "
                                                  "character in image 1")
+    # the words the outfit was drawn from, saved for the pieces' materials
+    assert parts["concept"]["outfit"] == "red plate armour, with a helmet, a breastplate, boots"
     assert set(parts["pieces"]) == {"helmet", "torso", "boots", "weapon"}
     assert parts["pieces"]["weapon"]["held"] is True and "a longsword" in parts["pieces"]["weapon"]["prompt"]
     job = jobs[0]
@@ -121,6 +123,7 @@ def test_a_given_concept_is_mode_two_and_needs_no_outfit(tmp_path):
                        generate=generate, fitter=lambda job: {"covered_share": 0.5, "files": []},
                        checker=lambda *a: {})
     assert json.loads(path.read_text())["mode"] == "dressed_split"
+    assert json.loads(path.read_text())["concept"]["outfit"] == ""   # drawn elsewhere: no words of ours
     assert not any(Path(c[c.index("-o") + 1]).parent.name == "concept" for c in calls if c[0] == "sd-cli")
 
 

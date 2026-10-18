@@ -4,8 +4,7 @@
 // The pure parts come first, with no DOM, so Node tests import this exact file.
 
 import { closeSheet } from './pages.js';
-
-const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+import { escapeHTML as escape } from '../components/html.js';
 
 const STATUS_LABELS = { queued: 'Waiting', running: 'Running', done: 'Done', failed: 'Failed', waiting: 'Pick one',
   skipped: 'Skipped' };

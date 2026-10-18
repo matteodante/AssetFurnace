@@ -490,8 +490,12 @@ Decisione dell'utente, dopo le prove: la divisione automatica in zone non funzio
 - **Cosa riceve un materiale.** Ogni pezzo di un personaggio a pezzi (casco, torso, spalle, guanti, gambe, stivali,
   arma, scudo) ha uno dei 16 materiali del vocabolario. Un oggetto o una creatura, che sono un pezzo solo, ne hanno uno.
 - **La proposta** è una regola leggibile (`image_to_3dlab/piece_materials.py`):
-  1. la prima parola di materiale nelle parole del pezzo ("a leather hood" -> leather);
-  2. altrimenti la frase dell'outfit che nomina il pezzo ("... and leather boots" -> stivali: leather);
+  1. il materiale che nominano le parole del pezzo ("a leather hood" -> leather): decide la prima frase che ne
+     nomina uno, e dentro la frase un capo o un materiale ("tunic", "silk") vale più di una parola che dice solo
+     l'aspetto ("golden", "metallic", "chrome"), quindi "a golden silk tunic" -> cloth (dal 18/10/2026);
+  2. altrimenti la frase dell'outfit che nomina il pezzo ("... and leather boots" -> stivali: leather); le parole
+     dell'outfit sono salvate con il concept del set (`concept.outfit` in `<set>.parts.json`) quando si disegna, e
+     i set fatti prima si aggiornano una volta con `scripts/migrate_set_outfits.py`;
   3. altrimenti il predefinito:
      - per lo slot: le armature metal, lo scudo wood;
      - per un asset singolo, secondo il tipo: oggetto wood, creatura skin, equipaggiamento metal.

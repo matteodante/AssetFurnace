@@ -66,6 +66,16 @@ def test_viewer_dynamic_text_cannot_create_html():
     out = _run("../components/html.js", """
       console.log(JSON.stringify(m.escapeHTML('<img src=x onerror="alert(1)">&')));""")
     assert out == '&lt;img src=x onerror=&quot;alert(1)&quot;&gt;&amp;'
+    out = _run("../components/html.js", "console.log(JSON.stringify([m.escapeHTML(\"it's\"), m.escapeHTML(null), "
+                                        "m.escapeHTML(0)]));")
+    assert out == ["it&#39;s", "", "0"]
+
+
+def test_the_studio_escapes_html_in_one_place():
+    """Every studio page imports the one escape; none keeps a copy of its own."""
+    copies = [path.relative_to(REPO).as_posix() for path in sorted((REPO / "viewer").rglob("*.js"))
+              if "vendor" not in path.parts and "'&amp;'" in path.read_text(encoding="utf-8")]
+    assert copies == ["viewer/components/html.js"]
 
 
 @needs_node

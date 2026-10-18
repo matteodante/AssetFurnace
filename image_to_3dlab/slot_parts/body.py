@@ -49,7 +49,7 @@ def dressing_words(record: dict) -> str:
 
 def record(name: str, *, image: Path, image_size: tuple[int, int], rigged: Path, views: Path,
            cam: camera_mod.Camera, parents: dict, heads: dict, found: dict, labels: dict | None = None,
-           clips: dict | None = None, dressing: dict | None = None) -> dict:
+           clips: dict | None = None, dressed: dict | None = None) -> dict:
     roles = skeleton.inherit_roles(skeleton.bone_roles(found), parents)  # refuses anything but a humanoid
     return {
         "schema_version": SCHEMA_VERSION, "name": name,
@@ -62,19 +62,20 @@ def record(name: str, *, image: Path, image_size: tuple[int, int], rigged: Path,
         # the body's own animated clips (Kimodo, retargeted onto this rig): fit.clipping and
         # fit.holes pose the pieces with them
         "clips": {name: str(Path(path).resolve()) for name, path in (clips or {}).items()},
-        **({"dressing": dict(dressing)} if dressing else {}),
+        **({"dressing": dict(dressed)} if dressed else {}),
     }
 
 
 def register(name: str, image: Path, rigged: Path, views: Path | None = None, matte: Path | None = None,
              labels: dict | None = None, root: Path = Path("output/bodies"), clips: dict | None = None,
-             dressing: dict | None = None) -> Path:
+             dressed: dict | None = None) -> Path:
     """Read a rigged body and its Pixal3D run, check it is a humanoid, write body.json.
 
     `views` is the `<model>.svviews` folder of the Pixal3D run the body came from (asked for:
     the rig and finishing steps rename the GLB, so it cannot be guessed). `matte` defaults to
     Pixal3D's own cut-out, `<image stem>__matted.png` beside the picture, or the picture's own
-    transparency when it arrived cut out.
+    transparency when it arrived cut out. `dressed` is how it is dressed under its pieces, as
+    `dressing()` returns it.
     """
     from PIL import Image
 
@@ -82,7 +83,7 @@ def register(name: str, image: Path, rigged: Path, views: Path | None = None, ma
     from image_to_3dlab.glb_skin import SkinnedGLB
 
     image, rigged = Path(image), Path(rigged)
-    if not dressing:
+    if not dressed:
         raise ValueError("say how the base body is dressed under its pieces: bodysuit, clothes, underwear, "
                          "or other with your own words")
     if views is None:
@@ -101,7 +102,7 @@ def register(name: str, image: Path, rigged: Path, views: Path | None = None, ma
     cam = camera_mod.from_views(views, alpha)
     return write(record(name, image=image, image_size=size, rigged=rigged, views=views, cam=cam,
                         parents=parents, heads=heads, found=found, labels=labels, clips=clips,
-                        dressing=dressing), root)
+                        dressed=dressed), root)
 
 
 def write(data: dict, root: Path) -> Path:

@@ -5,9 +5,10 @@ piece of a character in pieces, and each single asset, gets one material from th
 vocabulary. The rule that proposes it reads like this:
 
 1. the piece's own words (its prompt in the Pieces page, the weapon or shield words): the
-   first material word in them;
+   material they name (``material_in``);
 2. else, for a piece of a set, the clause of the outfit that names the piece
-   ("... and leather boots" -> boots: leather);
+   ("... and leather boots" -> boots: leather), from the outfit's words saved with the set's
+   concept (``concept.outfit`` in ``<set>.parts.json``) when it was drawn;
 3. else the default of the slot (the slots draw armour: metal; a shield: wood), or of the
    asset's kind for a single asset.
 
@@ -53,6 +54,11 @@ WORDS = {
     "crystal": "gem", "jewel": "gem", "gems": "gem", "rock": "stone", "marble": "stone",
     "leaf": "plant", "leaves": "plant", "vine": "plant", "vines": "plant", "flesh": "skin",
 }
+# Words that say how a thing looks, not what it is made of: in "a golden silk tunic" the silk
+# and the tunic decide (cloth). They name the material only when nothing else in the clause does.
+LOOK_WORDS = frozenset({"golden", "metallic", "chrome"})
+# What splits words into clauses: "red plate and leather boots" is two, and so is the end of a sentence.
+CLAUSES = re.compile(r"[,;.!?\n]|\band\b|\bwith\b|\bplus\b")
 
 SLOT_DEFAULTS = {"helmet": "metal", "torso": "metal", "shoulders": "metal", "gloves": "metal", "legs": "metal",
                  "boots": "metal", "weapon": "metal", "shield": "wood"}
@@ -92,17 +98,25 @@ def _tokens(text: str) -> list[str]:
 
 
 def material_in(text: str) -> str | None:
-    """The first word of `text` that names a material, as a material; None when none does."""
-    for token in _tokens(text):
-        if token in WORDS:
-            return WORDS[token]
+    """The material `text` names, as a material; None when it names none.
+
+    The first clause that names one decides. Inside it, the first word that says what the thing
+    is or is made of (a garment, a material: "tunic", "silk", "steel") wins over a word that only
+    says how it looks (``LOOK_WORDS``): "a golden silk tunic" is cloth, while "a golden crown",
+    with nothing else to go on, is metal.
+    """
+    for clause in CLAUSES.split(str(text or "").lower()):
+        named = [token for token in _tokens(clause) if token in WORDS]
+        if named:
+            made_of = [token for token in named if token not in LOOK_WORDS]
+            return WORDS[(made_of or named)[0]]
     return None
 
 
 def _clause_for(slot: str, outfit: str) -> str | None:
     """The clause of the outfit's words that names `slot` and a material, if any."""
     nouns = set(SLOT_NOUNS[slot])
-    for clause in re.split(r",|;|\band\b|\bwith\b|\bplus\b", str(outfit or "").lower()):
+    for clause in CLAUSES.split(str(outfit or "").lower()):
         if nouns & set(_tokens(clause)) and material_in(clause):
             return clause.strip()
     return None
@@ -192,10 +206,23 @@ def corrections(folder: Path) -> dict[str, str]:
     return {slot: check(word) for slot, word in (data.get("pieces") or {}).items()}
 
 
-def outfit_words(concept_prompt: str) -> str:
-    """The outfit's own words inside the concept's edit prompt ("Add <outfit> to the character in image 1...")."""
-    found = re.match(r"\s*Add (.*?) to the character in image 1", str(concept_prompt or ""), re.S)
-    return found.group(1) if found else str(concept_prompt or "")
+MIGRATION = "scripts/migrate_set_outfits.py"
+
+
+def outfit_words(parts: dict, folder: Path) -> str:
+    """The outfit's words a set's concept was drawn from, as saved with it (``concept.outfit``).
+
+    A set of weapons and shields alone has no concept, and a concept given ready-made has no
+    words: both read as no words. A concept saved before its words were (18/10/2026) is refused
+    with the command that writes them into the set (in `folder`), once.
+    """
+    concept = parts.get("concept")
+    if concept is None:
+        return ""
+    if not isinstance(concept.get("outfit"), str):
+        raise ValueError(f"the set {parts.get('set')!r} was made before the outfit's words were saved with its "
+                         f"concept: run `python {MIGRATION} \"{folder}\"` once to write them in")
+    return concept["outfit"]
 
 
 def set_materials(folder: Path) -> dict[str, dict]:
@@ -205,7 +232,7 @@ def set_materials(folder: Path) -> dict[str, dict]:
     then the rule.
     """
     parts = _parts(folder)
-    outfit = outfit_words((parts.get("concept") or {}).get("prompt", ""))
+    outfit = outfit_words(parts, Path(folder))
     fixed = corrections(folder)
     out = {}
     for slot, asked in (parts.get("slots") or {}).items():

@@ -3,8 +3,7 @@
 // the way. About says what this is, who built what, and where to find us.
 
 import { STEP_LABELS } from './plan.js';
-
-const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+import { escapeHTML as escape } from '../components/html.js';
 
 /** "4 min 12 s", "38 s", "1 h 3 min": how long a step took, in words. */
 export function duration(seconds) {

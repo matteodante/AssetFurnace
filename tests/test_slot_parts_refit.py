@@ -89,7 +89,7 @@ def test_each_piece_goes_to_unreal_with_its_material(tmp_path):
     folder = _fit_dir(tmp_path)
     body_json, *_ = _body(tmp_path)
     parts = {"set": "first", "slots": {"helmet": {"prompt": "a leather hood"}, "gloves": {"prompt": ""}},
-             "pieces": {"helmet": {}, "gloves": {}}, "concept": {"prompt": "steel gauntlets"}}
+             "pieces": {"helmet": {}, "gloves": {}}, "concept": {"prompt": "steel gauntlets", "outfit": "steel gauntlets"}}
     (folder.parent / "first.parts.json").write_text(json.dumps(parts))
     calls = {}
 
@@ -121,7 +121,7 @@ def test_the_cli_shows_and_corrects_a_sets_materials(tmp_path, capsys):
     folder = tmp_path / "set" / "first"
     folder.mkdir(parents=True)
     (folder / "first.parts.json").write_text(json.dumps(
-        {"set": "first", "slots": {"helmet": {"prompt": ""}}, "pieces": {"helmet": {}}, "concept": {}}))
+        {"set": "first", "slots": {"helmet": {"prompt": ""}}, "pieces": {"helmet": {}}, "concept": {"outfit": ""}}))
     assert cli.main(["materials", str(folder), "--set", "helmet=cloth"]) == 0
     shown = json.loads(capsys.readouterr().out)
     assert shown["helmet"]["material"] == "cloth" and shown["helmet"]["by"] == "person"

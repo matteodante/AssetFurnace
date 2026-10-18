@@ -2,7 +2,7 @@
 // Animate step says about a rig that is not a plain humanoid. The server side is
 // viewer/creature_family_api.py; the families come from image_to_3dlab/creature_family.py.
 
-const esc = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+import { escapeHTML as esc } from '../components/html.js';
 
 export const FAMILIES = [
   ['auto', 'Recognise it for me'],

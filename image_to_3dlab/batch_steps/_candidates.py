@@ -25,18 +25,14 @@ def folder(ctx: StepContext, step: str) -> Path:
     return ctx.row_dir / f"{step}.candidates"
 
 
-def draw_all(ctx: StepContext, step: str, seeds: list[int], draw_one: Callable[[int, Path], None],
-             legacy: str | None = None) -> dict[int, Path]:
-    """One picture per seed, `s<seed>.png`, reusing those already made for this key (or
-    for `legacy`, the key an earlier version of the step gave the same request)."""
+def draw_all(ctx: StepContext, step: str, seeds: list[int], draw_one: Callable[[int, Path], None]) -> dict[int, Path]:
+    """One picture per seed, `s<seed>.png`, reusing those already made for this key."""
     where = folder(ctx, step)
     index = where / INDEX
     try:
         kept = json.loads(index.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         kept = {}
-    if legacy is not None and kept.get("key") == legacy:
-        kept = {"key": ctx.candidate_key, "done": kept.get("done") or kept.get("seeds") or []}
     if kept.get("key") != ctx.candidate_key:
         if where.exists():
             shutil.rmtree(where)

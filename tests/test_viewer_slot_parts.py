@@ -248,8 +248,6 @@ def test_a_failed_run_offers_no_pictures_left_by_an_earlier_one(tmp_path, monkey
 def test_a_runs_exit_code_is_kept_beside_it(tmp_path, monkeypatch):
     import threading
 
-    from image_to_3dlab.slot_parts import runs
-
     output = tmp_path / "output"
     output.mkdir()
     _body_json(output)
@@ -304,7 +302,7 @@ def _made_set(output):
     folder.mkdir(parents=True)
     (folder / "red.parts.json").write_text(json.dumps({
         "set": "red", "body": {"name": "stick"}, "slots": {"helmet": {"prompt": "a leather hood"}, "boots": {"prompt": ""}},
-        "pieces": {"helmet": {}, "boots": {}}, "concept": {"prompt": "red plate"}, "created": "2026-10-17"}))
+        "pieces": {"helmet": {}, "boots": {}}, "concept": {"prompt": "red plate", "outfit": "red plate"}, "created": "2026-10-17"}))
     return folder
 
 
@@ -384,3 +382,16 @@ def test_saving_materials_sends_only_what_a_person_changed():
       console.log(JSON.stringify(m.changedMaterials([{ slot: 'legs', value: 'cloth', was: 'metal' },
                                                      { slot: 'helmet', value: 'leather', was: 'leather' }])));""")
     assert out == {"legs": "cloth"}
+
+
+def test_a_set_to_migrate_says_so_in_the_list(tmp_path):
+    output = tmp_path / "output"
+    folder = _made_set(output)
+    record = json.loads((folder / "red.parts.json").read_text())
+    del record["concept"]["outfit"]
+    (folder / "red.parts.json").write_text(json.dumps(record))
+    listed = slot_parts_api.list_sets(output)[0]
+    assert listed["materials"] == {} and "scripts/migrate_set_outfits.py" in listed["materials_problem"]
+    record["concept"]["outfit"] = "red plate"
+    (folder / "red.parts.json").write_text(json.dumps(record))
+    assert "materials_problem" not in slot_parts_api.list_sets(output)[0]

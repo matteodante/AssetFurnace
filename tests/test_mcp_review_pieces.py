@@ -219,7 +219,7 @@ def test_bodies_sets_and_slots_are_listed(output, tmp_path):
 def test_a_body_is_registered_from_files_on_this_machine(output, tmp_path, monkeypatch):
     seen = {}
 
-    def register(name, picture, rigged, views, matte, labels, root, clips, dressing=None):
+    def register(name, picture, rigged, views, matte, labels, root, clips, dressed=None):
         seen.update(name=name, picture=picture, rigged=rigged, views=views, labels=labels, clips=clips)
         folder = root / name
         folder.mkdir(parents=True, exist_ok=True)

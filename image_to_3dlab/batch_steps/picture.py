@@ -60,9 +60,10 @@ def seeds_of(options: dict) -> list[int]:
     return [first + offset for offset in range(int(options.get("count", 1)))]
 
 
-def legacy_key(prompt: str | None, options: dict) -> str:
+def first_version_key(prompt: str | None, options: dict) -> str:
     """The candidates' key as the first version of this step made it (the words, the
-    settings, the seeds): candidates and picks from then still count."""
+    settings, the seeds), before keys were step fingerprints: `batch.load_batch` refuses
+    the candidates and picks it finds under it, with what to do."""
     import hashlib
     import json
 
@@ -84,7 +85,5 @@ def run(ctx: StepContext) -> StepResult:
                             {**card, **settings_of(ctx.options), "seed": seed},
                             path, log=ctx.log, session=f"batch picture {ctx.row.id}", extra_provenance=extra)
 
-    # the first version's key had no bible in it: its candidates were drawn without one
-    pictures = _candidates.draw_all(ctx, "picture", seeds_of(ctx.options), draw,
-                                    legacy=None if style else legacy_key(ctx.row.prompt, ctx.options))
+    pictures = _candidates.draw_all(ctx, "picture", seeds_of(ctx.options), draw)
     return _candidates.choose(ctx, pictures)

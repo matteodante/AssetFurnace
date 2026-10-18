@@ -6,8 +6,7 @@
 // first, with no DOM, so Node tests import this exact file.
 
 import { closeSheet } from './pages.js';
-
-const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+import { escapeHTML as escape } from '../components/html.js';
 
 export const MODES = [
   { id: 1, title: 'One piece', text: 'The whole character as one model, as + Create makes it. Nothing to split.' },
@@ -330,6 +329,7 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
           ${Object.keys(s.materials || {}).length ? `<details class="sp-materials" data-materials="${escape(s.set)}" data-body="${escape(s.body)}"><summary>Materials</summary>
             <table><tbody>${materialRows(s.materials, info.materials)}</tbody></table>
             <button type="button" class="ghost small" data-save-materials>Save materials</button> <span class="meta" data-materials-result></span></details>` : ''}
+          ${s.materials_problem ? `<p class="meta" data-materials-problem>Materials: ${escape(s.materials_problem)}</p>` : ''}
           ${Object.keys(s.grips || {}).length ? `<details class="sp-grips" data-grips="${escape(s.set)}" data-body="${escape(s.body)}"><summary>Grip</summary>
             <p class="meta">Where a weapon or shield is held: its pivot and its grip socket in Unreal. Click the grip on the picture to move it.</p>
             ${gripRows(s.grips, info.base || '/output/')}
