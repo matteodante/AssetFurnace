@@ -511,6 +511,40 @@ def style_with_bible(style: str, bible: str | None) -> str:
     return ", ".join(part for part in ((style or "").strip(), found.words if found else "") if part)
 
 
+class SetRun:
+    """One set on one body as `run_set` makes it: what was asked, the tools it runs with, and
+    (once known) what it is drawn from: the concept, how it came, the mode, the cut-out.
+    A plain class: the scripts are loaded by path too, where a dataclass cannot find its module."""
+
+    def __init__(self, *, body_json: Path, record: dict, set_name: str, folder: Path, chosen: dict, seeds,
+                 style: str, run, edit, generate, score, fitter, checker):
+        self.body_json, self.record, self.set_name, self.folder = body_json, record, set_name, folder
+        self.chosen, self.seeds, self.style = chosen, seeds, style
+        self.run, self.edit, self.generate, self.score, self.fitter, self.checker = (run, edit, generate, score,
+                                                                                    fitter, checker)
+        self.concept: Path | None = None
+        self.concept_info: dict = {}
+        self.mode = ""
+        self.cut: dict = {"slots": {}, "subject_from": None}
+
+    @property
+    def drawn(self) -> dict:
+        return {k: v for k, v in self.chosen.items() if k in slots.DRAWN}
+
+    @property
+    def held(self) -> dict:
+        """The weapon and shield asked for, as the waiting state keeps them."""
+        return {slot: {"prompt": self.chosen[slot]["prompt"]} for slot in slots.STANDALONE if slot in self.chosen}
+
+    @property
+    def state_path(self) -> Path:
+        return self.folder / "run_state.json"
+
+    def write_state(self, state: dict) -> None:
+        self.folder.mkdir(parents=True, exist_ok=True)
+        self.state_path.write_text(json.dumps(state, indent=1) + "\n", encoding="utf-8")
+
+
 def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str = "", concept: Path | None = None,
             weapon: str | None = None, shield: str | None = None, concept_seeds=(3,), seeds=(3,), style: str = "",
             root: Path = Path("output/sets"), run=_run, edit=edit_command, generate=text_command,
@@ -543,13 +577,7 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
         state = json.loads(state_path.read_text(encoding="utf-8"))
         if state.get("waiting") == "concept":
             # the outfit was waiting for a pick: go on from it as a new run would
-            concept_pick = picks.pop("concept", state.get("picked", state["concepts"][0]))
-            if int(concept_pick) not in state["concepts"]:
-                raise ValueError(f"concept: {concept_pick} is not one of the outfits drawn "
-                                 f"({', '.join(map(str, state['concepts']))})")
-            # kept until the set is made: a fit that fails goes on from this outfit, not the first
-            state_path.write_text(json.dumps({**state, "picked": int(concept_pick)}, indent=1) + "\n",
-                                  encoding="utf-8")
+            concept_pick = _picked_concept(state, picks, state_path)
             outfit, concept_seeds = state["outfit"], tuple(state["concepts"])
             stop_at_pictures = stop_at_pictures or state.get("stop_at_pictures", False)
             resume = False
@@ -558,94 +586,126 @@ def run_set(body_json: Path, set_name: str, slot_text: str | dict, outfit: str =
             raw[slot] = {**dict(options), **raw.get(slot, {})}   # a material asked beside the words
         style = style or state.get("style", "")
         seeds = state.get("seeds") or seeds
-    chosen = slots.choose(raw)
-    drawn = {k: v for k, v in chosen.items() if k in slots.DRAWN}
+    set_run = SetRun(body_json=body_json, record=record, set_name=set_name, folder=folder,
+                     chosen=slots.choose(raw), seeds=seeds, style=style, run=run, edit=edit, generate=generate,
+                     score=score, fitter=fitter, checker=checker)
     if resume:
-        concept = Path(state["concept"]) if state.get("concept") else None
-        concept_info, mode = state["concept_info"], state["mode"]
-        cut = {"subject_from": state.get("subject_from")}
-        if picks:
-            candidates.choose(folder / "pieces", picks)
-        held_picks = {slot: int(entry["picked"]) for slot, entry in candidates.load(folder / "pieces")["slots"].items()
-                      if entry.get("held")}
-        made = make_pieces(folder / "cuts" / "cuts.json", list(seeds), images=False, style=style, run=run,
-                           edit=edit)["slots"] if drawn else {}
-        path = _finish_set(body_json, record, set_name, folder, chosen, drawn, made, concept, concept_info, mode,
-                           cut, seeds, style, run, generate, fitter, checker, held_picks)
-        state_path.unlink()  # only now: a fit that fails or is stopped can be resumed again
-        return path
-    if not drawn:   # weapons and shields only: assets of their own, nothing drawn on the body
-        concept, concept_info, mode = None, {"standalone": True}, "standalone"
-    elif concept is None:
-        if not outfit.strip():
-            raise ValueError("give the outfit in words (--outfit) or a concept drawn on the body (--concept)")
-        if stop_at_concept and len(concept_seeds) > 1:
-            make_concept(body_json, outfit, folder / "concept", list(concept_seeds), style, run, edit, chosen=drawn)
-            held = {slot: {"prompt": chosen[slot]["prompt"]} for slot in ("weapon", "shield") if slot in chosen}
-            folder.mkdir(parents=True, exist_ok=True)
-            state_path.write_text(json.dumps({"waiting": "concept", "concepts": [int(s) for s in concept_seeds],
-                                              "outfit": outfit, "held": held, "style": style, "seeds": list(seeds),
-                                              "stop_at_pictures": stop_at_pictures}, indent=1) + "\n",
-                                  encoding="utf-8")
-            return folder / "concept"
-        concept, concept_info = make_concept(body_json, outfit, folder / "concept", list(concept_seeds), style, run,
-                                             edit, pick=int(concept_pick) if concept_pick is not None else None,
-                                             chosen=drawn)
-        mode = "body_and_equipment"
-    else:
-        concept_info = {"given": True}
-        mode = "dressed_split"
-    cut = make_cuts(body_json, Path(concept), drawn, folder / "cuts") if drawn else {"slots": {}, "subject_from": None}
-    offer_held = len(seeds) > 1 and any(slot in chosen for slot in ("weapon", "shield"))
-    if stop_at_pictures and (drawn or offer_held):
-        if drawn:
-            make_pieces(folder / "cuts" / "cuts.json", list(seeds), models=False, style=style, run=run, edit=edit,
-                        score=score)
-        held = {slot: {"prompt": chosen[slot]["prompt"]} for slot in ("weapon", "shield") if slot in chosen}
-        if offer_held:   # a weapon or shield is picked like the pieces
-            # this run's drawn pieces, never an earlier run's left in candidates.json
-            offered = candidates.load(folder / "pieces") if drawn else {"slots": {}, "judge": None}
-            for slot, options in held.items():
-                drawn_held = held_pictures(slot, options["prompt"], folder / "pieces", list(seeds), style, run,
-                                           generate)
-                offered["slots"][slot] = held_candidates(drawn_held, score_held(slot, options["prompt"], drawn_held))
-            candidates.write(folder / "pieces", offered["slots"], offered.get("judge") or "none")
-        state_path.write_text(json.dumps({"waiting": "picks", "concept": str(concept) if concept else None,
-                                          "concept_info": concept_info,
-                                          "mode": mode, "subject_from": cut.get("subject_from"), "held": held,
-                                          "style": style, "seeds": list(seeds)}, indent=1) + "\n",
-                              encoding="utf-8")
+        return _resume_pictures(set_run, state, picks)
+    if not _draw_concept(set_run, outfit, concept, concept_seeds, concept_pick, stop_at_concept, stop_at_pictures):
+        return folder / "concept"   # waiting for the person to pick the outfit
+    if set_run.drawn:
+        set_run.cut = make_cuts(body_json, Path(set_run.concept), set_run.drawn, folder / "cuts")
+    if stop_at_pictures and _offer_pictures(set_run):
         return candidates.path(folder / "pieces")
     made = make_pieces(folder / "cuts" / "cuts.json", list(seeds), style=style, run=run, edit=edit,
-                       score=score)["slots"] if drawn else {}
-    path = _finish_set(body_json, record, set_name, folder, chosen, drawn, made, concept, concept_info, mode, cut,
-                       seeds, style, run, generate, fitter, checker)
+                       score=score)["slots"] if set_run.drawn else {}
+    path = _finish_set(set_run, made)
     if concept_pick is not None:
         state_path.unlink()   # the outfit picked and the set made: nothing waits any more
     return path
 
 
-def _finish_set(body_json, record, set_name, folder, chosen, drawn, made, concept, concept_info, mode, cut, seeds,
-                style, run, generate, fitter, checker, held_picks=None) -> Path:
+def _picked_concept(state: dict, picks: dict, state_path: Path) -> int:
+    """The outfit picked from those drawn (the person's `concept` pick, else the one kept),
+    saved in the waiting state until the set is made: a fit that fails goes on from it."""
+    concept_pick = picks.pop("concept", state.get("picked", state["concepts"][0]))
+    if int(concept_pick) not in state["concepts"]:
+        raise ValueError(f"concept: {concept_pick} is not one of the outfits drawn "
+                         f"({', '.join(map(str, state['concepts']))})")
+    state_path.write_text(json.dumps({**state, "picked": int(concept_pick)}, indent=1) + "\n", encoding="utf-8")
+    return concept_pick
+
+
+def _resume_pictures(set_run: SetRun, state: dict, picks: dict) -> Path:
+    """Go on from the pictures waiting for picks: the 3D, the fit, the checks."""
+    folder = set_run.folder
+    set_run.concept = Path(state["concept"]) if state.get("concept") else None
+    set_run.concept_info, set_run.mode = state["concept_info"], state["mode"]
+    set_run.cut = {"subject_from": state.get("subject_from")}
+    if picks:
+        candidates.choose(folder / "pieces", picks)
+    held_picks = {slot: int(entry["picked"]) for slot, entry in candidates.load(folder / "pieces")["slots"].items()
+                  if entry.get("held")}
+    made = make_pieces(folder / "cuts" / "cuts.json", list(set_run.seeds), images=False, style=set_run.style,
+                       run=set_run.run, edit=set_run.edit)["slots"] if set_run.drawn else {}
+    path = _finish_set(set_run, made, held_picks)
+    set_run.state_path.unlink()  # only now: a fit that fails or is stopped can be resumed again
+    return path
+
+
+def _draw_concept(set_run: SetRun, outfit: str, concept: Path | None, concept_seeds, concept_pick,
+                  stop_at_concept: bool, stop_at_pictures: bool) -> bool:
+    """The set's mode and concept: none for weapons and shields alone, the one given (mode 2),
+    or the outfit drawn on the body (mode 3). False when the outfits wait for a pick."""
+    folder = set_run.folder
+    if not set_run.drawn:   # weapons and shields only: assets of their own, nothing drawn on the body
+        set_run.concept, set_run.concept_info, set_run.mode = None, {"standalone": True}, "standalone"
+    elif concept is None:
+        if not outfit.strip():
+            raise ValueError("give the outfit in words (--outfit) or a concept drawn on the body (--concept)")
+        if stop_at_concept and len(concept_seeds) > 1:
+            make_concept(set_run.body_json, outfit, folder / "concept", list(concept_seeds), set_run.style,
+                         set_run.run, set_run.edit, chosen=set_run.drawn)
+            set_run.write_state({"waiting": "concept", "concepts": [int(s) for s in concept_seeds], "outfit": outfit,
+                                 "held": set_run.held, "style": set_run.style, "seeds": list(set_run.seeds),
+                                 "stop_at_pictures": stop_at_pictures})
+            return False
+        set_run.concept, set_run.concept_info = make_concept(
+            set_run.body_json, outfit, folder / "concept", list(concept_seeds), set_run.style, set_run.run,
+            set_run.edit, pick=int(concept_pick) if concept_pick is not None else None, chosen=set_run.drawn)
+        set_run.mode = "body_and_equipment"
+    else:
+        set_run.concept, set_run.concept_info, set_run.mode = concept, {"given": True}, "dressed_split"
+    return True
+
+
+def _offer_pictures(set_run: SetRun) -> bool:
+    """Every piece's pictures made and scored (the weapon's and shield's too, with more than one
+    seed) for the person to pick; the run then waits. False when there is nothing to pick."""
+    folder, seeds, chosen = set_run.folder, list(set_run.seeds), set_run.chosen
+    offer_held = len(seeds) > 1 and any(slot in chosen for slot in slots.STANDALONE)
+    if not (set_run.drawn or offer_held):
+        return False
+    if set_run.drawn:
+        make_pieces(folder / "cuts" / "cuts.json", seeds, models=False, style=set_run.style, run=set_run.run,
+                    edit=set_run.edit, score=set_run.score)
+    if offer_held:   # a weapon or shield is picked like the pieces
+        # this run's drawn pieces, never an earlier run's left in candidates.json
+        offered = candidates.load(folder / "pieces") if set_run.drawn else {"slots": {}, "judge": None}
+        for slot, options in set_run.held.items():
+            drawn_held = held_pictures(slot, options["prompt"], folder / "pieces", seeds, set_run.style, set_run.run,
+                                       set_run.generate)
+            offered["slots"][slot] = held_candidates(drawn_held, score_held(slot, options["prompt"], drawn_held))
+        candidates.write(folder / "pieces", offered["slots"], offered.get("judge") or "none")
+    set_run.write_state({"waiting": "picks", "concept": str(set_run.concept) if set_run.concept else None,
+                         "concept_info": set_run.concept_info, "mode": set_run.mode,
+                         "subject_from": set_run.cut.get("subject_from"), "held": set_run.held,
+                         "style": set_run.style, "seeds": seeds})
+    return True
+
+
+def _finish_set(set_run: SetRun, made: dict, held_picks: dict | None = None) -> Path:
     """Held pieces, the fit, the checks and `<set>.parts.json`, once the drawn pieces are made."""
     from image_to_3dlab.slot_parts import sidecar
 
-    for slot in ("weapon", "shield"):
+    folder, chosen, seeds = set_run.folder, set_run.chosen, list(set_run.seeds)
+    for slot in slots.STANDALONE:
         if slot in chosen:
-            made[slot] = make_held(slot, chosen[slot]["prompt"], folder / "pieces", list(seeds), style, run, generate,
-                                   pick=(held_picks or {}).get(slot))
+            made[slot] = make_held(slot, chosen[slot]["prompt"], folder / "pieces", seeds, set_run.style, set_run.run,
+                                   set_run.generate, pick=(held_picks or {}).get(slot))
     (folder / "pieces").mkdir(parents=True, exist_ok=True)
     pieces_json = folder / "pieces" / "pieces.json"
-    pieces.write_record(pieces_json, {"cuts": str(folder / "cuts" / "cuts.json"), "seeds": list(seeds), "slots": made})
+    pieces.write_record(pieces_json, {"cuts": str(folder / "cuts" / "cuts.json"), "seeds": seeds, "slots": made})
     fit_report = None
-    if drawn:   # the worn pieces only: a weapon or shield is an asset of its own, never fitted
-        fit_report = (fitter or run_fit)(fit_job(pieces_json, body_json, folder / "fit"))
-    checks = (checker or check_set)(folder, body_json, set_name, made, bool(drawn))
-    parts = sidecar.parts_record(mode=mode, set_name=set_name, body=record, body_json=body_json,
-                                 concept=Path(concept) if concept else None,
-                                 concept_info=concept_info, chosen=chosen, pieces=made, fit=fit_report, checks=checks,
-                                 matte=cut.get("subject_from"))
-    return sidecar.write(folder, set_name, parts)
+    if set_run.drawn:   # the worn pieces only: a weapon or shield is an asset of its own, never fitted
+        fit_report = (set_run.fitter or run_fit)(fit_job(pieces_json, set_run.body_json, folder / "fit"))
+    checks = (set_run.checker or check_set)(folder, set_run.body_json, set_run.set_name, made, bool(set_run.drawn))
+    parts = sidecar.parts_record(mode=set_run.mode, set_name=set_run.set_name, body=set_run.record,
+                                 body_json=set_run.body_json,
+                                 concept=Path(set_run.concept) if set_run.concept else None,
+                                 concept_info=set_run.concept_info, chosen=chosen, pieces=made, fit=fit_report,
+                                 checks=checks, matte=set_run.cut.get("subject_from"))
+    return sidecar.write(folder, set_run.set_name, parts)
 
 
 def refit_job(fit_dir: Path, source_body: Path, body_json: Path, out: Path) -> dict:

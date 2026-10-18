@@ -221,3 +221,19 @@ def test_every_fitted_file_gets_a_licence_record_bound_to_it(tmp_path):
     # bound and readable; it warns because the pieces come from Qwen pictures (non-commercial)
     assert report["results"][0]["status"] == "warn"
     assert "non-commercial" in report["results"][0]["message"]
+
+
+def test_a_set_run_is_one_object_and_the_fit_is_steps():
+    """Code read 18/10/2026: _finish_set took 18 positional arguments and the Blender fit was one
+    function of about 540 lines. A set's run is a SetRun; the fit a Fitter with one method a step."""
+    import inspect
+
+    from tests.test_blender_fit_parts import bf
+
+    assert list(inspect.signature(cli._finish_set).parameters) == ["set_run", "made", "held_picks"]
+    steps = ("load_body", "load_source_body", "fit_piece", "place_piece", "onto_limb", "shape_and_skin",
+             "mask_body", "join_shoulders", "trim_body", "write")
+    assert all(callable(getattr(bf.Fitter, step)) for step in steps)
+    longest = max(len(inspect.getsource(getattr(bf.Fitter, name)).splitlines())
+                  for name, value in vars(bf.Fitter).items() if callable(value))
+    assert longest < 90
