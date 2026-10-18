@@ -62,8 +62,6 @@ COMMANDS: dict[str, list[str]] = {
     # Setup & Status dialog; asking again on a stdin nobody is attached to would hang.
     "qwen-image": [sys.executable, str(REPO / "scripts" / "bootstrap_qwen_image.py"),
                    "--yes"],
-    "flux2-klein": [sys.executable, str(REPO / "scripts" / "bootstrap_flux2_klein.py"),
-                    "--yes"],
     "matte": [sys.executable, str(REPO / "scripts" / "bootstrap_matte.py"), "--yes"],
     "gltf-validator": [sys.executable, str(REPO / "scripts" / "bootstrap_gltf_validator.py"), "--yes"],
     "autorig": [sys.executable, str(REPO / "scripts" / "bootstrap_autorig.py"), "--yes"],

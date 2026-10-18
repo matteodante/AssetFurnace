@@ -34,6 +34,9 @@ def test_windows_installer_picks_releases_of_the_repository_it_installs():
     ps1 = PS1.read_text()
     assert "git ls-remote --tags --refs $Repo" in ps1
     assert "git -C $Dir tag --list" not in ps1
+    # install.sh finds it the same way (code read 18/10/2026: it still read the clone's tags)
+    sh = (REPO / "install.sh").read_text(encoding="utf-8")
+    assert 'git ls-remote --tags --refs "$REPO_URL"' in sh and "tag --list" not in sh
 
 
 def test_windows_installer_run_from_a_clone_updates_that_clone():

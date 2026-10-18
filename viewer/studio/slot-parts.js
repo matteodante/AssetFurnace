@@ -86,11 +86,17 @@ export function materialOptions(materials = [], value = '', auto = 'Auto') {
   return (auto === null ? '' : `<option value=""${value ? '' : ' selected'}>${escape(auto)}</option>`) + words.join('');
 }
 
-/** A made set's pieces, each with a menu on its material and why it has it. */
+/** A made set's pieces, each with a menu on its material and why it has it. "Auto" (no correction:
+ * the material asked before the run, else the rule's, named beside it) is picked unless a person
+ * corrected the piece, and picking it again takes the correction back (the API's null). */
 export function materialRows(pieces = {}, materials = []) {
-  return Object.entries(pieces || {}).map(([slot, entry]) => `<tr><td>${escape(slotLabel(slot))}</td>
-    <td><select data-set-material="${escape(slot)}" data-was="${escape(entry.material)}" aria-label="${escape(slotLabel(slot))} material">${materialOptions(materials, entry.material, null)}</select></td>
-    <td class="meta">${escape(entry.reason || '')}</td></tr>`).join('');
+  return Object.entries(pieces || {}).map(([slot, entry]) => {
+    const was = entry.by === 'person' ? entry.material : '';
+    const auto = `Auto${entry.by === 'person' ? '' : ` (${entry.material})`}`;
+    return `<tr><td>${escape(slotLabel(slot))}</td>
+    <td><select data-set-material="${escape(slot)}" data-was="${escape(was)}" aria-label="${escape(slotLabel(slot))} material">${materialOptions(materials, was, auto)}</select></td>
+    <td class="meta">${escape(entry.reason || '')}</td></tr>`;
+  }).join('');
 }
 
 /** Where a click falls on a picture, as fractions of its width and height (kept inside it). */
@@ -360,7 +366,8 @@ export async function openSlotParts(stage, { assets = () => [], open = () => {},
     const box = el.querySelector('[data-job]');
     if (!job.set) { box.innerHTML = ''; return; }
     if (!job.running && job.picks) { drawPicks(job, box); return; }
-    const state = job.running ? 'Making' : job.returncode === 0 ? 'Made' : 'Stopped or failed';
+    // no exit code: the server that started the run was not there to see it end (its log says how)
+    const state = job.running ? 'Making' : job.returncode === 0 ? 'Made' : job.returncode == null ? 'Ended' : 'Stopped or failed';
     const what = { fit: ' (fit again)', refit: ' (carried to another body)', unreal: ' (Unreal export)' }[job.action] || '';
     box.innerHTML = `<h3>${escape(state)}: ${escape(job.set)} on ${escape(job.body)}${escape(what)}</h3>
       ${job.running ? '<button type="button" class="ghost small" data-cancel>Stop</button>' : ''}

@@ -233,6 +233,8 @@ def test_the_studio_page_fits_refits_and_exports_a_set(output, monkeypatch):
     (folder / "fit").mkdir(parents=True)
     (folder / "fit" / "fit.json").write_text("{}")
     started = []
+    monkeypatch.setattr(runs.processes, "process_alive", lambda pid: pid == 4242)   # the fake run is alive
+    monkeypatch.setattr(runs, "_identity", lambda pid: None)
 
     class Process:
         pid = 4242
@@ -247,11 +249,9 @@ def test_the_studio_page_fits_refits_and_exports_a_set(output, monkeypatch):
         started.append(command)
         return Process()
 
-    slot_parts_api._JOB.clear()
     status = slot_parts_api.start_run(output, {"action": "unreal", "body": "stick", "set": "red", "size_cm": 175},
                                       popen=popen)
     assert status["running"] and started[0][2] == "unreal"
-    slot_parts_api._JOB.clear()
     (output / "sets" / runs.RUN_FILE).unlink()
     with pytest.raises(ValueError, match="action"):
         slot_parts_api.start_run(output, {"action": "explode", "body": "stick", "set": "red"}, popen=popen)

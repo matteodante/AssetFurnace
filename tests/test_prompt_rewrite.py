@@ -225,3 +225,19 @@ def test_a_picture_drawn_without_the_rewriter_records_what_to_install(monkeypatc
     settings = text_image.clean_settings(text_image.T2I_DEFAULTS)
     _, notes = text_image.prepare_prompt("a wolf", settings, weights={"llm": Path("m")})
     assert "llama.cpp" in notes["prompt_rewrite"]["reason"] and "Qwen-Image" in notes["prompt_rewrite"]["reason"]
+
+
+def test_the_record_names_the_backend_this_machine_drew_with(monkeypatch):
+    """Code read 18/10/2026: every picture's record said "Metal", on Windows and Linux too."""
+    sys.path.insert(0, str(REPO / "scripts"))
+    import bootstrap_qwen_image
+
+    assert set(text_image.RUNTIMES) == set(bootstrap_qwen_image.BUILDS)
+    for target, build in bootstrap_qwen_image.BUILDS.items():
+        assert text_image.RUNTIMES[target].split()[0] in build.route
+    assert text_image.runtime("windows-nvidia") == "stable-diffusion.cpp (CUDA 12)"
+    from image_to_3dlab import host
+
+    monkeypatch.setattr(host, "build_target", lambda: "linux-nvidia")
+    record = text_image.provenance("a wolf", text_image.clean_settings({}), 1.0, REPO / "missing.png")
+    assert record["model"]["runtime"] == "stable-diffusion.cpp (Vulkan)"

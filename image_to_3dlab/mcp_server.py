@@ -166,6 +166,7 @@ class Materials(TypedDict, total=False):
 
 class PiecesStatus(TypedDict, total=False):
     running: bool
+    returncode: int | None
     action: str
     set: str
     body: str

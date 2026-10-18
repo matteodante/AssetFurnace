@@ -34,20 +34,27 @@ Stato: **fatto** (PR), **in corso**, **da fare**, **respinto** (motivo).
 
 | # | Punto | Stato |
 | --- | --- | --- |
-| A-1 | Campo Steps di Create che non fa niente | da fare |
-| A-2 | Stato di Pieces solo in memoria | da fare |
-| A-3 | `install.sh` sceglie la release dai tag dell'upstream | da fare |
+| A-1 | Campo Steps di Create che non fa niente | fatto: tolto il campo e `steps` dalle impostazioni dell'immagine; la Turbo fa sempre 8 passi |
+| A-2 | Stato di Pieces solo in memoria | fatto: la pagina legge `output/sets/.run.json` (`runs.status`/`runs.cancel`), il codice d'uscita va in `<log>.exit` |
+| A-3 | `install.sh` sceglie la release dai tag dell'upstream | fatto: `git ls-remote` del repository installato, come `install.ps1` |
 | A-4 | `fit.holes` conta GLB vecchi | fatto: il set viene da `fit.json`; un pezzo che non si legge è nominato nei `details` |
 | A-5 | Alfa < 0,5 dà MASK su qualsiasi asset | da fare |
 | A-6 | B0 ignora le distanze camera di MoGe-2 | da fare |
 | A-7 | `concept_box` presume la dimensione della tela | da fare |
-| A-8 | Provenienza "Metal" su Windows | da fare |
-| A-9 | Materiale non riportabile ad Auto | da fare |
-| A-10 | Versione Blender senza scheletro esportata come creatura | da fare |
+| A-8 | Provenienza "Metal" su Windows | fatto: `text_image.runtime()` dal build della macchina (Metal, CUDA 12, Vulkan, ROCm) |
+| A-9 | Materiale non riportabile ad Auto | fatto: "Auto (materiale della regola)" nel menu dei set fatti; sceglierlo toglie la correzione |
+| A-10 | Versione Blender senza scheletro esportata come creatura | fatto: il tipo viene da `facts.skins` della versione |
 | A-11 | MoGe-2 assente dalla provenienza | da fare |
 | A-12 | Cambio classe dell'arma non sposta la presa | da fare |
-| A-13 | FLUX.2 klein installabile ma non usato | da fare |
+| A-13 | FLUX.2 klein installabile ma non usato | fatto: tolto da Setup con il suo bootstrap |
 | A-14 | Errori del giudice gestiti in quattro modi | da fare |
+
+## Altri punti dei rapporti
+
+| # | Punto | Stato |
+| --- | --- | --- |
+| X-1 | Il controllo aggiornamenti tiene la risposta di un altro repository | fatto: la cache dice da dove viene; un 404 la azzera |
+| X-2 | `install.ps1` interroga l'URL HTTPS invece del remote | respinto: anche il `fetch` subito prima usa lo stesso `$Repo`, quindi `ls-remote` non aggiunge un modo di fallire |
 
 ## Qualità (nessun cambio di comportamento)
 

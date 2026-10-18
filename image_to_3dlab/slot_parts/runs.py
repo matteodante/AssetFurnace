@@ -454,14 +454,40 @@ def _start(output: Path, action: str, payload: dict, popen) -> tuple[Any, dict[s
         # its own group: Stop must reach the edits, Pixal3D and Blender it starts
         process = popen(command, stdout=handle, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                         cwd=str(REPO), **processes.group_popen_kwargs())
-    # waited on, so a finished run does not linger as a zombie that still looks alive
-    threading.Thread(target=process.wait, daemon=True).start()
     record = {"pid": process.pid, "identity": _identity(process.pid), "action": action,
               "set": str(payload.get("set")), "body": str(payload.get("body")),
               "to": payload.get("to"), "log": str(log), "folder": str(log.parent), "started": time.time()}
     (output / "sets").mkdir(parents=True, exist_ok=True)
     (output / "sets" / RUN_FILE).write_text(json.dumps(record, indent=1), encoding="utf-8")
+    # waited on, so a finished run does not linger as a zombie that still looks alive, and its
+    # exit code written beside its log (a server started later, or the MCP one, reads it there)
+    threading.Thread(target=_record_exit, args=(record, process), daemon=True).start()
     return process, record
+
+
+def exit_path(record: dict[str, Any]) -> Path:
+    """`<log>.exit`: the run's exit code, its own file, so writing it never races the next
+    run's `.run.json`."""
+    return Path(record["log"]).with_name(Path(record["log"]).name + ".exit")
+
+
+def _record_exit(record: dict[str, Any], process) -> None:
+    code = process.wait()
+    try:
+        exit_path(record).write_text(json.dumps({"pid": record["pid"], "started": record["started"],
+                                                 "returncode": code}), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _exit_code(record: dict[str, Any]) -> int | None:
+    """This very run's exit code, when the server that started it saw it end."""
+    try:
+        found = json.loads(exit_path(record).read_text(encoding="utf-8"))
+    except (OSError, ValueError, KeyError):
+        return None
+    same = isinstance(found, dict) and found.get("pid") == record.get("pid") and found.get("started") == record.get("started")
+    return found.get("returncode") if same else None
 
 
 def status(output: Path, record: dict[str, Any] | None = None, running: bool | None = None) -> dict[str, Any]:
@@ -477,11 +503,15 @@ def status(output: Path, record: dict[str, Any] | None = None, running: bool | N
     log = Path(record["log"])
     tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-12:] if log.is_file() else []
     folder = Path(record["folder"])
+    code = None if running else _exit_code(record)
     parts = folder / f"{record['set']}.parts.json"
     return {"running": running, "action": record.get("action", "run"), "set": record["set"], "body": record["body"],
             "started": record["started"], "log": tail,
+            # None when the server that started it was not there to see it end
+            "returncode": code,
             "parts": rel(output, parts) if parts.is_file() and parts.stat().st_mtime >= record["started"] else None,
-            "picks": None if running else waiting_picks(output, folder),
+            # a run that failed offers no pictures: those waiting are an earlier run's
+            "picks": None if running or code not in (0, None) else waiting_picks(output, folder),
             # which judge picked the pictures: "shape only (...)" when the picture judge is missing
             "judge": None if running else _judge_of_this_run(folder, record["started"])}
 
@@ -494,9 +524,14 @@ def _judge_of_this_run(folder: Path, started: float) -> str | None:
     return candidates_mod.load(folder / "pieces").get("judge")
 
 
-def cancel(output: Path, stop=processes.terminate_group) -> dict[str, Any]:
+def cancel(output: Path, stop=processes.terminate_group, wait: float = 0.0) -> dict[str, Any]:
+    """Stop the run and every process under it. With `wait`, up to that many seconds until it
+    has gone, so a new run cannot start while the old one's Blender or Pixal3D still holds the GPU."""
     running = active_run(output)
     if running is None:
         return {"stopped": False, "reason": "no set is being made"}
     stop(running["pid"])
+    deadline = time.monotonic() + wait
+    while wait and active_run(output) is not None and time.monotonic() < deadline:
+        time.sleep(0.2)
     return {"stopped": True, "pid": running["pid"]}

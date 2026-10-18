@@ -45,7 +45,6 @@ from image_to_3dlab.slot_parts import runs, slots
 REPO = Path(__file__).resolve().parents[1]
 HEADER = "slot-parts"
 MAX_BODY = 64 * 1024
-_JOB: dict[str, Any] = {}
 
 
 def _inside(output: Path, relative: str | None) -> Path:
@@ -108,40 +107,25 @@ def run_command(output: Path, payload: dict) -> tuple[list[str], Path]:
 
 
 def job_status(output: Path) -> dict[str, Any]:
-    if not _JOB:
-        return {"running": False}
-    code = _JOB["process"].poll()
-    return {**runs.status(output, _JOB["record"], running=code is None), "returncode": code,
-            "picks": waiting_picks(output, Path(_JOB["folder"])) if code == 0 else None}
+    """The last run as `output/sets/.run.json` records it: one started before this server
+    did, or by an agent, is seen and can be stopped the same way."""
+    return runs.status(output)
 
 
 def start_run(output: Path, payload: dict, popen=subprocess.Popen) -> dict[str, Any]:
-    if _JOB and _JOB["process"].poll() is None:
-        raise ValueError(f"a set is already being made ({_JOB['set']}); wait or stop it")
     action = str(payload.get("action") or ("resume" if payload.get("resume") else "run"))
     if action not in runs.COMMANDS:
         raise ValueError(f"unknown action {action!r}: {', '.join(runs.COMMANDS)}")
     if action == "run" and int(payload.get("mode", 3)) not in (2, 3):
         raise ValueError("mode 1 (one piece) is + Create; this page makes modes 2 and 3")
-    process, record = runs.start(output, action, _checked(output, payload, action), popen=popen)
-    _JOB.clear()
-    _JOB.update(process=process, record=record, log=record["log"], folder=record["folder"], set=payload["set"],
-                body=payload["body"], started=record["started"])
+    runs.start(output, action, _checked(output, payload, action), popen=popen)
     return job_status(output)
 
 
-def cancel_run(stop=processes.terminate_group) -> dict[str, Any]:
-    """Stop the run and every process under it, then wait for it, so a new run cannot start
-    while the old one's Blender or Pixal3D still holds the GPU."""
-    if _JOB and _JOB["process"].poll() is None:
-        process = _JOB["process"]
-        stop(process.pid)
-        process.terminate()
-        try:
-            process.wait(timeout=30)
-        except subprocess.TimeoutExpired:
-            process.kill()
-    return {"stopped": True}
+def cancel_run(output: Path, stop=processes.terminate_group) -> dict[str, Any]:
+    """Stop the run and every process under it, then wait for it (up to 30 s), so a new run
+    cannot start while the old one's Blender or Pixal3D still holds the GPU."""
+    return runs.cancel(output, stop=stop, wait=30.0)
 
 
 def _body(handler) -> dict[str, Any]:
@@ -169,7 +153,7 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
         elif mutation and parts == ["api", "slot-parts", "run"]:
             handler._send_json(202, start_run(output, _body(handler)))
         elif mutation and parts == ["api", "slot-parts", "run", "cancel"]:
-            handler._send_json(200, cancel_run())
+            handler._send_json(200, cancel_run(output))
         elif mutation and parts == ["api", "slot-parts", "grip"]:
             handler._send_json(200, save_grip(output, _body(handler)))
         elif mutation and parts == ["api", "slot-parts", "materials"]:

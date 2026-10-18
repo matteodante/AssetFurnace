@@ -151,10 +151,20 @@ def test_a_run_can_stop_at_the_pictures_and_resume_with_the_picks(tmp_path):
         slot_parts_api.run_command(output, {"resume": True, "body": "stick", "set": "red", "picks": {"boots": 9}})
 
 
-def test_one_run_at_a_time_and_its_status(tmp_path):
+def _alive(monkeypatch, pids: set) -> set:
+    """Fake processes' pids counted as alive by the run record's check, until stopped."""
+    from image_to_3dlab.slot_parts import runs
+
+    monkeypatch.setattr(runs.processes, "process_alive", lambda pid: pid in pids)
+    monkeypatch.setattr(runs, "_identity", lambda pid: None)
+    return pids
+
+
+def test_one_run_at_a_time_and_its_status(tmp_path, monkeypatch):
     output = tmp_path / "output"
     output.mkdir()
     _body_json(output)
+    alive = _alive(monkeypatch, {4242})
 
     class Process:
         def __init__(self):
@@ -180,17 +190,88 @@ def test_one_run_at_a_time_and_its_status(tmp_path):
         kwargs["stdout"].flush()
         return Process()
 
-    slot_parts_api._JOB.clear()
     payload = {"mode": 3, "body": "stick", "set": "red", "outfit": "red", "slots": {"helmet": {}}}
     status = slot_parts_api.start_run(output, payload, popen=popen)
     assert status["running"] and status["set"] == "red"
     with pytest.raises(ValueError, match="already"):
         slot_parts_api.start_run(output, payload, popen=popen)
     assert slot_parts_api.job_status(output)["log"] == ["cuts: 3 slots"]
-    slot_parts_api.cancel_run(stop=stopped.append)
+    slot_parts_api.cancel_run(output, stop=lambda pid: stopped.append(pid) or alive.discard(pid))
     assert stopped == [4242]  # the whole tree, not only the script
     assert slot_parts_api.job_status(output)["running"] is False
-    slot_parts_api._JOB.clear()
+
+
+def test_a_run_started_before_the_server_is_seen_and_stopped(tmp_path, monkeypatch):
+    """Code read 18/10/2026: the page followed its runs in memory only; after a restart (or a
+    run an agent started) it showed nothing and offered no Stop while the set used the GPU."""
+    import json as _json
+
+    from image_to_3dlab.slot_parts import runs
+
+    output = tmp_path / "output"
+    (output / "sets" / "red" / "stick").mkdir(parents=True)
+    log = output / "sets" / "red" / "stick" / "run.log"
+    log.write_text("pieces: helmet\n", encoding="utf-8")
+    (output / "sets" / runs.RUN_FILE).write_text(_json.dumps(
+        {"pid": 5151, "action": "run", "set": "red", "body": "stick", "log": str(log), "folder": str(log.parent),
+         "started": 0.0}), encoding="utf-8")
+    alive = _alive(monkeypatch, {5151})
+    status = slot_parts_api.job_status(output)
+    assert status["running"] is True and status["set"] == "red" and status["log"] == ["pieces: helmet"]
+    stopped = []
+    assert slot_parts_api.cancel_run(output, stop=lambda pid: stopped.append(pid) or alive.discard(pid))["stopped"]
+    assert stopped == [5151] and slot_parts_api.job_status(output)["running"] is False
+
+
+def test_a_failed_run_offers_no_pictures_left_by_an_earlier_one(tmp_path, monkeypatch):
+    """Codex review: a run that failed showed the pictures an earlier run left waiting."""
+    import json as _json
+
+    from image_to_3dlab.slot_parts import runs
+
+    output = tmp_path / "output"
+    folder = output / "sets" / "red" / "stick"
+    folder.mkdir(parents=True)
+    log = folder / "run.log"
+    log.write_text("refused: Blender failed\n", encoding="utf-8")
+    record = {"pid": 7171, "action": "run", "set": "red", "body": "stick", "log": str(log), "folder": str(folder),
+              "started": 1.0}
+    (output / "sets" / runs.RUN_FILE).write_text(_json.dumps(record), encoding="utf-8")
+    monkeypatch.setattr(runs, "waiting_picks", lambda output, folder: {"helmet": {"candidates": []}})
+    _alive(monkeypatch, set())
+    runs.exit_path(record).write_text(_json.dumps({"pid": 7171, "started": 1.0, "returncode": 1}), encoding="utf-8")
+    assert slot_parts_api.job_status(output)["picks"] is None
+    runs.exit_path(record).write_text(_json.dumps({"pid": 7171, "started": 1.0, "returncode": 0}), encoding="utf-8")
+    assert slot_parts_api.job_status(output)["picks"] == {"helmet": {"candidates": []}}
+
+
+def test_a_runs_exit_code_is_kept_beside_it(tmp_path, monkeypatch):
+    import threading
+
+    from image_to_3dlab.slot_parts import runs
+
+    output = tmp_path / "output"
+    output.mkdir()
+    _body_json(output)
+    done = threading.Event()
+
+    class Process:
+        pid = 6161
+
+        def wait(self, timeout=None):
+            done.wait(5)
+            return 0
+
+    alive = _alive(monkeypatch, {6161})
+    slot_parts_api.start_run(output, {"mode": 3, "body": "stick", "set": "red", "outfit": "red",
+                                      "slots": {"helmet": {}}}, popen=lambda *a, **k: Process())
+    alive.discard(6161)
+    done.set()
+    for _ in range(50):
+        if slot_parts_api.job_status(output).get("returncode") == 0:
+            break
+        threading.Event().wait(0.05)
+    assert slot_parts_api.job_status(output)["returncode"] == 0
 
 
 def test_sets_and_bodies_are_listed(tmp_path):
@@ -279,6 +360,22 @@ def test_material_menus_offer_auto_then_the_words_and_tick_the_current_one():
     assert '<option value="cloth" selected>cloth</option>' in chosen and "Auto" not in chosen
     assert 'data-set-material="helmet"' in rows and '<option value="leather" selected>' in rows
     assert "corrected by a person" in rows
+
+
+@needs_node
+def test_a_corrected_material_can_go_back_to_auto():
+    """Code read 18/10/2026: a made set's menu had no Auto, so a person's correction could not
+    be taken back from the studio (the API's null)."""
+    out = _run("""
+      const rows = m.materialRows({ helmet: { material: 'leather', by: 'person', reason: 'corrected by a person' },
+                                    boots: { material: 'metal', by: 'rule', reason: 'the slot' } }, ['metal', 'leather']);
+      const back = m.changedMaterials([{ slot: 'helmet', value: '', was: 'leather' }, { slot: 'boots', value: '', was: '' }]);
+      console.log(JSON.stringify([rows, back]));""")
+    rows, back = out
+    helmet, boots = rows.split("</tr>")[:2]
+    assert '<option value="">Auto</option>' in helmet and '<option value="leather" selected>' in helmet
+    assert '<option value="" selected>Auto (metal)</option>' in boots and 'data-was=""' in boots
+    assert back == {"helmet": ""}   # sent as no correction; the API takes "" as null
 
 
 @needs_node

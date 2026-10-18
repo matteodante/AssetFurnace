@@ -255,7 +255,6 @@ def test_the_studio_waits_for_a_run_an_agent_started(output, started):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "viewer"))
     import slot_parts_api
 
-    slot_parts_api._JOB.clear()
     assert mcp_server.pieces_run("stick", "red", outfit="red plate", slots=["helmet"])["started"]
     with pytest.raises(ValueError, match="already"):
         slot_parts_api.start_run(output, {"mode": 3, "body": "stick", "set": "blue", "outfit": "o",
