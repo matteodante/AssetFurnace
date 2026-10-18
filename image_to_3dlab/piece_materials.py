@@ -209,19 +209,19 @@ def corrections(folder: Path) -> dict[str, str]:
 MIGRATION = "scripts/migrate_set_outfits.py"
 
 
-def outfit_words(parts: dict) -> str:
+def outfit_words(parts: dict, folder: Path) -> str:
     """The outfit's words a set's concept was drawn from, as saved with it (``concept.outfit``).
 
     A set of weapons and shields alone has no concept, and a concept given ready-made has no
     words: both read as no words. A concept saved before its words were (18/10/2026) is refused
-    with the command that writes them into the set, once.
+    with the command that writes them into the set (in `folder`), once.
     """
     concept = parts.get("concept")
     if concept is None:
         return ""
     if not isinstance(concept.get("outfit"), str):
         raise ValueError(f"the set {parts.get('set')!r} was made before the outfit's words were saved with its "
-                         f"concept: run `python {MIGRATION}` once to write them in")
+                         f"concept: run `python {MIGRATION} {folder}` once to write them in")
     return concept["outfit"]
 
 
@@ -232,7 +232,7 @@ def set_materials(folder: Path) -> dict[str, dict]:
     then the rule.
     """
     parts = _parts(folder)
-    outfit = outfit_words(parts)
+    outfit = outfit_words(parts, Path(folder))
     fixed = corrections(folder)
     out = {}
     for slot, asked in (parts.get("slots") or {}).items():

@@ -241,5 +241,13 @@ def test_candidates_and_picks_from_the_first_version_are_refused_with_what_to_do
         batch.load_batch(spec_path)
     assert refused.value.problems == [
         f"row SM_Barrel: its picture pick in {folder / batch.PICKS_FILE} was made under the first version of the "
-        f"picture step, which this version does not read: pick again once its pictures are drawn"]
+        f"picture step, which this version does not read: remove the row's \"picture\" entry from that file, "
+        f"or give the pick in the spec"]
     assert drawn == []
+    rows[0]["picture"]["pick"] = 5   # the spec's own pick: the saved one is never read
+    spec_path.write_text(json.dumps({**json.loads(spec_path.read_text()), "rows": rows}))
+    assert batch.load_batch(spec_path).rows[0].options["picture"]["pick"] == 5
+    (folder / batch.PICKS_FILE).write_text(json.dumps({"SM_Barrel": {}}))   # the entry removed
+    rows[0]["picture"].pop("pick")
+    spec_path.write_text(json.dumps({**json.loads(spec_path.read_text()), "rows": rows}))
+    assert "pick" not in batch.load_batch(spec_path).rows[0].options["picture"]

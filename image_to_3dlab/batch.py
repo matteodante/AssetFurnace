@@ -699,10 +699,12 @@ def _first_version_problems(directory: Path, saved: dict[str, Any], picks: dict[
                             f"picture step, whose record this version does not read: remove the folder "
                             f"{directory / 'rows' / row.id / 'picture.candidates'} to draw them again")
         made = (picks.get(row.id) or {}).get("picture") if isinstance(picks.get(row.id), dict) else None
-        if isinstance(made, dict) and made.get("key") == old_key:
+        # a pick the spec gives itself wins over a saved one, which is then never read
+        if (isinstance(made, dict) and made.get("key") == old_key
+                and "pick" not in row.options.get("picture", {})):
             problems.append(f"row {row.id}: its picture pick in {directory / PICKS_FILE} was made under the "
-                            f"first version of the picture step, which this version does not read: pick "
-                            f"again once its pictures are drawn")
+                            f"first version of the picture step, which this version does not read: remove "
+                            f"the row's \"picture\" entry from that file, or give the pick in the spec")
     return problems
 
 
