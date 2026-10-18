@@ -307,21 +307,11 @@ def with_picks(row: BatchRow, picks: dict[str, Any]) -> BatchRow:
             made = picks.get(step)
             if not isinstance(made, dict) or "pick" in current.options.get(step, {}):
                 continue
-            if made.get("key") not in (current.candidate_key(step), *_legacy_keys(current, step)):
+            if made.get("key") != current.candidate_key(step):
                 continue
             current = replace(current, options={**current.options,
                                                 step: {**current.options.get(step, {}), "pick": made.get("choice")}})
     return current
-
-
-def _legacy_keys(row: BatchRow, step: str) -> tuple[str, ...]:
-    """The key a pick on a `picture` step had before keys were step fingerprints (the
-    words, the settings and the seeds), so those picks still hold."""
-    if step != "picture":
-        return ()
-    from .batch_steps.picture import legacy_key
-
-    return (legacy_key(row.prompt, row.options.get(step, {})),)
 
 
 def recorded_sidecar(asset: Path | None) -> Path | None:
@@ -622,6 +612,7 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
                             "ignoring case, as folder names are)")
         seen.add(row.id.lower())
         rows.append(row)
+    problems += _first_version_problems(output_dir / name, saved, picks, rows)
 
     for row in rows:
         # every model a row would run is gated: its generator, and the repaint if asked
@@ -681,6 +672,38 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
 
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
                     *(f"LPT{i}" for i in range(1, 10))}
+
+
+def _first_version_problems(directory: Path, saved: dict[str, Any], picks: dict[str, Any],
+                            rows: list[BatchRow]) -> list[str]:
+    """What the first versions of the runner left in a batch's folder (17/10/2026), which
+    this one does not read: steps done without their fingerprint in the state, and picture
+    candidates and picks under the first key of the picture step (the words, the settings,
+    the seeds; an index of `seeds` rather than `done`). Refused with what to do, so a batch
+    never runs those steps again without a word."""
+    from .batch_steps.picture import first_version_key
+
+    problems = []
+    old_steps = sorted(row_id for row_id, entry in saved.items() if isinstance(entry, dict)
+                       and any(isinstance(step, dict) and step.get("status") == "done" and "fingerprint" not in step
+                               for step in (entry.get("steps") or {}).values()))
+    if old_steps:
+        problems.append(f"the state of this batch ({directory / STATE_FILE}) is from before each step kept its "
+                        f"fingerprint (rows {', '.join(old_steps)}), which this version does not read: give "
+                        f"the batch a new name to run it again, or remove its folder {directory}")
+    for row in rows:
+        old_key = first_version_key(row.prompt, row.options.get("picture", {}))
+        index = read_json(directory / "rows" / row.id / "picture.candidates" / "candidates.json")
+        if isinstance(index, dict) and ("done" not in index or index.get("key") == old_key):
+            problems.append(f"row {row.id}: its picture candidates were drawn by the first version of the "
+                            f"picture step, whose record this version does not read: remove the folder "
+                            f"{directory / 'rows' / row.id / 'picture.candidates'} to draw them again")
+        made = (picks.get(row.id) or {}).get("picture") if isinstance(picks.get(row.id), dict) else None
+        if isinstance(made, dict) and made.get("key") == old_key:
+            problems.append(f"row {row.id}: its picture pick in {directory / PICKS_FILE} was made under the "
+                            f"first version of the picture step, which this version does not read: pick "
+                            f"again once its pictures are drawn")
+    return problems
 
 
 def _usable_folder_name(name: str) -> bool:
@@ -1033,65 +1056,12 @@ def preflight(spec: BatchSpec, work: dict[str, tuple[str, ...]] | None = None) -
     return problems
 
 
-def _last_run_rows(directory: Path) -> dict[str, dict[str, Any]]:
-    """The rows as the last run resolved them (`spec.json`), by id."""
-    last = read_json(directory / SPEC_COPY)
-    return {row["id"]: row for row in (last or {}).get("rows", [])
-            if isinstance(row, dict) and isinstance(row.get("id"), str)}
-
-
-def _as_it_ran(row: BatchRow, entry: dict[str, Any], last: dict[str, Any] | None) -> BatchRow | None:
-    """The row as it was when `entry` was made, if that can be told for certain: rebuilt
-    from the last run's spec copy, or this row with the steps it ran, whichever gives back
-    the fingerprint the entry recorded. None when neither does."""
-    candidates = []
-    if last:
-        try:
-            candidates.append(BatchRow(
-                id=row.id, images=tuple(Path(image) for image in last.get("images") or []),
-                asset=Path(last["asset"]) if last.get("asset") else None, kind=last.get("kind"),
-                faces=last.get("faces"), profile=last.get("profile"), steps=tuple(last.get("steps") or ()),
-                backend=last.get("backend"), parameters=last.get("parameters") or {},
-                options={name: last[name] for name in STEP_NAMES if isinstance(last.get(name), dict)},
-                size_cm=last.get("size_cm"), measure=last.get("measure"), concept=row.concept,
-                prompt=last.get("prompt"), replace=last.get("replace") or {}))
-        except (TypeError, ValueError):
-            pass
-    candidates.append(BatchRow(**{**row.__dict__, "steps": tuple(entry.get("steps", {}))}))
-    for candidate in candidates:
-        try:
-            if candidate.fingerprint() == entry.get("fingerprint"):
-                return candidate
-        except OSError:   # an input it named is gone: it cannot be told
-            continue
-    return None
-
-
-def _with_known_fingerprints(row: BatchRow, entry: dict[str, Any],
-                             last: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
-    """The entry's steps, those done before steps had fingerprints given the ones they ran
-    with, when the row as it ran can be rebuilt. A batch from before this change, edited or
-    given a new default step, then keeps what is still valid instead of running whole."""
-    steps = {name: dict(step) for name, step in entry.get("steps", {}).items()}
-    if not any(step.get("status") == "done" and "fingerprint" not in step for step in steps.values()):
-        return steps
-    ran = _as_it_ran(row, entry, last)
-    if ran is None:
-        return steps
-    then = ran.step_fingerprints()
-    for name, step in steps.items():
-        if step.get("status") == "done" and "fingerprint" not in step and name in then:
-            step["fingerprint"] = then[name]
-    return steps
-
-
 def pending_work(spec: BatchSpec, state: dict[str, Any] | None,
                  retry_failed: bool) -> dict[str, tuple[str, ...]]:
     """What a run would execute, given the saved state: per pending row, the steps from
     its first unfinished one. Done rows (unless a step they skipped now exists) and
     failed ones (unless retrying) are not there."""
     previous = (state or {}).get("rows", {})
-    last = _last_run_rows(spec.directory)
     work: dict[str, tuple[str, ...]] = {}
     for row in spec.rows:
         entry = previous.get(row.id)
@@ -1107,8 +1077,7 @@ def pending_work(spec: BatchSpec, state: dict[str, Any] | None,
         if entry.get("fingerprint") != fingerprint:
             # edited: from its first step whose fingerprint changed (failed or not: the
             # spec changed, so it is a new request)
-            known = {"steps": _with_known_fingerprints(row, entry, last.get(row.id))}
-            work[row.id] = _remaining(row, known, spec.directory, fingerprints)
+            work[row.id] = _remaining(row, entry, spec.directory, fingerprints)
             continue
         if _still_done(entry, spec.directory):
             continue
@@ -1438,7 +1407,6 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
               log: Callable[[str], None]) -> BatchReport:
     directory = spec.directory
     previous = state.get("rows", {})
-    last = _last_run_rows(directory)   # read before this run writes its own copy
     rows: dict[str, Any] = {}
     for row in spec.rows:
         entry = previous.get(row.id)
@@ -1455,21 +1423,13 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
         if entry is None:
             entry = {"status": "queued", "fingerprint": fingerprint, "steps": {}}
         elif entry.get("fingerprint") != fingerprint:
-            # Edited: the steps before the first changed one keep their results. A step
-            # done before steps had fingerprints has none, so it counts as changed.
-            kept = {name: step for name, step in
-                    _with_known_fingerprints(row, entry, last.get(row.id)).items() if name in row.steps}
+            # edited: the steps before the first changed one keep their results
+            kept = {name: dict(step) for name, step in entry.get("steps", {}).items() if name in row.steps}
             again = _remaining(row, {"steps": kept}, directory, fingerprints)
             entry = {"status": "queued", "fingerprint": fingerprint, "steps": kept,
                      **({"staged": entry["staged"]} if entry.get("staged") else {}),
                      "note": (f"the row changed in the spec; it runs again from {again[0]}"
                               if again else "the row changed in the spec")}
-        else:
-            # unchanged: steps done before fingerprints existed are stamped with theirs,
-            # so a later edit can tell which of them to keep
-            for name, step in entry.get("steps", {}).items():
-                if step.get("status") == "done" and "fingerprint" not in step and name in fingerprints:
-                    step["fingerprint"] = fingerprints[name]
         rows[row.id] = entry
     # rows dropped from the spec keep their record, apart: they are not part of the batch
     removed = {**state.get("removed_rows", {}),

@@ -217,16 +217,29 @@ def test_a_stopped_drawing_keeps_the_pictures_it_made(tmp_path, drawn, generator
     assert drawn == [5, 6, 7]   # 5 and 6 once each
 
 
-def test_candidates_and_picks_from_the_first_version_still_count(tmp_path, drawn, generator, monkeypatch):
-    """Picture rows made before candidate keys were step fingerprints: their drawn pictures
-    are not drawn again, and a pick saved then still holds."""
+def test_candidates_and_picks_from_the_first_version_are_refused_with_what_to_do(tmp_path, drawn, generator):
+    """Picture rows the first version of the step left (its candidates key: words, settings,
+    seeds; its index of `seeds`) are not read: the batch says what to do and draws nothing."""
     rows = [{"id": "SM_Barrel", "prompt": "a barrel", "picture": {"seed": 5, "count": 2}}]
     spec_path = _spec(tmp_path, rows)
     batch.run_batch(batch.load_batch(spec_path))
+    drawn.clear()
     folder = spec_path.parent / "out" / "words"
-    old = picture_step.legacy_key("a barrel", {"seed": 5, "count": 2})
-    index = folder / "rows" / "SM_Barrel" / "picture.candidates" / "candidates.json"
-    index.write_text(json.dumps({"key": old, "seeds": [5, 6]}))   # as the first version wrote it
+    old = picture_step.first_version_key("a barrel", {"seed": 5, "count": 2})
+    candidates = folder / "rows" / "SM_Barrel" / "picture.candidates"
+    index = candidates / "candidates.json"
+    for written in ({"key": old, "seeds": [5, 6]}, {"key": "another", "seeds": [5, 6]}, {"key": old, "done": [5, 6]}):
+        index.write_text(json.dumps(written))   # as the first version wrote it
+        with pytest.raises(batch.BatchError) as refused:
+            batch.load_batch(spec_path)
+        assert refused.value.problems == [
+            f"row SM_Barrel: its picture candidates were drawn by the first version of the picture step, whose "
+            f"record this version does not read: remove the folder {candidates} to draw them again"]
+    index.write_text(json.dumps({"key": "another", "done": [5, 6]}))   # another request's: drawn again, as ever
     (folder / batch.PICKS_FILE).write_text(json.dumps({"SM_Barrel": {"picture": {"choice": 6, "key": old}}}))
-    report = batch.run_batch(batch.load_batch(spec_path))
-    assert report.exit_code == 0 and drawn == [5, 6]
+    with pytest.raises(batch.BatchError) as refused:
+        batch.load_batch(spec_path)
+    assert refused.value.problems == [
+        f"row SM_Barrel: its picture pick in {folder / batch.PICKS_FILE} was made under the first version of the "
+        f"picture step, which this version does not read: pick again once its pictures are drawn"]
+    assert drawn == []

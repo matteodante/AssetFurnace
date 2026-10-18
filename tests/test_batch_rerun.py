@@ -134,10 +134,9 @@ def test_moving_a_step_reruns_from_where_the_order_changed(tmp_path, monkeypatch
     assert fake_finish.calls == ["SM_row01"] and calls == ["checks:SM_row01"]
 
 
-def test_a_state_from_before_step_fingerprints_keeps_its_unchanged_rows(tmp_path, monkeypatch,
-                                                                        fake_finish):
-    """An upgrade must not regenerate a finished batch: rows whose spec did not change keep
-    every step, and are stamped with the new per-step fingerprints."""
+def test_a_state_from_before_step_fingerprints_is_refused_with_what_to_do(tmp_path, monkeypatch, fake_finish):
+    """A batch the first runner left (its done steps without fingerprints) is not read: it
+    says so and what to do, and runs nothing again, edited or not."""
     generator = install_fake_generator(monkeypatch)
     spec_path = write_spec(tmp_path, rows=2)
     batch.run_batch(batch.load_batch(spec_path))
@@ -146,68 +145,18 @@ def test_a_state_from_before_step_fingerprints_keeps_its_unchanged_rows(tmp_path
         for step in entry["steps"].values():
             step.pop("fingerprint")
     (spec_path.parent / "out" / "test-batch" / batch.STATE_FILE).write_text(json.dumps(state))
-    _edit(spec_path, lambda spec: spec["rows"][1].update(faces=8000))
     generator.calls.clear()
     fake_finish.calls.clear()
-    batch.run_batch(batch.load_batch(spec_path))
-    # row 2 changed: rebuilt from the last run's spec copy, only its finish runs again
-    assert generator.calls == [] and fake_finish.calls == ["SM_row02"]
-    stamped = _state(spec_path)["rows"]["SM_row01"]["steps"]
-    assert all(step.get("fingerprint") for step in stamped.values())
-
-
-def _strip_step_fingerprints(spec_path: Path) -> None:
-    """As a batch made before steps had fingerprints left its state."""
-    state = _state(spec_path)
-    for entry in state["rows"].values():
-        for step in entry["steps"].values():
-            step.pop("fingerprint", None)
-    (spec_path.parent / "out" / "test-batch" / batch.STATE_FILE).write_text(json.dumps(state))
-
-
-def test_an_old_batch_given_a_new_default_step_runs_only_that_step(tmp_path, monkeypatch, fake_finish):
-    """`checks` joined the default steps: an old batch must not regenerate for it."""
-    generator = install_fake_generator(monkeypatch)
-    calls: list[str] = []
-    monkeypatch.setitem(batch.STEPS, "checks", _recording_step(calls, "checks"))
-    spec_path = write_spec(tmp_path, rows=2)
-    batch.run_batch(batch.load_batch(spec_path))
-    _strip_step_fingerprints(spec_path)
-    (spec_path.parent / "out" / "test-batch" / batch.SPEC_COPY).unlink()   # older still: no copy
-    _edit(spec_path, lambda spec: spec["defaults"].update(steps=["generate", "finish", "checks"]))
-    generator.calls.clear()
-    fake_finish.calls.clear()
-    assert batch.pending_work(batch.load_batch(spec_path), _state(spec_path), False) == {
-        "SM_row01": ("checks",), "SM_row02": ("checks",)}
-    batch.run_batch(batch.load_batch(spec_path))
+    for edit in (lambda spec: None, lambda spec: spec["rows"][1].update(faces=8000)):
+        _edit(spec_path, edit)
+        with pytest.raises(batch.BatchError) as refused:
+            batch.load_batch(spec_path)
+        assert len(refused.value.problems) == 1
+        problem = refused.value.problems[0]
+        assert "before each step kept its fingerprint (rows SM_row01, SM_row02)" in problem
+        assert "give the batch a new name to run it again, or remove its folder" in problem
     assert generator.calls == [] and fake_finish.calls == []
-    assert calls == ["checks:SM_row01", "checks:SM_row02"]
-
-
-def test_an_old_batch_with_a_new_seed_still_regenerates(tmp_path, monkeypatch, fake_finish):
-    generator = install_fake_generator(monkeypatch)
-    spec_path = write_spec(tmp_path, rows=1)
-    batch.run_batch(batch.load_batch(spec_path))
-    _strip_step_fingerprints(spec_path)
-    _edit(spec_path, lambda spec: spec["rows"][0].update(seed=99))
-    generator.calls.clear()
-    batch.run_batch(batch.load_batch(spec_path))
-    assert generator.calls == ["row01"]
-
-
-def test_an_old_batch_whose_picture_changed_regenerates(tmp_path, monkeypatch, fake_finish):
-    """The rebuilt row reads the files as they are now: a changed picture cannot pass."""
-    from batch_fakes import tiny_png
-
-    generator = install_fake_generator(monkeypatch)
-    spec_path = write_spec(tmp_path, rows=1)
-    batch.run_batch(batch.load_batch(spec_path))
-    _strip_step_fingerprints(spec_path)
-    tiny_png(tmp_path / "refs" / "row01.png", seed=77)
-    _edit(spec_path, lambda spec: spec["rows"][0].update(faces=9000))
-    generator.calls.clear()
-    batch.run_batch(batch.load_batch(spec_path))
-    assert generator.calls == ["row01"]
+    assert _state(spec_path) == state   # left as it was
 
 
 def test_a_file_option_replaced_in_place_reruns_its_step(tmp_path, monkeypatch, fake_finish):
