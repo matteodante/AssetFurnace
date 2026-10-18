@@ -37,8 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   way to the garment or material beside it, so "a golden silk tunic" is cloth, no longer
   metal; with nothing else in the clause, "a golden crown" is still metal. A set's concept
   saves the outfit's words it was drawn from (`concept.outfit`), no longer read back out of
-  its edit prompt; a set made before is refused until `python scripts/migrate_set_outfits.py`
-  writes them in, once.
+  its edit prompt; a set made before is refused, in the Pieces page too, until
+  `python scripts/migrate_set_outfits.py` writes them in, once.
 - From the code read of 18/10/2026 ([backlog](docs/plans/2026-10-18-code-read-fixes.md)):
   - the Pieces page follows a run from `output/sets/.run.json`: after a restart, or for a run
     an agent started, it shows it and can stop it; its exit code is kept beside its log;
