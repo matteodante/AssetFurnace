@@ -230,10 +230,30 @@ def _outside_spec(loaded: batch.BatchSpec) -> list[str]:
     return [f"{path}: {OUTSIDE}" for path in dict.fromkeys(paths) if not _allowed(path, roots)]
 
 
+def _outside_rows_file(spec_path: Path) -> list[str]:
+    """Over MCP (or a held studio), a JSON spec's `rows` CSV outside the allowed folders,
+    refused before the spec is loaded: loading reads it, and its first line came back in the
+    problems."""
+    roots = _ROOTS.get()
+    if roots is None or spec_path.suffix.lower() != ".json":
+        return []
+    try:
+        rows = json.loads(spec_path.read_text(encoding="utf-8")).get("rows")
+    except (OSError, ValueError, AttributeError):
+        return []
+    if not isinstance(rows, str):
+        return []
+    path = Path(rows) if Path(rows).is_absolute() else spec_path.parent / rows
+    return [] if _allowed(path, roots) else [f"{path}: {OUTSIDE}"]
+
+
 def _check(spec_path: str, intent: dict[str, Any], retry_failed: bool | None = None,
            ) -> tuple[batch.BatchSpec | None, list[str]]:
     """Load and preflight a spec: every row, or with `retry_failed` given, only the rows a
     run would execute now (a resume does not need what its done rows needed)."""
+    early = _outside_rows_file(Path(spec_path))
+    if early:
+        return None, early
     try:
         spec = batch.load_batch(Path(spec_path), intent=intent)
     except batch.BatchError as exc:
