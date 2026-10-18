@@ -1,13 +1,18 @@
 """Tint zones by material (design section 2): name the materials, segment them in every view, vote on the UVs.
 
+A trial outside the chain: 72% against the user's labels, under the bar, so the chain gives
+each piece one material (``piece_materials.py``) and only ``scripts/game_materials.py --zones``
+and ``scripts/zones_trial.py`` run this.
+
 1. **Which materials.** Qwen3.5-4B looks at a few views of the asset and picks up to six from a
    closed list, the same words the user labels with in Studio (``VOCABULARY``); or the caller
    gives the list.
 2. **Where they are.** A segmenter says, for every view of the orbit and every material, how
    likely each pixel is to be that material. Two stand behind one interface (``SEGMENTERS``):
-   ``sam3``, which segments "every region of this concept" from a phrase (gated: its owner
-   fills in Meta's form on Hugging Face), and ``sam2``, SAM 2.1's automatic regions each named
-   by Qwen3.5, all Apache-2.0 and the default until SAM 3's access is granted.
+   ``sam31`` (the default) and ``sam3``, which segment "every region of this concept" from a
+   phrase (gated: its owner fills in Meta's form on Hugging Face), and ``sam2``, SAM 2.1's
+   automatic regions each named by Qwen3.5, all Apache-2.0, for when the gated access is not
+   granted.
 3. **The vote.** The scores go back to the atlas (``multiview.reproject``), weighted by how
    squarely each view saw the surface, smoothed inside each UV island so seams and shadows do
    not split a zone; the asset's own metallic map counts for "metal". Each texel takes the
@@ -17,6 +22,7 @@
    an equipment piece back.
 
 Not admitted until it passes design section 6 against the user's points (``scripts/zones_trial.py``).
+``apply_tint`` is the formula a game would recolour a zone with; nothing in Unreal applies it.
 """
 
 from __future__ import annotations
@@ -40,6 +46,26 @@ from image_to_3dlab.materials import CHANNELS, Surface, island_labels, srgb_to_l
 from image_to_3dlab.piece_materials import PBR
 
 VOCABULARY = tuple(m for m in MATERIALS if m != "other")
+
+
+def apply_tint(albedo_linear: np.ndarray, mask: np.ndarray, means: np.ndarray,
+               tints: np.ndarray) -> np.ndarray:
+    """The tint formula, in linear light: ``out = albedo + m * g * (t - c)``.
+
+    ``g = luminance(albedo) / luminance(c)`` is the zone's brightness detail, 1 on
+    average, so a zone's mean lands exactly on its tint and ``t = c`` changes nothing.
+    """
+    from image_to_3dlab.materials import luminance
+
+    albedo = np.asarray(albedo_linear, dtype=np.float64)
+    out = albedo.copy()
+    y = luminance(albedo)
+    for i in range(min(3, len(means))):
+        yc = float(luminance(np.asarray(means[i])))
+        g = y / yc if yc > 1e-6 else np.ones_like(y)
+        delta = np.asarray(tints[i], dtype=np.float64) - np.asarray(means[i], dtype=np.float64)
+        out += mask[..., i:i + 1] * g[..., None] * delta
+    return np.clip(out, 0.0, 1.0)
 MAX_MATERIALS = 6
 SEGMENTERS = ("sam31", "sam3", "sam2")
 ZONE_PROFILES = ("creature", "equipment_part")

@@ -7,8 +7,12 @@ so skins and animations survive, and carry the source's licence record to the re
 
 Nothing is invented: roughness and metallic come from the asset's own map (Pixal3D writes
 one) or its factors, the normal map stays whatever the finish step baked from the dense
-mesh, and occlusion is the asset's own or a bake. Tint zones by material, light taken out
-at the source and learned checks arrive in their own steps, on ``multiview.py``.
+mesh, and occlusion is the asset's own or a bake.
+
+The chain gives each piece one material, proposed by a rule and corrected by a person
+(``piece_materials.py``). Tint zones by material (``material_zones.py``) are a trial outside
+the chain: they reached 72% against the user's labels, under the bar. ``make_game_materials``
+writes their tint mask only when ``game_materials.py --zones`` asks for it.
 """
 
 from __future__ import annotations
@@ -52,25 +56,6 @@ def linear_to_srgb(values: np.ndarray) -> np.ndarray:
 def luminance(linear_rgb: np.ndarray) -> np.ndarray:
     """Relative luminance Y of linear RGB (last axis)."""
     return np.asarray(linear_rgb, dtype=np.float64) @ np.array(LUMINANCE_WEIGHTS)
-
-
-def apply_tint(albedo_linear: np.ndarray, mask: np.ndarray, means: np.ndarray,
-               tints: np.ndarray) -> np.ndarray:
-    """The tint formula, in linear light: ``out = albedo + m * g * (t - c)``.
-
-    ``g = luminance(albedo) / luminance(c)`` is the zone's brightness detail, 1 on
-    average, so a zone's mean lands exactly on its tint and ``t = c`` changes nothing.
-    Unreal reproduces this same formula from the sidecar.
-    """
-    albedo = np.asarray(albedo_linear, dtype=np.float64)
-    out = albedo.copy()
-    y = luminance(albedo)
-    for i in range(min(3, len(means))):
-        yc = float(luminance(np.asarray(means[i])))
-        g = y / yc if yc > 1e-6 else np.ones_like(y)
-        delta = np.asarray(tints[i], dtype=np.float64) - np.asarray(means[i], dtype=np.float64)
-        out += mask[..., i:i + 1] * g[..., None] * delta
-    return np.clip(out, 0.0, 1.0)
 
 
 def check_record(check: str, status: str, value, threshold, message: str, details=None) -> dict:
@@ -630,8 +615,8 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
     """Write the asset back with its own maps packed as ORM, plus its sidecar and licence.
 
     Writes ``<out_dir>/<stem>.glb``, ``<prefix>_ORM.png`` per material beside it,
-    ``<stem>.materials.json`` and ``<stem>.provenance.json``. With `zones` (``material_zones.find_zones``)
-    each zoned material also gets ``<prefix>_Tint.png`` (R, G, B = its three largest materials),
+    ``<stem>.materials.json`` and ``<stem>.provenance.json``. With `zones` (``material_zones.find_zones``,
+    the zones trial, never the chain) each zoned material also gets ``<prefix>_Tint.png`` (R, G, B = its three largest materials),
     declared in ``materials[i].extras.assetfurnace`` with the zones' names. Raises with a reason for what
     cannot be packed without damage (compressed geometry, unlit materials, maps on another
     UV layout, one AO bake for several atlases); writes nothing then.

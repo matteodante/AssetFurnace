@@ -16,7 +16,7 @@ from typing import Any, Callable
 GATED = (
     ("facebook/dinov3-vitl16-pretrain-lvd1689m", "TRELLIS.2 (its image encoder)"),
     ("stabilityai/stable-fast-3d", "Stable Fast 3D"),
-    ("facebook/sam3.1", "Tint zones by material (SAM 3.1)"),
+    ("facebook/sam3.1", "Tint zones trial, outside the pipeline (SAM 3.1)"),
 )
 
 
