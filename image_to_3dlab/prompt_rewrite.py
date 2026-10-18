@@ -10,8 +10,9 @@ their production t2i sampling (`prompt_rewrite/pe_core.py`: temperature 1.0, top
 top-k 20, min-p 0, presence penalty 1.5) on that model. It is the official recipe on a
 base model, not the fine-tuned rewriter; the record says which.
 
-Nothing here calls a remote API. When the system prompt or llama.cpp is missing, the
-picture is drawn from the prompt as written and the run says so.
+Nothing here calls a remote API. Qwen-Image's setup installs both the system prompt and
+llama.cpp. When either is missing (an install from before llama.cpp came with it), the
+picture is drawn from the prompt as written, and the studio and the run say what to install.
 
 Measured 2026-10-17 on an RTX 5070 Ti: 6 to 18 s a prompt, model load included. A brief
 that leaves the background open gets one invented (a castle courtyard behind a helmet),
@@ -67,6 +68,24 @@ def llama_completion(repo: Path = REPO) -> Path | None:
         if found:
             return found[0]
     return None
+
+
+SETUP_HINT = "Setup & Status, Qwen-Image, installs it"
+
+
+def missing() -> str | None:
+    """What the rewriting still needs, in words, or None when it can run."""
+    if system_prompt_path() is None:
+        return "the rewriting prompt"
+    if llama_completion() is None:
+        return "llama.cpp"
+    return None
+
+
+def state() -> dict[str, Any]:
+    """Whether the rewriting can run here, for the studio: {"ready", "missing", "setup"}."""
+    gap = missing()
+    return {"ready": gap is None, "missing": gap, "setup": SETUP_HINT if gap else None}
 
 
 def install_system_prompt(fetch: Callable[[str], bytes] | None = None) -> Path:
@@ -127,8 +146,8 @@ def rewrite(brief: str, *, model: Path, log: Callable[[str], None] = lambda line
     when it is not installed or gave nothing usable. Holds the shared GPU lock while it runs."""
     system, binary = system_prompt_path(), llama_completion()
     if system is None or binary is None:
-        missing = "the rewriting prompt (Setup: Qwen-Image)" if system is None else "llama.cpp (vendor/llama-cpp)"
-        log(f"prompt rewriting: {missing} is not installed; drawing without rewriting")
+        gap = "the rewriting prompt" if system is None else "llama.cpp"
+        log(f"prompt rewriting: {gap} is not installed ({SETUP_HINT}); drawing without rewriting")
         return None
     command = [str(binary), "-m", str(model), "-sysf", str(system), "-p", brief, "-cnv", "-st", "--jinja",
                "-ngl", "99", "-n", str(MAX_TOKENS), "-c", str(CONTEXT), "--seed", str(SEED),

@@ -459,3 +459,23 @@ def test_every_weight_is_fetched_at_its_pinned_revision(monkeypatch):
     assert len(seen) == len(boot.WEIGHTS)
     for call in seen:
         assert len(call["revision"]) == 40 and call["revision"] == boot.REVISIONS[call["repo_id"]]
+
+
+def test_the_qwen_setup_installs_llama_cpp_for_the_prompt_rewriting(monkeypatch, tmp_path):
+    """Code read, 18/10/2026: rewriting is on by default and needs llama.cpp, which only the
+    picture judge's card installed. Qwen-Image's setup names it and fetches it now."""
+    boot = _load()
+    build = boot.style_models.LlamaBuild("llama-test-bin.zip", "0" * 64, 31_000_000)
+    monkeypatch.setattr(boot.prompt_rewrite, "llama_completion", lambda repo=None: None)
+    monkeypatch.setattr(boot.style_models, "llama_build", lambda *a: build)
+    monkeypatch.setattr(boot.prompt_rewrite, "install_system_prompt", lambda: tmp_path / "system.txt")
+    said = boot.announcement(build=False, weights=True)
+    assert "llama.cpp" in said and "30 MB" in said and "MIT" in said and "llama-test-bin.zip" in said
+    fetched = []
+    boot.install_rewriter(fetch=fetched.append)
+    assert fetched == [build]
+    # already there (the picture judge's setup, or an earlier run): nothing more is fetched or named
+    monkeypatch.setattr(boot.prompt_rewrite, "llama_completion", lambda repo=None: tmp_path / "llama-completion")
+    fetched.clear()
+    boot.install_rewriter(fetch=fetched.append)
+    assert fetched == [] and "llama.cpp" not in boot.announcement(build=False, weights=True)

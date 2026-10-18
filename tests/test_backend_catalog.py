@@ -658,3 +658,11 @@ def test_the_autorig_card_names_its_bpy_beside_the_blender_app():
 
     entry = next(b for b in bc.catalog_status()["backends"] if b["id"] == "autorig")
     assert f"bpy {SKINTOKENS_BPY}" in entry["caveat"] and "Blender" in entry["caveat"]
+
+
+def test_qwen_image_counts_the_llama_cpp_its_prompt_rewriting_runs_on():
+    """Setup marks Qwen-Image ready only with what its default (prompt rewriting) needs."""
+    from image_to_3dlab.style import models
+
+    paths = {w.path for w in bc.BY_ID["qwen-image"].weights}
+    assert (models.llama_dir(bc.REPO) in paths) == (models.llama_build() is not None)

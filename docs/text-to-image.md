@@ -13,10 +13,12 @@ Create and `scripts/text_image.py`) therefore runs with these, all from sources 
 | Prompt rewriting | QwenLM's t2i system prompt and production sampling (temperature 1.0, top-p 0.95, top-k 20, presence penalty 1.5) | Qwen-Image-2.1 README ("we recommend using the official prompt rewriting models"); `prompt_rewrite/prompts/system_prompt_t2i.txt` and `pe_core.py` at commit `ab96caa` |
 
 The rewriting runs here, never through an API: the official system prompt on Qwen3-VL-8B,
-the text encoder Qwen-Image already installs, with llama.cpp from `vendor/llama-cpp`. The
-fine-tuned rewriters the README names (Qwen-Image-2.1-PE-T2I and -PE-I2I, Qwen3.5-VL 9B)
-are not installed. Without the system prompt or llama.cpp the run says so and draws from
-the prompt as written. The brief sent to the rewriter already asks for a transparent
+the text encoder Qwen-Image already installs, with llama.cpp from `vendor/llama-cpp`.
+Qwen-Image's setup installs both, llama.cpp included (its pinned release, about 30 MB, MIT; the
+picture judge uses the same build). The fine-tuned rewriters the README names
+(Qwen-Image-2.1-PE-T2I and -PE-I2I, Qwen3.5-VL 9B) are not installed. Without the system
+prompt or llama.cpp (an install from before) the Create sheet says what is missing, the
+run and the picture's record say so too, and the picture is drawn from the prompt as written. The brief sent to the rewriter already asks for a transparent
 background: given a bare "a knight's helmet" it invented a castle courtyard behind it.
 
 ## Measured on this PC (RTX 5070 Ti 16 GB, Q8_0, sd-cli master-961-60423ab)

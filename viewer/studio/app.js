@@ -26,6 +26,7 @@ let assets = [];
 let filter = 'all', query = '', showHidden = false, limit = 30;
 let current = null;
 let engines = [], presets = [], recipes = null, busy = false, playNext = null;
+let rewrite = null;      // whether text to image can rewrite its prompt here (/api/image/defaults)
 let styleBible = null;   // the active style bible's name, offered (never forced) where pictures are drawn
 let making = null, viewingMaking = false;  // the asset Create is making right now
 let stepsAsset = null;
@@ -277,12 +278,13 @@ async function loadTools() {
   presets = animate?.installed ? animate.presets : [];
   recipes = await fetch('/api/recipes').then((r) => r.json()).catch(() => null);
   styleBible = (await fetch('/api/style-bible').then((r) => r.json()).catch(() => null))?.active || null;
+  rewrite = (await fetch('/api/image/defaults').then((r) => r.json()).catch(() => null))?.rewrite || null;
 }
 
 // ------------------------------------------------------------------ Create
 function openCreateSheet() {
   closeSheet($('stage'));
-  openCreate({ stage: $('stage'), recipes, engines, presets, styleBible, onStart: (plan) => startChain(plan), onReference: openReferenceSheet });
+  openCreate({ stage: $('stage'), recipes, engines, presets, styleBible, rewrite, onStart: (plan) => startChain(plan), onReference: openReferenceSheet });
 }
 
 function openReferenceSheet() {

@@ -583,3 +583,11 @@ def test_the_viewer_offers_clay_and_normal_views():
     assert "applyLook(meshesOf(view.materials)" in viewer
     guide = (REPO / "viewer" / "studio" / "pages.js").read_text(encoding="utf-8")
     assert "clay" in guide and "normals" in guide and "face count" in guide
+
+
+@needs_node
+def test_the_create_sheet_says_when_the_prompt_is_not_rewritten():
+    out = _run("create.js", """
+      console.log(JSON.stringify([m.rewriteNote({ ready: false, missing: 'llama.cpp', setup: 'Setup & Status, Qwen-Image, installs it' }),
+        m.rewriteNote({ ready: true }), m.rewriteNote(null)]));""")
+    assert "llama.cpp" in out[0] and "Qwen-Image" in out[0] and out[1:] == ["", ""]

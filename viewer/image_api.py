@@ -187,7 +187,12 @@ def run_job(job: ImageJob, manager: ImageJobManager,
             return gpu_lock.gpu(session, path=path, poll=GPU_POLL, sleep=waiting)
 
         if job.settings.get("rewrite") and not job.extra_args:
-            job.set_status("queued", message="Rewriting the prompt (Qwen-Image's own recipe, on this machine)")
+            from image_to_3dlab import prompt_rewrite
+
+            gap = prompt_rewrite.missing()
+            job.set_status("queued", message="Rewriting the prompt (Qwen-Image's own recipe, on this machine)"
+                           if gap is None else f"Drawing without prompt rewriting: {gap} is not installed "
+                                               f"({prompt_rewrite.SETUP_HINT})")
         sent, notes = prepare_prompt(job.prompt, job.settings, weights=weights, references=bool(job.extra_args),
                                      log=job.log_lines.append, lock_path=text_image.GPU_LOCK, lock=gpu)
         if job.cancel_requested:

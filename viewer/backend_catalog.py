@@ -623,6 +623,12 @@ CATALOG: tuple[Backend, ...] = (
                       _prompt_rewrite.SYSTEM_PROMPT_BYTES, _prompt_rewrite.SYSTEM_PROMPT_FILE,
                       note="The official rewriting step, run on the text encoder above with "
                            "llama.cpp. Without it pictures are drawn from the prompt as written."),
+            # llama.cpp runs the rewriting: the same pinned build and folder as the picture judge's
+            *((WeightSet(f"llama.cpp {_style_models.LLAMA_TAG} (runs the prompt rewriting)",
+                         _style_models.LLAMA_RELEASES + _style_models.llama_build().archive,
+                         _style_models.llama_build().size, _style_models.llama_dir(REPO),
+                         note="Checked against its SHA-256. The picture judge uses the same build."),)
+              if _style_models.llama_build() is not None else ()),
         ),
     ),
     Backend(
@@ -790,7 +796,8 @@ CATALOG: tuple[Backend, ...] = (
         best_for=("Picks the best of several pictures of each piece in Characters in pieces, by asking "
                   "Qwen3-VL whether a picture shows the piece and how well it matches the cut."),
         tradeoff=("Optional. Without it a set's pictures are picked by their silhouette only, and the run "
-                  "says so. It uses Qwen-Image's own Qwen3-VL model, so set up Qwen-Image first."),
+                  "says so. It uses Qwen-Image's own Qwen3-VL model and the llama.cpp Qwen-Image's setup "
+                  "installs, so after Qwen-Image there is nothing more to fetch here."),
         license_name=_style_models.LLAMA_LICENSE,
         license_url="https://github.com/ggml-org/llama.cpp/blob/master/LICENSE",
         install="scripts/bootstrap_style.py --only llama",

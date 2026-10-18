@@ -47,8 +47,14 @@ export function freshSeed(random = Math.random) {
   return Math.floor(random() * 2147483647);
 }
 
+/** What the Create sheet says when text to image cannot rewrite its prompt here (`/api/image/defaults`'s `rewrite`). */
+export function rewriteNote(rewrite) {
+  if (!rewrite || rewrite.ready !== false) return '';
+  return `Pictures are drawn without the official prompt rewriting: ${rewrite.missing || 'part of it'} is not installed. ${rewrite.setup || 'Setup & Status, Qwen-Image, installs it'}.`;
+}
+
 /** Show the Create sheet over the viewer. `onStart(plan)` runs it. */
-export function openCreate({ stage, recipes, engines, presets, styleBible = null, onStart, onReference }) {
+export function openCreate({ stage, recipes, engines, presets, styleBible = null, rewrite = null, onStart, onReference }) {
   const sheet = document.createElement('div');
   sheet.className = 'sheet';
   stage.appendChild(sheet);
@@ -96,6 +102,7 @@ export function openCreate({ stage, recipes, engines, presets, styleBible = null
         ${state.model.newEachTime ? '' : `<label class="field">3D seed<input type="number" data-model="seed" min="0" step="1" value="${state.model.seed}"></label>`}
         <label class="check"><input type="checkbox" data-k="keep" ${state.keep ? 'checked' : ''}><span>Keep everything <span class="hint">textures, in-between meshes and resume files, for digging into a bad result. Takes a lot more disk.</span></span></label></details>` : ''}
       ${active.includes('finished') ? `<label class="field">Detail<select data-k="faces">${FACES.map(([v, t]) => `<option value="${v}" ${v === state.faces ? 'selected' : ''}>${t}</option>`).join('')}</select></label>` : ''}
+      ${active.includes('picture') && rewriteNote(rewrite) ? `<p class="warning">${esc(rewriteNote(rewrite))}</p>` : ''}
       <p class="error" data-error hidden></p>
       <div class="row end"><span class="hint">${active.length} step${active.length === 1 ? '' : 's'}${active.includes('picture') ? ' · the picture uses Qwen-Image, run on this machine' : ''}</span><button type="submit" class="primary">Make it</button></div>
     </form>`;

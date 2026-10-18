@@ -349,6 +349,13 @@ def mlx_attention_status(vendor: Path | None = None, dispatch: Path | None = Non
     }
 
 
+def _prompt_rewrite_state() -> dict:
+    """Whether text to image's prompt rewriting can run, and what to install when it cannot."""
+    from image_to_3dlab import prompt_rewrite
+
+    return prompt_rewrite.state()
+
+
 def backends_payload() -> dict:
     """The Generate tab's routes. `runs_here` lets the page drop a route this machine cannot
     run: an NVIDIA pod was offered the two Mac-only Hunyuan-MLX routes."""
@@ -2532,6 +2539,7 @@ class Handler(SimpleHTTPRequestHandler):
         if parts == ["api", "image", "defaults"]:
             self._send_json(200, {
                 "defaults": image_api.T2I_DEFAULTS,
+                "rewrite": _prompt_rewrite_state(),
                 "samplers": list(image_api.SAMPLERS),
                 "installed": image_api.is_installed(),
                 "license": {"name": image_api.LICENSE_NAME, "url": image_api.LICENSE_URL,

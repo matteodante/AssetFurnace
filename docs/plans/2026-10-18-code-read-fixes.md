@@ -11,7 +11,7 @@ Stato: **fatto** (PR), **in corso**, **da fare**, **respinto** (motivo).
 | # | Punto | Stato |
 | --- | --- | --- |
 | P1-1 | Armi e scudi di un set senza controlli, licenza e coda di revisione (`_finish_set` controllava solo i pezzi adattati) | fatto: profilo `weapon_or_shield`, provenienza legata al GLB finito, voce `<set>-<corpo>-<slot>` nella coda |
-| P1-2 | Riscrittura del prompt attiva di default ma llama.cpp lo installa solo la scheda del giudice | da fare |
+| P1-2 | Riscrittura del prompt attiva di default ma llama.cpp lo installa solo la scheda del giudice | fatto: il Setup di Qwen-Image installa llama.cpp (30 MB, MIT) e lo conta per "ready"; Create, il lavoro e la provenienza dicono cosa manca e dove installarlo |
 
 ## Resti delle decisioni cambiate
 
