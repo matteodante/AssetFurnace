@@ -73,11 +73,11 @@ def llama_completion(repo: Path = REPO) -> Path | None:
 SETUP_HINT = "Setup & Status, Qwen-Image, installs it"
 
 
-def missing(repo: Path = REPO) -> str | None:
+def missing() -> str | None:
     """What the rewriting still needs, in words, or None when it can run."""
     if system_prompt_path() is None:
         return "the rewriting prompt"
-    if llama_completion(repo) is None:
+    if llama_completion() is None:
         return "llama.cpp"
     return None
 
