@@ -692,8 +692,8 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
         "orm": orm,  # False when every material is plain factors: no ORM texture to find
         "tint": tint,
         "opacity_mask": opacity_mask,
-        # a weapon or shield: its pivot on its grip, and a socket of that name there (made at
-        # import from the GLB's SOCKET_grip node, or by unreal_import_check.py)
+        # a weapon or shield: its pivot on its grip, and a socket of that name there (UE 5.8's
+        # import makes none from the GLB's SOCKET_grip node: unreal_import_check.py adds it)
         "grip_socket": {"name": "grip"} if grip else None,
         "lods": lods,
         "collision": collision,
@@ -755,8 +755,10 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
             lo, hi = measured.get("box_cm") or [[0, 0, 0], [0, 0, 0]]
             on = all(low - BASE_TOLERANCE_CM <= 0.0 <= high + BASE_TOLERANCE_CM for low, high in zip(lo, hi))
             off = sum(v * v for v in where) ** 0.5
+            # a socket the check added sits at the pivot by construction: then only "on the model" is measured
+            by = "added by the check at the pivot" if got.get("by") == "check" else "made by the import"
             results.append(_check("grip", off <= BASE_TOLERANCE_CM and on,
-                                  f"grip socket {off:.1f} cm from the pivot, which is "
+                                  f"grip socket {by}, {off:.1f} cm from the pivot, which is "
                                   + ("on the model" if on else "outside the model")))
     if expected.get("collision") in ("box", "convex", "unreal"):
         key = "box_elems" if expected["collision"] == "box" else "convex_elems"

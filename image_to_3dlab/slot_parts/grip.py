@@ -35,26 +35,34 @@ from image_to_3dlab.slot_parts.camera import Camera
 class GripClass:
     phrase: str        # what the judge is asked to find; "" when the picture cannot show it
     size_cm: float     # a usual real length (the longest side), a person changes it
-    words: str         # how the words name it (a regular expression)
+    words: str         # how the words name it: whole words, plurals and the usual compounds
     # where along the judge's box (top 0, bottom 1) the hand closes, and half the band it holds
     hold: tuple[float, float] = (0.5, 0.5)
 
 
 CLASSES = {
-    "dagger": GripClass("the grip of the dagger, the part a hand holds", 35, r"dagger|knife|dirk|stiletto"),
-    "bow": GripClass("the grip in the middle of the bow, where a hand holds it", 140, r"bow\b|bows\b"),
-    "axe": GripClass("the handle of the axe, where a hand holds it", 80, r"axe|hatchet", (0.8, 0.12)),
-    "hammer": GripClass("the handle of the hammer, where a hand holds it", 80, r"hammer|maul", (0.8, 0.12)),
-    "mace": GripClass("the handle of the mace, where a hand holds it", 70, r"mace|morning ?star|flail|club",
-                      (0.75, 0.15)),
+    "dagger": GripClass("the grip of the dagger, the part a hand holds", 35,
+                        r"\b(?:daggers?|knife|knives|dirks?|stilettos?)\b"),
+    # not "elbow" nor "rainbow": only a bow, or a long, short, cross or recurve one
+    "bow": GripClass("the grip in the middle of the bow, where a hand holds it", 140,
+                     r"\b(?:long|short|cross)?bows?\b"),
+    # not "waxed": an axe, a battle-axe or a greataxe
+    "axe": GripClass("the handle of the axe, where a hand holds it", 80,
+                     r"\b(?:battle|great|pole|war|hand)?-?axes?\b|\bhatchets?\b", (0.8, 0.12)),
+    "hammer": GripClass("the handle of the hammer, where a hand holds it", 80,
+                        r"\b(?:war)?hammers?\b|\bmauls?\b", (0.8, 0.12)),
+    "mace": GripClass("the handle of the mace, where a hand holds it", 70,
+                      r"\b(?:maces?|morning ?stars?|flails?|clubs?)\b", (0.75, 0.15)),
+    # not "balance" nor "spike"
     "spear": GripClass("the shaft of the spear, where a hand holds it", 220,
-                       r"spear|lance|pike|halberd|glaive|trident|polearm", (0.6, 0.12)),
-    "staff": GripClass("the middle of the staff, where a hand holds it", 170, r"staff|wand|sceptre|scepter|rod\b",
-                       (0.5, 0.12)),
+                       r"\b(?:spears?|lances?|pikes?|halberds?|glaives?|tridents?|polearms?)\b", (0.6, 0.12)),
+    "staff": GripClass("the middle of the staff, where a hand holds it", 170,
+                       r"\b(?:(?:quarter)?staff|staves|wands?|sceptres?|scepters?|rods?)\b", (0.5, 0.12)),
     "sword": GripClass("the grip of the sword, the part a hand holds", 100,
-                       r"sword|blade|sabre|saber|katana|scimitar|rapier|falchion|claymore"),
+                       r"\b(?:(?:long|short|great|broad|bastard)?swords?|blades?|sabres?|sabers?|katanas?|scimitars?"
+                       r"|rapiers?|falchions?|claymores?)\b"),
     "weapon": GripClass("the handle of the weapon, the part a hand holds", 100, r"$^"),
-    "shield": GripClass("", 75, r"shield|buckler"),
+    "shield": GripClass("", 75, r"\b(?:shields?|bucklers?)\b"),
 }
 QUESTION = "Locate {phrase}, output its bbox coordinates using JSON format."
 WINDOW = 0.025       # a person's point: this share of the picture around it
@@ -259,7 +267,7 @@ def correct_in(folder: Path, slot: str, *, at: tuple[float, float] | None = None
 
 def picture_point(record: dict) -> list[float] | None:
     """Where the grip is on its picture, as fractions of its width and height (the studio's
-    marker): the middle of its box, else its point seen through the camera."""
+    marker): its point seen through the camera, else the middle of its box."""
     try:
         w, h = _size(Path(record["picture"]))
     except (OSError, KeyError, ValueError):

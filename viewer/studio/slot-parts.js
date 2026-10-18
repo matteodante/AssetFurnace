@@ -18,7 +18,6 @@ export const MODES = [
 const SLOT_WORDS = { helmet: 'Helmet', torso: 'Torso', shoulders: 'Shoulders', gloves: 'Gloves', legs: 'Legs',
   boots: 'Boots', weapon: 'Weapon', shield: 'Shield', concept: 'Outfit' };
 
-/** A slot's name in words. */
 // The base-body choices; redrawn whenever the list of bodies changes, so a body just
 // registered can be picked at once.
 export function bodyOptions(bodies) {
@@ -49,7 +48,8 @@ export function slotLabel(name) {
   return SLOT_WORDS[name] || name;
 }
 
-/** Library characters that can be a base body: rigged humanoids made from a picture with Pixal3D. */
+/** Library characters that can be a base body: rigged, with the picture and the model they came from
+ * (the server checks the Pixal3D camera when the body is registered). */
 export function bodyCandidates(assets = []) {
   return assets.filter((a) => a.kind === 'character' && a.rigged && a.picture && a.model
     && /\.glb$/i.test(a.model) && (a.family === undefined || a.family === null || a.family === 'humanoid'));

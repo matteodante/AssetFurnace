@@ -298,7 +298,8 @@ def winding_number(points: np.ndarray, triangles: np.ndarray) -> np.ndarray:
         a, b, c = (triangles[:, k] - p for k in range(3))
         la, lb, lc = (np.linalg.norm(x, axis=1) for x in (a, b, c))
         num = np.einsum("ij,ij->i", a, np.cross(b, c))
-        den = la * lb * lc + np.einsum("ij,ij->i", a, b) * lc + np.einsum("ij,ij->i", b, c) * la             + np.einsum("ij,ij->i", c, a) * lb
+        den = (la * lb * lc + np.einsum("ij,ij->i", a, b) * lc + np.einsum("ij,ij->i", b, c) * la
+               + np.einsum("ij,ij->i", c, a) * lb)
         total[i] = np.arctan2(num, den).sum() / (2 * np.pi)
     return total
 

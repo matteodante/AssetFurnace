@@ -69,3 +69,14 @@ def test_missing_parts_say_how_to_get_them(tmp_path, monkeypatch):
     monkeypatch.setattr(judge.models, "llama_server", lambda repo=None: None)
     with pytest.raises(judge.models.MissingModel, match="bootstrap_style.py --only llama"):
         judge.find_parts(hub=tmp_path)
+
+
+def test_the_servers_log_file_is_closed_when_it_stops(tmp_path):
+    """Code read 18/10/2026: the log stayed open until garbage collection, locked on Windows."""
+    from image_to_3dlab.style import judge
+
+    server = judge.LlamaServer.__new__(judge.LlamaServer)
+    server.process = None
+    handle = server._out = open(tmp_path / "judge.log", "wb")  # noqa: SIM115 - the test closes it through _stop
+    server._stop()
+    assert handle.closed and server._out is None

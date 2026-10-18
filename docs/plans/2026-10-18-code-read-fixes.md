@@ -65,7 +65,7 @@ Stato: **fatto** (PR), **in corso**, **da fare**, **respinto** (motivo).
 | Q-1 | Un modulo comune dello studio per richieste e percorsi (header, body, "dentro output/") | fatto: `viewer/request_utils.py` (controllo della richiesta, lettura del body, `inside_output` con una regola sola); `blender_versions.safe_path` resta più stretto e lo dice |
 | Q-2 | Una sola conversione glTF→Blender e un solo `pack_orm` | da fare |
 | Q-3 | Dividere `blender_fit_parts.main` e `run_set`/`_finish_set` | da fare |
-| Q-4 | Commenti falsi o che raccontano la storia | da fare |
-| Q-5 | Test di parità fra le costanti del catalogo e i moduli d'origine | da fare |
-| Q-6 | Parole intere nelle regex delle classi d'arma (bow/elbow, axe/waxed) | da fare |
-| Q-7 | `batch.py`: hash dei file in memoria per percorso+mtime, niente calcolo doppio fra `fingerprint` e `step_fingerprints` | da fare |
+| Q-4 | Commenti falsi o che raccontano la storia | fatto: `slot_parts.py` (scelta dal punteggio, comandi `grip` e `materials`), socket `grip` (l'import di UE 5.8 non lo crea: il controllo dice chi l'ha fatto), `picture_point`, `_heading`, `slot_parts/__init__`, `clip_library`, `body.dressing_words`, `request-header.js`, Guida 6-7-8, `slot-parts.js`, `text_image` e README senza cronologia, righe unite in `fit.py` e `runs.py`; il log del giudice ora si chiude; MoGe-2 dice perché non stima; via un `if` ridondante in `bootstrap_style` |
+| Q-5 | Test di parità fra le costanti del catalogo e i moduli d'origine | fatto: c'erano già per MODES, SAMPLERS e le scelte del concept; aggiunti FAMILIES, PICTURE_SIZE e PICTURE_MAX (un test di guardia: sul codice di oggi passa) |
+| Q-6 | Parole intere nelle regex delle classi d'arma (bow/elbow, axe/waxed) | fatto: parole intere, plurali e composti (longbow, battle-axe, warhammer, quarterstaff, greatsword); non più elbow, rainbow, waxed, balance, spike, prod, grimace |
+| Q-7 | `batch.py`: hash dei file in memoria per percorso+mtime, niente calcolo doppio fra `fingerprint` e `step_fingerprints` | fatto: `_source()` comune; `remembered_digests()` tiene gli hash per percorso, mtime e dimensione solo dentro `with_picks` e `fingerprints()`, così un controllo più tardi rilegge un file cambiato |

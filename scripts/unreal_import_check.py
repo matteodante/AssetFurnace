@@ -522,8 +522,9 @@ def _inside(stage: str, job_path: str) -> None:  # pragma: no cover - runs in Un
         return got
 
     def grip_socket(export):
-        """A weapon's `grip` socket: the one Interchange made from the GLB's SOCKET_grip node,
-        else one made here, at the pivot. Where it is, as the game will read it."""
+        """A weapon's `grip` socket. UE 5.8's glTF import makes none from the GLB's SOCKET_grip
+        node (measured 17/10/2026), so it is added here, at the pivot; one an import did make is
+        kept. Where it is, as the game will read it, and who made it."""
         mesh = mesh_of(export)
         socket, made_by = mesh.find_socket("grip"), "import"
         if socket is None:

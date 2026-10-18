@@ -173,3 +173,18 @@ def test_a_list_of_choices_is_checked_name_by_name():
     problems = step_catalog.check("animate", {"presets": ["idle", "moonwalk"]})
     assert problems == [f"presets: moonwalk not one of {', '.join(step_catalog.choices(step_catalog.get('animate').param('presets')))}"]
     assert step_catalog.check("animate", {"presets": "idle"})[0].startswith("presets must be a list")
+
+
+def test_the_catalogues_copied_constants_are_their_modules_own():
+    """Code read 18/10/2026: the catalogue writes these out so it imports nothing heavy; a change
+    in the module they come from must show here, not in a batch that refuses a valid value."""
+    from image_to_3dlab import creature_family, text_image
+    from image_to_3dlab.concept import prompts
+
+    assert step_catalog.SAMPLERS == text_image.SAMPLERS
+    assert step_catalog.MODES == prompts.MODES
+    assert step_catalog.STRUCTURES == tuple(prompts.STRUCTURES) and step_catalog.GUIDES == prompts.GUIDES
+    assert step_catalog.VIEWS == tuple(prompts.VIEWS)
+    assert step_catalog.FAMILIES == ("auto", *creature_family.FAMILIES)
+    assert step_catalog.PICTURE_SIZE == text_image.T2I_DEFAULTS["width"] == text_image.T2I_DEFAULTS["height"]
+    assert step_catalog.PICTURE_MAX == text_image.MAX_SIZE

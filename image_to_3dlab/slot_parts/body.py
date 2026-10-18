@@ -40,8 +40,9 @@ def dressing(kind, words: str = "") -> dict:
 
 
 def dressing_words(record: dict) -> str:
-    """The words the outfit concept keeps the body's clothes with. A body registered before the
-    choice existed was made in a bodysuit."""
+    """The words the outfit concept keeps the body's clothes with. A body.json written before the
+    choice existed (16/10/2026) has no `dressing`: those bodies were all made in a bodysuit, so
+    that is what it reads as. Kept while such bodies are registered."""
     chosen = record.get("dressing") or {"kind": "bodysuit", "words": ""}
     return ", ".join(part for part in (DRESSINGS.get(chosen.get("kind"), ""), chosen.get("words") or "") if part)
 

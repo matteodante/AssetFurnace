@@ -14,17 +14,13 @@ Two things are deliberate:
 **The model is the Turbo, run with its own schedule.** Qwen-Image 2.1 comes in two
 checkpoints. The base one is meant for about 40 steps with guidance (`--cfg-scale 6.0` in
 the sd.cpp guide); the Turbo is distilled for 8 steps at cfg 1.0 with its own sigmas
-(`--sigmas qwen-image-2.1-turbo`). Until 2026-10-16 this file ran the base checkpoint with
-the Turbo's numbers (8 steps, cfg 1.0, the default schedule): the sampler stopped half
-way, and pictures came out soft, with frayed edges and faint "ghost" shapes, worst when
-reference pictures were given. Compared on six subjects with the same prompts and seeds
-(knight, knight with three references, a helmet on its own, wolf, well, sword; RTX 5070
-Ti): base at 8 steps was blurred every time; base at 40 steps and cfg 6 was clean but took
-80 s, and 8 minutes with three references; the Turbo was as clean or cleaner in 15 s, 48 s
-with three references. At 1536 px the Turbo added things nobody asked for around the
-subject (pauldrons around a sword, a mask for a helmet), so the default was 1024 px.
-The step count is the length of the sigma list, so `steps` is recorded but not taken from
-the form.
+(`--sigmas qwen-image-2.1-turbo`). The base checkpoint at the Turbo's numbers stops half way:
+pictures come out soft, with frayed edges and faint "ghost" shapes, worst with reference
+pictures. Measured on six subjects with the same prompts and seeds (RTX 5070 Ti): the base
+at 8 steps was blurred every time; at 40 steps and cfg 6 it was clean but took 80 s, and 8
+minutes with three references; the Turbo was as clean or cleaner in 15 s, 48 s with three
+references. The step count is the length of the sigma list, so `steps` is recorded but not
+taken from the form.
 
 **Text to image runs as the model card says (user decision, 2026-10-17).** The Turbo's card
 and the Qwen-Image-2.1 README give the resolution presets (2048x2048 and six other ratios),

@@ -1579,3 +1579,22 @@ def test_a_step_folder_that_cannot_be_cleared_fails_its_row(tmp_path, monkeypatc
     report = batch.run_batch(batch.load_batch(spec_path))
     assert report.failed["SM_row01"].startswith("generate: could not clear")
     assert report.counts == {"failed": 1, "done": 1}
+
+
+def test_each_file_is_hashed_once_for_every_fingerprint_a_row_is_asked(tmp_path, monkeypatch):
+    """Code read 18/10/2026: with_picks asked every step's key, and each key hashed every image
+    and GLB again; fingerprint and step_fingerprints computed the same source twice."""
+    asset = tmp_path / "crate.glb"
+    tiny_glb(asset, "")
+    asset.with_suffix(".provenance.json").write_text("{}")
+    row = batch.BatchRow(id="SM_Crate", images=(tiny_png(tmp_path / "c.png"),), asset=asset, kind="prop",
+                         faces=None, profile=None, steps=("finish", "checks", "export_unreal"), backend="pixal3d")
+    hashed = []
+    real = batch.sha256_file
+    monkeypatch.setattr(batch, "sha256_file", lambda path: hashed.append(Path(path).name) or real(path))
+    whole, steps = row.fingerprints()
+    assert sorted(hashed) == ["c.png", "crate.glb", "crate.provenance.json"]
+    assert (whole, steps) == (row.fingerprint(), row.step_fingerprints())   # the same answers as before
+    hashed.clear()
+    batch.with_picks(row, {step: {"key": "old", "choice": 1} for step in row.steps})
+    assert sorted(hashed) == ["c.png", "crate.glb", "crate.provenance.json"]

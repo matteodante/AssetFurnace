@@ -9,7 +9,7 @@ sample is not CC0, and its `models-variation` carry a licence per file.
 
 Every file is pinned to one commit and one SHA-256, so what lands on disk is exactly what
 was read and licence-checked on 2026-10-16. `scripts/bootstrap_clip_library.py` fetches
-them, after asking; `scripts/chain_retarget.py` will carry them onto a rig.
+them, after asking; `scripts/chain_retarget.py` carries them onto a rig.
 """
 
 from __future__ import annotations

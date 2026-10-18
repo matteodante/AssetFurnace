@@ -453,7 +453,9 @@ def run(job):
         if job.get("collision") in ("box", "convex"):
             _collision(bpy, mesh, job["collision"], names["collision"][job["collision"]])
             report["collision"] = job["collision"]
-        if job.get("grip"):   # the socket the game attaches it by, where the pivot is (Interchange reads SOCKET_)
+        # where the game attaches it, at the pivot: a SOCKET_grip node in the GLB. UE 5.8's glTF import
+        # makes no socket from it (measured 17/10/2026): unreal_import_check.py adds one
+        if job.get("grip"):
             socket = bpy.data.objects.new("SOCKET_grip", None)
             bpy.context.scene.collection.objects.link(socket)
             report["grip_socket"] = "SOCKET_grip"
