@@ -224,7 +224,8 @@ def rgba_prompt(words: str) -> str:
 
 def prepare_prompt(prompt: str, settings: dict[str, Any], *, weights: dict[str, Path] | None = None,
                    references: bool = False, log: Callable[[str], None] = lambda line: None,
-                   lock_path: Path | None = None, lock: Callable | None = None) -> tuple[str, dict[str, Any]]:
+                   lock_path: Path | None = None, lock: Callable | None = None,
+                   on_process: Callable | None = None) -> tuple[str, dict[str, Any]]:
     """The prompt sd-cli gets, and what the record should say about it.
 
     Text to image with `rewrite`: QwenLM's rewriting (image_to_3dlab/prompt_rewrite.py) on a
@@ -242,7 +243,8 @@ def prepare_prompt(prompt: str, settings: dict[str, Any], *, weights: dict[str, 
         brief = rgba_prompt(prompt) if settings.get("transparent") else prompt
         model = (weights or resolve_weights())["llm"]
         found = prompt_rewrite.rewrite(brief, model=model, log=log, lock_path=lock_path,
-                                       **({"lock": lock} if lock else {}))
+                                       **({"lock": lock} if lock else {}),
+                                       **({"on_process": on_process} if on_process else {}))
         if found is not None:
             sent = found.pop("prompt")
             notes["prompt_rewrite"] = {"applied": True, **found}

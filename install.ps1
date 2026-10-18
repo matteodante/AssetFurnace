@@ -58,7 +58,7 @@ if (Test-Path (Join-Path $Dir ".git")) {
     }
     git -C $Dir fetch --tags --force --quiet $Repo "+refs/heads/*:refs/remotes/origin/*"
 } elseif ((Test-Path $Dir) -and (Get-ChildItem $Dir -Force | Select-Object -First 1)) {
-    Die "$Dir exists and is not an image-to-3dlab install. Set `$env:I3D_DIR to another place."
+    Die "$Dir exists and is not an AssetFurnace install. Set `$env:I3D_DIR to another place."
 } else {
     Say "Installing into $Dir"
     git clone --quiet $Repo $Dir

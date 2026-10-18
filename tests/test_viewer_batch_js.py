@@ -84,3 +84,25 @@ def test_the_studio_has_a_batches_button_wired_to_the_page():
     page = (REPO / "viewer" / "studio" / "batch.js").read_text(encoding="utf-8")
     assert "closeSheet(" in page   # a sheet over the viewer puts the previous one away
     assert "'X-AssetFurnace-Request': 'batch'" in page
+
+
+def test_a_skipped_row_is_named_and_counted():
+    """Code read 18/10/2026: wait_batch knows `skipped`; the page showed the raw word and left it
+    out of the summary."""
+    import json as _json
+    import shutil as _shutil
+    import subprocess as _subprocess
+    from pathlib import Path as _Path
+
+    node = _shutil.which("node")
+    if node is None:
+        import pytest as _pytest
+
+        _pytest.skip("Node is required to execute browser ES modules")
+    url = (_Path(__file__).resolve().parents[1] / "viewer" / "studio" / "batch.js").as_uri()
+    program = (f"import * as m from {_json.dumps(url)};\n"
+               "console.log(JSON.stringify([m.statusLabel('skipped'), "
+               "m.summaryLine({ total: 3, counts: { done: 2, skipped: 1 } })]));")
+    out = _json.loads(_subprocess.run([node, "--input-type=module", "--eval", program], check=True,
+                                      capture_output=True, text=True).stdout)
+    assert out == ["Skipped", "2 of 3 done · 1 skipped"]

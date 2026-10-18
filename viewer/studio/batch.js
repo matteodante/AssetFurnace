@@ -7,7 +7,8 @@ import { closeSheet } from './pages.js';
 
 const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const STATUS_LABELS = { queued: 'Waiting', running: 'Running', done: 'Done', failed: 'Failed', waiting: 'Pick one' };
+const STATUS_LABELS = { queued: 'Waiting', running: 'Running', done: 'Done', failed: 'Failed', waiting: 'Pick one',
+  skipped: 'Skipped' };
 
 /** A row's status in words. */
 export function statusLabel(status) {
@@ -20,6 +21,7 @@ export function summaryLine({ total = 0, counts = {}, active = null }) {
   const parts = [`${counts.done || 0} of ${total} done`];
   if (counts.failed) parts.push(`${counts.failed} failed`);
   if (counts.waiting) parts.push(`${counts.waiting} to pick`);
+  if (counts.skipped) parts.push(`${counts.skipped} skipped`);
   if (left) parts.push(`${left} to go`, active ? 'running now' : 'stopped');
   return parts.join(' · ');
 }

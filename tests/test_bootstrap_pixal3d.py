@@ -560,3 +560,16 @@ def test_a_prebuilt_with_the_wrong_checksum_is_deleted_and_never_unpacked(tmp_pa
     with pytest.raises(SystemExit, match="checksum"):
         boot.install_prebuilt("windows-nvidia")
     assert list((tmp_path / "vendor").iterdir()) == []
+
+
+def test_moge_on_an_old_nvidia_driver_is_said_at_install():
+    """Code read 18/10/2026: MoGe-2's PyTorch is CUDA 12.8; on an older driver it ran on the CPU
+    (minutes a picture) without a word."""
+    import bootstrap_pixal3d
+
+    from image_to_3dlab import host
+
+    said = bootstrap_pixal3d.moge_driver_warning((12, 4), platform=host.NVIDIA)
+    assert said and "12.4" in said and "driver" in said
+    assert bootstrap_pixal3d.moge_driver_warning((12, 8), platform=host.NVIDIA) is None
+    assert bootstrap_pixal3d.moge_driver_warning((11, 0), platform=host.APPLE) is None

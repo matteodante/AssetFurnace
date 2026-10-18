@@ -12,7 +12,7 @@ const escape = (text) => String(text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '
 export const MODES = [
   { id: 1, title: 'One piece', text: 'The whole character as one model, as + Create makes it. Nothing to split.' },
   { id: 2, title: 'Dressed, split into pieces', text: 'A concept of the dressed character, drawn on a base body, cut into the pieces you choose. They fit each other and the body.' },
-  { id: 3, title: 'Bare body + equipment', text: 'A base body in the clothes you choose (a bodysuit, simple clothes or underwear), then sets of pieces drawn on it to wear and swap one by one (as in 4Story).' },
+  { id: 3, title: 'Bare body + equipment', text: 'A base body in the clothes you choose (a bodysuit, simple clothes or underwear), then sets of pieces drawn on it to wear and swap one by one.' },
 ];
 
 const SLOT_WORDS = { helmet: 'Helmet', torso: 'Torso', shoulders: 'Shoulders', gloves: 'Gloves', legs: 'Legs',

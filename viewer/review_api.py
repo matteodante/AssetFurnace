@@ -96,12 +96,13 @@ def run_checks_request(output: Path, body: dict) -> dict:
     asset = Asset(glb=glb, key=body.get("key"), reference=reference, reference_numbers=numbers or None,
                   output_root=output)
     report, _ = review.check_and_enqueue(asset, log=_log(output), profile=profile, key=body.get("key"),
-                                         overrides=overrides_of(body.get("set")))
+                                         overrides=overrides_of(body.get("set"), profile))
     return item_payload(output, report["asset_key"])
 
 
-def overrides_of(given) -> dict | None:
-    """The sheet's thresholds, `{"budget.faces.max": 20000}` as `--set` takes them."""
+def overrides_of(given, profile: str = "prop") -> dict | None:
+    """The sheet's thresholds, `{"budget.faces.max": 20000}` as `--set` takes them, checked
+    against the profile the asset is checked with."""
     from image_to_3dlab.checks.registry import load_profile, parse_overrides
 
     if not given:
@@ -112,7 +113,7 @@ def overrides_of(given) -> dict | None:
     if any(check.startswith("license.") for check in overrides):
         # the licence gate is not a threshold: approving rests on it
         raise ValueError("the licence check's terms cannot be changed from the review sheet")
-    load_profile("prop", overrides)   # a misspelt check or setting is refused, never ignored
+    load_profile(profile, overrides)   # a misspelt check or setting is refused, never ignored
     return overrides
 
 

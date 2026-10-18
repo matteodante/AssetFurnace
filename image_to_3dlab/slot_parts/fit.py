@@ -309,13 +309,3 @@ def pose_frames(start: int, end: int, count: int = 8) -> list[int]:
     if end <= start or count <= 1:
         return [start]
     return sorted({round(f) for f in np.linspace(start, end, count)})
-
-
-def coverage_report(per_frame: list[dict]) -> dict:
-    """Worst and mean over frames of {piece: share} measures, and the worst frame's index."""
-    names = sorted({n for f in per_frame for n in f["clipping"]})
-    clip = {n: {"max": max(f["clipping"].get(n, 0.0) for f in per_frame),
-                "mean": float(np.mean([f["clipping"].get(n, 0.0) for f in per_frame]))} for n in names}
-    holes = [f["holes"] for f in per_frame]
-    worst = int(np.argmax([f["holes"] + sum(f["clipping"].values()) for f in per_frame]))
-    return {"clipping": clip, "holes": {"max": max(holes), "mean": float(np.mean(holes))}, "worst_frame": worst}

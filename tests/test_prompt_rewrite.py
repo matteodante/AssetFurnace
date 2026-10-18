@@ -241,3 +241,28 @@ def test_the_record_names_the_backend_this_machine_drew_with(monkeypatch):
     monkeypatch.setattr(host, "build_target", lambda: "linux-nvidia")
     record = text_image.provenance("a wolf", text_image.clean_settings({}), 1.0, REPO / "missing.png")
     assert record["model"]["runtime"] == "stable-diffusion.cpp (Vulkan)"
+
+
+def test_a_cancelled_picture_can_stop_the_rewriter(tmp_path, monkeypatch):
+    """Code read 18/10/2026: Cancel was looked at only while the picture waited for the GPU; the
+    rewriter (6-18 s, up to 10 minutes) ran on. Its process now goes to the job, which stops it."""
+    import subprocess
+    from contextlib import nullcontext
+
+    monkeypatch.setattr(pr, "system_prompt_path", lambda: tmp_path / "system.txt")
+    monkeypatch.setattr(pr, "llama_completion", lambda: tmp_path / "llama-completion")
+    seen = []
+
+    class Process:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return '{"rewritten_prompt": "a wolf, painted", "wh_ratio": "1:1"}', ""
+
+    def popen(command, **kwargs):
+        assert kwargs["stdin"] == subprocess.DEVNULL
+        return Process()
+
+    found = pr.rewrite("a wolf", model=tmp_path / "m.gguf", lock=lambda *a, **k: nullcontext(),
+                       on_process=seen.append, popen=popen)
+    assert found["prompt"] == "a wolf, painted" and isinstance(seen[0], Process)

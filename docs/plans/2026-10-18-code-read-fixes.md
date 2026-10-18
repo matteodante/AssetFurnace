@@ -58,6 +58,20 @@ Stato: **fatto** (PR), **in corso**, **da fare**, **respinto** (motivo).
 | X-3 | L'asse del guanto punta a un dito (P2-8) | fatto (#126): `limb_axis`, dall'avambraccio al polso |
 | X-4 | Le clip in loop della libreria perdono il fotogramma di chiusura (P2-9) | fatto (#126): `closed_loop` rimette il primo fotogramma in coda; da guardare in Unreal |
 
+## Il resto dei rapporti (fuori dall'elenco della richiesta)
+
+| # | Punto | Stato |
+| --- | --- | --- |
+| Y-1 | `orient.py` specchia l'arma girata (`ImageOps.flip`) | fatto (#131): mezzo giro (`rotate(180)`) |
+| Y-2 | La riscrittura del prompt non si annulla mentre gira | fatto (#131): il processo di llama-completion va al lavoro, che lo ferma al Cancel |
+| Y-3 | MoGe-2 installa sempre PyTorch cu128 | fatto (#131): con un driver sotto CUDA 12.8 l'installazione lo dice (girerebbe sulla CPU); il pin cu128 resta, è la build provata |
+| Y-4 | La pagina Batches non conosce `skipped` | fatto (#131): "Skipped" e "N skipped" nel riassunto |
+| Y-5 | La review valida le soglie sempre contro "prop" | fatto (#131): contro il profilo richiesto (oggi lo stesso risultato: il controllo non dipende dal profilo) |
+| Y-6 | Codice morto tenuto in vita dai test (`unreal_profile.stride`, `fit.coverage_report`, `slot_parts.orient_held`) | fatto (#131): tolti, i test usano `orient.orient_held` |
+| Y-7 | Il nome del gioco nel testo dello studio | fatto (#131) |
+| Y-8 | Nomi del vecchio progetto negli installer e nello User-Agent | fatto (#131) nei testi; la cartella predefinita `~/image-to-3dlab` resta, è quella delle installazioni esistenti |
+| Y-9 | Escape HTML in 8 copie, rotte di `do_GET`/`do_POST` a tabella, `assets_api.list_assets` lungo, `HINTS` come tuple, compatibilità "legacy" in `batch.py`, Icosphere riconosciuta in tre modi, `piece_materials.outfit_words`, `masks.slot_for` per pixel, parametro `dressing` che copre la funzione | rimandati: rifattorizzazioni ampie che la richiesta non elenca; nessun difetto di comportamento |
+
 ## Qualità (nessun cambio di comportamento)
 
 | # | Punto | Stato |

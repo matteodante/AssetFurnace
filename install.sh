@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install or update image-to-3dlab on a Mac (Apple Silicon) or Linux (NVIDIA or AMD).
+# Install or update AssetFurnace on a Mac (Apple Silicon) or Linux (NVIDIA or AMD).
 #
 #   git clone https://github.com/matteodante/AssetFurnace.git && AssetFurnace/install.sh --dir AssetFurnace
 #
@@ -8,7 +8,7 @@
 # to in the viewer's Setup & Status page.
 #
 # Options (after `bash -s --` when piping):
-#   --dir PATH     where to install (default: ~/image-to-3dlab)
+#   --dir PATH     where to install (default: ~/image-to-3dlab, the folder earlier installs used)
 #   --ref REF      a release tag or branch (default: the newest vX.Y.Z release)
 #   --repo URL     clone from here instead of GitHub (a fork, or a local copy for testing)
 #   --yes          no questions; for scripts and agents
@@ -114,7 +114,7 @@ if [ -d "$DIR/.git" ]; then
   fi
   run git -C "$DIR" fetch --tags --force --quiet "$REPO_URL" '+refs/heads/*:refs/remotes/origin/*'
 elif [ -e "$DIR" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ]; then
-  die "$DIR exists and is not an image-to-3dlab install. Pick another place with --dir."
+  die "$DIR exists and is not an AssetFurnace install. Pick another place with --dir."
 else
   say "Installing into $DIR"
   run git clone --quiet "$REPO_URL" "$DIR"
