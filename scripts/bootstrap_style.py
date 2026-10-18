@@ -168,9 +168,8 @@ def main(argv: list[str] | None = None) -> int:
                       "Silicon only): build it from https://github.com/ggml-org/llama.cpp into vendor/llama-cpp/",
                       flush=True)
                 return 1
-            if build is not None:
-                print("Downloading llama.cpp...", flush=True)
-                fetch_llama(build)
+            print("Downloading llama.cpp...", flush=True)
+            fetch_llama(build)
         else:
             print(f"Downloading {models.HUB_MODELS[key].label}...", flush=True)
             fetch_hub(models.HUB_MODELS[key])

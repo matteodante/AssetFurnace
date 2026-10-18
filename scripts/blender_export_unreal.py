@@ -420,10 +420,8 @@ def run(job):
         if job.get("grip"):   # a weapon or shield: the pivot on its grip, the blade or head up
             from mathutils import Vector
 
-            x, y, z = job["grip"]["point"]
-            ax, ay, az = job["grip"]["axis"]
-            # glTF (x, y, z) is Blender (x, -z, y) once imported
-            point, axis = Vector((x, -z, y)), Vector((ax, -az, ay)).normalized()
+            point = Vector(up.gltf_to_blender(job["grip"]["point"]))   # the glTF point once imported
+            axis = Vector(up.gltf_to_blender(job["grip"]["axis"])).normalized()
             turn = axis.rotation_difference(Vector((0.0, 0.0, 1.0))).to_matrix().to_4x4() @ Matrix.Translation(-point)
             lo, hi = _world_box(bpy, meshes, turn)
             dims = [h - low for low, h in zip(lo, hi)]
@@ -453,7 +451,9 @@ def run(job):
         if job.get("collision") in ("box", "convex"):
             _collision(bpy, mesh, job["collision"], names["collision"][job["collision"]])
             report["collision"] = job["collision"]
-        if job.get("grip"):   # the socket the game attaches it by, where the pivot is (Interchange reads SOCKET_)
+        # where the game attaches it, at the pivot: a SOCKET_grip node in the GLB. UE 5.8's glTF import
+        # makes no socket from it (measured 17/10/2026): unreal_import_check.py adds one
+        if job.get("grip"):
             socket = bpy.data.objects.new("SOCKET_grip", None)
             bpy.context.scene.collection.objects.link(socket)
             report["grip_socket"] = "SOCKET_grip"

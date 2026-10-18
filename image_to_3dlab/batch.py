@@ -31,6 +31,8 @@ default `output/batches/`).
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import csv
 import hashlib
 import importlib
@@ -133,31 +135,34 @@ class BatchRow:
     # steps whose output is a file of the user's own: {step: path} (a list for `animate`)
     replace: dict[str, Any] = field(default_factory=dict)
 
-    def fingerprint(self) -> str:
-        """What the row asks for, files by content: moving the spec does not re-run it."""
-        digest = sha256_file   # streamed: a large GLB is not read into memory
-
-        # an asset's record is part of what the row works from (its licence, its models),
-        # and without images of its own the row takes its concept from that record too
-        # every record the licence gate read (the provenance and the backend's own)
+    def _source(self) -> dict[str, Any]:
+        """What the row starts from, files by content: its images, its asset with every record
+        the licence gate read (the provenance and the backend's own), and the picture an
+        asset's record leads to when the row has no images of its own; its prompt."""
         records = [c for c in ((self.asset.with_suffix(".provenance.json"),
                                 self.asset.with_suffix(".json")) if self.asset else ())
                    if c.is_file()]
         image = self.concept if self.asset and not self.images else None
+        return {
+            "images": [content_digest(image) for image in self.images],
+            "asset": content_digest(self.asset) if self.asset else None,
+            "asset_records": [[c.name, content_digest(c)] for c in records],
+            "asset_image": content_digest(image) if image else None,
+            **({"prompt": self.prompt} if self.prompt is not None else {}),
+        }
+
+    def fingerprint(self) -> str:
+        """What the row asks for, files by content: moving the spec does not re-run it."""
         payload = {
-            "images": [digest(image) for image in self.images],
-            "asset": digest(self.asset) if self.asset else None,
-            "asset_records": [[c.name, digest(c)] for c in records],
-            "asset_image": digest(image) if image else None,
+            **self._source(),
             "kind": self.kind, "faces": self.faces, "profile": self.profile,
             "steps": list(self.steps), "backend": self.backend,
             "parameters": self.parameters, "options": self._options_by_content(),
             "size_cm": self.size_cm, "measure": self.measure,
-            **({"prompt": self.prompt} if self.prompt is not None else {}),
             **({"replace": {step: _replacement_digests(files) for step, files in self.replace.items()}}
                if self.replace else {}),
         }
-        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+        return _hash(payload)
 
     def _options_by_content(self) -> dict[str, dict[str, Any]]:
         """The step options, with the files they name by content: a body or a LOD
@@ -183,23 +188,17 @@ class BatchRow:
             out[name] = options
         return out
 
+    def fingerprints(self) -> tuple[str, dict[str, str]]:
+        """(fingerprint, step_fingerprints), each file hashed once for both."""
+        with remembered_digests():
+            return self.fingerprint(), self.step_fingerprints()
+
     def step_fingerprints(self) -> dict[str, str]:
         """One fingerprint per step, chained: each covers the row's source, every step
         before it, and what this step itself depends on (its options and the row fields
         the catalogue names). An edited row runs again from its first step whose
         fingerprint changed; the steps before keep their results."""
-        digest = sha256_file
-        records = [c for c in ((self.asset.with_suffix(".provenance.json"),
-                                self.asset.with_suffix(".json")) if self.asset else ())
-                   if c.is_file()]
-        image = self.concept if self.asset and not self.images else None
-        previous = _hash({
-            "images": [digest(image) for image in self.images],
-            "asset": digest(self.asset) if self.asset else None,
-            "asset_records": [[c.name, digest(c)] for c in records],
-            "asset_image": digest(image) if image else None,
-            **({"prompt": self.prompt} if self.prompt is not None else {}),
-        })
+        previous = _hash(self._source())
         fingerprints = {}
         by_content = self._options_by_content()
         for name in self.steps:
@@ -229,15 +228,46 @@ def _hash(payload: Any) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
+# The digests worked out inside one `remembered_digests()` block: {(path, mtime, size): sha256}.
+_DIGESTS: contextvars.ContextVar[dict | None] = contextvars.ContextVar("batch_digests", default=None)
+
+
+@contextlib.contextmanager
+def remembered_digests():
+    """Each file hashed once for the whole block, however many fingerprints read it:
+    `with_picks` asks every step's key, and each key hashed every image and GLB again, slow
+    with large models. Only for one moment's questions: a run that later asks whether an
+    input changed under it hashes it again."""
+    token = _DIGESTS.set({}) if _DIGESTS.get() is None else None
+    try:
+        yield
+    finally:
+        if token is not None:
+            _DIGESTS.reset(token)
+
+
+def content_digest(path: Path) -> str:
+    """A file's sha256 for the fingerprints (streamed: a large GLB is not read into memory),
+    remembered by its path, time and size inside `remembered_digests()`."""
+    memo = _DIGESTS.get()
+    if memo is None:
+        return sha256_file(Path(path))
+    stat = Path(path).stat()
+    key = (str(Path(path).resolve()), stat.st_mtime_ns, stat.st_size)
+    if key not in memo:
+        memo[key] = sha256_file(Path(path))
+    return memo[key]
+
+
 def _replacement_digests(files: Any) -> Any:
     """A replacing file by its content and the records beside it (its licence travels
     with them: a changed record is a change)."""
     if isinstance(files, list):
         return [_replacement_digests(item) for item in files]
     path = Path(files)
-    records = [[c.name, sha256_file(c)] for c in (path.with_suffix(".provenance.json"), path.with_suffix(".json"))
+    records = [[c.name, content_digest(c)] for c in (path.with_suffix(".provenance.json"), path.with_suffix(".json"))
                if c.is_file()]
-    return {"sha256": sha256_file(path), "records": records}
+    return {"sha256": content_digest(path), "records": records}
 
 
 def _bible_digest(bible: str) -> Any:
@@ -261,7 +291,7 @@ def _file_digests(value: Any) -> Any:
     if isinstance(value, str):
         # a file gone is an input gone, as for the row's own images: a done row keeps its
         # result, a row still to run fails on it
-        return {"sha256": sha256_file(Path(value))}
+        return {"sha256": content_digest(Path(value))}
     return value
 
 
@@ -272,14 +302,15 @@ def with_picks(row: BatchRow, picks: dict[str, Any]) -> BatchRow:
     A pick the spec gives itself always wins. Applied in the row's step order: a step's
     key covers the picks of the steps before it, as it did when the step ran."""
     current = row
-    for step in row.steps:
-        made = picks.get(step)
-        if not isinstance(made, dict) or "pick" in current.options.get(step, {}):
-            continue
-        if made.get("key") not in (current.candidate_key(step), *_legacy_keys(current, step)):
-            continue
-        current = replace(current, options={**current.options,
-                                            step: {**current.options.get(step, {}), "pick": made.get("choice")}})
+    with remembered_digests():
+        for step in row.steps:
+            made = picks.get(step)
+            if not isinstance(made, dict) or "pick" in current.options.get(step, {}):
+                continue
+            if made.get("key") not in (current.candidate_key(step), *_legacy_keys(current, step)):
+                continue
+            current = replace(current, options={**current.options,
+                                                step: {**current.options.get(step, {}), "pick": made.get("choice")}})
     return current
 
 
@@ -1065,7 +1096,7 @@ def pending_work(spec: BatchSpec, state: dict[str, Any] | None,
     for row in spec.rows:
         entry = previous.get(row.id)
         try:
-            fingerprint = row.fingerprint()
+            fingerprint, fingerprints = row.fingerprints()
         except OSError:   # an input gone: a done row keeps its result, others will fail
             if entry is None or not _still_done(entry, spec.directory):
                 work[row.id] = ()
@@ -1077,7 +1108,7 @@ def pending_work(spec: BatchSpec, state: dict[str, Any] | None,
             # edited: from its first step whose fingerprint changed (failed or not: the
             # spec changed, so it is a new request)
             known = {"steps": _with_known_fingerprints(row, entry, last.get(row.id))}
-            work[row.id] = _remaining(row, known, spec.directory, row.step_fingerprints())
+            work[row.id] = _remaining(row, known, spec.directory, fingerprints)
             continue
         if _still_done(entry, spec.directory):
             continue
@@ -1412,7 +1443,7 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
     for row in spec.rows:
         entry = previous.get(row.id)
         try:
-            fingerprint = row.fingerprint()
+            fingerprint, fingerprints = row.fingerprints()
         except OSError as exc:
             if entry is not None and _still_done(entry, directory):
                 rows[row.id] = entry   # its result is in the batch; the source moved on
@@ -1421,7 +1452,6 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
             rows[row.id] = {**(entry or {}), "status": "failed", "steps": (entry or {}).get("steps", {}),
                             "reason": f"input: {exc}", "fingerprint": None}
             continue
-        fingerprints = row.step_fingerprints()
         if entry is None:
             entry = {"status": "queued", "fingerprint": fingerprint, "steps": {}}
         elif entry.get("fingerprint") != fingerprint:

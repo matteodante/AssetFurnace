@@ -22,13 +22,13 @@ from __future__ import annotations
 
 import numpy as np
 
+from image_to_3dlab.frames import GLTF_TO_BLENDER  # noqa: F401 - the fit's name for it
+from image_to_3dlab.frames import gltf_to_blender as to_blender  # noqa: F401 - the fit's name for it
 from image_to_3dlab.slot_parts.camera import Camera
 
-GLTF_TO_BLENDER = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]])
-
-
-def to_blender(points: np.ndarray) -> np.ndarray:
-    return np.asarray(points, float) @ GLTF_TO_BLENDER.T
+# How far from the skin a worn piece still hides it (the body's `covered` mask): the fit
+# draws the mask with it and fit.holes measures with it, so the two always agree.
+COVER_GAP = 0.06
 
 
 def unproject(cam: Camera, u: float, v: float, depth: float) -> tuple[float, float]:
@@ -298,7 +298,8 @@ def winding_number(points: np.ndarray, triangles: np.ndarray) -> np.ndarray:
         a, b, c = (triangles[:, k] - p for k in range(3))
         la, lb, lc = (np.linalg.norm(x, axis=1) for x in (a, b, c))
         num = np.einsum("ij,ij->i", a, np.cross(b, c))
-        den = la * lb * lc + np.einsum("ij,ij->i", a, b) * lc + np.einsum("ij,ij->i", b, c) * la             + np.einsum("ij,ij->i", c, a) * lb
+        den = (la * lb * lc + np.einsum("ij,ij->i", a, b) * lc + np.einsum("ij,ij->i", b, c) * la
+               + np.einsum("ij,ij->i", c, a) * lb)
         total[i] = np.arctan2(num, den).sum() / (2 * np.pi)
     return total
 

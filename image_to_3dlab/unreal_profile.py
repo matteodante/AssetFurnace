@@ -272,8 +272,9 @@ def ground_offset(box_min: Iterable[float], box_max: Iterable[float],
 
 def gltf_to_blender(direction: Iterable[float]) -> list[float]:
     """A direction in glTF space (Y up, +Z front) as Blender imports it (Z up, -Y front)."""
-    x, y, z = (float(v) for v in direction)
-    return [x, -z, y]
+    from image_to_3dlab.frames import gltf_to_blender as turn
+
+    return [float(v) for v in turn(list(direction))]
 
 
 def yaw_to_face_front(forward: Iterable[float]) -> float:
@@ -368,21 +369,20 @@ def pack_orm(metal_rough: np.ndarray, occlusion: np.ndarray | None) -> np.ndarra
     `metal_rough` is glTF's metallicRoughness image (G roughness, B metal). `occlusion`
     is an occlusion image (R, or grey) of the same size.
     """
+    from image_to_3dlab.materials import pack_orm as packed   # the one packing, from 8-bit images here
+
     mr = np.asarray(metal_rough)
     if mr.ndim != 3 or mr.shape[2] < 3:
         raise ValueError("the metallicRoughness image must have at least three channels")
-    out = np.empty(mr.shape[:2] + (3,), np.uint8)
-    out[..., 1] = mr[..., 1]
-    out[..., 2] = mr[..., 2]
     if occlusion is None:
-        out[..., 0] = 255
+        ao = np.full(mr.shape[:2], 255.0)
     else:
-        ao = np.asarray(occlusion)
+        ao = np.asarray(occlusion, float)
         if ao.shape[:2] != mr.shape[:2]:
             raise ValueError(f"occlusion is {ao.shape[1]}x{ao.shape[0]}, metallicRoughness "
                              f"{mr.shape[1]}x{mr.shape[0]}")
-        out[..., 0] = ao if ao.ndim == 2 else ao[..., 0]
-    return out
+        ao = ao if ao.ndim == 2 else ao[..., 0]
+    return packed(ao / 255.0, mr[..., 1] / 255.0, mr[..., 2] / 255.0)
 
 
 # --- GLB rewrite -----------------------------------------------------------------------
@@ -692,8 +692,8 @@ def sidecar(*, kind: str, names: Mapping[str, Any], glb: str, size_cm: float | N
         "orm": orm,  # False when every material is plain factors: no ORM texture to find
         "tint": tint,
         "opacity_mask": opacity_mask,
-        # a weapon or shield: its pivot on its grip, and a socket of that name there (made at
-        # import from the GLB's SOCKET_grip node, or by unreal_import_check.py)
+        # a weapon or shield: its pivot on its grip, and a socket of that name there (UE 5.8's
+        # import makes none from the GLB's SOCKET_grip node: unreal_import_check.py adds it)
         "grip_socket": {"name": "grip"} if grip else None,
         "lods": lods,
         "collision": collision,
@@ -755,8 +755,10 @@ def evaluate_unreal(measured: Mapping[str, Any], expected: Mapping[str, Any]) ->
             lo, hi = measured.get("box_cm") or [[0, 0, 0], [0, 0, 0]]
             on = all(low - BASE_TOLERANCE_CM <= 0.0 <= high + BASE_TOLERANCE_CM for low, high in zip(lo, hi))
             off = sum(v * v for v in where) ** 0.5
+            # a socket the check added sits at the pivot by construction: then only "on the model" is measured
+            by = "added by the check at the pivot" if got.get("by") == "check" else "made by the import"
             results.append(_check("grip", off <= BASE_TOLERANCE_CM and on,
-                                  f"grip socket {off:.1f} cm from the pivot, which is "
+                                  f"grip socket {by}, {off:.1f} cm from the pivot, which is "
                                   + ("on the model" if on else "outside the model")))
     if expected.get("collision") in ("box", "convex", "unreal"):
         key = "box_elems" if expected["collision"] == "box" else "convex_elems"

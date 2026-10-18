@@ -100,9 +100,11 @@ def on_gpu() -> bool:
     return host.host_platform() in (host.NVIDIA, host.APPLE)
 
 
-def estimate(image: Path, run: Callable = subprocess.run, lock=gpu_lock.gpu) -> float | None:
+def estimate(image: Path, run: Callable = subprocess.run, lock=gpu_lock.gpu,
+             log: Callable[[str], None] = lambda line: print(line, flush=True)) -> float | None:
     """The field of view of `image` (radians), or None when MoGe-2 is not set up, fails, takes
-    too long or answers something trellis-cli could not take."""
+    too long or answers something trellis-cli could not take; why goes to `log`, with the
+    worker's last line of error."""
     import contextlib
     import tempfile
 
@@ -115,11 +117,18 @@ def estimate(image: Path, run: Callable = subprocess.run, lock=gpu_lock.gpu) -> 
             with lock("moge-2 fov") if on_gpu() else contextlib.nullcontext():
                 done = run(command, capture_output=True, text=True, check=False, timeout=TIMEOUT)
         except subprocess.TimeoutExpired:
+            log(f"MoGe-2: no answer in {TIMEOUT} s")
             return None
+    last = ((done.stderr or "").strip().splitlines() or [""])[-1][:300]
     if done.returncode != 0:
+        log(f"MoGe-2 failed (exit {done.returncode}): {last}")
         return None
     try:
         fov = camera_angle_x(json.loads(done.stdout.strip().splitlines()[-1])["fx_normalized"])
     except (ValueError, KeyError, IndexError, ZeroDivisionError):
+        log(f"MoGe-2 gave no field of view: {last or (done.stdout or '').strip()[-300:]}")
         return None
-    return fov if FOV_RANGE[0] <= fov <= FOV_RANGE[1] else None
+    if not FOV_RANGE[0] <= fov <= FOV_RANGE[1]:
+        log(f"MoGe-2's field of view ({fov:.3f} rad) is outside what trellis-cli takes")
+        return None
+    return fov

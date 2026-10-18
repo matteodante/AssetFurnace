@@ -488,3 +488,14 @@ def test_studio_and_agents_make_a_set_of_weapons_without_an_outfit(tmp_path):
     payload = json.loads(subprocess.run(["node", "--input-type=module", "--eval", program], check=True,
                                         capture_output=True, text=True).stdout)
     assert payload["weapon"] == "a longbow" and "outfit" not in payload
+
+
+def test_the_unreal_check_says_who_made_the_grip_socket():
+    """Code read 18/10/2026: a socket the check adds at the pivot is 0 cm from it by construction;
+    the result says so instead of reading as a measurement."""
+    expected = {"kind": "prop", "mesh": "SM_Sword", "lods": 1, "orm": False, "grip_socket": {"name": "grip"},
+                "expect": {"size_cm": None, "base_z_cm": None, "facing": None, "manny_compatible": False}}
+    measured = {"names": ["SM_Sword"], "lods": 1, "box_cm": [[-5, -5, -10], [5, 5, 90]],
+                "grip": {"made": True, "by": "check", "location_cm": [0, 0, 0]}}
+    grip_result = next(r for r in up.evaluate_unreal(measured, expected) if r["check"] == "grip")
+    assert grip_result["ok"] and "added by the check" in grip_result["detail"]

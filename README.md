@@ -187,7 +187,7 @@ status telling you exactly what's missing:
   own PyTorch in `vendor/moge/`) estimates each picture's camera as Pixal3D's official recipe
   does (TencentARC/Pixal3D `inference.py`, read 17/10/2026: 12 steps in every flow, the field of
   view from MoGe-2, on the recipe's own crop; the structure guidance stays at 10 where the recipe
-  has 7.5, which dropped a sword blade). It is a download of its own, with its own card in Setup
+  has 7.5, at which a sword lost its blade). It is a download of its own, with its own card in Setup
   & Status: `python scripts/bootstrap_pixal3d.py --moge`. Without it the camera is the 20° gauge,
   and the run says so.
   If the ready-made build gives you trouble on Linux, compiling it for your own card is

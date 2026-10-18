@@ -551,7 +551,7 @@ def main() -> None:  # pragma: no cover - runs inside Blender
     # every sampled moment of the body's clips. Hidden by its rest pose alone, the skin a shoulder
     # piece lifts off in a swing showed through (holes of 6-10% in the acceptance)
     worn = fitted
-    gap = job.get("cover_gap", 0.06)
+    gap = job.get("cover_gap", fit.COVER_GAP)
 
     def covered_now(depsgraph=None):
         """1 where the skin's outward ray meets a worn piece within the gap, in the pose shown."""

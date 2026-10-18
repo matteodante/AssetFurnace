@@ -15,14 +15,14 @@ from __future__ import annotations
 
 import numpy as np
 
+from image_to_3dlab.frames import blender_to_gltf
 from image_to_3dlab.slot_parts import fit, skeleton, slots
 from image_to_3dlab.slot_parts.camera import Camera
 
 
 def project(cam: Camera, points: np.ndarray) -> np.ndarray:
     """Blender points (N, 3) to source-picture pixels (N, 2)."""
-    p = np.asarray(points, float)
-    return cam.project(np.stack([p[:, 0], p[:, 2], -p[:, 1]], 1))  # Blender (x, y, z) -> glTF (x, z, -y)
+    return cam.project(blender_to_gltf(np.asarray(points, float).reshape(-1, 3)))
 
 
 def visible_labels(centres: np.ndarray, visible: np.ndarray, cam: Camera, slot_map: np.ndarray) -> np.ndarray:

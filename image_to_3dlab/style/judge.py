@@ -154,7 +154,9 @@ class LlamaServer:
             raise
 
     def _start(self) -> LlamaServer:
-        out = open(self.log, "wb") if self.log else subprocess.DEVNULL  # noqa: SIM115 - closed with the process
+        # kept to be closed in _stop: an open log stays locked on Windows
+        self._out = open(self.log, "wb") if self.log else None  # noqa: SIM115 - closed in _stop
+        out = self._out or subprocess.DEVNULL
         self.process = subprocess.Popen(server_command(self.parts["server"], self.parts["model"],
                                                        self.parts["mmproj"], self.port),
                                         stdout=out, stderr=subprocess.STDOUT)
@@ -180,6 +182,9 @@ class LlamaServer:
                 self.process.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+        out, self._out = getattr(self, "_out", None), None
+        if out is not None:
+            out.close()
 
     def _release(self) -> None:
         lock, self._lock = self._lock, None

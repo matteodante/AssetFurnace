@@ -134,3 +134,23 @@ def test_moge_gets_the_pytorch_for_the_machine():
     assert install[install.index("--index-url") + 1].endswith("/cu128")
     swap = bootstrap_pixal3d.moge_commands(platform=host.NVIDIA, wrong_torch=True)
     assert swap[2][-4:] == ["uninstall", "-y", "torch", "torchvision"]   # a CPU build pip would keep
+
+
+def test_a_failed_estimate_says_why(tmp_path, monkeypatch):
+    """Code read 18/10/2026: a worker error, a timeout or a bad answer became None, and its
+    stderr was lost; the run said only "could not estimate"."""
+    import subprocess
+    from contextlib import nullcontext
+
+    from image_to_3dlab import moge_fov
+
+    monkeypatch.setattr(moge_fov, "installed", lambda: True)
+    monkeypatch.setattr(moge_fov, "preprocessed", lambda image, out: out)
+    monkeypatch.setattr(moge_fov, "weights_path", lambda: tmp_path / "w.pt")
+    said = []
+
+    def failing(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="Traceback\nCUDA out of memory\n")
+
+    assert moge_fov.estimate(tmp_path / "a.png", run=failing, lock=lambda name: nullcontext(), log=said.append) is None
+    assert said == ["MoGe-2 failed (exit 1): CUDA out of memory"]

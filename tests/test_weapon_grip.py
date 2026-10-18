@@ -43,6 +43,20 @@ def test_the_class_comes_from_the_slot_and_the_words(slot, words, wanted):
     assert grip.weapon_class(slot, words) == wanted
 
 
+@pytest.mark.parametrize("words, wanted", [
+    ("a mage's elbow-length gauntlet relic", "weapon"), ("a rainbow crystal", "weapon"),
+    ("a waxed leather cudgel", "weapon"), ("a balance of power", "weapon"), ("a spiked collar", "weapon"),
+    ("a prod of iron", "weapon"), ("a grimace mask", "weapon"),
+    ("a crossbow", "bow"), ("twin longbows", "bow"), ("a battle-axe", "axe"), ("a greataxe", "axe"),
+    ("a warhammer", "hammer"), ("a quarterstaff", "staff"), ("a greatsword", "sword"),
+    ("a longspear", "spear"), ("a shortspear", "spear"), ("a sledgehammer", "hammer"), ("a greatclub", "mace"),
+    ("two staffs", "staff"), ("a morning star", "mace"), ("throwing knives", "dagger"), ("a pickaxe", "axe"),
+])
+def test_a_class_is_named_by_whole_words(words, wanted):
+    """Code read 18/10/2026: "elbow" and "rainbow" read as a bow, "waxed" as an axe."""
+    assert grip.weapon_class("weapon", words) == wanted
+
+
 def test_the_judges_box_is_read_on_its_0_to_1000_grid():
     text = '```json\n[{"bbox_2d": [472, 767, 519, 945], "label": "grip"}]\n```'
     assert grip.parse_box(text, (2048, 1024)) == pytest.approx((966.656, 785.408, 1062.912, 967.68))

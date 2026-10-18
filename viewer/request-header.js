@@ -1,6 +1,6 @@
 // Marks the Studio's own writes. The server refuses a POST without this header, and a
 // form on another site cannot send one, so a web page cannot delete weights or start jobs
-// here behind your back. Pages that name their own header ('batch', 'review') keep it.
+// here behind your back. Pages that name their own header keep it.
 (() => {
   const send = window.fetch.bind(window);
   window.fetch = (input, init = {}) => {

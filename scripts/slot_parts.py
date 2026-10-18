@@ -31,7 +31,7 @@ subject comes from its alpha when it is matted, from `--matte`, or from BiRefNet
 
 `pieces` is route C: each flattened cut goes to a Qwen-Image edit ("complete this piece")
 once per seed (`pieces/<slot>/s<seed>.png`, with a `.concept.json` record), then the picked
-picture (`--pick slot=seed`, else the first seed) goes through Pixal3D, the finish step and
+picture (`--pick slot=seed`, else the best scored, `candidates.json`) goes through Pixal3D, the finish step and
 `fix_winding.py`. `pieces.json` says, per slot, which picture, which GLB and where the piece
 sits on the concept. `--images-only` stops before 3D so a person can pick; `--models-only`
 reuses the pictures already made. A slot set to `B0` in `cuts` (`--slots torso:B0`) is the
@@ -41,7 +41,7 @@ those slots out of it.
 `body --clip walk=body_walk.glb` records the body's own animated clips (Kimodo, retargeted
 onto that rig); the checks pose the pieces with them.
 
-`run` does it all for one set on one body, taking the first seed at every choice:
+`run` does it all for one set on one body, taking the best-scored picture at every choice:
 the concept on the body (Qwen edit with the body picture, `--outfit` words) unless
 `--concept` gives one, the cuts, the pieces, the weapon and shield made on their own
 (`--weapon`, `--shield`), the fit, the checks (`fit.clipping`, `fit.holes` and the rest of
@@ -57,6 +57,10 @@ Images and 3D are not made again.
 `unreal` exports a fitted set for Unreal 5.8 with `export_unreal.py`: the masked body as a
 creature, every piece as equipment on the body's Skeleton, and `<body>.unreal-set.json` with
 how to assemble them (Leader Pose, the body's opacity mask from its vertex alpha).
+
+`grip` shows or corrects where a set's weapon or shield is held (`slot_parts/grip.py`: a point
+on its picture, its class, its real length); `materials` shows or corrects each piece's one
+material (`piece_materials.py`). The studio's Pieces page and MCP call the same functions.
 
 `fit` writes a Blender job and runs `blender_fit_parts.py` headless: each piece placed on
 the body from its box, paired pieces per side, a cage fit, skin weights from the body (one

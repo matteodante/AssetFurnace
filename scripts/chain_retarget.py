@@ -311,8 +311,8 @@ def _up(source: Source) -> np.ndarray:
 
 
 def _heading(src: np.ndarray, tgt: np.ndarray, up: np.ndarray) -> np.ndarray:
-    """The turn about `up` that brings the source chain's heading onto the target's. None
-    when either chain runs (nearly) straight up or down: it has no heading."""
+    """The turn about `up` that brings the source chain's heading onto the target's. No turn
+    (the identity) when either chain runs (nearly) straight up or down: it has no heading."""
     up = _unit(up)
     a, b = src - (src @ up) * up, tgt - (tgt @ up) * up
     if np.linalg.norm(a) < 0.2 * np.linalg.norm(src) or np.linalg.norm(b) < 0.2 * np.linalg.norm(tgt):
