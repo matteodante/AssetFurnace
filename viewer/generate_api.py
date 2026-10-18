@@ -3409,13 +3409,6 @@ class Handler(SimpleHTTPRequestHandler):
             return
         self._send_json(200, _job_status_payload(job))
 
-    def _status(self, job_id: str) -> None:
-        job = self._find_job(job_id)
-        if job is None:
-            self.send_error(HTTPStatus.NOT_FOUND)
-            return
-        self._send_json(200, _job_status_payload(job))
-
     def _artifact(self, job_id: str, action: str) -> None:
         job = self._find_job(job_id)
         if job is None or job.status != "done":
