@@ -49,6 +49,8 @@ def test_the_class_comes_from_the_slot_and_the_words(slot, words, wanted):
     ("a prod of iron", "weapon"), ("a grimace mask", "weapon"),
     ("a crossbow", "bow"), ("twin longbows", "bow"), ("a battle-axe", "axe"), ("a greataxe", "axe"),
     ("a warhammer", "hammer"), ("a quarterstaff", "staff"), ("a greatsword", "sword"),
+    ("a longspear", "spear"), ("a shortspear", "spear"), ("a sledgehammer", "hammer"), ("a greatclub", "mace"),
+    ("two staffs", "staff"), ("a morning star", "mace"), ("throwing knives", "dagger"), ("a pickaxe", "axe"),
 ])
 def test_a_class_is_named_by_whole_words(words, wanted):
     """Code read 18/10/2026: "elbow" and "rainbow" read as a bow, "waxed" as an axe."""

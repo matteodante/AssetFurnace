@@ -35,35 +35,31 @@ from image_to_3dlab.slot_parts.camera import Camera
 class GripClass:
     phrase: str        # what the judge is asked to find; "" when the picture cannot show it
     size_cm: float     # a usual real length (the longest side), a person changes it
-    words: str         # how the words name it: whole words, plurals and the usual compounds
+    words: str         # the end of a word that names it (a regular expression on each word)
     # where along the judge's box (top 0, bottom 1) the hand closes, and half the band it holds
     hold: tuple[float, float] = (0.5, 0.5)
 
 
 CLASSES = {
-    "dagger": GripClass("the grip of the dagger, the part a hand holds", 35,
-                        r"\b(?:daggers?|knife|knives|dirks?|stilettos?)\b"),
-    # not "elbow" nor "rainbow": only a bow, or a long, short, cross or recurve one
-    "bow": GripClass("the grip in the middle of the bow, where a hand holds it", 140,
-                     r"\b(?:long|short|cross)?bows?\b"),
-    # not "waxed": an axe, a battle-axe or a greataxe
-    "axe": GripClass("the handle of the axe, where a hand holds it", 80,
-                     r"\b(?:battle|great|pole|war|hand)?-?axes?\b|\bhatchets?\b", (0.8, 0.12)),
-    "hammer": GripClass("the handle of the hammer, where a hand holds it", 80,
-                        r"\b(?:war)?hammers?\b|\bmauls?\b", (0.8, 0.12)),
-    "mace": GripClass("the handle of the mace, where a hand holds it", 70,
-                      r"\b(?:maces?|morning ?stars?|flails?|clubs?)\b", (0.75, 0.15)),
-    # not "balance" nor "spike"
+    "dagger": GripClass("the grip of the dagger, the part a hand holds", 35, r"(?:dagger|knife|knive|dirk|stiletto)s?$"),
+    "bow": GripClass("the grip in the middle of the bow, where a hand holds it", 140, r"bows?$"),
+    "axe": GripClass("the handle of the axe, where a hand holds it", 80, r"(?:axe|hatchet)s?$", (0.8, 0.12)),
+    "hammer": GripClass("the handle of the hammer, where a hand holds it", 80, r"(?:hammer|maul)s?$", (0.8, 0.12)),
+    "mace": GripClass("the handle of the mace, where a hand holds it", 70, r"(?:mace|morningstar|flail|club)s?$",
+                      (0.75, 0.15)),
     "spear": GripClass("the shaft of the spear, where a hand holds it", 220,
-                       r"\b(?:spears?|lances?|pikes?|halberds?|glaives?|tridents?|polearms?)\b", (0.6, 0.12)),
+                       r"(?:spear|lance|pike|halberd|glaive|trident|polearm)s?$", (0.6, 0.12)),
     "staff": GripClass("the middle of the staff, where a hand holds it", 170,
-                       r"\b(?:(?:quarter)?staff|staves|wands?|sceptres?|scepters?|rods?)\b", (0.5, 0.12)),
+                       r"(?:staff|staves|wand|sceptre|scepter|rod)s?$", (0.5, 0.12)),
     "sword": GripClass("the grip of the sword, the part a hand holds", 100,
-                       r"\b(?:(?:long|short|great|broad|bastard)?swords?|blades?|sabres?|sabers?|katanas?|scimitars?"
-                       r"|rapiers?|falchions?|claymores?)\b"),
+                       r"(?:sword|blade|sabre|saber|katana|scimitar|rapier|falchion|claymore)s?$"),
     "weapon": GripClass("the handle of the weapon, the part a hand holds", 100, r"$^"),
-    "shield": GripClass("", 75, r"\b(?:shields?|bucklers?)\b"),
+    "shield": GripClass("", 75, r"(?:shield|buckler)s?$"),
 }
+# Words that end like a weapon and are not one: a class is the end of a word (a longbow, a
+# battle-axe, a sledgehammer, a greatclub), never the end of these.
+NOT_WEAPONS = frozenset({"elbow", "elbows", "rainbow", "rainbows", "oxbow", "grimace", "grimaces", "spike", "spikes",
+                         "turnpike", "balance", "glance", "freelance", "ambulance", "prod", "prods"})
 QUESTION = "Locate {phrase}, output its bbox coordinates using JSON format."
 WINDOW = 0.025       # a person's point: this share of the picture around it
 SAMPLES = 20000      # points on the model's surface, to see what lies inside a box
@@ -72,9 +68,10 @@ SAMPLES = 20000      # points on the model's surface, to see what lies inside a 
 def weapon_class(slot: str, words: str = "") -> str:
     if slot == "shield":
         return "shield"
-    text = (words or "").lower()
+    text = re.sub(r"morning\s+star", "morningstar", (words or "").lower())
+    tokens = [token for token in re.findall(r"[a-z]+", text) if token not in NOT_WEAPONS]
     for name, entry in CLASSES.items():   # in order: a "dagger" is not a "sword", a "longbow" is a bow
-        if name != "shield" and re.search(entry.words, text):
+        if name != "shield" and any(re.search(entry.words, token) for token in tokens):
             return name
     return "weapon"
 
