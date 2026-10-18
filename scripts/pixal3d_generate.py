@@ -99,6 +99,17 @@ LICENSE_NAME = PROFILE.license_name
 LICENSE_URL = PROFILE.license_url
 
 
+def _moge_component(fov_source: str) -> list[dict[str, str]]:
+    """MoGe-2, when its estimate chose the camera's field of view: it decides the model's shape,
+    so its licence is on the record like any other model's."""
+    if fov_source != "moge-2":
+        return []
+    from image_to_3dlab import moge_fov
+
+    return [{"component": f"{moge_fov.REPO_ID}@{moge_fov.REVISION}", "purpose": "camera field of view",
+             "license": moge_fov.LICENSE}]
+
+
 def manifest(image: Path, output: Path, *, res: int, seed: int, fov: float, gss: float, fov_source: str = "asked",
              gsh: float | None, matted: bool, matted_here: bool,
              seconds: float, steps: int = DEFAULT_STEPS,
@@ -117,11 +128,11 @@ def manifest(image: Path, output: Path, *, res: int, seed: int, fov: float, gss:
         "parameters": {"res": res, "seed": seed, "fov": fov, "fov_source": fov_source, "gss": gss, "gsh": gsh,
                        "matted": matted, "steps": steps},
         "license": {"name": LICENSE_NAME, "url": LICENSE_URL},
-        "components": [{
+        "components": [*([{
             "component": f"rembg/{matte_model}",
             "purpose": "background removal",
             "license": MATTE_LICENSES.get(matte_model, "see rembg"),
-        }] if matted_here and matte_model else [],
+        }] if matted_here and matte_model else []), *_moge_component(fov_source)],
         "timings_seconds": {"total": round(seconds, 1)},
     }
 

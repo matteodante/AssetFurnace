@@ -615,3 +615,18 @@ def test_real_blender_exports_one_side_unless_asked(tmp_path, two_sided):
     assert result["ok"], result["problems"]
     document, _ = parse_glb(Path(result["glb"]).read_bytes())
     assert [m.get("doubleSided", False) for m in document["materials"]] == [two_sided]
+
+
+def test_only_a_fitted_body_asked_for_it_gets_the_vertex_alpha_mask(files, tmp_path, monkeypatch):
+    """Code read 18/10/2026: any asset with a vertex colour whose alpha dropped below one half
+    came out with MASK materials and an opacity mask in its sidecar, an object or weapon too."""
+    masked = []
+    monkeypatch.setattr(up, "mask_from_vertex_alpha", lambda data: masked.append(1) or (data, ["MI_Part"]))
+    found = _fake_blender({"vertex_colour": "Color"}, material="MI_Part")
+    plain = ex.export_unreal(files["part"], kind="prop", size_cm=40, out_dir=tmp_path / "plain",
+                             blender=Path("blender"), run=found, log=lambda m: None)
+    assert masked == [] and plain["unreal"].get("opacity_mask") is None
+    body = ex.export_unreal(files["part"], kind="prop", size_cm=40, out_dir=tmp_path / "body", opacity_mask=True,
+                            blender=Path("blender"), run=found, log=lambda m: None)
+    assert masked == [1] and body["unreal"]["opacity_mask"] == "vertex_alpha"
+    assert ex.plan(files["part"], kind="prop", size_cm=40)["job"]["opacity_mask"] is False

@@ -40,8 +40,10 @@ def bones_in_model(body: dict, model_cam: Camera, concept_size, y_centre: float)
 
     x and z come through the pictures: body bone -> body picture -> concept picture ->
     back out through the model's camera at its depth. Depth (y) is the bone's depth from
-    the body's root, scaled by the ratio of the two cameras' sizes, around the model's
-    centre `y_centre`.
+    the body's root, scaled as x and z are, around the model's centre `y_centre`: by the two
+    cameras' focal lengths and picture scales, the concept's size against the body picture's,
+    and the two cameras' distances (MoGe-2 gives each picture its own field of view, so its
+    own distance).
     """
     from image_to_3dlab.slot_parts import body as body_mod
 
@@ -51,7 +53,8 @@ def bones_in_model(body: dict, model_cam: Camera, concept_size, y_centre: float)
     root = next(b for b, p in body["skeleton"]["parents"].items() if p is None)
     f_body = (body_cam.size / 2) / np.tan(body_cam.fov / 2)
     f_model = (model_cam.size / 2) / np.tan(model_cam.fov / 2)
-    k = (f_body * body_cam.scale) / (f_model * model_cam.scale)
+    concept_scale = float(concept_size[0]) / float(body["image_size"][0])   # body picture px -> concept px
+    k = (f_body * body_cam.scale * concept_scale * model_cam.dist) / (f_model * model_cam.scale * body_cam.dist)
     root_depth = -heads[root][2]  # glTF z forward -> Blender depth y = -z
 
     def carry(px, gltf_point):

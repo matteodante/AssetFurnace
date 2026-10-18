@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -94,6 +95,49 @@ def ask_request(picture: Path, text: str) -> dict:
     content = [{"type": "image_url", "image_url": {"url": judge._data_url(picture)}}, {"type": "text", "text": text}]
     return {"messages": [{"role": "user", "content": content}], "max_tokens": 1, "temperature": 0,
             "logprobs": True, "top_logprobs": 20}
+
+
+JUDGE = "qwen3-vl-8b"   # the picture judge, as the records name it
+
+
+def with_judge(work: Callable, fallback: str, log: Path | None = None) -> tuple[Any, str | None]:
+    """`work(server)` with the picture judge running, or `work(None)` without it; (result, why
+    there was no judge, or None). The one way every step of a set treats the judge: not
+    installed, the GPU kept by another session, or a server that fails on the way (a crash,
+    a timeout) all go on without it and say so with `fallback` (what happens instead).
+
+    Each step starts its own: the server holds the shared GPU lock while it runs, so one kept
+    open across a set would keep sd-cli and Pixal3D from the GPU in between."""
+    from image_to_3dlab import gpu_lock
+    from image_to_3dlab.style import judge, models
+
+    try:
+        server = judge.LlamaServer(**({"log": log} if log else {}))
+    except models.MissingModel as missing:
+        print(f"going on without the picture judge ({missing}): {fallback}; Setup & Status installs the judge",
+              flush=True)
+        return work(None), str(missing)
+    try:
+        with server:
+            return work(server), None
+    except (gpu_lock.GpuBusy, RuntimeError) as exc:
+        print(f"going on without the picture judge ({exc}): {fallback}", flush=True)
+        return work(None), str(exc)
+
+
+def box_request(picture: Path, text: str) -> dict:
+    """One picture and a grounding question; the answer is text with a `bbox_2d`."""
+    from image_to_3dlab.style import judge
+
+    content = [{"type": "image_url", "image_url": {"url": judge._data_url(picture)}}, {"type": "text", "text": text}]
+    return {"messages": [{"role": "user", "content": content}], "max_tokens": 160, "temperature": 0}
+
+
+def make_box_asker(post: Callable[[dict], dict]) -> Callable[[Path, str], str]:
+    def ask_box(picture: Path, text: str) -> str:
+        return post(box_request(picture, text))["choices"][0]["message"]["content"]
+
+    return ask_box
 
 
 def make_asker(post: Callable[[dict], dict]) -> Callable[[Path, str], float]:

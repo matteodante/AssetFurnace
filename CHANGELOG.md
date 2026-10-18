@@ -39,6 +39,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     always Metal;
   - the Unreal export of a Blender version that has no skeleton goes out as an object;
   - the update check forgets an answer about another repository, and a 404 clears it;
+  - only a set's fitted body gets the vertex-alpha opacity mask in its Unreal export
+    (`--opacity-mask`); before, any asset with a vertex colour under half alpha came out Masked;
+  - route B0 carries a bone's depth at the scale of its width, so a concept of another size or
+    MoGe-2's own field of view no longer puts hidden faces on the wrong bones;
+  - a piece drawn at another size than its canvas lands where it was cut from on the body;
+  - a Pixal3D model whose field of view MoGe-2 chose names MoGe-2 (MIT) among its components;
+  - a weapon's grip moves with a corrected class (near the end for an axe, the middle for a staff,
+    the back for a shield); a point the person placed stays;
+  - the picture judge failing on the way (a crash, a timeout) is handled alike in every step
+    of a set: it goes on without it and says so, where scoring the pieces stopped the run;
+  - a gauntlet lies along the forearm, no longer turned toward the thumb;
+  - a library clip that loops ends on its first pose, as the procedural clips do;
   - a set's weapons and shields are checked as assets of their own (the `weapon_or_shield`
     profile), with a provenance record bound to the finished file, and each goes to the review
     queue; before, only the fitted pieces were checked;

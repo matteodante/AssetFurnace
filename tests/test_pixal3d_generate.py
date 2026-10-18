@@ -680,3 +680,21 @@ def test_a_run_reads_its_own_copy_of_the_cutout_whatever_another_run_cleans(tmp_
     assert px.main() == 0
     assert read["mode"] == "RGBA" and read["pixel"] == (180, 40, 40)   # its own colours, not the outline
     assert not list(output.parent.glob("*__input*"))   # the copy goes with the run
+
+
+def test_moge_2_is_on_the_record_when_it_chose_the_field_of_view(tmp_path):
+    """Code read 18/10/2026: the FOV that shapes the model came from MoGe-2, but the record
+    named it only as a word in the parameters."""
+    from image_to_3dlab import moge_fov
+
+    image = tmp_path / "a.png"
+    image.write_bytes(b"a")
+    output = tmp_path / "a.glb"
+    output.write_bytes(b"b")
+    estimated = px.manifest(image, output, res=1024, seed=1, fov=0.4, gss=10.0, gsh=None, fov_source="moge-2",
+                            matted=True, matted_here=False, seconds=1.0)
+    assert estimated["components"] == [{"component": f"{moge_fov.REPO_ID}@{moge_fov.REVISION}",
+                                        "purpose": "camera field of view", "license": "MIT"}]
+    asked = px.manifest(image, output, res=1024, seed=1, fov=0.4, gss=10.0, gsh=None,
+                        matted=True, matted_here=False, seconds=1.0)
+    assert asked["components"] == []

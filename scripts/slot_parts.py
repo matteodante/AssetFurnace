@@ -180,24 +180,14 @@ def uses_gpu(command: list[str]) -> bool:
 
 
 def score_candidates(record: dict, cuts_dir: Path, folder: Path, seeds: list[int]) -> tuple[dict, str]:
-    """Every slot's pictures scored, with Qwen3-VL when it is there; (scores, judge used)."""
-    from image_to_3dlab import gpu_lock
-    from image_to_3dlab.style import judge, models
-
+    """Every slot's pictures scored, with Qwen3-VL when it is there; (scores, judge used). The
+    judge used is said in the run's log, the pick panel and pieces_status (candidates.json)."""
     Path(folder).mkdir(parents=True, exist_ok=True)
-    try:
-        server = judge.LlamaServer(log=Path(folder) / "judge.log")
-    except models.MissingModel as missing:
-        # said in the run's log: the pick panel and pieces_status show it too (candidates.json's judge)
-        print(f"going on without the picture judge ({missing}): each piece's picture is picked by its "
-              "silhouette only; Setup & Status installs the judge", flush=True)
-        return candidates.score_all(record, cuts_dir, folder, seeds), f"shape only ({missing})"
-    try:
-        with server:
-            return candidates.score_all(record, cuts_dir, folder, seeds, ask=candidates.make_asker(server.post)),                 "qwen3-vl-8b"
-    except gpu_lock.GpuBusy as busy:   # another session kept the GPU: the set goes on, picked by silhouette
-        print(f"going on without the picture judge ({busy}): picking by silhouette only", flush=True)
-        return candidates.score_all(record, cuts_dir, folder, seeds), f"shape only ({busy})"
+    scored, missing = candidates.with_judge(
+        lambda server: candidates.score_all(record, cuts_dir, folder, seeds,
+                                            **({"ask": candidates.make_asker(server.post)} if server else {})),
+        "each piece's picture is picked by its silhouette only", log=Path(folder) / "judge.log")
+    return scored, candidates.JUDGE if missing is None else f"shape only ({missing})"
 
 
 def make_pieces(cuts_json: Path, seeds: list[int], picks: dict[str, int] | None = None, images: bool = True,
@@ -337,21 +327,15 @@ HELD_QUESTION = {
 def score_held(slot: str, words: str, pictures: dict[int, Path]) -> dict[int, float | None]:
     """The picture judge's yes for each picture: one complete weapon (or shield) in the canonical
     pose. No judge: no scores, and the first seed stays the automatic pick."""
-    from image_to_3dlab import gpu_lock
-    from image_to_3dlab.style import judge, models
-
     what = words.strip() or pieces.HELD_WORDS[slot]
-    try:
-        server = judge.LlamaServer()
-    except models.MissingModel:
-        return {seed: None for seed in pictures}
-    try:
-        with server:
-            ask = candidates.make_asker(server.post)
-            return {seed: round(ask(path, HELD_QUESTION[slot].format(what=what)), 4) for seed, path in pictures.items()}
-    except (gpu_lock.GpuBusy, RuntimeError) as exc:
-        print(f"{slot} pictures not scored: the picture judge could not run ({exc})", flush=True)
-        return {seed: None for seed in pictures}
+
+    def score(server) -> dict[int, float | None]:
+        if server is None:
+            return {seed: None for seed in pictures}
+        ask = candidates.make_asker(server.post)
+        return {seed: round(ask(path, HELD_QUESTION[slot].format(what=what)), 4) for seed, path in pictures.items()}
+
+    return candidates.with_judge(score, f"the {slot}'s pictures are not scored, the first seed is the pick")[0]
 
 
 def held_candidates(pictures: dict[int, Path], scores: dict[int, float | None] | None = None) -> dict:
@@ -368,10 +352,8 @@ def held_candidates(pictures: dict[int, Path], scores: dict[int, float | None] |
 def find_grip(slot: str, words: str, picture: Path, model: Path) -> dict:
     """The grip of a weapon or shield just made (slot_parts/grip.py): the Pixal3D camera of its
     model, and the picture judge's box on its picture."""
-    from image_to_3dlab import gpu_lock
     from image_to_3dlab.slot_parts import camera as camera_mod
     from image_to_3dlab.slot_parts import grip
-    from image_to_3dlab.style import judge, models
 
     views = pieces.model_path(Path(picture).parent.parent, slot).with_suffix(".svviews")
     try:
@@ -383,23 +365,10 @@ def find_grip(slot: str, words: str, picture: Path, model: Path) -> dict:
                 "model": str(model), "camera": None, "box": None, "point": None, "axis": None, "by": "none"}
     if slot == "shield":
         return grip.find(model, picture, cam, slot=slot, words=words, ask_box=None)
-    try:
-        server = judge.LlamaServer()
-    except models.MissingModel:
-        return grip.find(model, picture, cam, slot=slot, words=words, ask_box=None)
-    try:
-        with server:
-            def ask_box(path: Path, question: str) -> str:
-                content = [{"type": "image_url", "image_url": {"url": judge._data_url(path)}},
-                           {"type": "text", "text": question}]
-                reply = server.post({"messages": [{"role": "user", "content": content}], "max_tokens": 160,
-                                     "temperature": 0})
-                return reply["choices"][0]["message"]["content"]
-
-            return grip.find(model, picture, cam, slot=slot, words=words, ask_box=ask_box)
-    except (gpu_lock.GpuBusy, RuntimeError) as exc:
-        print(f"{slot}: the picture judge could not run ({exc})", flush=True)
-        return grip.find(model, picture, cam, slot=slot, words=words, ask_box=None)
+    return candidates.with_judge(
+        lambda server: grip.find(model, picture, cam, slot=slot, words=words,
+                                 ask_box=candidates.make_box_asker(server.post) if server else None),
+        f"the {slot}'s grip waits for the studio's marker or `slot_parts.py grip`")[0]
 
 
 def make_held(slot: str, words: str, folder: Path, seeds: list[int], style: str = "", run=_run,
@@ -723,7 +692,8 @@ def unreal_set(fit_dir: Path, body_json: Path, out: Path, size_cm: float = 180.0
     materials = {}
     base = "".join(part.capitalize() for part in record["name"].replace("_", "-").split("-"))
     body_glb = Path(fit_dir) / "body_masked.glb"
-    exported = ({"body": exporter(body_glb, kind="creature", size_cm=size_cm, name=base, out_dir=Path(out) / base)}
+    exported = ({"body": exporter(body_glb, kind="creature", size_cm=size_cm, name=base, out_dir=Path(out) / base,
+                                  opacity_mask=True)}
                 if fitted else {})
     pieces_out = {}
     for name in fitted_files(report):

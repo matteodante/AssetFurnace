@@ -82,8 +82,12 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
          out_dir: Path | None = None, lods: list[Path] | None = None, collision: str | None = None,
          body: Path | None = None, animations: list[Path] | None = None, tint: Path | None = None,
          forward: tuple[float, float, float] | None = None, body_name: str | None = None,
-         material: str | None = None, two_sided: bool | None = None, grip: dict | None = None) -> dict[str, Any]:
+         material: str | None = None, two_sided: bool | None = None, grip: dict | None = None,
+         opacity_mask: bool = False) -> dict[str, Any]:
     """Check the request and work out names, files and the Blender job. No side effects.
+
+    `opacity_mask`: a fitted base body (feature 4's `body_masked.glb`), whose vertex alpha hides
+    the skin under the pieces; only then is that alpha exported and its materials made MASK.
 
     `grip` (a weapon's or shield's, `image_to_3dlab/slot_parts/grip.py`: its `point` and `axis` on
     the model, glTF frame) puts the pivot there, the blade or head along +Z, and a `grip` socket
@@ -154,6 +158,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
         "forward": list(forward) if forward else [0.0, -1.0, 0.0],
         "family": (family or {}).get("family"),
         "two_sided": up.two_sided(base, two_sided),
+        "opacity_mask": bool(opacity_mask),
         "out": str((work / "blender.glb").resolve()), "report": str((work / "blender.json").resolve()),
     }
     return {"names": names, "out_dir": out_dir, "work": work, "job": job, "material": material,
@@ -260,14 +265,15 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
                   forward: tuple[float, float, float] | None = None, body_name: str | None = None,
                   material: str | None = None, blender: Path | None = None, run=subprocess.run,
                   log=lambda message: print(message), two_sided: bool | None = None,
-                  grip: dict | None = None) -> dict[str, Any]:
+                  grip: dict | None = None, opacity_mask: bool = False) -> dict[str, Any]:
     """Export one asset for Unreal. Returns the paths written, the problems found and
     the sidecar. Raises ValueError for a bad request and RuntimeError when Blender fails."""
     from image_to_3dlab.blender import find_blender, missing_help
 
     p = plan(source, kind=kind, size_cm=size_cm, measure=measure, name=name, out_dir=out_dir, lods=lods,
              collision=collision, body=body, animations=animations, tint=tint, forward=forward,
-             body_name=body_name, material=material, two_sided=two_sided, grip=grip)
+             body_name=body_name, material=material, two_sided=two_sided, grip=grip,
+             opacity_mask=opacity_mask)
     kind = p["job"]["kind"]
     blender = blender or find_blender()
     if blender is None:
@@ -292,7 +298,7 @@ def export_unreal(source: Path, *, kind: str, size_cm: float, measure: str = "he
         raise RuntimeError(f"Blender could not reshape the model: {report.get('error')}")
     stamp = {"kind": kind, "size_cm": size_cm, "measure": measure, "profile": up.SIDECAR_SCHEMA}
     data, textures = up.finalize_glb(Path(p["job"]["out"]).read_bytes(), stamp=stamp, material=p["material"])
-    if report.get("vertex_colour"):  # a fitted base body: hide the skin under the armour
+    if p["job"]["opacity_mask"] and report.get("vertex_colour"):  # a fitted base body: hide the skin under the armour
         data, masked = up.mask_from_vertex_alpha(data)
         report["masked_materials"] = masked
     p["glb"].write_bytes(data)
@@ -358,6 +364,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="draw both faces of every triangle (default: cloth two sided, the rest one sided)")
     parser.add_argument("--grip", type=Path, help="a weapon or shield: its grip record (grip.json): the pivot "
                                                    "there, a grip socket, the blade up")
+    parser.add_argument("--opacity-mask", action="store_true",
+                        help="a fitted base body (body_masked.glb): its vertex alpha hides the skin under the pieces")
     parser.add_argument("--material", choices=piece_materials.MATERIALS,
                         help="the one material of this piece: sets its roughness and metal (game materials)")
     parser.add_argument("--blender", type=Path, help="Blender executable (default: found like Finish finds it)")
@@ -378,7 +386,7 @@ def main(argv=None) -> int:
                                body=args.body, body_name=args.body_name, animations=args.animations,
                                tint=False if args.tint is not None and str(args.tint).lower() == "none" else args.tint,
                                forward=tuple(args.forward) if args.forward else None, material=args.material,
-                               blender=args.blender, two_sided=args.two_sided,
+                               blender=args.blender, two_sided=args.two_sided, opacity_mask=args.opacity_mask,
                                **({"grip": read_grip(args.grip)} if args.grip else {}))
     except (ValueError, RuntimeError) as exc:
         print(f"export_unreal: {exc}", file=sys.stderr)

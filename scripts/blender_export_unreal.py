@@ -466,11 +466,12 @@ def run(job):
     exported_animations = bool(skinned and report["animations"])
     # A base body fitted with armour carries a vertex colour with alpha 0 under the pieces (the
     # fit step's `covered`; reimported, glTF calls it Color), read by the game's material as an
-    # opacity mask. Blender exports colours only when a material uses them, so a colour whose
-    # alpha drops below one half somewhere is asked for here, and nothing else.
+    # opacity mask. Blender exports colours only when a material uses them, so for that body
+    # (the job's `opacity_mask`, set by the set's export only) a colour whose alpha drops below
+    # one half somewhere is asked for here, and nothing else; any other asset keeps its colours out.
     colours = {}
     for o in bpy.context.scene.objects:
-        if o.type != "MESH":
+        if o.type != "MESH" or not job.get("opacity_mask"):
             continue
         for attr in o.data.color_attributes:
             values = [0.0] * (len(attr.data) * 4)

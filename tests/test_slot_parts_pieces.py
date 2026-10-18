@@ -68,6 +68,15 @@ def test_the_piece_box_comes_back_onto_the_concept():
     assert pieces.concept_box(alpha, place) == pytest.approx([40, 0, 49, 19], abs=1.0)
 
 
+def test_a_piece_drawn_at_another_size_than_its_canvas_still_lands_on_the_concept():
+    """Code read 18/10/2026: the edit's picture has image_api's size, not the canvas's
+    (`cuts --size 768`), and the piece landed shifted and scaled on the body."""
+    piece = np.full((20, 10, 4), 255, np.uint8)
+    canvas, place = cuts.flatten(piece, (40, 0, 49, 19), size=64)
+    alpha = (canvas == 255).all(-1).repeat(2, axis=0).repeat(2, axis=1)   # drawn at 128 px
+    assert pieces.concept_box(alpha, place) == pytest.approx([40, 0, 49, 19], abs=1.0)
+
+
 @pytest.mark.parametrize("text, picks", [("", {}), ("helmet=7, boots=3", {"helmet": 7, "boots": 3})])
 def test_picks_parse(text, picks):
     assert pieces.parse_picks(text) == picks

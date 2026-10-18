@@ -191,7 +191,7 @@ def _write_clip(rigged: Path, family: str, motion: str, blend: Path | None,  # p
                                      loop=loop)
         if motion != cl.base_motion(motion):
             clip_source = cr.longer(clip_source, factor, seed, loop)
-        frames = cr.retarget(rig, roles, clip_source)
+        frames = cr.closed_loop(cr.retarget(rig, roles, clip_source), loop)
     else:
         frames = cm.make(motion, rig, roles)
 
