@@ -153,20 +153,30 @@ def find(model: Path, picture: Path, cam: Camera, *, slot: str, words: str = "",
               flush=True)
         return record
     point, axis = from_box(mesh_points(model), cam, box, CLASSES[name].hold)
-    return {**record, "box": [round(v, 1) for v in box], "point": point, "axis": axis, "by": "judge"}
+    judged = [round(v, 1) for v in box]
+    # the judge's box is kept apart: a person's marker replaces `box`, a new class reads this one
+    return {**record, "box": judged, "judge_box": judged, "point": point, "axis": axis, "by": "judge"}
 
 
 def correct(record: dict, *, at: tuple[float, float] | None = None, weapon_class: str | None = None,
             size_cm: float | None = None) -> dict:
     """A person's correction: `at` a point on the picture (fractions of its width and height),
-    `weapon_class` one of CLASSES, `size_cm` the real length. What is not given stays."""
+    `weapon_class` one of CLASSES, `size_cm` the real length. What is not given stays.
+
+    A new class without a point moves the grip by that class's rule: a shield's is the middle of
+    its back; a weapon's is where the class holds the judge's box (near the end for an axe, the
+    middle for a staff). A point the person placed stays; with neither a placed point nor the
+    judge's box (a shield made a weapon), the grip waits for the person's marker."""
     out = dict(record)
     if weapon_class is not None:
         if weapon_class not in CLASSES:
             raise ValueError(f"unknown class {weapon_class!r}: choose one of {', '.join(CLASSES)}")
-        if weapon_class != record.get("class") and size_cm is None:
+        changed = weapon_class != record.get("class")
+        if changed and size_cm is None:
             out["size_cm"] = CLASSES[weapon_class].size_cm
         out["class"] = weapon_class
+        if changed and at is None:
+            out.update(_regrip(record, weapon_class))
     if size_cm is not None:
         if not 1 <= float(size_cm) <= 1000:
             raise ValueError("the size is the real length in centimetres, 1 to 1000")
@@ -182,10 +192,28 @@ def correct(record: dict, *, at: tuple[float, float] | None = None, weapon_class
         point, axis = from_box(points, Camera.from_dict(record["camera"]), box)
         if out.get("class") == "shield":   # still held on its back, upright: only where on it moves
             point, axis = [point[0], point[1], float(points[:, 2].min())], [0.0, 1.0, 0.0]
-        out.update(box=[round(c, 1) for c in box], point=point, axis=axis)
+        out.update(box=[round(c, 1) for c in box], point=point, axis=axis, placed=True)
     if at is not None or weapon_class is not None or size_cm is not None:
         out["by"] = "person"
     return out
+
+
+def _regrip(record: dict, new_class: str) -> dict:
+    """Point and axis for a new class, when the person gave no point (see `correct`)."""
+    if new_class == "shield":
+        point, axis = shield_grip(mesh_points(Path(record["model"])))
+        return {"point": point, "axis": axis}
+    was_shield = record.get("class") == "shield"
+    if record.get("placed") and not was_shield:
+        return {}
+    judged = record.get("judge_box") or (record.get("box") if record.get("by") == "judge" else None)
+    if judged and record.get("camera"):
+        point, axis = from_box(mesh_points(Path(record["model"])), Camera.from_dict(record["camera"]), judged,
+                               CLASSES[new_class].hold)
+        return {"point": point, "axis": axis, "box": list(judged)}
+    if record.get("point") and not was_shield:
+        return {}   # a grip of unknown origin (a record from before `placed`): kept, never erased
+    return {"point": None, "axis": None, "box": None}
 
 
 def path_for(picture: Path) -> Path:

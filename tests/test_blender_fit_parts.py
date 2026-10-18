@@ -7,6 +7,7 @@ import importlib.util
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "blender_fit_parts.py"
@@ -75,3 +76,19 @@ def test_the_helmet_holds_the_head_bones_or_a_lone_neck_joint_never_the_body():
     assert bf.head_bones(full) == ["h"]
     assert bf.head_bones({"n": ("neck", 0, ""), "s": ("spine", 1, "")}) == ["n"]
     assert bf.head_bones({"s": ("spine", 1, "")}) == []
+
+
+def test_a_gauntlet_lies_along_the_forearm_not_toward_the_thumb():
+    """Code read 18/10/2026: the fingers inherit the hand's role, so the last bone of the chain
+    could be the thumb's tip and the glove turned toward it."""
+    roles = {"fa": ("forearm", 2, "R"), "hand": ("hand", 3, "R"), "thumb1": ("hand", 4, "R"),
+             "thumb2": ("hand", 5, "R"), "thumb3": ("hand", 6, "R")}
+    heads = {"fa": np.array([-0.3, 0, 1.4]), "hand": np.array([-0.55, 0, 1.4]),
+             "thumb1": np.array([-0.57, -0.05, 1.38]), "thumb2": np.array([-0.58, -0.09, 1.37]),
+             "thumb3": np.array([-0.59, -0.12, 1.36])}
+    axis = bf.limb_axis(roles, heads, list(roles), "gloves")
+    assert np.allclose(axis / np.linalg.norm(axis), [-1, 0, 0])
+    boots = {"foot": ("foot", 0, "R"), "toe": ("foot", 1, "R")}
+    assert np.allclose(bf.limb_axis(boots, {"foot": np.zeros(3), "toe": np.array([0, -0.2, 0])}, list(boots), "boots"),
+                       [0, -0.2, 0])
+    assert bf.limb_axis(boots, {"foot": np.zeros(3)}, ["foot"], "boots") is None

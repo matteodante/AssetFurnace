@@ -78,3 +78,32 @@ def test_a_busy_gpu_leaves_the_pick_to_the_silhouette(tmp_path, monkeypatch, cap
     scores, used = slot_parts.score_candidates({}, tmp_path, tmp_path / "pieces", [1, 2])
     assert scores == {"torso": {}} and used.startswith("shape only")
     assert "silhouette" in capsys.readouterr().out
+
+
+
+def test_a_judge_that_fails_on_the_way_is_treated_alike_by_every_step(tmp_path, monkeypatch, capsys):
+    """Code read 18/10/2026: a llama-server that fell over (RuntimeError) stopped a whole run while
+    scoring the pieces, yet only skipped the judge for the weapon's scores and its orientation."""
+    from image_to_3dlab.slot_parts import candidates, orient
+
+    monkeypatch.undo()   # the real score_held and orient.with_judge, not conftest's stand-ins
+
+    class Broken:
+        def __init__(self, **kwargs):
+            pass
+
+        def __enter__(self):
+            raise RuntimeError("llama-server exited with code 3")
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(judge, "LlamaServer", Broken)
+    monkeypatch.setattr(candidates, "score_all", lambda *a, **kw: {"torso": {}})
+    scores, used = slot_parts.score_candidates({}, tmp_path, tmp_path / "pieces", [1, 2])
+    assert scores == {"torso": {}} and used == "shape only (llama-server exited with code 3)"
+    pictures = {1: tmp_path / "s1.png", 2: tmp_path / "s2.png"}
+    assert slot_parts.score_held("weapon", "a longsword", pictures) == {1: None, 2: None}
+    assert orient.with_judge([tmp_path / "s1.png"]) == {tmp_path / "s1.png": None}
+    said = capsys.readouterr().out
+    assert said.count("going on without the picture judge (llama-server exited with code 3)") == 3

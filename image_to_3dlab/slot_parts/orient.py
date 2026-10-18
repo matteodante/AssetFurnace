@@ -38,6 +38,8 @@ def orient_held(pictures: list[Path], ask: Callable[[Path, str], float] | None) 
     """{picture: turned (True/False), or None when there is no judge}; each picture once."""
     from PIL import Image, ImageOps
 
+    from image_to_3dlab.slot_parts import candidates
+
     out: dict[Path, bool | None] = {}
     for picture in pictures:
         done = record_path(picture)
@@ -52,7 +54,7 @@ def orient_held(pictures: list[Path], ask: Callable[[Path, str], float] | None) 
             with Image.open(picture) as opened:
                 ImageOps.flip(opened.copy()).save(picture)
         done.write_text(json.dumps({"handle": "top" if top else "bottom", "turned": top, "answers": answers,
-                                    "by": "qwen3-vl-8b"}, indent=1) + "\n", encoding="utf-8")
+                                    "by": candidates.JUDGE}, indent=1) + "\n", encoding="utf-8")
         out[picture] = top
     if ask is None and any(v is None for v in out.values()):
         print("weapon pictures kept as drawn: the picture judge is not installed to check that the handle is at the "
@@ -62,20 +64,11 @@ def orient_held(pictures: list[Path], ask: Callable[[Path, str], float] | None) 
 
 def with_judge(pictures: list[Path]) -> dict[Path, bool | None]:
     """orient_held with the picture judge when it is installed and the GPU is free."""
-    from image_to_3dlab import gpu_lock
     from image_to_3dlab.slot_parts import candidates
-    from image_to_3dlab.style import judge, models
 
     waiting = [p for p in pictures if not record_path(p).is_file()]
     if not waiting:
         return orient_held(pictures, None)
-    try:
-        server = judge.LlamaServer()
-    except models.MissingModel:
-        return orient_held(pictures, None)
-    try:
-        with server:
-            return orient_held(pictures, candidates.make_asker(server.post))
-    except (gpu_lock.GpuBusy, RuntimeError) as exc:
-        print(f"weapon pictures kept as drawn: the picture judge could not run ({exc})", flush=True)
-        return orient_held(pictures, None)
+    return candidates.with_judge(lambda server: orient_held(pictures, candidates.make_asker(server.post)
+                                                            if server else None),
+                                 "the weapon's pictures are kept as drawn")[0]

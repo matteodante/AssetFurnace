@@ -99,6 +99,21 @@ def head_bones(roles: dict) -> list[str]:
     return [b for b, (r, _, _) in roles.items() if r == "head"] or [b for b, (r, _, _) in roles.items() if r == "neck"]
 
 
+def limb_axis(roles: dict, heads: dict, bones: list[str], slot: str):
+    """The line a limb piece lies along, from the first bone of its chain to the last. For the
+    gloves, the forearm's head to the hand's (the wrist): the fingers inherit the hand's role
+    and the last of them can be the thumb, which turned the gauntlet toward it."""
+    ordered = sorted(bones, key=lambda b: roles[b][1])
+    if len(ordered) < 2:
+        return None
+    if slot == "gloves":
+        forearm = [b for b in ordered if roles[b][0] == "forearm"]
+        hand = [b for b in ordered if roles[b][0] == "hand"]
+        if forearm and hand:
+            return np.asarray(heads[hand[0]], float) - np.asarray(heads[forearm[0]], float)
+    return np.asarray(heads[ordered[-1]], float) - np.asarray(heads[ordered[0]], float)
+
+
 # ------------------------------------------------------------------ Blender from here
 
 
@@ -521,8 +536,7 @@ def main() -> None:  # pragma: no cover - runs inside Blender
         for o, side in group:
             if slot in LIMB_REFINE and side is not None:
                 bones = [b for b in slot_bones(roles, slot, side) if roles[b][0] != "upperarm" or slot == "shoulders"]
-                ordered = sorted(bones, key=lambda b: roles[b][1])
-                axis = heads[ordered[-1]] - heads[ordered[0]] if len(ordered) > 1 else None
+                axis = limb_axis(roles, heads, bones, slot)
                 if slot == "gloves" and axis is not None and np.linalg.norm(axis) > 1e-6:
                     m, turned = fit.turn_onto(coords(o), axis)
                     apply(o, m)

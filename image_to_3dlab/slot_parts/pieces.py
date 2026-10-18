@@ -128,8 +128,13 @@ def b0_commands(concept: Path, folder: Path, python: str, scripts: Path, faces: 
 
 
 def concept_box(piece_alpha: np.ndarray, placement: cuts.Placement) -> list[float]:
-    """The completed piece's box in its picture, mapped back onto the concept."""
-    return [round(v, 2) for v in placement.to_concept(camera.alpha_box(piece_alpha))]
+    """The completed piece's box in its picture, mapped back onto the concept. The edit draws at
+    its own size (image_api's settings), not the canvas's (`cuts --size`): the box is brought
+    to the canvas first."""
+    h, w = np.asarray(piece_alpha).shape[:2]
+    x0, y0, x1, y1 = camera.alpha_box(piece_alpha)
+    sx, sy = placement.size / w, placement.size / h
+    return [round(v, 2) for v in placement.to_concept((x0 * sx, y0 * sy, x1 * sx, y1 * sy))]
 
 
 def parse_picks(text: str) -> dict[str, int]:

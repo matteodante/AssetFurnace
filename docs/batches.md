@@ -97,7 +97,9 @@ default), `atlas`, `texture_size`, `metallic`, `roughness`, `ior`, `voxel`, `ski
 `unreal`; objects), `lods` (files, `[]` for none; default the `_LODn` files beside the
 model), `tint` (`false` for none), `forward` (three numbers, Blender axes), `body` and `body_name`
 (equipment, which needs its body), `grip` (a weapon's or shield's grip record, `grip.json`:
-the pivot on the grip, the blade or head along +Z, a `grip` socket there), `animations`
+the pivot on the grip, the blade or head along +Z, a `grip` socket there), `opacity_mask`
+(`true` for a set's fitted body, `body_masked.glb`: its vertex alpha hides the skin under the
+pieces), `animations`
 (creatures). File paths are relative to
 the spec. `checks` settings: `profile` (default from `kind`), `set` (thresholds, as
 `--set`: `{"budget.faces.max": 20000}`), `reference` (compare with the row's picture,

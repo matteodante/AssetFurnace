@@ -448,6 +448,14 @@ def longer(source: Source, factor: float, seed: int, loop: bool) -> Source:
     return Source(parents=source.parents, rest=source.rest, poses=poses, roles=source.roles)
 
 
+def closed_loop(frames: list, loop: bool) -> list:
+    """A loop's frames with the first again at the end, as the procedural clips have them: its
+    last key is then its first pose, and an engine playing it round blends back over one frame
+    instead of jumping from the last pose to the first in no time. `load_source` drops the
+    source's own closing frame, so it is put back here, after the retarget."""
+    return [*frames, frames[0]] if loop and frames else list(frames)
+
+
 # -- reading a library clip ----------------------------------------------------------------
 
 def load_source(glb: Path, roles: dict, clip: str, fps: int = FPS, loop: bool = False) -> Source:

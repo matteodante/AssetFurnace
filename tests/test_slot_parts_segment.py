@@ -143,3 +143,21 @@ def test_a_b0_file_keeps_the_slot_face_budget_twice_for_a_pair():
     bs = _load_segment_script()
     assert bs.face_budget("legs") == 8000
     assert bs.face_budget("gloves") == 2 * 4000
+
+
+def test_a_bones_depth_is_carried_at_the_scale_its_width_is(tmp_path):
+    """Code read 18/10/2026: depth was scaled by the cameras' sizes only, so with MoGe-2's own
+    field of view (another distance) or a concept of another size, hidden faces took bones at
+    the wrong depth."""
+    from image_to_3dlab.slot_parts import body
+
+    path, _, heads, names = _body(tmp_path)
+    record = body.load(path)
+    head = names["spine2"]
+    record["skeleton"]["heads"][head] = [*record["skeleton"]["heads"][head][:2], 0.1]   # 10 cm forward
+    model_cam = Camera(fov=0.5, dist=4.5, size=400)
+    carried = {s.bone: s for s in segment.bones_in_model(record, model_cam, (800, 800), y_centre=0.0)}
+    left, right = names["armL1"], names["armR1"]
+    width = abs(carried[left].head[0] - carried[right].head[0]) / abs(heads[left][0] - heads[right][0])
+    depth = -carried[head].head[1] / 0.1   # glTF +z (forward) is Blender -y
+    assert depth == pytest.approx(width, rel=0.03)

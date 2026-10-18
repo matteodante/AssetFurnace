@@ -385,3 +385,15 @@ def test_a_limb_bends_in_the_body_frame_when_the_body_has_rolled():
     posed = _posed(tgt, (turn, root))
     got = (posed["t_armL1"] - posed["t_armL0"]) / np.linalg.norm(posed["t_armL1"] - posed["t_armL0"])
     assert np.degrees(np.arccos(np.clip(got @ want, -1, 1))) < 0.5
+
+
+def test_a_library_loop_ends_on_its_first_pose_like_the_procedural_ones():
+    """Code read 18/10/2026: a library loop lost its closing frame (load_source drops it), so its
+    glTF ended one frame early and the engine jumped from the last pose to the first."""
+    frames = [("a", 0), ("b", 1), ("c", 2)]
+    assert cr.closed_loop(frames, loop=True) == [("a", 0), ("b", 1), ("c", 2), ("a", 0)]
+    assert cr.closed_loop(frames, loop=False) == frames and cr.closed_loop([], loop=True) == []
+    from pathlib import Path
+
+    script = (Path(cr.__file__).with_name("creature_clips.py")).read_text(encoding="utf-8")
+    assert "cr.closed_loop(cr.retarget(" in script   # the Blender step writes the closed loop

@@ -536,7 +536,7 @@ def mask_from_vertex_alpha(data: bytes, cutoff: float = 0.5) -> tuple[bytes, lis
             if colour is None or index is None or index >= len(materials):
                 continue
             alpha = np.asarray(reader.accessor(colour), float)
-            if alpha.ndim != 2 or alpha.shape[1] != 4 or alpha[:, 3].min() >= 0.5:
+            if alpha.ndim != 2 or alpha.shape[1] != 4 or alpha[:, 3].min() >= cutoff:
                 continue  # no alpha, or nothing to hide: an ordinary vertex colour
             material = materials[index]
             if material.get("alphaMode") != "MASK" or material.get("alphaCutoff") != cutoff:

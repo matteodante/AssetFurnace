@@ -128,3 +128,16 @@ def test_the_cli_shows_and_corrects_a_sets_materials(tmp_path, capsys):
     assert cli.main(["materials", str(folder), "--clear", "helmet"]) == 0
     assert json.loads(capsys.readouterr().out)["helmet"]["by"] == "rule"
     assert cli.main(["materials", str(folder), "--set", "helmet=steel"]) == 1
+
+
+def test_the_sets_body_alone_is_exported_with_its_opacity_mask(tmp_path):
+    folder = _fit_dir(tmp_path)
+    body_json, *_ = _body(tmp_path)
+    calls = {}
+
+    def exporter(source, **kwargs):
+        calls[Path(source).name] = kwargs.get("opacity_mask", False)
+        return {"glb": str(tmp_path / f"{kwargs['name']}.glb"), "problems": []}
+
+    cli.unreal_set(folder, body_json, tmp_path / "unreal", exporter=exporter)
+    assert calls["body_masked.glb"] is True and not any(v for k, v in calls.items() if k != "body_masked.glb")

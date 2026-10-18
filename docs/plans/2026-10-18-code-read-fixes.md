@@ -38,16 +38,16 @@ Stato: **fatto** (PR), **in corso**, **da fare**, **respinto** (motivo).
 | A-2 | Stato di Pieces solo in memoria | fatto: la pagina legge `output/sets/.run.json` (`runs.status`/`runs.cancel`), il codice d'uscita va in `<log>.exit` |
 | A-3 | `install.sh` sceglie la release dai tag dell'upstream | fatto: `git ls-remote` del repository installato, come `install.ps1` |
 | A-4 | `fit.holes` conta GLB vecchi | fatto: il set viene da `fit.json`; un pezzo che non si legge è nominato nei `details` |
-| A-5 | Alfa < 0,5 dà MASK su qualsiasi asset | da fare |
-| A-6 | B0 ignora le distanze camera di MoGe-2 | da fare |
-| A-7 | `concept_box` presume la dimensione della tela | da fare |
+| A-5 | Alfa < 0,5 dà MASK su qualsiasi asset | fatto: solo con `opacity_mask` nel job, che mette `unreal_set` per il corpo (`--opacity-mask` da riga di comando); `cutoff` al posto di 0,5 |
+| A-6 | B0 ignora le distanze camera di MoGe-2 | fatto: la profondità usa la stessa scala di x (distanze delle camere e dimensione del concept) |
+| A-7 | `concept_box` presume la dimensione della tela | fatto: il riquadro torna alla tela prima del concept |
 | A-8 | Provenienza "Metal" su Windows | fatto: `text_image.runtime()` dal build della macchina (Metal, CUDA 12, Vulkan, ROCm) |
 | A-9 | Materiale non riportabile ad Auto | fatto: "Auto (materiale della regola)" nel menu dei set fatti; sceglierlo toglie la correzione |
 | A-10 | Versione Blender senza scheletro esportata come creatura | fatto: il tipo viene da `facts.skins` della versione |
-| A-11 | MoGe-2 assente dalla provenienza | da fare |
-| A-12 | Cambio classe dell'arma non sposta la presa | da fare |
+| A-11 | MoGe-2 assente dalla provenienza | fatto: componente `Ruicheng/moge-2-vitl@<rev>`, MIT, quando ha scelto il FOV |
+| A-12 | Cambio classe dell'arma non sposta la presa | fatto: la nuova classe ricalcola la presa dal riquadro del giudice (tenuto in `judge_box`) o dal retro dello scudo; un punto messo dalla persona resta |
 | A-13 | FLUX.2 klein installabile ma non usato | fatto: tolto da Setup con il suo bootstrap |
-| A-14 | Errori del giudice gestiti in quattro modi | da fare |
+| A-14 | Errori del giudice gestiti in quattro modi | fatto: `candidates.with_judge` per pezzi, arma, presa e orientamento. Respinta la parte "un server per set": il server tiene il lucchetto della GPU, aperto per tutto il set bloccherebbe sd-cli e Pixal3D |
 
 ## Altri punti dei rapporti
 
@@ -55,6 +55,8 @@ Stato: **fatto** (PR), **in corso**, **da fare**, **respinto** (motivo).
 | --- | --- | --- |
 | X-1 | Il controllo aggiornamenti tiene la risposta di un altro repository | fatto: la cache dice da dove viene; un 404 la azzera |
 | X-2 | `install.ps1` interroga l'URL HTTPS invece del remote | respinto: anche il `fetch` subito prima usa lo stesso `$Repo`, quindi `ls-remote` non aggiunge un modo di fallire |
+| X-3 | L'asse del guanto punta a un dito (P2-8) | fatto: `limb_axis`, dall'avambraccio al polso |
+| X-4 | Le clip in loop della libreria perdono il fotogramma di chiusura (P2-9) | fatto: `closed_loop` rimette il primo fotogramma in coda; da guardare in Unreal |
 
 ## Qualità (nessun cambio di comportamento)
 

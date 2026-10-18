@@ -85,6 +85,16 @@ def test_export_passes_the_rows_size_and_the_step_options(tmp_path, fake_export)
     assert result.record["glb"] == "SM_Cat.glb" and result.record["sidecar"] == "SM_Cat.unreal.json"
 
 
+def test_a_batch_can_export_a_fitted_body_with_its_opacity_mask(tmp_path, fake_export):
+    """Codex review: the mask became opt-in, and an export-only batch of body_masked.glb could not ask."""
+    from image_to_3dlab import step_catalog
+
+    export_step.run(_context(tmp_path, _row(tmp_path), "export_unreal", {"opacity_mask": True}))
+    export_step.run(_context(tmp_path, _row(tmp_path), "export_unreal"))
+    assert [call["opacity_mask"] for call in fake_export] == [True, False]
+    assert "opacity_mask" in {p.name for p in step_catalog.CATALOG["export_unreal"].params}
+
+
 def test_export_names_the_asset_after_the_row_by_default(tmp_path, fake_export):
     export_step.run(_context(tmp_path, _row(tmp_path), "export_unreal"))
     assert fake_export[0]["name"] == "SM_Cat"
