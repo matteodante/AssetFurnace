@@ -15,18 +15,18 @@ Le funzioni qui sotto sono generiche: servono a qualunque gioco. Ciò che è spe
 originali, tabella di corrispondenza, import in Unreal) resta nella repo di Auroconts (`docs/assets/pipeline.md`,
 `tools/`).
 
-## Stato al 16/10/2026
+## Stato al 18/10/2026
 
 | # | Funzione | Progetto | Stato |
 |---|---|---|---|
-| 1 | Lotti e accesso per agenti | [batch-mcp](2026-10-15-batch-mcp-design.md) | **Su `main`** (PR #2): lotti, ripresa, server MCP, pagina Batches |
-| 2 | Dal riferimento al concept | [reference-concept](2026-10-15-reference-concept-design.md) | Costruita: Qwen-Image 2.1 Turbo in modifica dentro `sd-cli`; pannello "Draw from a reference" nello studio, `generate` per le altre funzioni (PR #23, #24, #33, #36) |
-| 3 | Bibbia dello stile | [style-bible](2026-10-15-style-bible-design.md) | PR 1 su `main` (PR #10: bibbia, prompt, riferimenti). PR 2 (gara fra giudici imparati) in corso. Lo stile si ricava dai riferimenti originali del progetto (vedi sotto) |
-| 4 | Parti per slot | [progetto](2026-10-16-slot-parts-design.md), [rapporto della prova](2026-10-15-slot-parts-spike.md) | **Implementata**: tre modi, pezzi dalla strada C, B0 di riserva, controlli in posa, riadattamento, Unreal; accettazione su due corpi (sezione 12 del progetto) |
+| 1 | Lotti e accesso per agenti | [batch-mcp](2026-10-15-batch-mcp-design.md) | **Su `main`**: lotti con ripresa dal primo passo cambiato, passi picture/concept/generate/finish/rig/clips/animate/materials/export_unreal/checks, server MCP secondo la specifica 2025-11-25 (annotazioni, risultati tipizzati, resource link, roots, HTTP facoltativo con token) |
+| 2 | Dal riferimento al concept | [reference-concept](2026-10-15-reference-concept-design.md) | **Su `main`**: Qwen-Image 2.1 Turbo in modifica dentro `sd-cli`; pannello nello studio, passo `concept` nei lotti e per gli agenti |
+| 3 | Bibbia dello stile | [style-bible](2026-10-15-style-bible-design.md) | **Chiusa** il 17/10/2026: bibbia facoltativa su tutte e tre le strade; stile dato solo dal testo; giudice automatico rimandato |
+| 4 | Parti per slot | [progetto](2026-10-16-slot-parts-design.md), [armi autonome](2026-10-17-standalone-weapons.md) | **Chiusa**: tre modi, candidati per pezzo con scelta, corpo base vestito a scelta, armi e scudi come asset a sé con socket `grip`; set vero superato in UE 5.8.3 |
 | 5 | Profilo Unreal | [unreal-profile](2026-10-15-unreal-profile-design.md) | **Su `main`** (PR #6, #7), accettazione superata su UE 5.8.3 |
-| 6 | Famiglie di creature | [creature-families](2026-10-15-creature-families-design.md) | PR 1 su `main` (PR #8: riconoscimento, `rig.deformation`, digitigradi e quadrupedi). PR #13 (molte zampe, serpenti) in attesa della ricerca sugli approcci più recenti per l'animazione |
-| 7 | Controlli e revisione | [checks-review](2026-10-15-checks-review-design.md) | **Su `main`** (PR #4) |
-| 8 | Materiali pronti per il gioco | [v2](2026-10-15-game-materials-v2-design.md) (la [v1](2026-10-15-game-materials-design.md) è superata) | v2 approvata. PR 1 e 2 su `main` (PR #11 ORM e pezzo comune, PR #12 etichette). La PR #3 (v1) resta in bozza e si chiude |
+| 6 | Famiglie di creature | [creature-families](2026-10-15-creature-families-design.md) | **Chiusa**: riconoscimento, libreria CC0 con retarget a catene, varianti GenMM, uscita per Unreal; clip accendibili da ogni strada |
+| 7 | Controlli e revisione | [checks-review](2026-10-15-checks-review-design.md) | **Su `main`**, con glTF-Validator di Khronos installato e passo `checks` predefinito nei lotti |
+| 8 | Materiali pronti per il gioco | [v2](2026-10-15-game-materials-v2-design.md) | **Chiusa** il 17/10/2026 con un materiale per pezzo, proposto da una regola e corretto da una persona; zone automatiche (72 %) fuori dalla catena |
 
 ### Regole trasversali decise dall'utente (15-16/10/2026)
 
