@@ -204,6 +204,19 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
     if not output.is_dir():
         return []
     hashes = _Hashes(output)
+    runs = _runs(output)
+    nodes = _nodes(runs)
+    groups = _groups(runs, nodes, hashes)
+    hashes.save()
+    assets = [asset for members in groups if (asset := _asset(output, hashes, nodes, members)) is not None]
+    hashes.save()
+    _with_versions_names_and_hidden(output, assets)
+    assets.sort(key=lambda a: a["updated"], reverse=True)
+    return assets
+
+
+def _runs(output: Path) -> dict[str, list[dict[str, Any]]]:
+    """Every run on disk by what it made, a batch's finished rows among them."""
     pictures, models, finishes = _pictures(output), _models(output), _finishes(output)
     rigs, sets, versions = _rigs(output), _prop_sets(output), _versions(output)
     from batch_api import library_nodes  # a batch's finished rows are assets too (docs/batches.md)
@@ -219,24 +232,58 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
     batched["model"] = [model for model in batched["model"] if model["file"].resolve() not in known]
     pictures, models = pictures + batched["picture"], models + batched["model"]
     finishes = finishes + batched["finished"]
+    return {"picture": pictures, "model": models, "finished": finishes, "rigged": rigs, "set": sets,
+            "version": versions}
 
-    # union-find over every run; each connected group is one asset
-    nodes: list[tuple[str, dict[str, Any]]] = (
-        [("picture", n) for n in pictures] + [("model", n) for n in models]
-        + [("finished", n) for n in finishes] + [("rigged", n) for n in rigs] + [("set", n) for n in sets]
-        + [("version", n) for n in versions])
-    parent = list(range(len(nodes)))
 
-    def find(i: int) -> int:
+def _nodes(runs: dict[str, list[dict[str, Any]]]) -> list[tuple[str, dict[str, Any]]]:
+    """Every run as (what it made, the run), in the order the assets are built from."""
+    return [(kind, node) for kind in ("picture", "model", "finished", "rigged", "set", "version")
+            for node in runs[kind]]
+
+
+class _Joined:
+    """Union-find over the runs: each connected group is one asset."""
+
+    def __init__(self, count: int):
+        self.parent = list(range(count))
+
+    def find(self, i: int) -> int:
+        parent = self.parent
         while parent[i] != i:
             parent[i] = parent[parent[i]]
             i = parent[i]
         return i
 
-    def join(a: int, b: int) -> None:
-        parent[find(a)] = find(b)
+    def join(self, a: int, b: int) -> None:
+        self.parent[self.find(a)] = self.find(b)
 
+
+def _groups(runs: dict[str, list[dict[str, Any]]], nodes: list[tuple[str, dict[str, Any]]],
+            hashes: _Hashes) -> list[list[int]]:
+    """The runs joined into assets, as lists of indices into `nodes`, by the links the module
+    docstring names; each asset's runs in the order of `nodes`, the assets in the order of
+    their first run."""
+    joined = _Joined(len(nodes))
     index_of = {id(n): i for i, (_, n) in enumerate(nodes)}
+    found = _by_sha(runs, hashes, index_of, joined)
+    _join_rigs_versions_and_sets(runs, hashes, index_of, joined, found)
+    linked: dict[str, int] = {}   # nodes that name their asset outright (batch rows)
+    for i, (_, node) in enumerate(nodes):
+        for link in [node.get("link"), *node.get("links", [])]:
+            if link is not None:
+                joined.join(i, linked.setdefault(link, i))
+    groups: dict[int, list[int]] = {}
+    for i in range(len(nodes)):
+        groups.setdefault(joined.find(i), []).append(i)
+    return list(groups.values())
+
+
+def _by_sha(runs: dict[str, list[dict[str, Any]]], hashes: _Hashes, index_of: dict[int, int],
+            joined: _Joined) -> dict[str, dict[str, int]]:
+    """Pictures with the models named after them, and finishes with the picture and model they
+    kept a copy of; returns the models, pictures, finishes and versions by sha256."""
+    pictures, models, finishes, versions = runs["picture"], runs["model"], runs["finished"], runs["version"]
     model_by_sha: dict[str, int] = {}
     for model in models:
         sha = hashes.of(model["file"])
@@ -245,7 +292,7 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
     for picture in pictures:
         for model in models:
             if model["stem"].startswith(picture["stem"] + "__") or model["stem"].startswith(picture["stem"] + "-cutout__"):
-                join(index_of[id(picture)], index_of[id(model)])
+                joined.join(index_of[id(picture)], index_of[id(model)])
     picture_by_sha: dict[str, int] = {}
     for picture in pictures:   # as for models: a batch copy never takes over a hash
         sha = hashes.of(picture["file"])
@@ -256,20 +303,29 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
         if fin["image"] is not None:
             match = picture_by_sha.get(hashes.of(fin["image"]))
             if match is not None:
-                join(index_of[id(fin)], match)
+                joined.join(index_of[id(fin)], match)
         sha = hashes.of(fin["file"])
         if fin.get("link") is None or sha not in finished_by_sha:
             finished_by_sha[sha] = index_of[id(fin)]
         if fin["source"] is not None:
             match = model_by_sha.get(hashes.of(fin["source"]))
             if match is not None:
-                join(index_of[id(fin)], match)
+                joined.join(index_of[id(fin)], match)
     version_by_sha: dict[str, int] = {}
     for version in versions:   # the same bytes exported twice are one file to follow
-        join(index_of[id(version)], version_by_sha.setdefault(version["sha"], index_of[id(version)]))
+        joined.join(index_of[id(version)], version_by_sha.setdefault(version["sha"], index_of[id(version)]))
     for fin in finishes:   # a finish made from a Blender version
         if fin["source"] is not None and (match := version_by_sha.get(hashes.of(fin["source"]))) is not None:
-            join(index_of[id(fin)], match)
+            joined.join(index_of[id(fin)], match)
+    return {"model": model_by_sha, "picture": picture_by_sha, "finished": finished_by_sha, "version": version_by_sha}
+
+
+def _join_rigs_versions_and_sets(runs: dict[str, list[dict[str, Any]]], hashes: _Hashes, index_of: dict[int, int],
+                                 joined: _Joined, found: dict[str, dict[str, int]]) -> None:
+    """Rigs with the model they were made from, versions with their parent file, prop sets
+    with their source model."""
+    model_by_sha, finished_by_sha, version_by_sha = found["model"], found["finished"], found["version"]
+    rigs = runs["rigged"]
     for rig in rigs:
         sha = rig["input_sha"]
         match = finished_by_sha.get(sha) if sha else None
@@ -278,92 +334,94 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
         if match is None and sha:
             match = version_by_sha.get(sha)
         if match is not None:
-            join(index_of[id(rig)], match)
+            joined.join(index_of[id(rig)], match)
     rig_by_sha = {hashes.of(rig["file"]): index_of[id(rig)] for rig in rigs}
     for rig in rigs:   # a version of one of the rig's moves comes from that rig too
         for clip in rig["clips"]:
             rig_by_sha.setdefault(hashes.of(clip["file"]), index_of[id(rig)])
-    for version in versions:   # a version joins the file it was made from, a version too
+    for version in runs["version"]:   # a version joins the file it was made from, a version too
         parent_sha = version["parent_sha"]
-        match = next((found[parent_sha] for found in (model_by_sha, finished_by_sha, rig_by_sha, version_by_sha)
-                      if parent_sha in found), None)
+        match = next((known[parent_sha] for known in (model_by_sha, finished_by_sha, rig_by_sha, version_by_sha)
+                      if parent_sha in known), None)
         if match is not None:
-            join(index_of[id(version)], match)
-    for prop_set in sets:
+            joined.join(index_of[id(version)], match)
+    for prop_set in runs["set"]:
         if prop_set["file"] is not None:
             match = model_by_sha.get(hashes.of(prop_set["file"]))
             if match is not None:
-                join(index_of[id(prop_set)], match)
-    linked: dict[str, int] = {}   # nodes that name their asset outright (batch rows)
-    for i, (_, node) in enumerate(nodes):
-        for link in [node.get("link"), *node.get("links", [])]:
-            if link is not None:
-                join(i, linked.setdefault(link, i))
-    hashes.save()
+                joined.join(index_of[id(prop_set)], match)
 
-    groups: dict[int, list[int]] = {}
-    for i in range(len(nodes)):
-        groups.setdefault(find(i), []).append(i)
 
-    def rel(path: Path | None) -> str | None:
-        return path.relative_to(output).as_posix() if path is not None else None
+def _rel(output: Path, path: Path | None) -> str | None:
+    return path.relative_to(output).as_posix() if path is not None else None
 
-    assets = []
-    for members in groups.values():
-        by_kind: dict[str, list[dict[str, Any]]] = {}
-        for i in members:
-            by_kind.setdefault(nodes[i][0], []).append(nodes[i][1])
-        if set(by_kind) == {"version"}:
-            continue   # versions alone: attach_versions lists them under their asset
 
-        def latest(kind: str) -> dict[str, Any] | None:
-            items = [n for n in by_kind.get(kind, []) if n.get("file") is not None]
-            return max(items, key=lambda n: n["file"].stat().st_mtime) if items else None
+def _latest(by_kind: dict[str, list[dict[str, Any]]], kind: str) -> dict[str, Any] | None:
+    items = [n for n in by_kind.get(kind, []) if n.get("file") is not None]
+    return max(items, key=lambda n: n["file"].stat().st_mtime) if items else None
 
-        picture, model, fin, rig = latest("picture"), latest("model"), latest("finished"), latest("rigged")
-        prop_set = max(by_kind.get("set", []), key=lambda n: n["dir"].stat().st_mtime, default=None)
-        files = [n["file"] for i in members for n in [nodes[i][1]] if n.get("file") is not None]
-        files += [c["file"] for r in by_kind.get("rigged", []) for c in r["clips"]]
-        files += [p["file"] for s in by_kind.get("set", []) for p in s["props"]]
-        clips = rig["clips"] if rig else []
 
-        if prop_set is not None:
-            kind, stage = "prop set", "finished" if prop_set["props"] else "model"
-        elif rig is not None:
-            kind, stage = "character", "animated" if clips else "rigged"
-        else:
-            kind = "picture" if model is None and fin is None else "model"
-            stage = "finished" if fin else "model" if model else "picture"
-        def oldest(*kinds: str) -> dict[str, Any] | None:
-            items = [n for kind in kinds for n in by_kind.get(kind, []) if n.get("file") is not None]
-            return min(items, key=lambda n: n["file"].stat().st_mtime) if items else None
+def _oldest(by_kind: dict[str, list[dict[str, Any]]], *kinds: str) -> dict[str, Any] | None:
+    items = [n for kind in kinds for n in by_kind.get(kind, []) if n.get("file") is not None]
+    return min(items, key=lambda n: n["file"].stat().st_mtime) if items else None
 
-        # the id is the first node of the chain, which a later finish or rig (from a Blender
-        # version, say) never replaces: hidden flags, names and versions keep their asset
-        first = (picture or model or (prop_set if prop_set and prop_set.get("file") else None)
-                 or oldest("finished", "rigged"))
-        # A person-given name ("rune_knight" at the finish or rig step) beats the prompt the
-        # picture was named after; it is the shortest name in the chain.
-        stems = [n["stem"] for n in (rig, fin, prop_set, model, picture) if n is not None]
-        name_from = min(stems, key=lambda stem: len(friendly_name(stem)))
-        assets.append({
-            "id": hashlib.sha1(rel(first["file"]).encode()).hexdigest()[:12] if first and first.get("file") else name_from,
-            "name": friendly_name(name_from),
-            "kind": kind,
-            "stage": stage,
-            "picture": rel(picture["file"]) if picture else None,
-            "model": rel(model["file"]) if model else None,
-            "finished": rel(fin["file"]) if fin else None,
-            "rigged": rel(rig["file"]) if rig else None,
-            **(hashes.rig_facts(rig["file"]) if rig else {"fits_moves": None, "facing": None}),
-            **creature_family_api.facts(rig["file"] if rig else None),
-            "clips": [{"name": c["name"], "file": rel(c["file"])} for c in clips],
-            "props": [{"name": p["name"], "file": rel(p["file"])} for p in (prop_set["props"] if prop_set else [])],
-            "updated": max((f.stat().st_mtime for f in files), default=0),
-            "made": made_with(model, fin),
-            "stale": stale_steps(hashes, model, fin, rig),
-        })
-    hashes.save()
+
+def _asset(output: Path, hashes: _Hashes, nodes: list[tuple[str, dict[str, Any]]],
+           members: list[int]) -> dict[str, Any] | None:
+    """One asset from its runs: the newest of each step, its kind, stage, id and name. None
+    for versions alone: attach_versions lists them under their asset."""
+    by_kind: dict[str, list[dict[str, Any]]] = {}
+    for i in members:
+        by_kind.setdefault(nodes[i][0], []).append(nodes[i][1])
+    if set(by_kind) == {"version"}:
+        return None
+
+    picture, model, fin, rig = (_latest(by_kind, "picture"), _latest(by_kind, "model"), _latest(by_kind, "finished"),
+                                _latest(by_kind, "rigged"))
+    prop_set = max(by_kind.get("set", []), key=lambda n: n["dir"].stat().st_mtime, default=None)
+    files = [n["file"] for i in members for n in [nodes[i][1]] if n.get("file") is not None]
+    files += [c["file"] for r in by_kind.get("rigged", []) for c in r["clips"]]
+    files += [p["file"] for s in by_kind.get("set", []) for p in s["props"]]
+    clips = rig["clips"] if rig else []
+
+    if prop_set is not None:
+        kind, stage = "prop set", "finished" if prop_set["props"] else "model"
+    elif rig is not None:
+        kind, stage = "character", "animated" if clips else "rigged"
+    else:
+        kind = "picture" if model is None and fin is None else "model"
+        stage = "finished" if fin else "model" if model else "picture"
+
+    # the id is the first node of the chain, which a later finish or rig (from a Blender
+    # version, say) never replaces: hidden flags, names and versions keep their asset
+    first = (picture or model or (prop_set if prop_set and prop_set.get("file") else None)
+             or _oldest(by_kind, "finished", "rigged"))
+    # A person-given name ("rune_knight" at the finish or rig step) beats the prompt the
+    # picture was named after; it is the shortest name in the chain.
+    stems = [n["stem"] for n in (rig, fin, prop_set, model, picture) if n is not None]
+    name_from = min(stems, key=lambda stem: len(friendly_name(stem)))
+    return {
+        "id": (hashlib.sha1(_rel(output, first["file"]).encode()).hexdigest()[:12] if first and first.get("file")
+               else name_from),
+        "name": friendly_name(name_from),
+        "kind": kind,
+        "stage": stage,
+        "picture": _rel(output, picture["file"]) if picture else None,
+        "model": _rel(output, model["file"]) if model else None,
+        "finished": _rel(output, fin["file"]) if fin else None,
+        "rigged": _rel(output, rig["file"]) if rig else None,
+        **(hashes.rig_facts(rig["file"]) if rig else {"fits_moves": None, "facing": None}),
+        **creature_family_api.facts(rig["file"] if rig else None),
+        "clips": [{"name": c["name"], "file": _rel(output, c["file"])} for c in clips],
+        "props": [{"name": p["name"], "file": _rel(output, p["file"])} for p in (prop_set["props"] if prop_set else [])],
+        "updated": max((f.stat().st_mtime for f in files), default=0),
+        "made": made_with(model, fin),
+        "stale": stale_steps(hashes, model, fin, rig),
+    }
+
+
+def _with_versions_names_and_hidden(output: Path, assets: list[dict[str, Any]]) -> None:
+    """Each asset's Blender versions, and the person's own name and hidden flag for it."""
     from blender_versions import attach_versions
 
     attach_versions(output, assets)
@@ -374,8 +432,6 @@ def list_assets(output: Path) -> list[dict[str, Any]]:
         asset["hidden"] = asset["id"] in hidden
         if isinstance(names.get(asset["id"]), str):
             asset["name"] = names[asset["id"]]
-    assets.sort(key=lambda a: a["updated"], reverse=True)
-    return assets
 
 
 def _json(path: Path | None) -> dict[str, Any]:
