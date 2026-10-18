@@ -12,8 +12,10 @@ Writes one folder (default `output/unreal/<Name>__<time>/`) holding:
   objects, a `root` bone and Mannequin bone names for humanoids, every animation;
 - `<mesh>.unreal.json`: how to import it and what Unreal should measure afterwards;
 - `<mesh>.provenance.json`: the licences of everything it was made from;
-- `T_<Name>_Tint.png` and `<mesh>.materials.json` when the material step left a tint mask and
-  its record beside the model (or `--tint` names a mask; `--tint none` ships none).
+- `T_<Name>_Tint.png` and `<mesh>.materials.json`, only when a tint mask is named (`--tint`) or
+  lies beside the model as `T_<model>_Tint.png` with its record. The chain makes none (one
+  material per piece); only the zones trial, `game_materials.py --zones`, writes one.
+  `--tint none` ships none even then.
 
 `--material` gives the piece its one material (`metal`, `leather`, `cloth`...): its roughness and
 metal go into the ORM (`image_to_3dlab/piece_materials.py`).
@@ -118,8 +120,8 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
     if tint is False:
         tint = None   # asked for none: no mask, even if one lies beside the model
     elif tint is None:
-        # The material step leaves `T_<model>_Tint.png` beside the model; only that one is
-        # taken, never a mask that belongs to another model in the same folder.
+        # The zones trial (game_materials.py --zones) leaves `T_<model>_Tint.png` beside the model;
+        # only that one is taken, never a mask that belongs to another model in the same folder.
         own = source.with_name(f"T_{source.stem}_Tint.png")
         tint = own if own.is_file() else None
     record = source.with_name(source.stem + ".materials.json")
@@ -347,7 +349,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--body-name", help="equipment: the body's --name, if it was exported with one")
     parser.add_argument("--animations", type=Path, nargs="*", default=[], help="creatures: more animated GLBs")
     parser.add_argument("--tint", type=Path,
-                        help="a tint mask to ship as T_<Name>_Tint.png (default: the one T_*_Tint.png beside the model; "
+                        help="a tint mask to ship as T_<Name>_Tint.png (default: the model's own T_<model>_Tint.png, "
+                             "which only the zones trial writes; "
                              "none: no tint mask)")
     parser.add_argument("--forward", type=float, nargs=3, metavar=("X", "Y", "Z"),
                         help="non-humanoid creatures: which way the model faces in Blender (default 0 -1 0)")

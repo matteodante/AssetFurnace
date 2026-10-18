@@ -15,6 +15,7 @@ import pytest
 from PIL import Image
 from scipy import ndimage
 
+from image_to_3dlab import material_zones as mz
 from image_to_3dlab import materials as m
 from image_to_3dlab.edit_glb import EditGLB
 from image_to_3dlab.glb_turn import build_glb, parse_glb
@@ -143,13 +144,20 @@ def test_srgb_round_trip_and_linear_luminance():
     assert m.luminance(np.array([1.0, 1.0, 1.0])) == pytest.approx(1.0)
 
 
+def test_the_tint_formula_lives_with_the_zones_trial_not_the_chain():
+    """Code read 18/10/2026: one material per piece is the chain's; the tint formula is the zones
+    trial's, and nothing in Unreal applies it."""
+    assert not hasattr(m, "apply_tint") and callable(mz.apply_tint)
+    assert "nothing in Unreal applies it" in mz.__doc__ and "outside the chain" in mz.__doc__
+
+
 def test_default_tint_reproduces_the_albedo_exactly():
     rng = np.random.default_rng(0)
     albedo = rng.uniform(0.05, 0.9, (8, 8, 3))
     mask = np.zeros((8, 8, 3))
     mask[:4, :, 0] = 1.0
     means = np.array([albedo[:4].reshape(-1, 3).mean(0), [0.2, 0.2, 0.2], [0.1, 0.3, 0.5]])
-    np.testing.assert_allclose(m.apply_tint(albedo, mask, means, means), albedo, atol=1e-9)
+    np.testing.assert_allclose(mz.apply_tint(albedo, mask, means, means), albedo, atol=1e-9)
 
 
 def test_tint_moves_the_zone_mean_to_the_tint_and_leaves_the_rest():
@@ -162,7 +170,7 @@ def test_tint_moves_the_zone_mean_to_the_tint_and_leaves_the_rest():
     means = np.array([mean, mean, mean])
     tints = means.copy()
     tints[0] = [0.05, 0.1, 0.3]
-    out = m.apply_tint(albedo, mask, means, tints)
+    out = mz.apply_tint(albedo, mask, means, tints)
     np.testing.assert_allclose(out[:4].reshape(-1, 3).mean(0), tints[0], atol=1e-6)
     np.testing.assert_allclose(out[4:], albedo[4:])
     # Brightness detail inside the zone survives the recolour.

@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     prompt rewriting (on by default) runs on: with Qwen-Image alone it never ran. Setup counts
     it for Qwen-Image, and an install without it is told on the Create sheet, in the job and in
     the picture's record, with where to install it.
+  - tint zones by material are said to be a trial outside the pipeline everywhere they show: the
+    Setup card, the Hugging Face access list, the Unreal panel's Tint mask (the material step
+    leaves none: one material per piece) and the export's help;
   - `fit.holes` counts only the pieces the fit's own `fit.json` lists, never an older fit's
     file left in the folder, and names a piece it cannot read;
   - a fit from before weapons and shields became assets of their own is refused by refit and

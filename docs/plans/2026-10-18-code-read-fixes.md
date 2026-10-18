@@ -18,7 +18,7 @@ Stato: **fatto** (PR), **in corso**, **da fare**, **respinto** (motivo).
 | # | Punto | Stato |
 | --- | --- | --- |
 | R-1 | Arma tenuta in mano (fit, controlli, `asset.py`, `equipment_part.json`, `orient.py`, progetto della funzione 4) | fatto: il fit rifiuta un'arma o uno scudo; un fit di prima che li elenca si rifà (`fitted_files`); tolti `worn`, il codice morto e i commenti; il progetto della funzione 4 rimanda alle armi autonome, che hanno la loro riga nel README |
-| R-2 | Zone di materiale e maschera di tinta nella catena (materials, export, Setup, pannello Unreal) | da fare |
+| R-2 | Zone di materiale e maschera di tinta nella catena (materials, export, Setup, pannello Unreal) | fatto (strada 1 del rapporto: le zone restano una prova dichiarata, fuori dalla catena): docstring di `materials`, `material_zones` e `game_materials` corrette (SAM 3.1 predefinito), `apply_tint` spostata nel modulo delle zone senza la frase falsa su Unreal; export, passo `export_unreal`, pannello Unreal, Setup e Hugging Face dicono che la maschera la scrive solo la prova |
 
 ## Sicurezza (P2)
 
