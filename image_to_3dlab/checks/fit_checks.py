@@ -143,7 +143,9 @@ def measure(asset, config: dict) -> dict:
     rng = np.random.default_rng(0)
     sample = rng.choice(len(piece_rig.mesh.bind), min(config.get("sample", 1500), len(piece_rig.mesh.bind)),
                         replace=False)
-    gap, reach = config.get("gap", 0.06), config.get("reach", 0.2)
+    from image_to_3dlab.slot_parts.fit import COVER_GAP
+
+    gap, reach = config.get("gap", COVER_GAP), config.get("reach", 0.2)
 
     rest_body = _mesh(body_rig.mesh.vertices, body_rig.mesh.faces)
     rest_piece = _mesh(piece_rig.mesh.vertices, piece_rig.mesh.faces)

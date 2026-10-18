@@ -420,10 +420,8 @@ def run(job):
         if job.get("grip"):   # a weapon or shield: the pivot on its grip, the blade or head up
             from mathutils import Vector
 
-            x, y, z = job["grip"]["point"]
-            ax, ay, az = job["grip"]["axis"]
-            # glTF (x, y, z) is Blender (x, -z, y) once imported
-            point, axis = Vector((x, -z, y)), Vector((ax, -az, ay)).normalized()
+            point = Vector(up.gltf_to_blender(job["grip"]["point"]))   # the glTF point once imported
+            axis = Vector(up.gltf_to_blender(job["grip"]["axis"])).normalized()
             turn = axis.rotation_difference(Vector((0.0, 0.0, 1.0))).to_matrix().to_4x4() @ Matrix.Translation(-point)
             lo, hi = _world_box(bpy, meshes, turn)
             dims = [h - low for low, h in zip(lo, hi)]

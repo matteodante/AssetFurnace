@@ -272,8 +272,9 @@ def ground_offset(box_min: Iterable[float], box_max: Iterable[float],
 
 def gltf_to_blender(direction: Iterable[float]) -> list[float]:
     """A direction in glTF space (Y up, +Z front) as Blender imports it (Z up, -Y front)."""
-    x, y, z = (float(v) for v in direction)
-    return [x, -z, y]
+    from image_to_3dlab.frames import gltf_to_blender as turn
+
+    return [float(v) for v in turn(list(direction))]
 
 
 def yaw_to_face_front(forward: Iterable[float]) -> float:
@@ -368,21 +369,20 @@ def pack_orm(metal_rough: np.ndarray, occlusion: np.ndarray | None) -> np.ndarra
     `metal_rough` is glTF's metallicRoughness image (G roughness, B metal). `occlusion`
     is an occlusion image (R, or grey) of the same size.
     """
+    from image_to_3dlab.materials import pack_orm as packed   # the one packing, from 8-bit images here
+
     mr = np.asarray(metal_rough)
     if mr.ndim != 3 or mr.shape[2] < 3:
         raise ValueError("the metallicRoughness image must have at least three channels")
-    out = np.empty(mr.shape[:2] + (3,), np.uint8)
-    out[..., 1] = mr[..., 1]
-    out[..., 2] = mr[..., 2]
     if occlusion is None:
-        out[..., 0] = 255
+        ao = np.full(mr.shape[:2], 255.0)
     else:
-        ao = np.asarray(occlusion)
+        ao = np.asarray(occlusion, float)
         if ao.shape[:2] != mr.shape[:2]:
             raise ValueError(f"occlusion is {ao.shape[1]}x{ao.shape[0]}, metallicRoughness "
                              f"{mr.shape[1]}x{mr.shape[0]}")
-        out[..., 0] = ao if ao.ndim == 2 else ao[..., 0]
-    return out
+        ao = ao if ao.ndim == 2 else ao[..., 0]
+    return packed(ao / 255.0, mr[..., 1] / 255.0, mr[..., 2] / 255.0)
 
 
 # --- GLB rewrite -----------------------------------------------------------------------
