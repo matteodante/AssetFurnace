@@ -91,3 +91,44 @@ def test_require_names_the_command_when_a_model_is_missing(tmp_path):
     for name in models.CSD.files:
         (snapshot / name).write_bytes(b"x")
     assert set(models.require(models.CSD, hub=tmp_path)) == set(models.CSD.files)
+
+
+def test_the_linux_builds_library_links_are_kept(tmp_path):
+    """Codex review: links in the Linux tarball (libllama.so.0 -> libllama.so.0.0.1) were dropped,
+    so llama-completion could not load its libraries on a fresh install."""
+    import tarfile
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as bundle:
+        def add(name, payload=None, link=None):
+            info = tarfile.TarInfo(name)
+            if link is None:
+                info.size = len(payload)
+                bundle.addfile(info, io.BytesIO(payload))
+            else:
+                info.type, info.linkname = tarfile.SYMTYPE, link
+                bundle.addfile(info)
+        add("build/bin/libllama.so.0.0.1", b"ELF")
+        add("build/bin/libllama.so", link="libllama.so.0")      # a link to a link, before its target
+        add("build/bin/libllama.so.0", link="libllama.so.0.0.1")
+        add("build/bin/llama-completion", b"ELF")
+    archive = buffer.getvalue()
+    build = models.LlamaBuild("llama.tar.gz", hashlib.sha256(archive).hexdigest(), len(archive))
+    dest = tmp_path / "llama-cpp"
+    bootstrap_style.unpack_llama(archive, build, dest)
+    for name in ("libllama.so.0", "libllama.so"):
+        assert (dest / "build" / "bin" / name).read_bytes() == b"ELF"
+
+
+def test_a_link_cannot_point_outside_its_folder(tmp_path):
+    import tarfile
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as bundle:
+        info = tarfile.TarInfo("bin/libx.so")
+        info.type, info.linkname = tarfile.SYMTYPE, "../../../etc/passwd"
+        bundle.addfile(info)
+    archive = buffer.getvalue()
+    build = models.LlamaBuild("llama.tar.gz", hashlib.sha256(archive).hexdigest(), len(archive))
+    with pytest.raises(SystemExit, match="outside"):
+        bootstrap_style.unpack_llama(archive, build, tmp_path / "dest")

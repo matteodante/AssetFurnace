@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     prompt rewriting (on by default) runs on: with Qwen-Image alone it never ran. Setup counts
     it for Qwen-Image, and an install without it is told on the Create sheet, in the job and in
     the picture's record, with where to install it.
+  - llama.cpp's Linux build keeps its library links when unpacked (they were dropped, so on Linux
+    neither the rewriting nor the picture judge could start).
 - The Windows installer, from the second final review:
   - on a driver for CUDA 12.8 or 12.9 it installs `requirements-cu128.lock`, with torch
     2.11.0, the newest PyTorch's cu128 index has (the main lock's 2.14.1 is only on cu130, so

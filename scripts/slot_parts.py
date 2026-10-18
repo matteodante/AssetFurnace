@@ -428,6 +428,17 @@ def make_held(slot: str, words: str, folder: Path, seeds: list[int], style: str 
             "standalone": True, "grip": str(record), "scores": {str(k): v for k, v in scores.items()}}
 
 
+def review_key(set_name: str, body_name: str, piece: str) -> str:
+    """`<set>-<body>-<piece>`, the piece's key in the review queue, kept within the queue's 120
+    characters: a longer one ends in a short hash of the whole, so two keys stay apart."""
+    import hashlib
+
+    key = f"{set_name}-{body_name}-{piece}"
+    if len(key) <= 120:
+        return key
+    return f"{key[:111]}-{hashlib.sha256(key.encode()).hexdigest()[:8]}"
+
+
 def fitted_files(report: dict) -> list[str]:
     """The worn pieces' files a fit.json lists, without the body's. A weapon or shield there was
     fitted by a run from before they became assets of their own (17/10/2026): refused, so the
@@ -451,7 +462,7 @@ def check_pieces(fit_dir: Path, body_json: Path, set_name: str) -> dict:
     body_glb = Path(fit_dir) / "body_masked.glb"
     out = {}
     for name in fitted_files(report):
-        asset = Asset(glb=Path(fit_dir) / name, key=f"{set_name}-{record['name']}-{Path(name).stem}",
+        asset = Asset(glb=Path(fit_dir) / name, key=review_key(set_name, record["name"], Path(name).stem),
                       body=body_glb, body_clips=tuple(record.get("clips", {}).values()))
         checked, _ = check_and_enqueue(asset, profile="equipment_part")
         out[Path(name).stem] = {"status": checked["status"],
@@ -475,7 +486,7 @@ def check_standalone(made: dict, set_name: str, body_name: str) -> dict:
         picture = Path(entry["picture"])
         matted = picture.with_name(f"{picture.stem}__matted.png")   # Pixal3D's cut-out of it
         reference = matted if matted.is_file() else picture if picture.is_file() else None
-        asset = Asset(glb=Path(entry["glb"]), key=f"{set_name}-{body_name}-{slot}", reference=reference)
+        asset = Asset(glb=Path(entry["glb"]), key=review_key(set_name, body_name, slot), reference=reference)
         checked, _ = check_and_enqueue(asset, log=review.LOG, profile=STANDALONE_PROFILE)
         out[slot] = {"status": checked["status"], "profile": STANDALONE_PROFILE}
     return out

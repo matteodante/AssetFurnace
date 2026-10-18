@@ -94,7 +94,12 @@ def unpack_llama(archive: bytes, build: models.LlamaBuild, dest: Path) -> None:
         with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as bundle:
             members = [(m.name, m.isdir(), lambda m=m: bundle.extractfile(m).read())
                        for m in bundle.getmembers() if m.isdir() or m.isfile()]
+            # the Linux build's versioned libraries (libllama.so.0 -> libllama.so.0.0.N): the loader
+            # looks for the link's name, so a link left out is a tool that cannot start
+            links = [(m.name, str(Path(m.name).parent / m.linkname) if m.issym() else m.linkname)
+                     for m in bundle.getmembers() if m.issym() or m.islnk()]
             _write_members(members, dest)
+            _write_links(links, dest)
 
 
 def _write_members(members: list, dest: Path) -> None:
@@ -111,6 +116,29 @@ def _write_members(members: list, dest: Path) -> None:
         target.write_bytes(read())
         if target.suffix in ("", ".so", ".dylib"):
             target.chmod(0o755)
+
+
+def _write_links(links: list[tuple[str, str]], dest: Path) -> None:
+    """Each link as a copy of the file it names (a copy works on every system and needs no
+    right to make links), inside `dest` only; a link to a link waits for that one."""
+    root = dest.resolve()
+    for name, target in links:
+        for path in (root / name, root / target):
+            if not path.resolve().is_relative_to(root):
+                raise SystemExit(f"the archive has a link outside its folder ({name}); nothing installed")
+    waiting = list(links)
+    while waiting:
+        left = [(name, target) for name, target in waiting if not (root / target).is_file()]
+        for name, target in waiting:
+            if (root / target).is_file():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_bytes((root / target).read_bytes())
+                if (root / name).suffix in ("", ".so", ".dylib") or ".so." in (root / name).name:
+                    (root / name).chmod(0o755)
+        if len(left) == len(waiting):
+            raise SystemExit(f"the archive links {left[0][0]} to {left[0][1]}, which it does not hold; "
+                             "nothing usable installed")
+        waiting = left
 
 
 def fetch_llama(build: models.LlamaBuild) -> None:
