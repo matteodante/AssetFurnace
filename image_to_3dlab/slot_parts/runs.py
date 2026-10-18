@@ -97,7 +97,7 @@ def list_sets(output: Path) -> list[dict[str, Any]]:
 
 
 def catalogue() -> list[dict[str, Any]]:
-    return [{"name": s.name, "paired": s.paired, "drawn": bool(s.roles), "held": s.name in ("weapon", "shield")}
+    return [{"name": s.name, "paired": s.paired, "drawn": bool(s.roles), "held": s.name in slots.STANDALONE}
             for s in slots.CATALOGUE.values()]
 
 

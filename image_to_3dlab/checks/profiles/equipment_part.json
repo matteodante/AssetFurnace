@@ -1,5 +1,5 @@
 {
-  "description": "One equipment slot (helmet, gloves, a weapon) worn on a base body. Open where it meets the body.",
+  "description": "One worn equipment piece (helmet, torso, shoulders, gloves, legs, boots) fitted on a base body. Open where it meets the body. A weapon or shield is weapon_or_shield.",
   "checks": {
     "budget.faces": {"max": 8000},
     "budget.materials": {"warn": 1, "fail": 2},

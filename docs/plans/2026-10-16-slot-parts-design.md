@@ -3,6 +3,9 @@
 Data: 16 ottobre 2026, aggiornato la sera dello stesso giorno con i tre modi e l'esito della seconda prova della strada C.
 Stato: **implementato** (PR #31, #35, #38, #40, #41, #42, #44 e la PR 9); accettazione nelle sezioni 12 e 13.
 Piano: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 4.
+Armi e scudi: dal 17/10/2026 la decisione C (arma e scudo in mano, appesi a un socket del corpo) è sostituita da
+[armi e scudi come asset autonomi](2026-10-17-standalone-weapons.md): si fanno accanto al set, non si adattano al
+corpo e hanno un socket `grip` loro. Le righe qui sotto che parlano di mano o avambraccio sono la storia.
 Prove che lo precedono: [`2026-10-15-slot-parts-spike.md`](2026-10-15-slot-parts-spike.md), con l'appendice sulla strada C.
 
 In una riga: nello studio si sceglie **come** fare un personaggio, fra tre modi.
@@ -96,8 +99,8 @@ Il catalogo degli slot è fisso. La scelta per slot è dell'utente.
 | Guanti | C | sì/no; sempre due pezzi |
 | Gambe | C | sì/no |
 | Stivali | C | sì/no; sempre due pezzi |
-| Arma | C, dal concept o da un prompt a sé | sì/no; mano destra o sinistra |
-| Scudo | C, dal concept o da un prompt a sé | sì/no; avambraccio sinistro |
+| Arma | da un prompt a sé | sì/no; asset autonomo con socket `grip` ([armi autonome](2026-10-17-standalone-weapons.md), al posto della mano destra o sinistra) |
+| Scudo | da un prompt a sé | sì/no; asset autonomo con socket `grip` ([armi autonome](2026-10-17-standalone-weapons.md), al posto dell'avambraccio sinistro) |
 
 Per ogni slot si può passare a **B0** (il pezzo ritagliato dal 3D del personaggio intero): è la riserva, più veloce,
 da usare per un'anteprima o quando l'immagine dedicata di uno slot non viene.
@@ -205,7 +208,8 @@ Dettagli:
 - **PR 8, Unreal**:
   - la maschera del corpo va nel colore dei vertici (attributo `covered`), che il materiale usa per nascondere;
   - i pezzi condividono lo scheletro del corpo (Leader Pose);
-  - l'arma va su un socket della mano.
+  - l'arma va su un socket della mano (sostituito il 17/10/2026: arma e scudo sono static mesh a sé con un socket
+    `grip`, [armi autonome](2026-10-17-standalone-weapons.md)).
   Il resto c'è già nel profilo della funzione 5.
 
 Ogni PR:
@@ -256,7 +260,8 @@ Fatta il 16/10/2026: dettagli nell'[appendice del rapporto](2026-10-15-slot-part
    Poi un secondo set sullo stesso corpo, con un pezzo cambiato.
 3. Modo 2: un concept vestito caricato da fuori, diviso nei pezzi scelti.
 4. `fit.clipping` e `fit.holes` almeno warn su tutti i pezzi, in tutte e tre le pose, sul primo corpo; misurati anche sul secondo.
-5. In Unreal 5.8: i pezzi seguono il corpo nella camminata, il corpo sotto non buca, la spada sta nella mano.
+5. In Unreal 5.8: i pezzi seguono il corpo nella camminata, il corpo sotto non buca, la spada sta nella mano
+   (criterio della prova del 16-17/10; dal 17/10 la spada è un asset a sé con il socket `grip`).
    Ci sono un'immagine a metà passo e una a metà fendente.
 6. Tutti i pezzi nella coda di revisione per il giudizio dell'utente.
 7. `PYTHONPATH=. pytest -q` e `ruff check` verdi sui file toccati; i test Blender con `--factory-startup`.
@@ -274,8 +279,8 @@ Unreal, accettazione). Rispetto al progetto:
   - un ultimo passaggio porta fuori dalla pelle i vertici rimasti dentro;
   - l'elmo è rigido e non passa dalla gabbia: si ingrandisce, se serve, fino a contenere la testa con un margine del 15%,
     e segue l'osso della testa che porta più vertici;
-  - arma e scudo restano fuori dalla maschera del corpo (la mano sotto l'impugnatura deve vedersi) e non hanno
-    `fit.holes`, che per un pezzo tenuto in mano non ha senso.
+  - arma e scudo restano fuori dalla maschera del corpo e non hanno `fit.holes` (fino al 17/10; da allora non passano
+    più dal fit: [armi autonome](2026-10-17-standalone-weapons.md)).
 - **Nel modo 3** il vestito si aggiunge alla calzamaglia (`add_piece`), invece di vestire tutto il corpo: gli slot non
   scelti restano nudi.
 - **Il colore dei vertici** del corpo è bianco ovunque, con alfa 0 sotto i pezzi: i visori glTF, che moltiplicano il
@@ -313,7 +318,7 @@ peggiora. Questi pezzi sono in revisione come fail, non nascosti.
 - **In Unreal 5.8.3** (`unreal_import_check.py`, il controllo della funzione 5): su entrambi i corpi i 22 file passano.
   - Misura giusta (180 e 170 cm), base a terra, un solo scheletro per corpo, nessuno nuovo creato dai pezzi.
   - L'IK Rig riconosce lo scheletro; l'idle e la camminata di Manny si ritargettano, con i piedi che non si incrociano.
-  - I pezzi seguono il corpo con Leader Pose e la spada sta in mano.
+  - I pezzi seguono il corpo con Leader Pose e la spada sta in mano (prova del 16-17/10, prima delle armi autonome).
 
 ![In Unreal 5.8, a metà passo: il set sul primo corpo e lo stesso set riadattato al secondo](img/slot-parts/1-unreal-walk-two-bodies.jpg)
 

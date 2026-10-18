@@ -17,7 +17,7 @@ Stato: **fatto** (PR), **in corso**, **da fare**, **respinto** (motivo).
 
 | # | Punto | Stato |
 | --- | --- | --- |
-| R-1 | Arma tenuta in mano (fit, controlli, `asset.py`, `equipment_part.json`, `orient.py`, progetto della funzione 4) | da fare |
+| R-1 | Arma tenuta in mano (fit, controlli, `asset.py`, `equipment_part.json`, `orient.py`, progetto della funzione 4) | fatto: il fit rifiuta un'arma o uno scudo; un fit di prima che li elenca si rifà (`fitted_files`); tolti `worn`, il codice morto e i commenti; il progetto della funzione 4 rimanda alle armi autonome, che hanno la loro riga nel README |
 | R-2 | Zone di materiale e maschera di tinta nella catena (materials, export, Setup, pannello Unreal) | da fare |
 
 ## Sicurezza (P2)
@@ -37,7 +37,7 @@ Stato: **fatto** (PR), **in corso**, **da fare**, **respinto** (motivo).
 | A-1 | Campo Steps di Create che non fa niente | da fare |
 | A-2 | Stato di Pieces solo in memoria | da fare |
 | A-3 | `install.sh` sceglie la release dai tag dell'upstream | da fare |
-| A-4 | `fit.holes` conta GLB vecchi | da fare |
+| A-4 | `fit.holes` conta GLB vecchi | fatto: il set viene da `fit.json`; un pezzo che non si legge è nominato nei `details` |
 | A-5 | Alfa < 0,5 dà MASK su qualsiasi asset | da fare |
 | A-6 | B0 ignora le distanze camera di MoGe-2 | da fare |
 | A-7 | `concept_box` presume la dimensione della tela | da fare |
