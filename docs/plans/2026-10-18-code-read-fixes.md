@@ -24,11 +24,11 @@ Stato: **fatto** (PR), **in corso**, **da fare**, **respinto** (motivo).
 
 | # | Punto | Stato |
 | --- | --- | --- |
-| S-1 | `style_api` senza controllo dell'Host | da fare |
-| S-2 | `bible` accetta qualsiasi cartella | da fare |
-| S-3 | Bearer solo sugli endpoint vecchi | da fare |
-| S-4 | Token nel cookie senza controllo | da fare |
-| S-5 | `path` dei lotti senza limiti | da fare |
+| S-1 | `style_api` senza controllo dell'Host | fatto: risponde dopo `_allowed`, come ogni altro GET di `/api/` |
+| S-2 | `bible` accetta qualsiasi cartella | fatto: dalle richieste dello studio solo un nome registrato o "-" (`allow_path=False`); la riga di comando tiene la cartella |
+| S-3 | Bearer solo sugli endpoint vecchi | fatto: `check_request` lo accetta, e i cinque controlli copiati dell'header passano da lì con il messaggio della pagina |
+| S-4 | Token nel cookie senza controllo | fatto: un `ASSETFURNACE_TOKEN` fuori da `[A-Za-z0-9_-]{24,}` si rifiuta all'avvio |
+| S-5 | `path` dei lotti senza limiti | fatto: su un server aperto alla rete il percorso della spec e quelli che contiene restano nel repository (il controllo di MCP senza radici) |
 
 ## Altri P2
 

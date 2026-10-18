@@ -67,11 +67,16 @@ def check_host(handler):
     return host
 
 
-def check_request(handler, *, mutation=False, header="blender-edit"):
+def check_request(handler, *, mutation=False, header="blender-edit", refusal=None):
     """The Studio page only: a loopback Host on a loopback server, the same origin, never a
     cross-site fetch, and on mutations a custom header that a cross-site form cannot send.
     ``header=None`` accepts any value of it: the older Studio endpoints are shared by pages
-    that each name their own."""
+    that each name their own. A script that sent the access token as a Bearer header
+    (`Handler._admitted`) is not a browser, so it cannot be a forged page: it passes, on
+    every endpoint, as serve.py promises."""
+    if getattr(handler, "_bearer", False):
+        return
+    refusal = refusal or ("Use this Studio page to edit models" if header == "blender-edit" else "Use the Studio page")
     host = check_host(handler)
     # behind a proxy (RunPod) the page's origin is the public name the proxy forwards
     allowed = {host.lower()}
@@ -82,12 +87,12 @@ def check_request(handler, *, mutation=False, header="blender-edit"):
     if origin:
         source = urlsplit(origin)
         if source.scheme not in ("http", "https") or source.netloc.lower() not in allowed or source.path or source.query or source.fragment:
-            raise PermissionError("Use this Studio page to edit models" if header == "blender-edit" else "Use the Studio page")
+            raise PermissionError(refusal)
     if handler.headers.get("Sec-Fetch-Site") == "cross-site":
         raise PermissionError("Cross-site edit requests are not allowed" if header == "blender-edit" else "Cross-site requests are not allowed")
     sent = handler.headers.get("X-AssetFurnace-Request")
     if mutation and (not origin or not sent or (header is not None and sent != header)):
-        raise PermissionError("Use this Studio page to edit models" if header == "blender-edit" else "Use the Studio page")
+        raise PermissionError(refusal)
 
 
 def body(handler, maximum):

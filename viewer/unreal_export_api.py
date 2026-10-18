@@ -250,9 +250,8 @@ def capabilities(handler) -> dict:
 
 
 def _check(handler, mutation: bool) -> None:
-    blender_edit_api.check_request(handler, mutation=False)
-    if mutation and (not handler.headers.get("Origin") or handler.headers.get("X-AssetFurnace-Request") != HEADER):
-        raise PermissionError("Use this Studio page to export models")
+    blender_edit_api.check_request(handler, mutation=mutation, header=HEADER,
+                                   refusal="Use this Studio page to export models")
 
 
 def handle(handler, output: Path, *, mutation: bool = False) -> bool:

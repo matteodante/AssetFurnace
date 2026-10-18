@@ -37,6 +37,7 @@ from typing import Any
 from urllib.parse import unquote, urlsplit
 
 import batch_api
+import blender_edit_api
 
 from image_to_3dlab import piece_materials, processes
 from image_to_3dlab.slot_parts import runs, slots
@@ -157,9 +158,8 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
         return False
     parts = [unquote(p) for p in path.split("/") if p]
     try:
-        batch_api.check_request(handler, mutation=False)  # local address, same origin
-        if mutation and (not handler.headers.get("Origin") or handler.headers.get("X-AssetFurnace-Request") != HEADER):
-            raise PermissionError("Use this Studio page to make sets")
+        blender_edit_api.check_request(handler, mutation=mutation, header=HEADER,
+                                       refusal="Use this Studio page to make sets")
         if not mutation and parts == ["api", "slot-parts"]:
             handler._send_json(200, {"base": "/output/", "bodies": list_bodies(output), "sets": list_sets(output),
                                      "slots": catalogue(), "materials": list(piece_materials.MATERIALS),

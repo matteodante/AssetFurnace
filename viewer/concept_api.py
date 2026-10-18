@@ -13,7 +13,8 @@ stream and provenance; this module adds the inputs, the request, and the
     POST /api/concept/jobs               {mode, ..., shape: [...], style_refs: [...], seed}
     POST /api/concept/judge              {picture, verdict: keep | discard, note}: the user's judgement
 
-Every path is relative to the output folder, and nothing outside it is read. The job's
+Every path is relative to the output folder, and nothing outside it is read but the style
+bible a request names, which must be a registered one (or "-", the active one). The job's
 progress, status and picture come from `/api/image/<job id>/...`, like any picture.
 
 `generate(prompt, references, seed)` is the same edit as one call, for scripts and other
@@ -157,10 +158,11 @@ def prepare(output: Path, source: str, kind: str, view: str = "front") -> dict[s
             "mask": _relative(output, mask) if mask else None}
 
 
-def build(output: Path, request: dict[str, Any]) -> dict[str, Any]:
+def build(output: Path, request: dict[str, Any], allow_path: bool = True) -> dict[str, Any]:
     """A request from the studio as the prompt, the pictures in order, and what the IoU is
     measured on (`image_to_3dlab.concept.requests.plan`, once its pictures are found in the
-    output folder)."""
+    output folder). `allow_path=False` (the HTTP route) takes a registered bible or "-" only;
+    the command line keeps a bible folder."""
     if request.get("mode") not in prompts.MODES:
         raise ValueError(f"the way is one of {', '.join(prompts.MODES)}")
     shape = [inside(output, p) for p in request.get("shape") or []]
@@ -168,7 +170,8 @@ def build(output: Path, request: dict[str, Any]) -> dict[str, Any]:
     from image_to_3dlab.style import apply
 
     # the style bible when the request names one ("-": the active one), opt-in
-    style = apply.resolve(request.get("bible"), request.get("kind"), references=3, output=Path(output))
+    style = apply.resolve(request.get("bible"), request.get("kind"), references=3, output=Path(output),
+                          allow_path=allow_path)
     return requests.plan(request["mode"], shape, style_refs, request, bible=style)
 
 
@@ -195,9 +198,9 @@ def _seed(request: dict[str, Any]) -> int:
         return random.randrange(2 ** 31 - 1)
 
 
-def start(output: Path, request: dict[str, Any]) -> image_api.ImageJob:
+def start(output: Path, request: dict[str, Any], allow_path: bool = True) -> image_api.ImageJob:
     """Queue the edit as an image job; its record and IoU follow when the picture is done."""
-    plan = build(output, request)
+    plan = build(output, request, allow_path=allow_path)
     vision = _vision()
     weights = image_api.resolve_weights()
     paths = [p for p, _ in plan["references"]]
@@ -304,9 +307,8 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
     query = parse_qs(url.query)
     output = Path(output)
     try:
-        check_request(handler)
-        if mutation and (not handler.headers.get("Origin") or handler.headers.get("X-AssetFurnace-Request") != HEADER):
-            raise PermissionError("Use the Studio page to draw from a reference")
+        check_request(handler, mutation=mutation, header=HEADER,
+                      refusal="Use the Studio page to draw from a reference")
         if not mutation and parts == ["api", "concept"]:
             handler._send_json(200, info(output))
         elif not mutation and parts == ["api", "concept", "record"]:
@@ -323,7 +325,7 @@ def handle(handler, output: Path, *, mutation: bool = False) -> bool:
                 handler._send_json(200, prepare(output, body.get("source", ""), body.get("kind", ""),
                                                 body.get("view") or "front"))
             else:
-                job = start(output, body)
+                job = start(output, body, allow_path=False)
                 handler._send_json(202, {"job_id": job.id, "settings": job.settings, "prompt": job.prompt,
                                          "events_url": f"/api/image/{job.id}/events",
                                          "status_url": f"/api/image/{job.id}/status"})

@@ -118,8 +118,9 @@ def active(output_root: Path) -> dict[str, Any] | None:
     return next((b for b in bibles(output_root) if b["name"] == name), None)
 
 
-def find(output_root: Path, name_or_path: str) -> Path:
-    """A bible folder from a registered name, `-` for the active one, or a folder path."""
+def find(output_root: Path, name_or_path: str, allow_path: bool = True) -> Path:
+    """A bible folder from a registered name, `-` for the active one, or (`allow_path`, the
+    command line's) a folder path. The studio's requests name registered bibles only."""
     if name_or_path == "-":
         current = active(output_root)
         if current is None:
@@ -129,6 +130,8 @@ def find(output_root: Path, name_or_path: str) -> Path:
         if known["name"] == name_or_path:
             return known["path"]
     path = Path(name_or_path)
-    if (path / "bible.json").is_file():
+    if allow_path and (path / "bible.json").is_file():
         return path.resolve()
+    if not allow_path:
+        raise BibleError(f"no bible called {name_or_path!r} is registered (scripts/style_bible.py list)")
     raise BibleError(f"no bible called {name_or_path!r} is registered, and it is not a bible folder")

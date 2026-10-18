@@ -8,7 +8,9 @@
 Bound to 127.0.0.1 by default. An explicit --host exposes the whole repository, including
 `output/`, on that interface, so a server on any address other than loopback asks for an
 access token: the printed link carries it (set ASSETFURNACE_TOKEN to choose it; otherwise
-a new one is made at every start). Scripts send it as `Authorization: Bearer <token>`.
+a new one is made at every start; a chosen one is at least 24 letters, digits, '-' or '_').
+Scripts send it as `Authorization: Bearer <token>`, which every endpoint takes. On such a
+server a batch spec, and the files it names, are read from the repository only.
 
 The viewer exists because judging a mesh by eye is the acceptance test in this repo, and
 every such judgement previously required opening Blender. It is also driveable by browser
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import secrets
 import signal
 import socketserver
@@ -61,12 +64,22 @@ class LaunchPlan(NamedTuple):
     message: str
 
 
+# what a cookie value carries unchanged (no ; , space or quote), and long enough to guess at
+TOKEN_SHAPE = re.compile(r"[A-Za-z0-9_-]{24,}")
+
+
 def access_token(host: str, env: Mapping[str, str]) -> str | None:
     """None on loopback, where only this computer can connect. On any other address the
-    whole repository would be open to the network (RunPod's proxy is public), so a token."""
+    whole repository would be open to the network (RunPod's proxy is public), so a token.
+    A chosen one goes into a cookie as it is: one that a cookie would cut short, or a short
+    one, is refused at start rather than locking the page out after its first redirect."""
     if local_address(host):
         return None
-    return env.get("ASSETFURNACE_TOKEN") or secrets.token_urlsafe(32)
+    chosen = env.get("ASSETFURNACE_TOKEN")
+    if chosen and not TOKEN_SHAPE.fullmatch(chosen):
+        raise SystemExit("ASSETFURNACE_TOKEN must be at least 24 letters, digits, '-' or '_' (no spaces, ';', ',' "
+                         "or quotes); leave it unset and the server makes one")
+    return chosen or secrets.token_urlsafe(32)
 
 
 def launch_plan(env: Mapping[str, str], port: int = 8777, token: str | None = None) -> LaunchPlan:

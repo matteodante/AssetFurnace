@@ -232,7 +232,9 @@ upload with the same name never changes an earlier batch's spec; its relative pa
 from there, so use absolute ones, or give the path instead). For a CSV, pick the
 use case, distribution and commercial intent. **Check** validates without running;
 **Start** runs it in the background. The page follows batches in `output/batches/` only, so
-it refuses a spec that writes elsewhere (run that one with `pipeline.py --run-batch`). Each batch shows how far it got; open one to see every
+it refuses a spec that writes elsewhere (run that one with `pipeline.py --run-batch`). On a
+server open to the network (any address but loopback, with an access token), a spec's path and
+every path it holds must be inside this repository or its `output/` folder, as over MCP. Each batch shows how far it got; open one to see every
 row with its status, why it failed, and its review state. **Resume** carries on a stopped
 batch, **Retry failed** also re-runs the failed rows, **Stop** stops it, **Open** shows a
 finished row in the viewer.
