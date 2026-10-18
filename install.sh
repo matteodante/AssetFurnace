@@ -125,7 +125,7 @@ fi
 # keeps them, and an update would go back to that release.
 newest_release() {
   git ls-remote --tags --refs "$REPO_URL" 'v*' 2>/dev/null | sed 's#.*refs/tags/##' \
-    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1
+    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true   # none: main, below
 }
 if [ -z "$REF" ]; then
   if [ "$DRY" = 1 ] && [ ! -d "$DIR/.git" ]; then REF="(newest release)"

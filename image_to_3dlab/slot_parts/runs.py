@@ -503,13 +503,15 @@ def status(output: Path, record: dict[str, Any] | None = None, running: bool | N
     log = Path(record["log"])
     tail = log.read_text(encoding="utf-8", errors="replace").splitlines()[-12:] if log.is_file() else []
     folder = Path(record["folder"])
+    code = None if running else _exit_code(record)
     parts = folder / f"{record['set']}.parts.json"
     return {"running": running, "action": record.get("action", "run"), "set": record["set"], "body": record["body"],
             "started": record["started"], "log": tail,
             # None when the server that started it was not there to see it end
-            "returncode": None if running else _exit_code(record),
+            "returncode": code,
             "parts": rel(output, parts) if parts.is_file() and parts.stat().st_mtime >= record["started"] else None,
-            "picks": None if running else waiting_picks(output, folder),
+            # a run that failed offers no pictures: those waiting are an earlier run's
+            "picks": None if running or code not in (0, None) else waiting_picks(output, folder),
             # which judge picked the pictures: "shape only (...)" when the picture judge is missing
             "judge": None if running else _judge_of_this_run(folder, record["started"])}
 

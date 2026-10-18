@@ -103,6 +103,19 @@ def test_an_update_ignores_release_tags_another_remote_left_in_the_clone(tmp_pat
     assert "Version: v0.2.0" in done.stdout
 
 
+def test_a_repository_without_releases_installs_main(tmp_path, fake_bin):
+    """Codex review: with no release tag grep failed, and set -o pipefail ended the install."""
+    repo = tmp_path / "untagged"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / "requirements.txt").write_text("Pillow\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-q", "-m", "one")
+    done = run(tmp_path, fake_bin, "--repo", str(repo), "--dir", str(tmp_path / "lab"))
+    assert done.returncode == 0, done.stderr
+    assert "Version: main" in done.stdout
+
+
 def test_rerunning_updates_to_a_new_release(tmp_path, upstream, fake_bin):
     target = tmp_path / "lab"
     run(tmp_path, fake_bin, "--repo", str(upstream), "--dir", str(target))

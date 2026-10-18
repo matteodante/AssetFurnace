@@ -223,6 +223,28 @@ def test_a_run_started_before_the_server_is_seen_and_stopped(tmp_path, monkeypat
     assert stopped == [5151] and slot_parts_api.job_status(output)["running"] is False
 
 
+def test_a_failed_run_offers_no_pictures_left_by_an_earlier_one(tmp_path, monkeypatch):
+    """Codex review: a run that failed showed the pictures an earlier run left waiting."""
+    import json as _json
+
+    from image_to_3dlab.slot_parts import runs
+
+    output = tmp_path / "output"
+    folder = output / "sets" / "red" / "stick"
+    folder.mkdir(parents=True)
+    log = folder / "run.log"
+    log.write_text("refused: Blender failed\n", encoding="utf-8")
+    record = {"pid": 7171, "action": "run", "set": "red", "body": "stick", "log": str(log), "folder": str(folder),
+              "started": 1.0}
+    (output / "sets" / runs.RUN_FILE).write_text(_json.dumps(record), encoding="utf-8")
+    monkeypatch.setattr(runs, "waiting_picks", lambda output, folder: {"helmet": {"candidates": []}})
+    _alive(monkeypatch, set())
+    runs.exit_path(record).write_text(_json.dumps({"pid": 7171, "started": 1.0, "returncode": 1}), encoding="utf-8")
+    assert slot_parts_api.job_status(output)["picks"] is None
+    runs.exit_path(record).write_text(_json.dumps({"pid": 7171, "started": 1.0, "returncode": 0}), encoding="utf-8")
+    assert slot_parts_api.job_status(output)["picks"] == {"helmet": {"candidates": []}}
+
+
 def test_a_runs_exit_code_is_kept_beside_it(tmp_path, monkeypatch):
     import threading
 
