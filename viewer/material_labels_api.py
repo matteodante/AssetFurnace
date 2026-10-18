@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from blender_edit_api import check_request
+from request_utils import check_request, read_body
 
 REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
@@ -88,13 +88,8 @@ def save_labels(output: Path, key: str, body: dict) -> dict:
 
 
 def _read_body(handler) -> bytes:
-    # Read before judging: answering a refused request without reading what it sent makes
-    # Windows reset the connection, and the page sees a network error, not the reason.
-    values = handler.headers.get_all("Content-Length", [])
-    if len(values) != 1 or not values[0].isdigit():
-        return b""
-    length = int(values[0])
-    return handler.rfile.read(length) if 0 < length <= MAX_BODY else b""
+    """The request body, read before anything is judged (request_utils.read_body)."""
+    return read_body(handler, MAX_BODY)
 
 
 def handle(handler, output: Path, *, mutation: bool = False) -> bool:

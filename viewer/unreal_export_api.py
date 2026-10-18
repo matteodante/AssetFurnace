@@ -27,6 +27,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import blender_edit_api
+from request_utils import inside_output
 
 REPO = Path(__file__).resolve().parents[1]
 for _path in (REPO, REPO / "scripts"):
@@ -45,13 +46,9 @@ MAX_BODY = 16384
 
 def resolve(output: Path, relative: str) -> Path:
     """`relative` (as the Library spells it) inside `output/`, a GLB that exists."""
-    if not isinstance(relative, str) or not relative or "\\" in relative or relative.startswith("/"):
+    if not isinstance(relative, str) or not relative:
         raise ValueError("Choose a model from the Library")
-    root = output.resolve()
-    path = (root / relative).resolve()
-    if not path.is_relative_to(root) or path.suffix.lower() != ".glb" or not path.is_file():
-        raise ValueError(f"{relative} is not a model in the Library")
-    return path
+    return inside_output(output, relative, suffixes=(".glb",), refusal="{relative} is not a model in the Library")
 
 
 def parse(output: Path, data: dict) -> dict:
@@ -131,13 +128,10 @@ def options(output: Path, data: dict, kind: str) -> dict:
 
 def resolve_picture(output: Path, relative) -> Path:
     """A picture inside `output/`, as the Library spells it."""
-    if not isinstance(relative, str) or not relative or "\\" in relative or relative.startswith("/"):
+    if not isinstance(relative, str) or not relative:
         raise ValueError("choose a picture in the Library")
-    root = output.resolve()
-    path = (root / relative).resolve()
-    if not path.is_relative_to(root) or path.suffix.lower() not in (".png", ".jpg", ".jpeg") or not path.is_file():
-        raise ValueError(f"{relative} is not a picture in the Library")
-    return path
+    return inside_output(output, relative, suffixes=(".png", ".jpg", ".jpeg"),
+                         refusal="{relative} is not a picture in the Library")
 
 
 def proposal(source: Path, kind: str) -> dict:

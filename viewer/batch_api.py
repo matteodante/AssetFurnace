@@ -23,13 +23,13 @@ origin, and a custom header on anything that starts or stops work.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
 import blender_edit_api
+from request_utils import drain, read_json
 
 from image_to_3dlab import batch, mcp_server
 
@@ -251,19 +251,11 @@ def check_request(handler, *, mutation: bool) -> None:
 
 
 def _body(handler) -> dict[str, Any]:
-    length = int(handler.headers.get("Content-Length") or 0)
-    if not 0 < length <= MAX_SPEC * 2:
-        return {}
-    return json.loads(handler.rfile.read(length))
+    return read_json(handler, MAX_SPEC * 2)
 
 
 def _drain(handler) -> None:
-    try:
-        length = int(handler.headers.get("Content-Length") or 0)
-    except ValueError:
-        return
-    if 0 < length <= MAX_SPEC * 2:
-        handler.rfile.read(length)
+    drain(handler, MAX_SPEC * 2)
 
 
 def handle(handler, output: Path, *, mutation: bool = False) -> bool:

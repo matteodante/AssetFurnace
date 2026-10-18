@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-from blender_edit_api import check_request
+from request_utils import check_request, inside_output, read_body
 
 REPO = Path(__file__).resolve().parents[1]
 for extra in (REPO, REPO / "scripts"):  # the checks package, and review_queue's decide()
@@ -45,16 +45,8 @@ def _log(output: Path) -> Path:
 
 
 def _inside(output: Path, relative: str, what: str) -> Path:
-    if not isinstance(relative, str) or not relative or relative.startswith(("/", "\\")):
-        raise ValueError(f"{what} must be a path under output/")
-    path = (output / relative).resolve()
-    try:
-        path.relative_to(output.resolve())
-    except ValueError as exc:
-        raise ValueError(f"{what} must be a path under output/") from exc
-    if not path.is_file():
-        raise ValueError(f"{what} {relative} does not exist")
-    return path
+    return inside_output(output, relative, refusal=f"{what} must be a path under output/",
+                         missing=f"{what} {{relative}} does not exist")
 
 
 def _brief(item: dict) -> dict:
@@ -152,16 +144,8 @@ def review_conflict() -> type:
 
 
 def _read_body(handler) -> bytes:
-    """The request body, read before anything is judged.
-
-    Answering a refused request (403, 400) without reading what it sent makes Windows reset
-    the connection, and the browser sees a network error instead of the reason.
-    """
-    values = handler.headers.get_all("Content-Length", [])
-    if len(values) != 1:
-        return b""
-    length = int(values[0]) if values[0].isdigit() else 0
-    return handler.rfile.read(length) if 0 < length <= MAX_BODY else b""
+    """The request body, read before anything is judged (request_utils.read_body)."""
+    return read_body(handler, MAX_BODY)
 
 
 def _body(raw: bytes) -> dict:

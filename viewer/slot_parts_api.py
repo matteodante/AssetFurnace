@@ -30,7 +30,6 @@ Studio address, same origin, and a custom header on anything that starts or stop
 
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -38,6 +37,7 @@ from urllib.parse import unquote, urlsplit
 
 import batch_api
 import blender_edit_api
+from request_utils import inside_output, read_json
 
 from image_to_3dlab import piece_materials, processes
 from image_to_3dlab.slot_parts import runs, slots
@@ -51,10 +51,7 @@ def _inside(output: Path, relative: str | None) -> Path:
     """A path the page gave, which must name a file under output/."""
     if not relative:
         raise ValueError("a file is missing")
-    path = (output / str(relative).lstrip("/\\")).resolve()
-    if output.resolve() not in path.parents or not path.is_file():
-        raise ValueError(f"{relative} is not a file in the studio's output folder")
-    return path
+    return inside_output(output, relative, refusal="{relative} is not a file in the studio's output folder")
 
 
 # The pure parts are shared with the MCP server: one place builds the commands.
@@ -129,10 +126,7 @@ def cancel_run(output: Path, stop=processes.terminate_group) -> dict[str, Any]:
 
 
 def _body(handler) -> dict[str, Any]:
-    length = int(handler.headers.get("Content-Length") or 0)
-    if not 0 < length <= MAX_BODY:
-        return {}
-    return json.loads(handler.rfile.read(length))
+    return read_json(handler, MAX_BODY)
 
 
 def handle(handler, output: Path, *, mutation: bool = False) -> bool:

@@ -36,7 +36,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 from PIL import Image, UnidentifiedImageError
 
 import image_api
-from blender_edit_api import check_request, drain
+from request_utils import check_request, drain, inside_output, read_body
 
 from image_to_3dlab.blender import find_blender
 from image_to_3dlab.concept import edit, maps, prompts, requests, sidecar
@@ -68,13 +68,8 @@ def _sha256(path: Path) -> str:
 
 def inside(output: Path, relative: str) -> Path:
     """`relative` under the output folder, as an existing file; anything else is refused."""
-    root = Path(output).resolve()
-    path = (root / str(relative)).resolve()
-    if not path.is_relative_to(root) or Path(str(relative)).is_absolute():
-        raise ValueError(f"{relative} is not in the output folder")
-    if not path.is_file():
-        raise FileNotFoundError(f"{relative} was not found in the output folder")
-    return path
+    return inside_output(output, relative, refusal="{relative} is not in the output folder",
+                         missing="{relative} was not found in the output folder")
 
 
 def _relative(output: Path, path: Path) -> str:
@@ -293,10 +288,10 @@ def generate(prompt: str, references: list[Path], seed: int, name: str | None = 
 
 
 def _body(handler, maximum: int) -> bytes:
-    length = int(handler.headers.get("Content-Length") or 0)
-    if not 0 < length <= maximum:
+    raw = read_body(handler, maximum)
+    if not raw:
         raise ValueError(f"send a body of at most {maximum // 1024} KB")
-    return handler.rfile.read(length)
+    return raw
 
 
 def handle(handler, output: Path, *, mutation: bool = False) -> bool:

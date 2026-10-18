@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ipaddress
 import json
 import os
 import subprocess
@@ -11,6 +10,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import blender_versions as versions
+from request_utils import check_host, check_request, drain, local_address  # noqa: F401 - the shared checks, by their old names
 
 from image_to_3dlab import processes
 from image_to_3dlab.blender import find_blender
@@ -18,15 +18,6 @@ from image_to_3dlab.blender_exchange import MAX_BYTES
 
 REPO = Path(__file__).resolve().parents[1]
 PROCESSES = {}
-
-
-def local_address(value):
-    if value.lower() == "localhost":
-        return True
-    try:
-        return ipaddress.ip_address(value).is_loopback
-    except ValueError:
-        return False
 
 
 def desktop_reason(handler):
@@ -40,59 +31,6 @@ def desktop_reason(handler):
     if find_blender() is None:
         return "Blender was not found. Install Blender or set I2L_BLENDER to its executable, then retry. Import is still available."
     return None
-
-
-def drain(handler, limit=1024 * 1024):
-    """Read the body of a request refused before it was read, so the answer arrives: closing
-    on unread bytes makes Windows reset the connection, and the caller saw
-    ConnectionAbortedError instead of the reason. A body over `limit` is left unread."""
-    try:
-        length = int(handler.headers.get("Content-Length") or 0)
-    except ValueError:
-        length = 0
-    if 0 < length <= limit:
-        handler.rfile.read(length)
-    handler.close_connection = True
-
-
-def check_host(handler):
-    """The Host a request names. A loopback server only answers loopback names, so a page
-    that rebinds its own domain to 127.0.0.1 cannot read or drive it (DNS rebinding)."""
-    host = handler.headers.get("Host", "")
-    parsed = urlsplit("//" + host)
-    if not parsed.hostname or parsed.username or parsed.path or parsed.query or parsed.fragment:
-        raise PermissionError("Invalid request host")
-    if local_address(handler.server.server_address[0]) and not local_address(parsed.hostname):
-        raise PermissionError("Use the local Studio address")
-    return host
-
-
-def check_request(handler, *, mutation=False, header="blender-edit", refusal=None):
-    """The Studio page only: a loopback Host on a loopback server, the same origin, never a
-    cross-site fetch, and on mutations a custom header that a cross-site form cannot send.
-    ``header=None`` accepts any value of it: the older Studio endpoints are shared by pages
-    that each name their own. A script that sent the access token as a Bearer header
-    (`Handler._admitted`) is not a browser, so it cannot be a forged page: it passes, on
-    every endpoint, as serve.py promises."""
-    if getattr(handler, "_bearer", False):
-        return
-    refusal = refusal or ("Use this Studio page to edit models" if header == "blender-edit" else "Use the Studio page")
-    host = check_host(handler)
-    # behind a proxy (RunPod) the page's origin is the public name the proxy forwards
-    allowed = {host.lower()}
-    forwarded = handler.headers.get("X-Forwarded-Host")
-    if forwarded and not local_address(handler.server.server_address[0]):
-        allowed.add(forwarded.split(",")[0].strip().lower())
-    origin = handler.headers.get("Origin")
-    if origin:
-        source = urlsplit(origin)
-        if source.scheme not in ("http", "https") or source.netloc.lower() not in allowed or source.path or source.query or source.fragment:
-            raise PermissionError(refusal)
-    if handler.headers.get("Sec-Fetch-Site") == "cross-site":
-        raise PermissionError("Cross-site edit requests are not allowed" if header == "blender-edit" else "Cross-site requests are not allowed")
-    sent = handler.headers.get("X-AssetFurnace-Request")
-    if mutation and (not origin or not sent or (header is not None and sent != header)):
-        raise PermissionError(refusal)
 
 
 def body(handler, maximum):

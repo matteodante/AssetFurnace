@@ -135,7 +135,7 @@ def test_a_redraw_request_becomes_the_prompt_the_pictures_and_what_the_iou_is_me
     depth = picture(output / "concept" / "maps" / "a" / "front_depth_black.png")
     style = picture(output / "images" / "style.png")
     plan = concept_api.build(output, {"mode": "redraw", "subject": "werewolf", "colours": "grey fur",
-                                      "structure": "depth", "shape": [str(depth.relative_to(output))],
+                                      "structure": "depth", "shape": [depth.relative_to(output).as_posix()],
                                       "style_refs": ["images/style.png"], "style": "hand-painted"})
     assert plan["prompt"].startswith(prompts.redraw("werewolf", "grey fur", style="hand-painted"))
     assert plan["prompt"].endswith(prompts.style_sentence(2, 1))
@@ -164,7 +164,7 @@ def test_a_job_runs_the_edit_and_leaves_its_record_with_the_iou(output, ready):
     body = picture(output / "concept" / "maps" / "b" / "front_colour.png", rgba=True)
     grey = picture(output / "concept" / "maps" / "b" / "front_colour_grey.png")
     job = concept_api.start(output, {"mode": "add_piece", "piece": "a steel helmet",
-                                     "shape": [str(grey.relative_to(output))], "seed": 7})
+                                     "shape": [grey.relative_to(output).as_posix()], "seed": 7})
     concept_api.wait(job)
     assert job.status == "done" and job.settings["seed"] == 7
     assert job.extra_args[:2] == ["--llm_vision", str(Path(job.extra_args[1]))] and "-r" in job.extra_args
