@@ -92,3 +92,19 @@ def test_the_studio_names_registered_bibles_only_never_a_folder(tmp_path, monkey
     registry.register(tmp_path, root)
     prompt, extra = image_api.with_style("a helmet", {"bible": "loose"})
     assert extra["style"]
+
+
+def test_the_concept_command_line_keeps_a_bible_folder(tmp_path, monkeypatch):
+    """Codex review: the HTTP restriction reached scripts/reference_concept.py, which builds
+    with the same function; only the HTTP route refuses a folder."""
+    import concept_api
+
+    from image_to_3dlab.style import apply
+
+    root = sb.create(tmp_path / "anywhere" / "style", "loose")
+    seen = []
+    monkeypatch.setattr(apply, "resolve", lambda *a, **k: seen.append(k.get("allow_path")) or None)
+    monkeypatch.setattr(concept_api.requests, "plan", lambda *a, **k: {})
+    concept_api.build(tmp_path, {"mode": concept_api.prompts.MODES[0], "bible": str(root)})
+    concept_api.build(tmp_path, {"mode": concept_api.prompts.MODES[0], "bible": str(root)}, allow_path=False)
+    assert seen == [True, False]

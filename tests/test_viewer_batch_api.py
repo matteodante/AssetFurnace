@@ -487,3 +487,17 @@ def test_a_held_spec_cannot_name_files_outside_the_repository(output, tmp_path):
     assert status == 422 and any(str(outside) in problem for problem in result["problems"])
     status, result = batch_api.submit(output, {"filename": "lot.json", "content": content, "check_only": True})
     assert not any("outside this repository" in problem for problem in result.get("problems", []))
+
+
+def test_a_held_spec_cannot_read_a_rows_csv_outside_the_repository(output, tmp_path):
+    """Codex review: a JSON spec's `rows` naming a CSV outside was read before any check, and
+    its first line came back in the problems."""
+    import batch_api
+
+    secret = tmp_path / "secret.csv"
+    secret.write_text("password=hunter2\n", encoding="utf-8")
+    content = json.dumps({"schema_version": 1, "name": "lot", "rows": str(secret)})
+    status, result = batch_api.submit(output, {"filename": "lot.json", "content": content, "check_only": True},
+                                      held=True)
+    assert status == 422 and not any("hunter2" in problem for problem in result["problems"])
+    assert any(str(secret) in problem for problem in result["problems"])

@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - a chosen `ASSETFURNACE_TOKEN` that a cookie cannot carry unchanged, or shorter than 24
     characters, is refused at start;
   - on a server open to the network, `POST /api/batches` reads a spec, and the files it names,
-    from the repository only.
+    from the repository only; there and over MCP, a JSON spec's `rows` CSV is checked before it
+    is read.
 
 ### Fixed
 - From the code read of 18/10/2026 ([backlog](docs/plans/2026-10-18-code-read-fixes.md)):
