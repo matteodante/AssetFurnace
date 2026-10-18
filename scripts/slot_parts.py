@@ -477,8 +477,8 @@ def make_concept(body_json: Path, outfit: str, folder: Path, seeds: list[int], s
 
     record = body_mod.load(body_json)
     # add, not dress: the chosen pieces drawn on the body, its own clothes and the rest left as they are
-    prompt = prompts.add_piece(pieces.concept_outfit(outfit, chosen or {}), style=style,
-                               wearing=body_mod.dressing_words(record))
+    words = pieces.concept_outfit(outfit, chosen or {})
+    prompt = prompts.add_piece(words, style=style, wearing=body_mod.dressing_words(record))
     folder.mkdir(parents=True, exist_ok=True)
     body_sha = sidecar.sha256(Path(record["image"]))
     for seed in seeds:
@@ -494,7 +494,8 @@ def make_concept(body_json: Path, outfit: str, folder: Path, seeds: list[int], s
     seed = pick if pick is not None else seeds[0]
     if seed not in seeds:
         raise ValueError(f"concept: {seed} is not one of the outfits drawn ({', '.join(map(str, seeds))})")
-    return folder / f"s{seed}.png", {"prompt": prompt, "seed": seed, "seeds": list(seeds),
+    # the outfit's words saved apart from the prompt: piece_materials reads the pieces' materials in them
+    return folder / f"s{seed}.png", {"prompt": prompt, "outfit": words, "seed": seed, "seeds": list(seeds),
                                      **({"picked_by": "person"} if pick is not None and pick != seeds[0] else {})}
 
 
@@ -651,7 +652,7 @@ def _draw_concept(set_run: SetRun, outfit: str, concept: Path | None, concept_se
             set_run.edit, pick=int(concept_pick) if concept_pick is not None else None, chosen=set_run.drawn)
         set_run.mode = "body_and_equipment"
     else:
-        set_run.concept, set_run.concept_info, set_run.mode = concept, {"given": True}, "dressed_split"
+        set_run.concept, set_run.concept_info, set_run.mode = concept, {"given": True, "outfit": ""}, "dressed_split"
     return True
 
 
@@ -1006,7 +1007,7 @@ def main(argv: list[str] | None = None) -> int:
             labels = dict(item.split("=", 1) for item in args.label)
             clips = dict(item.split("=", 1) for item in args.clip)
             path = body_mod.register(args.name, args.image, args.rigged, args.views, args.matte, labels, args.root,
-                                     clips, dressing=body_mod.dressing(args.dressing, args.dressing_words))
+                                     clips, dressed=body_mod.dressing(args.dressing, args.dressing_words))
             print(f"wrote {path}")
         else:
             result = make_cuts(args.body, args.concept, slots.choose(parse_slots(args.slots)), args.out,

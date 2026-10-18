@@ -139,7 +139,8 @@ def test_an_agent_corrects_the_material_of_a_piece(tmp_path, monkeypatch):
     folder.mkdir(parents=True)
     (folder / "red.parts.json").write_text(json.dumps({
         "set": "red", "slots": {"helmet": {}, "boots": {"prompt": "leather boots"}},
-        "pieces": {"helmet": {}, "boots": {}}, "concept": {"prompt": "Add red plate armour to the character in image 1"}}))
+        "pieces": {"helmet": {}, "boots": {}}, "concept": {"prompt": "Add red plate armour to the character in image 1",
+                                                         "outfit": "red plate armour"}}))
     monkeypatch.setattr(mcp_server, "OUTPUT", output)
     result = mcp_server.pieces_materials("stick", "red", {"helmet": "leather"})
     assert result["materials"]["helmet"] == {"material": "leather", "by": "person", "reason": "corrected by a person"}

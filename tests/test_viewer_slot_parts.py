@@ -304,7 +304,7 @@ def _made_set(output):
     folder.mkdir(parents=True)
     (folder / "red.parts.json").write_text(json.dumps({
         "set": "red", "body": {"name": "stick"}, "slots": {"helmet": {"prompt": "a leather hood"}, "boots": {"prompt": ""}},
-        "pieces": {"helmet": {}, "boots": {}}, "concept": {"prompt": "red plate"}, "created": "2026-10-17"}))
+        "pieces": {"helmet": {}, "boots": {}}, "concept": {"prompt": "red plate", "outfit": "red plate"}, "created": "2026-10-17"}))
     return folder
 
 

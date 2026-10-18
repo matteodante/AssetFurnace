@@ -30,6 +30,25 @@ def test_garment_nouns_read_as_cloth():
     assert pm.material_in("a hooded robe") == "cloth"
 
 
+@pytest.mark.parametrize(("text", "found"), [
+    ("a golden silk tunic", "cloth"),        # the silk and the tunic say what it is; golden how it looks
+    ("a golden tunic", "cloth"),
+    ("a metallic blue cloak", "cloth"),
+    ("a golden crown", "metal"),             # nothing else to go on
+    ("a golden helmet with a silk plume", "metal"),   # the first clause that names a material decides
+    ("red and gold plate armour", "metal"),
+])
+def test_a_word_for_the_look_gives_way_to_what_the_thing_is(text, found):
+    assert pm.material_in(text) == found
+
+
+def test_an_outfit_clause_with_a_golden_garment_is_cloth():
+    outfit = "a golden silk tunic, steel greaves and leather boots"
+    assert pm.propose(slot="torso", outfit=outfit) == {
+        "material": "cloth", "by": "rule", "reason": "the outfit says 'a golden silk tunic'"}
+    assert pm.propose(slot="legs", outfit=outfit)["material"] == "metal"
+
+
 def test_a_piece_takes_its_own_words_first():
     proposal = pm.propose(slot="helmet", words="a leather hood")
     assert proposal == {"material": "leather", "by": "rule", "reason": "the piece's words say 'leather'"}
@@ -73,7 +92,7 @@ def _set_folder(tmp_path, slots, pieces, outfit="crimson plate armour and leathe
     folder = tmp_path / "sets" / "red" / "human"
     folder.mkdir(parents=True)
     record = {"set": "red", "slots": slots, "pieces": pieces,
-              "concept": {"prompt": f"Add {outfit} to the character in image 1."}}
+              "concept": {"prompt": f"Add {outfit} to the character in image 1.", "outfit": outfit}}
     (folder / "red.parts.json").write_text(json.dumps(record))
     return folder
 
@@ -130,7 +149,18 @@ def test_prompt_for_follows_the_inputs_to_the_words(tmp_path):
     assert pm.prompt_for(model) == ""
 
 
-def test_outfit_words_are_taken_out_of_the_concepts_edit_prompt():
-    assert pm.outfit_words("Add red plate and leather boots to the character in image 1, fitted closely.") \
-        == "red plate and leather boots"
-    assert pm.outfit_words("red plate") == "red plate"
+def test_outfit_words_are_read_from_the_concept_as_saved():
+    assert pm.outfit_words({"concept": {"prompt": "Add a hood to the character in image 1.",
+                                        "outfit": "red plate"}}) == "red plate"
+    assert pm.outfit_words({"concept": {"given": True, "outfit": ""}}) == ""   # a concept given ready-made
+    assert pm.outfit_words({"concept": None}) == ""                           # weapons and shields alone
+
+
+def test_a_set_saved_before_the_outfit_words_says_how_to_migrate_it(tmp_path):
+    folder = _set_folder(tmp_path, slots={"boots": {"prompt": ""}}, pieces={"boots": {}})
+    path = folder / "red.parts.json"
+    record = json.loads(path.read_text())
+    del record["concept"]["outfit"]
+    path.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="migrate_set_outfits.py"):
+        pm.set_materials(folder)

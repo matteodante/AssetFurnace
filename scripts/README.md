@@ -239,6 +239,7 @@ Feature 4: armour slots worn on a rigged base body. The logic is in `image_to_3d
 | `slot_parts.py` | Characters in pieces (feature 4): register a base body, then cut a concept into slots. |
 | `blender_fit_parts.py` | Fit armour pieces onto a rigged base body in Blender, skin them to its skeleton, mask the body. |
 | `blender_segment_parts.py` | Route B0: split a whole-character model into one piece per slot, cut edges closed. |
+| `migrate_set_outfits.py` | Write the outfit's words into sets made before they were saved with the concept. |
 
 ## Export for Unreal
 
