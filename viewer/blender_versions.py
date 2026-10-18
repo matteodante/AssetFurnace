@@ -27,6 +27,9 @@ def sha(data):
 
 
 def safe_path(output, relative):
+    """A path for a Blender edit to write under `output/`: stricter than the files the pages
+    read (`request_utils.inside_output`), since it may not exist yet and it refuses links even
+    inside output, so a work folder never aliases a source folder."""
     if (not isinstance(relative, str) or not relative or "\\" in relative or ":" in relative
             or relative.startswith("/") or any(p in ("", ".", "..") for p in relative.split("/"))):
         raise ValueError("Use a relative Library file path")

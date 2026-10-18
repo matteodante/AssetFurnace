@@ -62,7 +62,7 @@ Stato: **fatto** (PR), **in corso**, **da fare**, **respinto** (motivo).
 
 | # | Punto | Stato |
 | --- | --- | --- |
-| Q-1 | Un modulo comune dello studio per richieste e percorsi (header, body, "dentro output/") | da fare |
+| Q-1 | Un modulo comune dello studio per richieste e percorsi (header, body, "dentro output/") | fatto: `viewer/request_utils.py` (controllo della richiesta, lettura del body, `inside_output` con una regola sola); `blender_versions.safe_path` resta più stretto e lo dice |
 | Q-2 | Una sola conversione glTF→Blender e un solo `pack_orm` | da fare |
 | Q-3 | Dividere `blender_fit_parts.main` e `run_set`/`_finish_set` | da fare |
 | Q-4 | Commenti falsi o che raccontano la storia | da fare |
