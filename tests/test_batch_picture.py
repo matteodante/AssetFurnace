@@ -251,3 +251,12 @@ def test_candidates_and_picks_from_the_first_version_are_refused_with_what_to_do
     rows[0]["picture"].pop("pick")
     spec_path.write_text(json.dumps({**json.loads(spec_path.read_text()), "rows": rows}))
     assert "pick" not in batch.load_batch(spec_path).rows[0].options["picture"]
+
+
+def test_a_row_that_draws_no_picture_loads_whatever_its_picture_settings(tmp_path, generator):
+    """Only a row with the picture step can hold the first version's pictures: settings the
+    step would refuse are never turned into a key for the others."""
+    tiny_png(tmp_path / "b.png")
+    spec = batch.load_batch(_spec(tmp_path, [{"id": "SM_B", "images": ["b.png"], "steps": ["generate"],
+                                              "picture": {"seed": None, "count": None}}]))
+    assert [row.id for row in spec.rows] == ["SM_B"]

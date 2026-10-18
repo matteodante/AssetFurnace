@@ -82,16 +82,18 @@ def list_sets(output: Path) -> list[dict[str, Any]]:
             continue
         preview = path.parent / "fit" / "preview.glb"
         checks = parts.get("checks") or {}
+        problem = None
         try:
             materials = piece_materials.set_materials(path.parent)
-        except (OSError, ValueError):
-            materials = {}
+        except (OSError, ValueError) as exc:   # said with the set, not hidden: a set to migrate, say
+            materials, problem = {}, str(exc)
         found.append({"set": parts.get("set"), "body": (parts.get("body") or {}).get("name"), "mode": parts.get("mode"),
                       "pieces": sorted(parts.get("pieces") or {}), "created": parts.get("created"),
                       "covered": (parts.get("fit") or {}).get("covered_share"),
                       "statuses": {k: v.get("status") for k, v in checks.items()},
                       "preview": rel(output, preview) if preview.is_file() else None, "record": rel(output, path),
-                      "materials": materials, "grips": grips_of(output, parts)})
+                      "materials": materials, **({"materials_problem": problem} if problem else {}),
+                      "grips": grips_of(output, parts)})
     found.sort(key=lambda s: s["created"] or "", reverse=True)
     return found
 

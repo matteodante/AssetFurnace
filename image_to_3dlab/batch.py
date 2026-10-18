@@ -692,15 +692,22 @@ def _first_version_problems(directory: Path, saved: dict[str, Any], picks: dict[
                         f"fingerprint (rows {', '.join(old_steps)}), which this version does not read: give "
                         f"the batch a new name to run it again, or remove its folder {directory}")
     for row in rows:
-        old_key = first_version_key(row.prompt, row.options.get("picture", {}))
+        if "picture" not in row.steps:
+            continue
         index = read_json(directory / "rows" / row.id / "picture.candidates" / "candidates.json")
+        made = (picks.get(row.id) or {}).get("picture") if isinstance(picks.get(row.id), dict) else None
+        if not isinstance(index, dict) and not isinstance(made, dict):
+            continue
+        try:
+            old_key = first_version_key(row.prompt, row.options.get("picture", {}))
+        except (TypeError, ValueError):   # settings the step's own check refuses: no key of either version
+            old_key = None
         if isinstance(index, dict) and ("done" not in index or index.get("key") == old_key):
             problems.append(f"row {row.id}: its picture candidates were drawn by the first version of the "
                             f"picture step, whose record this version does not read: remove the folder "
                             f"{directory / 'rows' / row.id / 'picture.candidates'} to draw them again")
-        made = (picks.get(row.id) or {}).get("picture") if isinstance(picks.get(row.id), dict) else None
         # a pick the spec gives itself wins over a saved one, which is then never read
-        if (isinstance(made, dict) and made.get("key") == old_key
+        if (isinstance(made, dict) and old_key is not None and made.get("key") == old_key
                 and "pick" not in row.options.get("picture", {})):
             problems.append(f"row {row.id}: its picture pick in {directory / PICKS_FILE} was made under the "
                             f"first version of the picture step, which this version does not read: remove "
