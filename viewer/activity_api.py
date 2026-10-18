@@ -79,7 +79,7 @@ class Chain:
     prompt: str | None = None
     engine: str | None = None
     first_move: str | None = None
-    picture_settings: dict[str, Any] = field(default_factory=dict)  # size, steps, seed (the image job checks them)
+    picture_settings: dict[str, Any] = field(default_factory=dict)  # size and seed (the image job checks them)
     model_seed: int | None = None                                    # a fresh 3D try each time; None = engine default
     finish_settings: dict[str, Any] = field(default_factory=dict)    # faces, texture_size, skip_photo (Finish checks them)
     bible: str | None = None                                         # the style bible for the picture: "-" or a name
@@ -388,7 +388,7 @@ def chain_from_form(form: dict[str, dict[str, Any]]) -> Chain:
     return Chain(
         title=text("title") or "Untitled", steps=[str(s) for s in steps], want=text("want") or "character",
         prompt=text("prompt"), engine=text("engine"), first_move=text("first_move"),
-        picture_settings={k: picture[k] for k in ("width", "height", "steps", "seed") if k in picture}
+        picture_settings={k: picture[k] for k in ("width", "height", "seed") if k in picture}
         if isinstance(picture, dict) else {},
         model_seed=int(text("model_seed")) if (text("model_seed") or "").isdigit() else None,
         bible=text("bible"),

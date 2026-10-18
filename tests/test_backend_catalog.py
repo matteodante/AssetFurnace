@@ -675,3 +675,10 @@ def test_the_zones_card_says_it_is_a_trial_outside_the_pipeline():
     assert "trial" in entry.label and "Not used by any step" in entry.tradeoff
     panel = (bc.REPO / "viewer" / "studio" / "unreal-export.js").read_text(encoding="utf-8")
     assert "the material step left" not in panel and "zones trial" in panel
+
+
+def test_setup_offers_no_model_that_nothing_runs():
+    """Code read 18/10/2026: FLUX.2 klein (12.3 GB) was offered in Setup, but no code read its
+    weights. A card is a model some step uses."""
+    assert "flux2-klein" not in bc.BY_ID
+    assert not (bc.REPO / "scripts" / "bootstrap_flux2_klein.py").exists()

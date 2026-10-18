@@ -115,3 +115,15 @@ def test_the_request_goes_to_this_repo_releases_only():
 def test_cache_file_records_when_it_asked(tmp_path):
     check(tmp_path, Fetch(), now=1_234.0)
     assert json.loads((tmp_path / "check.json").read_text())["checked_at"] == 1_234.0
+
+
+def test_an_answer_about_another_repository_is_not_kept(tmp_path):
+    """Code read 18/10/2026: a cache written while the check asked the upstream kept offering
+    the upstream's release, since a failed request kept the last answer."""
+    (tmp_path / "check.json").write_text(json.dumps(
+        {"checked_at": 999_999.0, "tag": "v0.4.3", "url": "https://github.com/upstream/releases/tag/v0.4.3"}))
+    gone = urllib.error.HTTPError(update_api.LATEST_URL, 404, "Not Found", {}, None)
+    result = check(tmp_path, Fetch(error=gone))
+    assert result["latest"] is None and result["newer"] is False
+    saved = json.loads((tmp_path / "check.json").read_text())
+    assert saved["source"] == update_api.LATEST_URL and saved["tag"] is None

@@ -77,6 +77,17 @@ def test_a_selected_blender_version_is_what_gets_exported():
 
 
 @needs_node
+def test_a_blender_version_without_a_skeleton_goes_out_as_an_object():
+    """Code read 18/10/2026: a character's version that lost its skeleton went out as a creature."""
+    out = _run(f"""
+      const bare = {{id: 'v2', file: 'blender-edits/versions/v2/model.glb', facts: {{skins: 0, joints: 0}}}};
+      const rigged = {{id: 'v3', file: 'blender-edits/versions/v3/model.glb', facts: {{skins: 1, joints: 40}}}};
+      console.log(JSON.stringify([m.exportSource({json.dumps(KNIGHT)}, bare.file, bare).kind,
+        m.exportSource({json.dumps(BARREL)}, rigged.file, rigged).kind]));""")
+    assert out == ["prop", "creature"]
+
+
+@needs_node
 def test_a_new_move_makes_a_different_request():
     out = _run("""
       const a = {file: 'r.glb', kind: 'creature', moves: ['idle.glb']};

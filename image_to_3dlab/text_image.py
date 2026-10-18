@@ -5,8 +5,9 @@ The engine half: settings, the sd-cli command, its output, the licence record, a
 command line (`scripts/text_image.py`) and the batch step `picture` all run this.
 
 Every other tool here starts from a picture. This one makes the picture, for people who
-do not have one yet. It drives `stable-diffusion.cpp` (a prebuilt Metal binary in
-`vendor/sdcpp/`) against Qwen-Image 2.1 Turbo in GGUF form.
+do not have one yet. It drives `stable-diffusion.cpp` (a prebuilt binary in `vendor/sdcpp/`:
+Metal on a Mac, CUDA on Windows, Vulkan or ROCm on Linux) against Qwen-Image 2.1 Turbo in
+GGUF form.
 
 Two things are deliberate:
 
@@ -364,6 +365,19 @@ def weight_manifest() -> dict[str, dict[str, str]]:
     }
 
 
+# The GPU backend of the sd-cli build scripts/bootstrap_qwen_image.py installs on each machine
+# (its BUILDS; a test holds the two together).
+RUNTIMES = {"macos-arm64": "Metal", "windows-nvidia": "CUDA 12", "linux-nvidia": "Vulkan", "linux-amd": "ROCm"}
+
+
+def runtime(target: str | None = None) -> str:
+    """What drew the picture on this machine, as its record says it."""
+    from image_to_3dlab.host import build_target
+
+    backend = RUNTIMES.get(target or build_target() or "")
+    return f"stable-diffusion.cpp ({backend})" if backend else "stable-diffusion.cpp"
+
+
 def provenance(prompt: str, settings: dict[str, Any], seconds: float,
                output_path: Path, prompt_sent: str | None = None) -> dict[str, Any]:
     """What this picture is, and what the licence lets you do with it. A negative prompt
@@ -378,7 +392,7 @@ def provenance(prompt: str, settings: dict[str, Any], seconds: float,
         "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "model": {
             "id": MODEL_ID,
-            "runtime": "stable-diffusion.cpp (Metal)",
+            "runtime": runtime(),
             "weights": weight_manifest(),
         },
         "license": {

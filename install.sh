@@ -120,8 +120,12 @@ else
   run git clone --quiet "$REPO_URL" "$DIR"
 fi
 
+# The newest release of the repository being installed, as install.ps1 finds it. Not the
+# clone's own tags: a clone that once fetched another remote's tags (the upstream's v0.4.3)
+# keeps them, and an update would go back to that release.
 newest_release() {
-  git -C "$DIR" tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname 2>/dev/null | head -n 1
+  git ls-remote --tags --refs "$REPO_URL" 'v*' 2>/dev/null | sed 's#.*refs/tags/##' \
+    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1
 }
 if [ -z "$REF" ]; then
   if [ "$DRY" = 1 ] && [ ! -d "$DIR/.git" ]; then REF="(newest release)"

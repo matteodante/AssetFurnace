@@ -19,8 +19,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - on a server open to the network, `POST /api/batches` reads a spec, and the files it names,
     from the repository only.
 
+### Removed
+- FLUX.2 klein 4B from Setup & Status and its `scripts/bootstrap_flux2_klein.py`: no step
+  used it, and Setup offered 12.3 GB for nothing. Weights already fetched stay in the Hugging
+  Face cache (`models--black-forest-labs--FLUX.2-klein-4B`, `models--unsloth--Qwen3-4B-GGUF`,
+  `models--black-forest-labs--FLUX.2-small-decoder`) until you delete them.
+- Create's Steps field under the picture settings: the Turbo's schedule always runs 8 steps,
+  so the number did nothing.
+
 ### Fixed
 - From the code read of 18/10/2026 ([backlog](docs/plans/2026-10-18-code-read-fixes.md)):
+  - the Pieces page follows a run from `output/sets/.run.json`: after a restart, or for a run
+    an agent started, it shows it and can stop it; its exit code is kept beside its log;
+  - a made set's material menu has Auto again, which takes a person's correction back;
+  - `install.sh` picks the newest release of the repository it installs (`git ls-remote`),
+    not a tag another remote left in the clone;
+  - a picture's record names the backend that drew it (Metal, CUDA 12, Vulkan or ROCm), not
+    always Metal;
+  - the Unreal export of a Blender version that has no skeleton goes out as an object;
+  - the update check forgets an answer about another repository, and a 404 clears it;
   - a set's weapons and shields are checked as assets of their own (the `weapon_or_shield`
     profile), with a provenance record bound to the finished file, and each goes to the review
     queue; before, only the fitted pieces were checked;

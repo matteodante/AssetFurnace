@@ -83,16 +83,22 @@ def check(current: str = image_to_3dlab.__version__, now: float | None = None,
         return result
 
     cached = _read_cache(cache)
+    if cached.get("source") != LATEST_URL:
+        cached = {}   # an answer about another repository (the upstream's, before the move)
     checked_at = cached.get("checked_at")
     if not isinstance(checked_at, (int, float)) or now - checked_at >= MAX_AGE:
         try:
             latest = fetch()
             cached = {"checked_at": now, "tag": latest.get("tag_name"),
-                      "url": latest.get("html_url")}
+                      "url": latest.get("html_url"), "source": LATEST_URL}
+        except urllib.error.HTTPError as exc:
+            # 404: no release this machine can see (a private repository, none published yet)
+            cached = ({"checked_at": now, "tag": None, "url": None, "source": LATEST_URL} if exc.code == 404
+                      else {**cached, "checked_at": now, "source": LATEST_URL})
         except (OSError, ValueError, urllib.error.URLError, TimeoutError):
             # Offline or rate-limited: keep the last answer, and do not ask again for a
             # day, so a flaky network does not mean a request on every page load.
-            cached = {**cached, "checked_at": now}
+            cached = {**cached, "checked_at": now, "source": LATEST_URL}
         try:
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps(cached), encoding="utf-8")

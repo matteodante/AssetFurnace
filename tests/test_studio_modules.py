@@ -508,18 +508,22 @@ def test_create_makes_a_fresh_picture_each_time_unless_a_seed_is_kept():
       const kept = m.pictureSettings({ newEachTime: false, seed: 7, size: 999, steps: 900 });
       const form = m.planForm({ steps: ['picture'], description: 'x', pictureSettings: kept });
       console.log(JSON.stringify({ fresh, kept, sent: JSON.parse(form.get('picture_settings')) }));""")
-    assert out["fresh"] == {"width": 1024, "height": 1024, "steps": 16, "seed": 1073741823}
-    # an odd size falls back to the card's square 2048, steps are capped
-    assert out["kept"] == {"width": 2048, "height": 2048, "steps": 50, "seed": 7}
+    assert out["fresh"] == {"width": 1024, "height": 1024, "seed": 1073741823}
+    # an odd size falls back to the card's square 2048; a step count is not Create's to give
+    assert out["kept"] == {"width": 2048, "height": 2048, "seed": 7}
     assert out["sent"] == out["kept"]
 
 
 @needs_node
-def test_create_asks_for_the_same_picture_steps_the_server_defaults_to():
-    """Create sends its own steps, so a default changed only on the server never reaches the studio."""
+def test_create_has_no_steps_field_since_the_turbo_fixes_them():
+    """Code read 18/10/2026: Create's Steps field did nothing (the Turbo's schedule always runs
+    8) and its hint asked for 10. The field is gone; the server's 8 is what runs."""
     from viewer import image_api
-    out = _run("create.js", "console.log(JSON.stringify(m.pictureSettings({}, () => 0)));")
-    assert out["steps"] == image_api.DEFAULTS["steps"]
+    out = _run("create.js", "console.log(JSON.stringify(m.pictureSettings({ steps: 30 }, () => 0)));")
+    assert "steps" not in out
+    assert image_api.clean_settings({"steps": 30})["steps"] == image_api.TURBO_STEPS == 8
+    source = (REPO / "viewer" / "studio" / "create.js").read_text(encoding="utf-8")
+    assert 'data-pic="steps"' not in source
 
 
 @needs_node

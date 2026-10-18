@@ -27,12 +27,14 @@ export const KIND_LABELS = { prop: 'Object', creature: 'Creature', equipment: 'E
 const basename = (path) => path?.split('/').pop() || '';
 
 // What to export for an asset: a selected Blender version exports that version (it holds
-// only what was exported from Blender); a character exports its rig with its moves;
-// anything else exports the model on screen (for a prop set, the prop being shown).
+// only what was exported from Blender: a creature when it kept its skeleton, as its facts
+// say, else an object); a character exports its rig with its moves; anything else exports
+// the model on screen (for a prop set, the prop being shown).
 export function exportSource(asset, file, revision = null) {
   if (!asset) return null;
   if (revision?.file) {
-    return { file: revision.file, kind: asset.kind === 'character' ? 'creature' : 'prop', moves: [] };
+    const skinned = revision.facts ? Boolean(revision.facts.skins) : asset.kind === 'character';
+    return { file: revision.file, kind: skinned ? 'creature' : 'prop', moves: [] };
   }
   if (asset.kind === 'character' && asset.rigged) {
     return { file: asset.rigged, kind: 'creature', moves: (asset.clips || []).map((c) => c.file) };

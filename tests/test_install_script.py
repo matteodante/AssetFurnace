@@ -54,7 +54,7 @@ def fake_bin(tmp_path: Path) -> Path:
     """A PATH holding git, the basics and a `uv` that logs its arguments."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for tool in ("git", "uname", "sed", "ls", "head", "grep", "cat", "env", "mkdir", "dirname"):
+    for tool in ("git", "uname", "sed", "ls", "head", "tail", "sort", "grep", "cat", "env", "mkdir", "dirname"):
         found = shutil.which(tool)
         if found:
             (bin_dir / tool).symlink_to(found)
@@ -90,6 +90,17 @@ def test_fresh_install_picks_the_newest_release_not_a_backup_tag(tmp_path, upstr
     uv_calls = (tmp_path / "uv.log").read_text()
     assert "venv" in uv_calls and "--python 3.11" in uv_calls
     assert f"-r {target}/requirements.txt" in uv_calls
+
+
+def test_an_update_ignores_release_tags_another_remote_left_in_the_clone(tmp_path, upstream, fake_bin):
+    """Code read 18/10/2026: install.sh still read the clone's own tags, so a clone that once
+    fetched the upstream's v0.4.3 went back to it (install.ps1 asks the repository)."""
+    target = tmp_path / "lab"
+    run(tmp_path, fake_bin, "--repo", str(upstream), "--dir", str(target))
+    _git(target, "tag", "v9.9.9", "HEAD~1")   # another remote's release, kept in the clone
+    done = run(tmp_path, fake_bin, "--repo", str(upstream), "--dir", str(target))
+    assert done.returncode == 0, done.stderr
+    assert "Version: v0.2.0" in done.stdout
 
 
 def test_rerunning_updates_to_a_new_release(tmp_path, upstream, fake_bin):
