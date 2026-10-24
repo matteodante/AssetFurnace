@@ -243,7 +243,7 @@ finished row in the viewer.
 
 ## The MCP server
 
-For an agent working in another repository (Auroconts, say):
+For an agent working in another repository (a game project, say):
 
 ```bash
 pip install "mcp>=2.3,<3"

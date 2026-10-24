@@ -3,7 +3,7 @@
 Data: 15 ottobre 2026. Stato: **approvato e implementato** sul ramo `claude/feat-checks-review-744c44` (in attesa di
 merge). Le compenetrazioni nelle pose restano per un secondo passo. Le differenze rispetto alla proposta sono segnate
 con *Implementato*.
-Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 7.
+Piano di riferimento: il piano di produzione (privato), funzione 7.
 
 In breve: un registro di controlli che danno tutti lo stesso JSON, un file di esito accanto a ogni GLB, e una coda
 nello studio dove l'utente approva o rimanda con una nota. Tutto gira sul processore (CPU): niente GPU, niente modelli.
@@ -106,7 +106,7 @@ glTF divide i vertici a ogni cucitura delle UV, e senza saldatura si contano le 
 | `budget.faces` | Triangoli contati dagli accessor del glTF (lettura diretta, come `glb_forensics.read_gltf_json`) | Dal profilo o dalla riga del lotto: warn oltre il budget, fail oltre il budget + 25% |
 | `budget.materials` | Numero di materiali e di primitive (una primitive = una chiamata di disegno) | prop ≤ 2, creatura ≤ 3, parte ≤ 1 |
 | `budget.textures` | Lato massimo di ogni immagine, letto dall'intestazione PNG/JPEG dentro il GLB | warn oltre 2048, fail oltre 4096 |
-| `budget.texel_density` | Pixel per metro = √(pixel della texture × area UV usata ÷ area della superficie in m²) | Fascia dal profilo (da tarare sulla scala di Auroconts); solo warn finché non è tarata |
+| `budget.texel_density` | Pixel per metro = √(pixel della texture × area UV usata ÷ area della superficie in m²) | Fascia dal profilo (da tarare sulla scala del gioco); solo warn finché non è tarata |
 
 Facoltativo, se `vendor/gltfpack/gltfpack.exe` c'è: `gltfpack -v` stampa triangoli, vertici, chiamate di disegno e
 peso in byte. Lo uso come seconda lettura in `details` (provato oggi su un GLB di `output/`: 8.984 triangoli,
@@ -308,7 +308,7 @@ File nuovi: `viewer/review_api.py`, `viewer/studio/review.js`. Ritocchi piccoli:
 | Confronto con embedding (CLIP, DINO) | Pesi da scaricare e un numero meno spiegabile; è il mestiere del punteggio di stile della funzione 3 |
 | Momenti di Hu o distanza fra contorni | I momenti di Hu ignorano rotazione e scala, quindi troppo indulgenti; la distanza fra contorni la tengo come possibile seconda misura se l'IoU non basta nel pilota |
 | glTF-Validator da npm | Richiede Node e un piccolo programma di collegamento; il binario nativo no |
-| Data Validation di Unreal | Gira dentro Unreal: utile come ultimo controllo in Auroconts, non qui |
+| Data Validation di Unreal | Gira dentro Unreal: utile come ultimo controllo nel gioco, non qui |
 | Stato della revisione in `.assets-meta.json` | Si riscrive e perde la storia; il registro a righe la tiene |
 | Usare `verdicts.jsonl` come coda | Ha un altro scopo (gusto per il dataset) e non conosce gli stati di una coda |
 

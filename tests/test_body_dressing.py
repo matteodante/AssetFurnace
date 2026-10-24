@@ -1,5 +1,5 @@
 """The user's decision A (17/10/2026): the user decides how a base body is dressed under its
-pieces: a bodysuit (leotard), simple clothes (shirt, breeches and cloth shoes, as in 4Story or
+pieces: a bodysuit (leotard), simple clothes (shirt, breeches and cloth shoes, as in classic MMORPGs or
 WoW, so the gaps between armour pieces show a garment), minimal underwear, or words of their
 own. The choice is made when a body is registered, on every route, kept in body.json, and the
 outfit concept keeps it. Nothing is chosen for them; bodies registered before keep the

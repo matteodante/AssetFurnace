@@ -1,6 +1,6 @@
 # Prova rapida della funzione 4: parti per slot e adattamento a un corpo base (risultati)
 
-Date: 15–16 ottobre 2026. Progetto e decisioni: `2026-10-15-slot-parts-spike-design.md`. Piano: `2026-10-15-auroconts-asset-pipeline.md`, sezione 4.
+Date: 15–16 ottobre 2026. Progetto e decisioni: `2026-10-15-slot-parts-spike-design.md`. Piano: il piano di produzione (privato), sezione 4.
 Script usa e getta in `journal/spike-slot-parts/` (locale, non in questa PR).
 
 > **Aggiornamento del 16/10/2026, sera**: una seconda prova della strada C ribalta la scelta per la qualità dei pezzi.
@@ -18,7 +18,7 @@ Script usa e getta in `journal/spike-slot-parts/` (locale, non in questa PR).
 - **Ritocchi a mano stimati: 20–35 minuti per set**, contro più di un'ora per le strade C.
 
 HoloPart (B1) non aggiunge abbastanza: la geometria completata è quasi uguale ai segmenti, e in più si perde la texture.
-OmniPart (A) dà le compenetrazioni più basse grazie a pezzi chiusi e completi, ma è grigio, meno dettagliato, solo WSL2, e resta comunque inutilizzabile per Auroconts per la licenza di PartField.
+OmniPart (A) dà le compenetrazioni più basse grazie a pezzi chiusi e completi, ma è grigio, meno dettagliato, solo WSL2, e resta comunque inutilizzabile per il gioco per la licenza di PartField.
 
 ![Materiale comune: corpo base, concept sullo stesso corpo, maschera degli slot](img/slot-parts-spike/1-material.jpg)
 
@@ -47,7 +47,7 @@ Tempi senza contesa della GPU. Durante la prova la GPU era condivisa con altre 3
 | C1 ritaglio per parte → Pixal3D | ~22 min (7 Pixal3D da ~150 s + finiture) | Pezzi nitidi, ma **manca ciò che nel concept era coperto**: busto a rombo senza fianchi, spallaccio con un pezzo di pettorale, punta sull'elmo; si vede la calzamaglia | busto 11%, spallacci 9%, elmo 3%, resto ≤ 3% | 2,3% | 70% | **60+ min** | come B0 | Windows |
 | C2 ritaglio + completamento (inpainting) | come C1 + 15 s per pezzo | Più nitido di C1, ma **non completa** le parti coperte; senza maschera la forma cambia poco | non misurato (stessi limiti di C1) | – | – | 60+ min | come B0 | Windows |
 | C3 un'immagine per parte con modifica (`-r`) | 20–30 s per immagine | Busto e spallaccio interi e puliti; **3 slot su 6 falliti** al primo tentativo (guanti: immagine vuota; gambe: solo due ginocchiere; stivali: esce un guanto); elmo con disegno cambiato | non misurato: si ferma all'immagine | – | – | 40–60 min di tentativi e scelta, poi come C1 | Qwen Research License | Windows |
-| A OmniPart con le maschere (solo riferimento interno) | ~18 min: inferenza 1073 s, di cui 888 s sulla GPU; più 11 min una volta per sessione per copiare 8 GB di pesi in RAM | **Pezzi chiusi e completi**, busto intero anche dietro; ma meno dettaglio (superfici a blocchi, elmo semplificato con la faccia visibile), un buco nello stinco, **nessuna texture** (il passo che la crea è fallito) | **≤ 2,1%**, le più basse | 0,7% | 86% | 60+ min (texture di tutto il set, elmo, dettaglio) | **PartField non commerciale: non utilizzabile per Auroconts** | **Solo WSL2**, con una patch (xformers sceglie un kernel per Hopper che su Blackwell fallisce); VRAM 11,6 GiB, 15,2 riservati su 16 |
+| A OmniPart con le maschere (solo riferimento interno) | ~18 min: inferenza 1073 s, di cui 888 s sulla GPU; più 11 min una volta per sessione per copiare 8 GB di pesi in RAM | **Pezzi chiusi e completi**, busto intero anche dietro; ma meno dettaglio (superfici a blocchi, elmo semplificato con la faccia visibile), un buco nello stinco, **nessuna texture** (il passo che la crea è fallito) | **≤ 2,1%**, le più basse | 0,7% | 86% | 60+ min (texture di tutto il set, elmo, dettaglio) | **PartField non commerciale: non utilizzabile per il gioco** | **Solo WSL2**, con una patch (xformers sceglie un kernel per Hopper che su Blackwell fallisce); VRAM 11,6 GiB, 15,2 riservati su 16 |
 
 ![Strada B0: posizionato, adattato, camminata, fotogramma peggiore, fendente](img/slot-parts-spike/2-route-b0.jpg)
 

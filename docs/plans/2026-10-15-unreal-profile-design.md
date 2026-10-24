@@ -1,7 +1,7 @@
 # Funzione 5: profilo d'uscita per Unreal (design)
 
 Data: 15 ottobre 2026. Stato: **fatto**: approvato dall'utente e implementato lo stesso giorno; risultato in fondo.
-Piano generale: [2026-10-15-auroconts-asset-pipeline.md](2026-10-15-auroconts-asset-pipeline.md).
+Piano generale: il piano di produzione (privato).
 
 In una riga: un GLB finito di AssetFurnace diventa un **GLB per Unreal** (nomi, centimetri, origine, LOD,
 collisione, ORM, ossa con i nomi di Manny) più una **scheda JSON** con le impostazioni d'import. Unreal 5.8.3 lo
@@ -68,7 +68,7 @@ Altre cose emerse:
    corpo), `--out`.
 4. `scripts/unreal_import_check.py`, che gira dentro Unreal: importa con Interchange seguendo la scheda (LOD degli
    scheletrici, equipaggiamento sullo Skeleton già esistente) e scrive un rapporto con le misure di accettazione.
-   È generico; Auroconts può copiarlo o chiamarlo.
+   È generico; il gioco può copiarlo o chiamarlo.
 5. Test prima del codice per tutte le parti pure (nomi, mappa ossa, scala, ORM, scheda, controlli, argomenti).
 
 **Maschere di tinta** (funzione 8): il glTF non ha un posto standard per una terza texture, e Interchange importa solo
@@ -144,7 +144,7 @@ SkinTokens è a metà corpo; dopo averlo messo a terra il `root` restava a 93 cm
 Manny bloccano il root motion sulla posa di riferimento e Unreal alzava il personaggio di tanto. Ora il `root` si aggiunge
 dopo aver messo il modello a terra; un test con Blender vero e un controllo in Unreal lo tengono lì.
 
-Cose imparate strada facendo, che valgono anche per l'import di Auroconts:
+Cose imparate strada facendo, che valgono anche per l'import nel gioco:
 - le immagini si prendono dal viewport dell'editor in Simulate con `-NoTextureStreaming`: una SceneCapture in Simulate
   rende una volta sola e parte con l'esposizione scura, e senza quel flag le texture restano alle versioni ridotte;
 - cambiare animazione a sessione Simulate avviata lascia la posa di riferimento: per la camminata si chiude la sessione,

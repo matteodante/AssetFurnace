@@ -30,13 +30,13 @@ needs_node = pytest.mark.skipif(NODE is None, reason="Node is required to execut
 def output(tmp_path, monkeypatch):
     """An output folder with an active bible: style words, words for props, one reference."""
     out = tmp_path / "output"
-    root = sb.create(out / "styles" / "auroconts", "auroconts", wording="hand-painted, warm palette")
+    root = sb.create(out / "styles" / "painted", "painted", wording="hand-painted, warm palette")
     data = json.loads((root / "bible.json").read_text())
     data["kinds"] = {"prop": {"wording": "chunky silhouettes"}}
     (root / "bible.json").write_text(json.dumps(data))
     sb.add(root, tiny_png(tmp_path / "ref.png", 3), "the original game's barrel", kind="prop", reference=True)
     registry.register(out, root)
-    registry.set_active(out, "auroconts")
+    registry.set_active(out, "painted")
     monkeypatch.setattr(apply, "OUTPUT", out)
     return out
 
@@ -47,12 +47,12 @@ def test_no_bible_unless_asked(output):
 
 def test_the_active_bible_gives_its_words_and_references(output):
     style = apply.resolve("-", "prop", references=3)
-    assert style.name == "auroconts" and style.words == "hand-painted, warm palette, chunky silhouettes"
+    assert style.name == "painted" and style.words == "hand-painted, warm palette, chunky silhouettes"
     assert len(style.references) == 1 and style.references[0].name.endswith(".png")
     assert apply.styled("a barrel", style) == "a barrel, hand-painted, warm palette, chunky silhouettes"
     record = apply.record(style)
-    assert record["bible"] == "auroconts" and len(record["bible_sha256"]) == 64 and record["words"] == style.words
-    assert apply.resolve("auroconts", "creature").words == "hand-painted, warm palette"   # no creature words
+    assert record["bible"] == "painted" and len(record["bible_sha256"]) == 64 and record["words"] == style.words
+    assert apply.resolve("painted", "creature").words == "hand-painted, warm palette"   # no creature words
 
 
 def test_without_a_bible_the_prompt_is_left_as_it_was():
@@ -90,7 +90,7 @@ def test_the_command_line_draws_with_the_bible(output, monkeypatch, capsys):
     monkeypatch.setattr(text_image, "generate", generate)
     assert cli.main(["a barrel", "--bible", "-", "--kind", "prop", "--out", str(output / "x")]) == 0
     assert seen["prompt"] == "a barrel, hand-painted, warm palette, chunky silhouettes"
-    assert seen["provenance"]["style"]["bible"] == "auroconts"
+    assert seen["provenance"]["style"]["bible"] == "painted"
 
 
 def test_the_studio_picture_job_takes_the_bible(output):
@@ -132,7 +132,7 @@ def test_the_studio_says_which_bible_is_active(output):
     import style_api
 
     info = style_api.info(output)
-    assert info["active"] == "auroconts" and info["bibles"] == ["auroconts"]
+    assert info["active"] == "painted" and info["bibles"] == ["painted"]
 
 
 # ------------------------------------------------------------------------- concept
@@ -146,7 +146,7 @@ def test_a_concept_takes_the_bibles_words_and_style_pictures(output, tmp_path):
                          bible=style)
     assert "inked" in plan["prompt"] and "chunky silhouettes" in plan["prompt"]
     assert [role for _, role in plan["references"]] == ["shape", "style"]
-    assert plan["style_record"]["bible"] == "auroconts"
+    assert plan["style_record"]["bible"] == "painted"
 
 
 def test_the_studios_concept_request_names_the_bible(output, tmp_path):
@@ -155,7 +155,7 @@ def test_the_studios_concept_request_names_the_bible(output, tmp_path):
     tiny_png(output / "images" / "wolf.png")
     plan = concept_api.build(output, {"mode": "redraw", "subject": "wolf", "colours": "grey",
                                       "shape": ["images/wolf.png"], "bible": "-", "kind": "creature"})
-    assert "hand-painted" in plan["prompt"] and plan["style_record"]["bible"] == "auroconts"
+    assert "hand-painted" in plan["prompt"] and plan["style_record"]["bible"] == "painted"
 
 
 def test_the_concept_command_line_takes_the_bible():
@@ -203,7 +203,7 @@ def test_a_batch_picture_is_drawn_with_the_bible(output, tmp_path, monkeypatch):
     assert batch.run_batch(batch.load_batch(spec_path)).exit_code == 0
     ((prompt, provenance),) = seen
     assert prompt == "a barrel, hand-painted, warm palette, chunky silhouettes"
-    assert provenance["style"]["bible"] == "auroconts"
+    assert provenance["style"]["bible"] == "painted"
 
 
 def test_the_bible_is_a_setting_of_every_drawing_step():

@@ -4,7 +4,7 @@
 
 Data: 15 ottobre 2026. Stato: **approvato; PR 1 implementata** (riconoscimento, controllo, bipede digitigrado e
 quadrupede, studio). Le differenze rispetto al progetto sono nella sezione 11.
-Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 6.
+Piano di riferimento: il piano di produzione (privato), funzione 6.
 
 In una riga: dopo il rig automatico, AssetFurnace **riconosce la famiglia** della creatura dallo scheletro (umanoide,
 bipede digitigrado, quadrupede, molte zampe, alata, serpente, pianta), dà un **nome a ogni catena di ossa** (zampe,

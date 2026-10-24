@@ -3,7 +3,7 @@
 Data: 15 ottobre 2026. Stato: **approvato e implementato** (15/10/2026). Uso: [`docs/batches.md`](../batches.md).
 
 Decisioni dell'utente: ridipintura spenta nei lotti (solo come opzione esplicita `"finish": {"paint": true}`); righe fallite riprovate solo con `--retry-failed`; le uscite arrivano alla coda di revisione della funzione 7 tramite `outputs.json`.
-Piano generale: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 1.
+Piano generale: il piano di produzione (privato), funzione 1.
 
 In breve: un lotto è un elenco di righe; ogni riga diventa un **run manifest** come quelli di oggi e passa per gli
 stessi codici di generazione e provenienza. Il lotto aggiunge solo tre cose: la lettura dell'elenco, uno stato per
@@ -159,7 +159,7 @@ a `batch.py`. Lascio il contratto anche nelle note condivise delle sessioni.
   derivato con la stessa forma di quello delle prop (`props_api.provenance_record`): licenza ereditata dal sidecar del
   modello d'origine, record d'origine incluso, parametri del passo.
 - **La ridipintura di `finish` è spenta nei lotti**: usa i pesi Hunyuan 2.1 Paint (licenza Tencent, non valida nell'UE),
-  esclusi per Auroconts; fuori da Apple Silicon è già spenta. Il passo lo registra nel sidecar.
+  esclusi per il gioco; fuori da Apple Silicon è già spenta. Il passo lo registra nel sidecar.
 
 ## 6. Nessun download di pesi
 
@@ -178,7 +178,7 @@ per ora **non sono ammessi nei lotti**: errore chiaro in validazione. Si aggiung
   in un ambiente a parte, dove `list_tools()` e `call_tool()` funzionano in processo, quindi i test non hanno bisogno di
   un client.
 - **Trasporto**: stdio. Avvio: `python -m image_to_3dlab.mcp_server`, da mettere nel `.mcp.json` della repo di
-  Auroconts.
+  il gioco.
 - **Strumenti**:
 
 | Strumento | Cosa fa |

@@ -7,8 +7,8 @@ Data: 15 ottobre 2026. Stato: **prova fatta il 15–16/10/2026**: risultati in `
 L'utente, tramite il coordinatore, approva il progetto e i download dei gruppi 1 (HoloPart) e 2 (OmniPart). Sceglie di
 eseguire anche la strada A e **si assume la responsabilità della licenza NVIDIA di PartField**, alle condizioni:
 
-- A gira **solo come riferimento interno di qualità** e nel rapporto è marcata **non utilizzabile per gli asset di
-  Auroconts**, per la licenza;
+- A gira **solo come riferimento interno di qualità** e nel rapporto è marcata **non utilizzabile per gli asset del
+  gioco**, per la licenza;
 - **nessuna uscita di A** va in `output/` condiviso, nella Libreria o nella coda di revisione (resta in
   `journal/spike-slot-parts/`);
 - **i pesi del gruppo 2 si cancellano a fine prova**, comunque vada;
@@ -16,7 +16,7 @@ eseguire anche la strada A e **si assume la responsabilità della licenza NVIDIA
 
 I gruppi 3 e 4 si richiedono solo se servono.
 
-Piano di riferimento: `2026-10-15-auroconts-asset-pipeline.md`, sezione 4 e "Quale modello per le parti".
+Piano di riferimento: il piano di produzione (privato), sezione 4 e "Quale modello per le parti".
 È una prova, non la funzione: gli script stanno in `journal/spike-slot-parts/` (fuori dalla repo consegnata). Nella PR
 finale entrano solo il rapporto e gli script che generalizzano (regola 2 di `AGENTS.md`).
 
@@ -48,7 +48,7 @@ Il corpo e le maschere sono gli stessi per le tre strade, così il confronto mis
   "solo per ricerca ed educazione non commerciali", e vale anche per i lavori derivati. Lo script di inferenza lo carica
   a ogni esecuzione (serve al generatore dei riquadri, `bbox_gen.ckpt`, addestrato su quelle caratteristiche). Non si
   toglie senza riaddestrare. In più la demo Gradio carica BRIA RMBG-2.0 (CC BY-NC); lo script da riga di comando no.
-- Conseguenza: **anche se vincesse, la strada A non si può usare per produrre gli asset di Auroconts.** Proposta:
+- Conseguenza: **anche se vincesse, la strada A non si può usare per produrre gli asset del gioco.** Proposta:
   **non eseguirla** e confrontare B e C (risparmio ~9 GB e ~2 ore). In alternativa, se l'utente ritiene che una prova
   interna rientri nella "ricerca non commerciale", la eseguo come solo riferimento di qualità, marcata come non
   utilizzabile, e cancello i pesi alla fine. Decisione dell'utente, non mia.

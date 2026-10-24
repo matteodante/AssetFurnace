@@ -2,7 +2,7 @@
 
 Data: 16 ottobre 2026, aggiornato la sera dello stesso giorno con i tre modi e l'esito della seconda prova della strada C.
 Stato: **implementato** (PR #31, #35, #38, #40, #41, #42, #44 e la PR 9); accettazione nelle sezioni 12 e 13.
-Piano: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 4.
+Piano: il piano di produzione (privato), funzione 4.
 Armi e scudi: dal 17/10/2026 la decisione C (arma e scudo in mano, appesi a un socket del corpo) è sostituita da
 [armi e scudi come asset autonomi](2026-10-17-standalone-weapons.md): si fanno accanto al set, non si adattano al
 corpo e hanno un socket `grip` loro. Le righe qui sotto che parlano di mano o avambraccio sono la storia.
@@ -11,7 +11,7 @@ Prove che lo precedono: [`2026-10-15-slot-parts-spike.md`](2026-10-15-slot-parts
 In una riga: nello studio si sceglie **come** fare un personaggio, fra tre modi.
 1. Un pezzo solo.
 2. Vestito, diviso in pezzi che combaciano.
-3. Corpo nudo più set di equipaggiamento da indossare, come in 4Story e in Auroconts.
+3. Corpo nudo più set di equipaggiamento da indossare, come negli MMORPG classici.
 
 I modi 2 e 3 usano gli stessi slot, lo stesso adattamento al corpo in Blender, gli stessi controlli in tre pose e la
 stessa uscita per Unreal.
@@ -75,9 +75,9 @@ Nello studio un bottone **"Usa come corpo base"** lo registra in `output/bodies/
 - il GLB rigato;
 - la camera di Pixal3D;
 - i ruoli delle ossa (testa, mani, piedi… trovati dalla forma dell'albero, come nella prova);
-- due etichette libere (per Auroconts: razza e sesso);
+- due etichette libere (per il gioco: razza e sesso);
 - **come è vestito sotto i pezzi**, scelto dall'utente alla registrazione su tutte e tre le strade (decisione del
-  17/10/2026): `bodysuit` (calzamaglia), `clothes` (abiti semplici: camicia, brache, scarpe di stoffa, come in 4Story
+  17/10/2026): `bodysuit` (calzamaglia), `clothes` (abiti semplici: camicia, brache, scarpe di stoffa, come negli MMORPG classici
   o WoW, così fra un pezzo d'armatura e l'altro si vede un indumento), `underwear` (intimo minimo), oppure `other` con
   parole proprie. Nessuna scelta è imposta: `slot_parts.py body --dressing`, `pieces_add_body(dressing=)`, il menu
   "Dressed under its pieces" nello studio. Sta in `body.json` (`dressing`), e il concept del vestito lo mantiene
@@ -235,7 +235,7 @@ Il lucchetto della GPU si prende solo mentre `sd-cli` o Pixal3D calcolano, e si 
 
 ## 9. Rischi
 
-- **Tempo**: 6 Pixal3D a set. Per Auroconts sono 427 forme di armatura: va messo in lotti di notte (funzione 1).
+- **Tempo**: 6 Pixal3D a set. Per il gioco sono 427 forme di armatura: va messo in lotti di notte (funzione 1).
 - **Un solo corpo misurato**: con proporzioni diverse (razze), il riadattamento può aumentare le compenetrazioni.
   La PR 8 lo misura su un secondo corpo.
 - **Braccia alzate**: non provate. Gli spallacci sono i pezzi più a rischio.

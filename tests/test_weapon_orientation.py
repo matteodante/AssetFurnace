@@ -63,4 +63,4 @@ def test_a_picture_already_checked_is_not_asked_again(tmp_path):
 
 def test_the_studio_names_no_game():
     text = (Path(__file__).resolve().parents[1] / "viewer" / "studio" / "slot-parts.js").read_text(encoding="utf-8")
-    assert "4Story" not in text
+    assert "Story" not in text

@@ -58,7 +58,7 @@ class StepSpec:
     replace: tuple[str, ...]         # file types that can stand in for its output
     cli: str                         # its command line
     run: str                         # its one implementation, module:function
-    feature: int | None = None       # the feature number in the Auroconts plan, if any
+    feature: int | None = None       # the feature number in the production plan, if any
     candidates: str | None = None    # the parameter that makes several to pick from
     gpu: bool = False
     note: str = ""

@@ -3,7 +3,7 @@
 Data: 15 ottobre 2026. Stato: **approvato dall'utente il 15/10/2026** (commit 559d749). **Concluso il 17/10/2026**:
 bibbia, modelli di prompt e giudici restano su main; il giudice automatico è **rimandato**, come il LoRA, e i
 riferimenti di stile non entrano nei concept nuovi (sezione 7.2).
-Piano di riferimento: [`2026-10-15-auroconts-asset-pipeline.md`](2026-10-15-auroconts-asset-pipeline.md), funzione 3.
+Piano di riferimento: il piano di produzione (privato), funzione 3.
 Il LoRA dello stile è **fuori** da questo lavoro (rimandato dall'utente il 15/10/2026). Anche il giudice automatico
 (sezione 4) è rimandato, dal 17/10/2026.
 
