@@ -19,8 +19,8 @@ Al 25/10 eravamo 696 commit avanti e 304 indietro, con 46 file in conflitto: una
 | Branch | Base | Dove va | Stato |
 | --- | --- | --- | --- |
 | `claude/cleanup-dead-code` | nostro `main` | nostro fork, [PR #1](https://github.com/matteodante/AssetFurnace/pull/1) | unita il 25/10 |
-| `claude/upstream-fixes` | loro `main` | Bingeljell | 8 fix, pronta; la PR va aperta a mano ([link](https://github.com/Bingeljell/image-to-3dlab/compare/main...matteodante:AssetFurnace:claude/upstream-fixes?expand=1)), testo in [upstream-fixes-PR.md](2026-10-25-upstream-handoff/upstream-fixes-PR.md) |
-| `claude/upstream-pieces` | loro `main` | Bingeljell | aspetta una prova su GPU vera |
+| `claude/upstream-fixes` | loro `main` | Bingeljell | 8 fix, rivista e corretta, pronta; la PR va aperta a mano ([link](https://github.com/Bingeljell/image-to-3dlab/compare/main...matteodante:AssetFurnace:claude/upstream-fixes?expand=1)), testo in [upstream-fixes-PR.md](2026-10-25-upstream-handoff/upstream-fixes-PR.md) |
+| `claude/upstream-pieces` | loro `main` | Bingeljell | rivista e corretta; aspetta una prova su GPU vera |
 
 La sessione cloud non poteva aprire PR su Bingeljell (repo non autorizzato), per questo il
 link va aperto a mano.
@@ -50,40 +50,42 @@ Circa 9k righe e 57 file in meno; niente di ciò che funziona oggi cambia.
 
 ## PR 2: fix verso il pubblico (`claude/upstream-fixes`)
 
-Ridotta il 25/10 da 15 a 8 commit: solo bug e rischi reali. La versione completa resta
-in `claude/upstream-fixes-full`. Test: 2 falliti prima e dopo, già rotti da loro; 3729
-passati. Ruff pulito.
+8 commit, un fix per commit, ognuno col suo test. Il 25/10 una revisione indipendente ha
+trovato 5 problemi, tutti corretti dentro i rispettivi commit. Test: 2 falliti prima e
+dopo (già rotti da loro), 3750 passati. Ruff pulito. Testo pronto in
+[upstream-fixes-PR.md](2026-10-25-upstream-handoff/upstream-fixes-PR.md).
 
-- **Sicurezza:** una scrittura nello studio richiede `X-AssetFurnace-Request` (studio) o
-  `X-AssetFurnace-Client` (il loro client MCP), e un `Origin` di un altro sito è rifiutato:
-  una pagina web non può più avviare lavori o cancellare pesi. Il controllo dell'indirizzo
-  vale solo se lo studio ascolta su localhost, quindi RunPod e LAN restano come prima. Un
-  `.blend` caricato non esegue i suoi script.
-- **Windows e processi:** UTF-8 in tutte le API e nei processi figli; i processi figli si
-  fermano quando lo studio viene chiuso (job object di Windows); niente segnali a pid 0 o
-  -1; `install.ps1` installa da `requirements.lock` con PyTorch CUDA alla versione bloccata.
-- **Finish:** UV senza isole sovrapposte (da circa il 10 % a meno dello 0,1 %).
-- **Tolti nella riduzione** (restano nella branch `-full`): codice d'accesso su indirizzi di
-  rete (cambia l'uso di RunPod: decisione loro), scritture atomiche della Libreria, SHA-256
-  di sd-cli e revisioni Qwen fissate, Blender pulito nel Finish, percorsi con `/`, `bpy`
-  5.0.1, file temporanei di pytest.
-- **Mai portati:** fix dei fianchi in kimodo (loro hanno riscritto `character_frame`), metà
-  Pixal3D di #96, percorso autorig su Windows, avvii in italiano, gestore del SIGTERM.
-- **Da sapere per i revisori:** chi scrive nello studio senza uno dei due header riceve 403; il
-  test UV (serve Blender) e quello del job object (serve Windows) qui erano saltati.
+- **Sicurezza:** ogni scrittura nello studio richiede l'origine dello studio e un header
+  (`X-AssetFurnace-Request` o `X-AssetFurnace-Client`). Lo mandano le pagine, il plan runner,
+  il loro MCP e `pod_smoke_test.py`. Su 127.0.0.1 risponde solo a nomi locali; dietro
+  tailscale, cloudflared, ngrok o VS Code si aggiunge il nome in `I3D_ALLOWED_HOSTS`. Uno
+  studio su un altro indirizzo si fida della rete. Non provato su RunPod.
+- **Rig:** un `.blend` caricato non esegue script d'avvio, driver né lo script finale di
+  Rigify.
+- **Windows e processi:** UTF-8 dappertutto; processi figli chiusi con lo studio; niente
+  segnali a pid 0 o -1; `install.ps1` dal lock, e se la build di PyTorch bloccata manca
+  avvisa e installa come prima.
+- **Finish:** UV senza isole sovrapposte (circa 10 % → meno di 0,1 %), margine 0.0002 → 0.002.
+- **Non verificato qui:** Blender, Windows e PowerShell non c'erano.
+- **Tolti nella riduzione:** codice d'accesso in rete, scritture atomiche della Libreria,
+  SHA-256 di sd-cli e revisioni Qwen, Blender pulito nel Finish, percorsi con `/`, `bpy`
+  5.0.1, file temporanei di pytest. La branch `claude/upstream-fixes-full` che li conservava
+  va cancellata a mano su GitHub (la sessione cloud non poteva cancellare branch).
 
 ## Branch 3: "In pieces" (`claude/upstream-pieces`)
 
-Un personaggio, un mostro o un oggetto disegnato "esploso", cioè con i pezzi staccati, costruito
-con un solo giro di Pixal3D e diviso dal loro split dei prop sheet in modalità `--pieces`: una sola
-inclinazione per tutti, nessuna rotazione, pezzi piccoli tenuti (0,3 %), disposizione del
-disegno conservata, un punto d'attacco `SOCKET_<vicino>` per ogni coppia di pezzi vicini in
-`props.json` e `props.blend`. I prop sheet non cambiano. Circa 170 righe di codice e 110 di test.
+Un personaggio, un mostro o un oggetto disegnato esploso, costruito con un solo giro di
+Pixal3D e diviso dal loro split dei prop sheet in modalità `--pieces`: una sola inclinazione,
+nessuna rotazione, pezzi uniti solo se le mesh si toccano (entro l'1 % del foglio), pezzi
+piccoli tenuti (0,3 %), disposizione conservata, punti d'attacco `SOCKET_<pezzo>_<vicino>`.
+`--turn` è rifiutato in questa modalità. Fix collaterale: niente LOD più pesante del pezzo.
+Circa 300 righe di codice e 320 di test; revisione indipendente fatta, 7 problemi corretti.
+Testo pronto in [upstream-pieces-PR.md](2026-10-25-upstream-handoff/upstream-pieces-PR.md).
 
-**Prima di aprire la PR**, sulla GPU: 3 soggetti (umanoide, mostro a quattro zampe, oggetto) × 3
-seed. Controllare: numero dei pezzi giusto (le mani ci sono?), pezzi non fusi, dritti,
-disposizione e scala tenute in `props.blend`, punti d'attacco vicino alle giunture, un
-nuovo split dal pannello Steps che resta in modalità pezzi.
+**Prima di aprire la PR**, sulla GPU: 3 soggetti (umanoide, mostro a quattro zampe, oggetto) ×
+3 seed. Controllare: numero dei pezzi giusto (le mani ci sono?), pezzi non fusi, dritti,
+disposizione e scala in `props.blend`, punti d'attacco vicino alle giunture, un nuovo split
+dal pannello Steps che resta in modalità pezzi. Poi scrivere i risultati nel testo della PR.
 
 ## Ancora da verificare
 
