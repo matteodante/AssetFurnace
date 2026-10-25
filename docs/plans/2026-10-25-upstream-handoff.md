@@ -18,8 +18,8 @@ Al 25/10 eravamo 696 commit avanti e 304 indietro, con 46 file in conflitto: una
 
 | Branch | Base | Dove va | Stato |
 | --- | --- | --- | --- |
-| `claude/cleanup-dead-code` | nostro `main` | nostro fork, [PR #1](https://github.com/matteodante/AssetFurnace/pull/1) | bozza aperta |
-| `claude/upstream-fixes` | loro `main` | Bingeljell | pronta; la PR va aperta a mano ([link](https://github.com/Bingeljell/image-to-3dlab/compare/main...matteodante:AssetFurnace:claude/upstream-fixes?expand=1)), testo in [upstream-fixes-PR.md](2026-10-25-upstream-handoff/upstream-fixes-PR.md) |
+| `claude/cleanup-dead-code` | nostro `main` | nostro fork, [PR #1](https://github.com/matteodante/AssetFurnace/pull/1) | unita il 25/10 |
+| `claude/upstream-fixes` | loro `main` | Bingeljell | 8 fix, pronta; la PR va aperta a mano ([link](https://github.com/Bingeljell/image-to-3dlab/compare/main...matteodante:AssetFurnace:claude/upstream-fixes?expand=1)), testo in [upstream-fixes-PR.md](2026-10-25-upstream-handoff/upstream-fixes-PR.md) |
 | `claude/upstream-pieces` | loro `main` | Bingeljell | aspetta una prova su GPU vera |
 
 La sessione cloud non poteva aprire PR su Bingeljell (repo non autorizzato), per questo il
@@ -50,24 +50,25 @@ Circa 9k righe e 57 file in meno; niente di ciò che funziona oggi cambia.
 
 ## PR 2: fix verso il pubblico (`claude/upstream-fixes`)
 
-15 commit, un fix per commit, ognuno col suo test. Test: 2 falliti prima e dopo, già rotti da
-loro; 3753 passati. Ruff pulito.
+Ridotta il 25/10 da 15 a 8 commit: solo bug e rischi reali. La versione completa resta
+in `claude/upstream-fixes-full`. Test: 2 falliti prima e dopo, già rotti da loro; 3729
+passati. Ruff pulito.
 
 - **Sicurezza:** una scrittura nello studio richiede `X-AssetFurnace-Request` (studio) o
   `X-AssetFurnace-Client` (il loro client MCP), e un `Origin` di un altro sito è rifiutato:
-  una pagina web non può più avviare lavori o cancellare pesi. Uno studio su un indirizzo di
-  rete (RunPod, LAN) chiede un codice d'accesso. Un `.blend` caricato non esegue i suoi script.
-- **Windows e testo:** UTF-8 in tutte le API e nei processi figli; i processi figli si fermano
-  quando lo studio viene chiuso (job object di Windows); niente segnali a pid 0 o -1;
-  `install.ps1` installa da `requirements.lock` con PyTorch CUDA alla versione bloccata.
-- **Dati e download:** scritture atomiche del file della Libreria; archivi sd-cli verificati
-  con SHA-256; pesi Qwen da commit Hugging Face fissati.
-- **Finish:** UV senza isole sovrapposte (da circa il 10 % a meno dello 0,1 %); Blender avviato con
-  `--factory-startup`; percorsi con `/`; `bpy` 5.0.1 per l'autorig; pytest tiene i file
-  temporanei solo dei test falliti.
-- **Lasciati fuori:** fix dei fianchi in kimodo (loro hanno riscritto `character_frame`),
-  metà Pixal3D di #96 (hanno la loro build NVIDIA), percorso autorig su Windows (già fatto da
-  loro), avvii in italiano, gestore del SIGTERM (proteggeva solo il nostro lock GPU).
+  una pagina web non può più avviare lavori o cancellare pesi. Il controllo dell'indirizzo
+  vale solo se lo studio ascolta su localhost, quindi RunPod e LAN restano come prima. Un
+  `.blend` caricato non esegue i suoi script.
+- **Windows e processi:** UTF-8 in tutte le API e nei processi figli; i processi figli si
+  fermano quando lo studio viene chiuso (job object di Windows); niente segnali a pid 0 o
+  -1; `install.ps1` installa da `requirements.lock` con PyTorch CUDA alla versione bloccata.
+- **Finish:** UV senza isole sovrapposte (da circa il 10 % a meno dello 0,1 %).
+- **Tolti nella riduzione** (restano nella branch `-full`): codice d'accesso su indirizzi di
+  rete (cambia l'uso di RunPod: decisione loro), scritture atomiche della Libreria, SHA-256
+  di sd-cli e revisioni Qwen fissate, Blender pulito nel Finish, percorsi con `/`, `bpy`
+  5.0.1, file temporanei di pytest.
+- **Mai portati:** fix dei fianchi in kimodo (loro hanno riscritto `character_frame`), metà
+  Pixal3D di #96, percorso autorig su Windows, avvii in italiano, gestore del SIGTERM.
 - **Da sapere per i revisori:** chi scrive nello studio senza uno dei due header riceve 403; il
   test UV (serve Blender) e quello del job object (serve Windows) qui erano saltati.
 
