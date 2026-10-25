@@ -10,9 +10,7 @@ one) or its factors, the normal map stays whatever the finish step baked from th
 mesh, and occlusion is the asset's own or a bake.
 
 The chain gives each piece one material, proposed by a rule and corrected by a person
-(``piece_materials.py``). Tint zones by material (``material_zones.py``) are a trial outside
-the chain: they reached 72% against the user's labels, under the bar. ``make_game_materials``
-writes their tint mask only when ``game_materials.py --zones`` asks for it.
+(``piece_materials.py``).
 """
 
 from __future__ import annotations
@@ -34,51 +32,11 @@ from image_to_3dlab.glb_turn import build_glb
 from image_to_3dlab.provenance import sha256_file
 
 SIDECAR_SCHEMA = "assetfurnace.materials/2"
-CHANNELS = ("R", "G", "B")
-LUMINANCE_WEIGHTS = (0.2126, 0.7152, 0.0722)
 GUTTER_PX = 8
 REPEAT, CLAMP, MIRROR = 10497, 33071, 33648
 IMAGE_FORMAT_EXTENSIONS = ("EXT_texture_webp", "EXT_texture_avif", "KHR_texture_basisu")
 COMPRESSED_GEOMETRY = ("EXT_meshopt_compression", "KHR_draco_mesh_compression")
 OPERATION = "Game materials: ORM packed from the asset's own maps (no models)"
-
-
-def srgb_to_linear(values: np.ndarray) -> np.ndarray:
-    values = np.asarray(values, dtype=np.float64)
-    return np.where(values <= 0.04045, values / 12.92, ((values + 0.055) / 1.055) ** 2.4)
-
-
-def linear_to_srgb(values: np.ndarray) -> np.ndarray:
-    values = np.clip(np.asarray(values, dtype=np.float64), 0.0, 1.0)
-    return np.where(values <= 0.0031308, values * 12.92, 1.055 * values ** (1 / 2.4) - 0.055)
-
-
-def luminance(linear_rgb: np.ndarray) -> np.ndarray:
-    """Relative luminance Y of linear RGB (last axis)."""
-    return np.asarray(linear_rgb, dtype=np.float64) @ np.array(LUMINANCE_WEIGHTS)
-
-
-def check_record(check: str, status: str, value, threshold, message: str, details=None) -> dict:
-    record = {"check": check, "status": status, "value": value,
-              "threshold": threshold, "message": message}
-    if details is not None:
-        record["details"] = details
-    return json.loads(json.dumps(record, default=_plain))
-
-
-def _plain(value):
-    if isinstance(value, np.generic):
-        return value.item()
-    if isinstance(value, np.ndarray):
-        return value.tolist()
-    raise TypeError(f"not JSON serialisable: {type(value).__name__}")
-
-
-def worst(statuses) -> str:
-    order = {"skipped": 0, "pass": 1, "warn": 2, "fail": 3}
-    present = [s for s in statuses if s in order]
-    picked = max(present, key=order.__getitem__) if present else "pass"
-    return "pass" if picked == "skipped" else picked
 
 
 def wrap_uv(values: np.ndarray, mode: int) -> np.ndarray:
@@ -139,21 +97,6 @@ def fill_gutter(image: np.ndarray, coverage: np.ndarray, max_px: float | None = 
     if image.ndim == 3:
         reach = reach[..., None]
     return np.where(reach, filled, image)
-
-
-def island_labels(coverage: np.ndarray, core: np.ndarray | None = None) -> np.ndarray:
-    """Number the UV islands of a coverage that was grown by one texel.
-
-    Growing joins islands whose gutter is one or two texels wide, so they are numbered on
-    `core`, the coverage before growth (shrunk back when not given), and each grown texel
-    then joins its nearest island.
-    """
-    core = ndimage.binary_erosion(coverage) if core is None else core & coverage
-    labels, count = ndimage.label(core)
-    if not count:
-        return ndimage.label(coverage)[0]
-    _, (rows, cols) = ndimage.distance_transform_edt(~core, return_indices=True)
-    return np.where(coverage, labels[rows, cols], 0)
 
 
 def pack_orm(occlusion: np.ndarray, roughness: np.ndarray, metallic: np.ndarray) -> np.ndarray:
@@ -417,7 +360,7 @@ def write_provenance(source: Path, source_sha256: str, record: dict, output: Pat
                      components: list[dict] | None = None) -> Path:
     """Carry the source's licence record to the result, adding only the models in `components`.
 
-    Packing ORM is image maths, so without zones the result is licensed exactly as its source.
+    Packing ORM is image maths, so the result is licensed exactly as its source.
     `source_sha256` and `record` are taken when the source is read, so a file replaced
     while the step runs cannot lend the result another hash or licence.
     """
@@ -610,14 +553,11 @@ def _material_names(document: dict, surfaces_: dict[int, Surface], prefix: str) 
 
 
 def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
-                        texture_prefix: str | None = None, zones: dict | None = None,
-                        zone_record: dict | None = None, profile: str | None = None) -> MaterialsResult:
+                        texture_prefix: str | None = None) -> MaterialsResult:
     """Write the asset back with its own maps packed as ORM, plus its sidecar and licence.
 
     Writes ``<out_dir>/<stem>.glb``, ``<prefix>_ORM.png`` per material beside it,
-    ``<stem>.materials.json`` and ``<stem>.provenance.json``. With `zones` (``material_zones.find_zones``,
-    the zones trial, never the chain) each zoned material also gets ``<prefix>_Tint.png`` (R, G, B = its three largest materials),
-    declared in ``materials[i].extras.assetfurnace`` with the zones' names. Raises with a reason for what
+    ``<stem>.materials.json`` and ``<stem>.provenance.json``. Raises with a reason for what
     cannot be packed without damage (compressed geometry, unlit materials, maps on another
     UV layout, one AO bake for several atlases); writes nothing then.
     """
@@ -690,45 +630,22 @@ def make_game_materials(asset: Path, out_dir: Path, *, ao: Path | None = None,
             material.pop("occlusionTexture", None)
         # The normal map is the finish step's bake from the dense mesh, or none: never invented.
         maps["normal"] = "kept" if "normalTexture" in material else "none"
-        zone_list = []
-        zone = (zones or {}).get(surface.material)
-        if zone is not None:
-            from image_to_3dlab import material_zones as mz
-
-            tint = fill_gutter(zone.mask(), coverage)
-            written["tint"] = out_dir / f"{names[surface.material]}_Tint.png"
-            images.append((written["tint"], tint))
-            tint_tex, binary = add_texture(document, binary, _png(tint), f"{names[surface.material]}_Tint", sampler)
-            zone_list = mz.zone_records(zone, surface.image, factor=surface.factor)
-            material.setdefault("extras", {}).setdefault("assetfurnace", {}).update(
-                {"tintMask": {"index": tint_tex, **info}, "zones": [z["material"] for z in zone_list]})
         per_material.append({"material": surface.material, "name": material.get("name"),
                              "textures": {k: p.name for k, p in written.items()}, "maps": maps,
-                             "zones": zone_list})
+                             "zones": []})
 
     drop_unused_extensions(document)
     glb_path = out_dir / f"{stem}.glb"
     sidecar_path = out_dir / f"{stem}.materials.json"
     first = per_material[0]
-    checks, status = [], "pass"
-    if zones:
-        from image_to_3dlab import material_zones as mz
-
-        fewest = min(len(m["zones"]) for m in per_material if m["material"] in zones)
-        zone_status, message = mz.status(fewest, profile)
-        checks.append(check_record("tint_zones", zone_status, fewest, 3, message,
-                                   {"profile": profile, **{k: v for k, v in (zone_record or {}).items()
-                                                           if k != "components"}}))
-        status = worst([zone_status])
     textures = {**first["textures"], "orm_channels": {"R": "occlusion", "G": "roughness", "B": "metallic"},
-                "srgb": {"orm": False, **({"tint": False} if "tint" in first["textures"] else {})}}
+                "srgb": {"orm": False}}
     sidecar = {"schema": SIDECAR_SCHEMA, "asset": asset.name, "source_sha256": source_sha256,
-               "status": status, "glb": glb_path.name, "zones": first["zones"], "checks": checks,
+               "status": "pass", "glb": glb_path.name, "zones": [], "checks": [],
                "textures": textures,
                "maps": first["maps"], "materials": per_material,
                "untextured": untextured_materials(glb.document)}
     _publish(out_dir, images, build_glb(document, binary), glb_path, sidecar, sidecar_path,
-             lambda staged, target: write_provenance(asset, source_sha256, licence, glb_path, staged, target,
-                                                     (zone_record or {}).get("components")))
-    return MaterialsResult(status, glb_path, sidecar_path,
+             lambda staged, target: write_provenance(asset, source_sha256, licence, glb_path, staged, target))
+    return MaterialsResult("pass", glb_path, sidecar_path,
                            {kind: out_dir / name for kind, name in first["textures"].items()}, first["maps"])

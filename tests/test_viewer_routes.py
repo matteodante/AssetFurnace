@@ -80,8 +80,7 @@ def test_the_route_list_is_pinned():
 
 def test_the_pages_answer_first_in_this_order():
     assert [page.__name__ for page in generate_api.PAGE_APIS] == [
-        "blender_edit_api", "review_api", "material_labels_api", "concept_api", "unreal_export_api", "batch_api",
-        "slot_parts_api"]
+        "blender_edit_api", "review_api", "concept_api", "unreal_export_api", "batch_api", "slot_parts_api"]
     assert generate_api.FRONT_DOOR == ("", "/", "/viewer", "/viewer/")
 
 

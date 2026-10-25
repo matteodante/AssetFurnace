@@ -466,7 +466,7 @@ def test_every_gated_repo_is_one_the_sign_in_check_asks_about():
     checked = {repo for repo, _ in hf_api.GATED}
     gated = {b.id: b.gated_repo for b in bc.CATALOG if b.gated_repo}
     assert gated == {"trellis": "facebook/dinov3-vitl16-pretrain-lvd1689m",
-                     "sf3d": "stabilityai/stable-fast-3d", "materials-zones": "facebook/sam3.1"}
+                     "sf3d": "stabilityai/stable-fast-3d"}
     assert set(gated.values()) <= checked
     assert bc.BY_ID["trellis"].describe(bc.APPLE)["gated_repo"] == gated["trellis"]
 
@@ -666,15 +666,6 @@ def test_qwen_image_counts_the_llama_cpp_its_prompt_rewriting_runs_on():
 
     paths = {w.path for w in bc.BY_ID["qwen-image"].weights}
     assert (models.llama_dir(bc.REPO) in paths) == (models.llama_build() is not None)
-
-
-def test_the_zones_card_says_it_is_a_trial_outside_the_pipeline():
-    """Code read 18/10/2026: one material per piece, corrected by a person; Setup offered the
-    zones as a normal tool and the Unreal panel said the material step left a tint mask."""
-    entry = bc.BY_ID["materials-zones"]
-    assert "trial" in entry.label and "Not used by any step" in entry.tradeoff
-    panel = (bc.REPO / "viewer" / "studio" / "unreal-export.js").read_text(encoding="utf-8")
-    assert "the material step left" not in panel and "zones trial" in panel
 
 
 def test_setup_offers_no_model_that_nothing_runs():

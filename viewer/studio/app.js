@@ -15,7 +15,6 @@ import { STEP_LABELS } from './plan.js';
 import { createBlenderPanel, initialRevision, revisionFor } from './blender-edit.js';
 import { openReview, renderReviewPanel, fetchQueue, fetchItem } from './review.js';
 import { waitingCount } from './review-model.js';
-import { createLabelPanel } from './material-labels.js';
 import { createUnrealPanel } from './unreal-export.js';
 import { escapeHTML as escape } from '../components/html.js';
 
@@ -35,8 +34,7 @@ let redo = null;   // the finished step being made again with other values, on t
 const selectedVersions = new Map();
 let displayedFile = null;
 
-const labelPanel = createLabelPanel();
-const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onModelLoaded: (view, render) => labelPanel.attach(view, render), onClipChange: (clip) => {
+const viewer = createStudioViewer({ stage: $('stage'), logoUrl: LOGO, onClipChange: (clip) => {
   displayedFile = clip.file;
   setDownload(clip.file);
   blenderPanel.update(current, clip.file, revisionFor(current, selectedVersions.get(current?.id)));
@@ -566,7 +564,6 @@ async function showReview(key) {
   if (item.asset_url) viewer.load(item.asset_url, { label: item.name, turntable: true });
   else viewer.showEmpty('The model for this review is not on disk any more.');
   renderReviewPanel($('steps'), item, { viewer, onDecided: refreshReviewCount });
-  labelPanel.show($('steps'), item, { viewer });
 }
 
 $('reviewBtn').addEventListener('click', () => openReview($('stage'), { assets, onPick: showReview, onCount: setReviewCount }));

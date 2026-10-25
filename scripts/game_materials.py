@@ -2,17 +2,10 @@
 """Pack a generated GLB's own maps as a game-ready ORM, with its sidecar and licence record.
 
     python scripts/game_materials.py asset.glb out/ [--ao ao.png] [--texture-prefix T_Name]
-    python scripts/game_materials.py asset.glb out/ --zones --profile creature   # the zones trial (SAM 3.1)
 
 Roughness and metallic are the asset's own (Pixal3D writes them) or its factors; the normal
 map is whatever the finish step baked from the dense mesh; occlusion is the asset's own or
 the ``--ao`` bake from ``blender_bake_ao.py``. Nothing is derived from the colour.
-
-``--zones`` is the zones trial, outside the chain (72% against the user's labels, under the
-bar; the chain gives each piece one material): Qwen3.5-4B names the materials and SAM 3.1
-(``sam31``, the default), SAM 3 (``sam3``) or SAM 2.1 regions it names (``sam2``, without the
-gated access) find them in every view; the three largest become ``T_<name>_Tint.png``. See
-``scripts/zones_trial.py`` and design section 10.
 
 Exit code: 0 when written, 1 when the asset cannot be packed without damage (the reason is
 printed: compressed geometry, an unlit material, maps on another UV layout...).
@@ -35,24 +28,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("out_dir", type=Path, help="folder to write into (not the asset's own)")
     p.add_argument("--ao", type=Path, help="AO bake from blender_bake_ao.py, packed into ORM red")
     p.add_argument("--texture-prefix", help="texture file prefix (default T_<asset>)")
-    p.add_argument("--zones", nargs="?", const="sam31", choices=("sam31", "sam3", "sam2"),
-                   help="the zones trial, outside the chain: sam31 (default), sam3, or sam2 without the gated SAM access")
-    p.add_argument("--materials", help="comma-separated materials instead of asking Qwen3.5 (e.g. leather,metal,cloth)")
-    p.add_argument("--profile", help="asset profile; creature and equipment_part need 3 zones")
-    p.add_argument("--work", type=Path, help="keep the views and the models' answers here")
     args = p.parse_args(argv)
-    zones = record = None
     try:
-        if args.zones:
-            import tempfile
-
-            from image_to_3dlab import material_zones as mz
-
-            words = [w.strip() for w in args.materials.split(",")] if args.materials else None
-            with tempfile.TemporaryDirectory(prefix="af-zones-") as scratch:
-                zones, record = mz.find_zones(args.asset, args.work or Path(scratch), args.zones, words)
-        result = make_game_materials(args.asset, args.out_dir, ao=args.ao, texture_prefix=args.texture_prefix,
-                                     zones=zones, zone_record=record, profile=args.profile)
+        result = make_game_materials(args.asset, args.out_dir, ao=args.ao, texture_prefix=args.texture_prefix)
     except (ValueError, RuntimeError) as exc:
         print(f"refused: {exc}")
         return 1

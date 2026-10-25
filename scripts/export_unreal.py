@@ -14,8 +14,7 @@ Writes one folder (default `output/unreal/<Name>__<time>/`) holding:
 - `<mesh>.provenance.json`: the licences of everything it was made from;
 - `T_<Name>_Tint.png` and `<mesh>.materials.json`, only when a tint mask is named (`--tint`) or
   lies beside the model as `T_<model>_Tint.png` with its record. The chain makes none (one
-  material per piece); only the zones trial, `game_materials.py --zones`, writes one.
-  `--tint none` ships none even then.
+  material per piece), so such a mask is one you made yourself. `--tint none` ships none even then.
 
 `--material` gives the piece its one material (`metal`, `leather`, `cloth`...): its roughness and
 metal go into the ORM (`image_to_3dlab/piece_materials.py`).
@@ -124,7 +123,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
     if tint is False:
         tint = None   # asked for none: no mask, even if one lies beside the model
     elif tint is None:
-        # The zones trial (game_materials.py --zones) leaves `T_<model>_Tint.png` beside the model;
+        # A mask left beside the model as `T_<model>_Tint.png` is shipped with it;
         # only that one is taken, never a mask that belongs to another model in the same folder.
         own = source.with_name(f"T_{source.stem}_Tint.png")
         tint = own if own.is_file() else None
@@ -356,8 +355,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--animations", type=Path, nargs="*", default=[], help="creatures: more animated GLBs")
     parser.add_argument("--tint", type=Path,
                         help="a tint mask to ship as T_<Name>_Tint.png (default: the model's own T_<model>_Tint.png, "
-                             "which only the zones trial writes; "
-                             "none: no tint mask)")
+                             "if there is one; none: no tint mask)")
     parser.add_argument("--forward", type=float, nargs=3, metavar=("X", "Y", "Z"),
                         help="non-humanoid creatures: which way the model faces in Blender (default 0 -1 0)")
     parser.add_argument("--two-sided", action="store_const", const=True, default=None,

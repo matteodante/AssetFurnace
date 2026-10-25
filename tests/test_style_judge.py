@@ -20,6 +20,12 @@ def test_the_yes_probability_adds_every_spelling_and_ignores_other_tokens():
     assert judge.yes_probability(logprobs(Maybe=1.0)) == pytest.approx(0.5)  # no opinion either way
 
 
+def test_a_cut_out_picture_is_put_back_on_the_concept_grey(tmp_path):
+    clear = tmp_path / "clear.png"
+    Image.new("RGBA", (32, 24), (255, 0, 0, 0)).save(clear)
+    assert judge.open_rgb(clear).getpixel((0, 0)) == judge.BACKGROUND
+
+
 def test_the_request_sends_references_then_the_concept_and_asks_for_one_token(tmp_path):
     paths = []
     for i, colour in enumerate([(255, 0, 0), (0, 255, 0), (0, 0, 255)]):

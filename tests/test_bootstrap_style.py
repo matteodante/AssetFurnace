@@ -1,4 +1,4 @@
-"""scripts/bootstrap_style.py: the style judges' downloads, only after a yes."""
+"""scripts/bootstrap_style.py: the style judge's llama.cpp download, only after a yes."""
 
 from __future__ import annotations
 
@@ -12,12 +12,11 @@ import pytest
 from image_to_3dlab.style import models
 
 
-def test_the_announcement_names_every_part_its_size_and_its_licence():
-    text = bootstrap_style.announcement(["siglip2", "csd", "llama"], models.llama_build("Windows", "AMD64"))
-    assert "SigLIP 2" in text and "Apache-2.0" in text and "1.40 GB" in text
-    assert "CSD" in text and "CC-BY-4.0" in text and "2.27 GB" in text
+def test_the_announcement_names_the_part_its_size_and_its_licence():
+    text = bootstrap_style.announcement(["llama"], models.llama_build("Windows", "AMD64"))
     assert "llama.cpp" in text and "MIT" in text and "30.7 MB" in text
     assert "total" in text.lower()
+    assert "SigLIP" not in text and "CSD" not in text
 
 
 def test_each_supported_machine_gets_a_pinned_llama_build():
@@ -28,31 +27,32 @@ def test_each_supported_machine_gets_a_pinned_llama_build():
 
 
 def test_parts_are_chosen_with_only_and_unknown_ones_are_refused():
-    assert bootstrap_style.parts(None) == ["siglip2", "csd", "llama"]
-    assert bootstrap_style.parts("csd,llama") == ["csd", "llama"]
-    with pytest.raises(SystemExit):
-        bootstrap_style.parts("dinov3")
+    assert bootstrap_style.parts(None) == ["llama"]
+    assert bootstrap_style.parts("llama") == ["llama"]
+    for retired in ("siglip2", "csd", "dinov3"):
+        with pytest.raises(SystemExit):
+            bootstrap_style.parts(retired)
 
 
 def test_nothing_is_downloaded_without_a_yes(monkeypatch, capsys):
     fetched = []
-    monkeypatch.setattr(bootstrap_style, "fetch_hub", lambda *a, **k: fetched.append(a))
     monkeypatch.setattr(bootstrap_style, "fetch_llama", lambda *a, **k: fetched.append(a))
     monkeypatch.setattr("sys.stdin.isatty", lambda: False)
-    assert bootstrap_style.main(["--only", "csd"]) == 1
+    assert bootstrap_style.main(["--only", "llama"]) == 1
     assert fetched == [] and "--yes" in capsys.readouterr().out
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda prompt: "n")
-    assert bootstrap_style.main(["--only", "csd"]) == 1
+    assert bootstrap_style.main(["--only", "llama"]) == 1
     assert fetched == []
 
 
-def test_yes_fetches_the_chosen_parts(monkeypatch):
+def test_yes_fetches_llama(monkeypatch):
     fetched = []
-    monkeypatch.setattr(bootstrap_style, "fetch_hub", lambda model, **k: fetched.append(model.key))
     monkeypatch.setattr(bootstrap_style, "fetch_llama", lambda build, **k: fetched.append("llama"))
-    assert bootstrap_style.main(["--only", "siglip2,llama", "--yes"]) == 0
-    assert fetched == ["siglip2", "llama"]
+    linux = models.llama_build("Linux", "x86_64")
+    monkeypatch.setattr(models, "llama_build", lambda: linux)
+    assert bootstrap_style.main(["--yes"]) == 0
+    assert fetched == ["llama"]
 
 
 def zipped(files: dict[str, bytes]) -> bytes:
@@ -81,16 +81,6 @@ def test_an_archive_cannot_write_outside_its_folder(tmp_path):
     with pytest.raises(SystemExit, match="outside"):
         bootstrap_style.unpack_llama(archive, build, tmp_path / "dest")
     assert not (tmp_path / "evil.exe").exists()
-
-
-def test_require_names_the_command_when_a_model_is_missing(tmp_path):
-    with pytest.raises(models.MissingModel, match="bootstrap_style.py --only csd"):
-        models.require(models.CSD, hub=tmp_path)
-    snapshot = models.CSD.cache_dir(tmp_path) / "snapshots" / models.CSD.revision
-    snapshot.mkdir(parents=True)
-    for name in models.CSD.files:
-        (snapshot / name).write_bytes(b"x")
-    assert set(models.require(models.CSD, hub=tmp_path)) == set(models.CSD.files)
 
 
 def test_the_linux_builds_library_links_are_kept(tmp_path):

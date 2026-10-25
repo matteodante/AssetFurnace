@@ -1,6 +1,6 @@
 """What every Studio API does with a request: who may send it, its body, the files it names.
 
-One module, so the pages that came one by one (Blender edits, review, material labels, the
+One module, so the pages that came one by one (Blender edits, review, the
 reference concept, Unreal export, batches, characters in pieces) cannot drift apart:
 
 - `check_host` / `check_request`: a loopback Host on a loopback server (no DNS rebinding),

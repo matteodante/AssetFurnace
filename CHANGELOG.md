@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     is read.
 
 ### Removed
+- The material and style trials that missed their bar or were switched off: PBR estimation,
+  baked-light removal, tint zones by material (and `game_materials.py --zones`), the material
+  label set, the multi-view renders that fed them, and the style race with its SigLIP 2 / CSD
+  embeddings. Their scripts, the Studio label panel, and the Marigold, Qwen3.5 and SAM cards
+  in Setup go too; `bootstrap_style.py` now installs only llama.cpp, and `transformers` is no
+  longer a requirement.
 - FLUX.2 klein 4B from Setup & Status and its `scripts/bootstrap_flux2_klein.py`: no step
   used it, and Setup offered 12.3 GB for nothing. Weights already fetched stay in the Hugging
   Face cache (`models--black-forest-labs--FLUX.2-klein-4B`, `models--unsloth--Qwen3-4B-GGUF`,

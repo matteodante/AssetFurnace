@@ -266,7 +266,7 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
             Param("lods", "files", None, help="detail levels; default the _LODn files beside "
                                               "the model, [] for none"),
             Param("tint", "file", None, off=True, help="tint mask; default the model's own T_<model>_Tint.png "
-                                                       "(only the zones trial writes one); false for none"),
+                                                       "if there is one; false for none"),
             Param("forward", "vector3", None, help="which way the model faces, in Blender axes; "
                                                    "default from the creature family, else 0 -1 0"),
             Param("body", "file", None, help="equipment: the rigged body it belongs to"),

@@ -1,7 +1,6 @@
 """One material per piece (design v2 of game materials, section 11): proposed by a rule, corrected by a person.
 
-Splitting an asset into material zones automatically did not pass (72% of the points), so each
-piece of a character in pieces, and each single asset, gets one material from the label
+Each piece of a character in pieces, and each single asset, gets one material from a small
 vocabulary. The rule that proposes it reads like this:
 
 1. the piece's own words (its prompt in the Pieces page, the weapon or shield words): the
@@ -23,9 +22,9 @@ import json
 import re
 from pathlib import Path
 
-from image_to_3dlab.material_labels import MATERIALS as LABEL_WORDS
-
-MATERIALS = tuple(m for m in LABEL_WORDS if m != "other")
+# The material vocabulary: one word per piece, each with its roughness and metallic in `PBR`.
+MATERIALS = ("cloth", "leather", "metal", "skin", "fur", "hair", "feathers", "scales", "wood", "stone",
+             "bone", "horn", "plant", "gem", "glass", "plastic")
 SCHEMA = "assetfurnace.piece-materials/1"
 CORRECTIONS = "materials.json"
 
