@@ -2,7 +2,6 @@
 
 Data: 16 ottobre 2026, aggiornato la sera dello stesso giorno con i tre modi e l'esito della seconda prova della strada C.
 Stato: **implementato** (PR #31, #35, #38, #40, #41, #42, #44 e la PR 9); accettazione nelle sezioni 12 e 13.
-Piano: il piano di produzione (privato), funzione 4.
 Armi e scudi: dal 17/10/2026 la decisione C (arma e scudo in mano, appesi a un socket del corpo) è sostituita da
 [armi e scudi come asset autonomi](2026-10-17-standalone-weapons.md): si fanno accanto al set, non si adattano al
 corpo e hanno un socket `grip` loro. Le righe qui sotto che parlano di mano o avambraccio sono la storia.

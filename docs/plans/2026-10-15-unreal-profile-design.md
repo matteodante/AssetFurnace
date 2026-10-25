@@ -1,7 +1,6 @@
 # Funzione 5: profilo d'uscita per Unreal (design)
 
 Data: 15 ottobre 2026. Stato: **fatto**: approvato dall'utente e implementato lo stesso giorno; risultato in fondo.
-Piano generale: il piano di produzione (privato).
 
 In una riga: un GLB finito di AssetFurnace diventa un **GLB per Unreal** (nomi, centimetri, origine, LOD,
 collisione, ORM, ossa con i nomi di Manny) più una **scheda JSON** con le impostazioni d'import. Unreal 5.8.3 lo

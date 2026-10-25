@@ -85,7 +85,7 @@ def plan(source: Path, *, kind: str, size_cm: float, measure: str = "height", na
          opacity_mask: bool = False) -> dict[str, Any]:
     """Check the request and work out names, files and the Blender job. No side effects.
 
-    `opacity_mask`: a fitted base body (feature 4's `body_masked.glb`), whose vertex alpha hides
+    `opacity_mask`: a fitted base body (`body_masked.glb` from characters in pieces), whose vertex alpha hides
     the skin under the pieces; only then is that alpha exported and its materials made MASK.
 
     `grip` (a weapon's or shield's, `image_to_3dlab/slot_parts/grip.py`: its `point` and `axis` on

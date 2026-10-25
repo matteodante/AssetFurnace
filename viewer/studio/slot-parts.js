@@ -1,4 +1,4 @@
-// Characters in pieces (feature 4): choose how to make a character, then the pieces it wears.
+// Characters in pieces: choose how to make a character, then the pieces it wears.
 // Three modes: one piece (the usual + Create), dressed and split into pieces (a concept drawn
 // on a base body, cut into slots), bare body plus equipment (sets drawn on a registered body,
 // swapped piece by piece). A sheet over the viewer, like Batches; the work is

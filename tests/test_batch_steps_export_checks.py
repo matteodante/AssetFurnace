@@ -1,4 +1,4 @@
-"""The batch steps `export_unreal` (feature 5) and `checks` (feature 7), with Blender and
+"""The batch steps `export_unreal` and `checks`, with Blender and
 the check registry replaced. docs/plans/2026-10-17-step-parity-design.md, section 5."""
 
 from __future__ import annotations

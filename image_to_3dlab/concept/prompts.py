@@ -10,7 +10,7 @@ open. Image 1 is always the shape picture; `other_view` with depth adds image 2.
 - `other_view`: the same creature from the side or the back, from its front picture,
   optionally with the depth map of that side (without it the body came out thinner).
 - `complete_piece`: one armour piece cut out of a concept and flattened on grey, redrawn
-  whole and alone (feature 4, route C; the second trial of 16/10/2026).
+  whole and alone (characters in pieces, route C; the second trial of 16/10/2026).
 """
 
 from __future__ import annotations

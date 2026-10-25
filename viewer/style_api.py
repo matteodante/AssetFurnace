@@ -1,4 +1,4 @@
-"""The style bibles the studio can draw with (feature 3).
+"""The style bibles the studio can draw with.
 
     GET /api/style-bible     {"active": name or null, "bibles": [names]}
 

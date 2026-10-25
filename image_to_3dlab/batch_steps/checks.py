@@ -1,4 +1,4 @@
-"""`checks`: the automatic checks of feature 7 on the row's asset, so it reaches the
+"""`checks`: the automatic checks on the row's asset, so it reaches the
 review queue with its report and can be approved there.
 
 The same checks `scripts/check_asset.py` and the studio's review sheet run

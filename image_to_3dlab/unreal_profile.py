@@ -519,7 +519,7 @@ def mask_from_vertex_alpha(data: bytes, cutoff: float = 0.5) -> tuple[bytes, lis
     """Every material on a primitive whose COLOR_0 alpha drops below `cutoff` set to glTF's MASK.
 
     A base body fitted with armour carries white vertex colours with alpha 0 under the pieces
-    (feature 4). glTF multiplies the base colour's alpha by COLOR_0's, so in MASK mode the skin
+    (characters in pieces). glTF multiplies the base colour's alpha by COLOR_0's, so in MASK mode the skin
     under the armour is cut away by any viewer that follows the format, and Unreal's importer
     makes the material Masked. Returns the GLB and the names of the materials changed.
     """

@@ -24,7 +24,7 @@ starts again from its first step whose files are not all still there with the ha
 recorded; failed rows stay failed unless `retry_failed`; a row edited in the spec runs
 again; a changed intent or licence policy refuses to resume.
 
-Every finished row is also put in the review queue of the checks (feature 7): a `queued`
+Every finished row is also put in the review queue of the checks: a `queued`
 line in `review-log.jsonl`, in the folder that holds the batches folder (`output/` for the
 default `output/batches/`).
 """
@@ -1711,13 +1711,13 @@ def _fail(entry, steps, name, reason, save, log) -> None:
     log(f"failed: {entry['reason']}")
 
 
-# Feature 7's checks profiles name the equipment kind differently.
+# The checks' profiles name the equipment kind differently.
 REVIEW_KINDS = {"prop": "prop", "creature": "creature", "equipment": "equipment_part"}
 
 
 def queue_for_review(spec: BatchSpec, row: BatchRow, asset: Path,
                      report_file: Path | None = None) -> None:
-    """Put a finished row in the review queue of the checks (feature 7).
+    """Put a finished row in the review queue of the checks.
 
     The queue's own `image_to_3dlab.checks.enqueue_for_review` writes the line once that
     package is installed; until then this writes the same line itself. The key is the
@@ -1734,7 +1734,7 @@ def queue_for_review(spec: BatchSpec, row: BatchRow, asset: Path,
     report = read_json(report_file) if report_file.is_file() else None
     if not isinstance(report, dict) or report.get("asset_sha256") != sha:
         report, report_file = None, None
-    # the key is the asset's id (feature 7's contract): the same bytes under it are the
+    # the key is the asset's id (the review queue's contract): the same bytes under it are the
     # same version. Queued again only when who made it, what it is, or its report changed
     # (checks run again with other thresholds write the same file with another result).
     ours = [line for line in _lines(log_path) if line.get("event") == "queued"

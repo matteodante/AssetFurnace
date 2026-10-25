@@ -519,6 +519,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concept record and `output/concept/judgements.jsonl`.
 
 ### Changed
+- Code, tests and docs no longer number features after a private production plan or point at
+  it, nor name a local user folder; the step catalogue drops its `feature` number (also gone
+  from `describe_steps`).
 - Qwen-Image's licence is worded as upstream words it again: `commercial-conditional`, the
   pictures you make are yours (Qwen's statement), and `validate_run_policy` has no
   `commercial_intent`; a research-only class is again for a private showcase only.

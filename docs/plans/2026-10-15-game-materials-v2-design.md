@@ -534,7 +534,7 @@ della sezione 6 restano come scritte. Finché non ci sono:
 - ogni passo che non ha superato la sua prova resta **spento** o **su richiesta**;
 - dove si poteva giudicare senza etichette ho giudicato io, con render prima e dopo e con le misure.
 
-Il foglio di etichette è un artifact privato di claude.ai (https://claude.ai/artifact/Y9dN52YcLykmgsc3r6ymhH): si usa
+Il foglio di etichette è un artifact privato di claude.ai: si usa
 anche dal telefono e salva da solo. `scripts/label_sheet.py build` ne prepara le immagini, `import` porta le etichette
 in `output/material-labels.jsonl`, lo stesso registro del pannello dello studio.
 

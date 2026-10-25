@@ -247,7 +247,7 @@ def test_a_clips_row_that_is_not_a_creature_is_told(monkeypatch):
 
 def test_the_clips_step_is_described_and_checked():
     spec = step_catalog.get("clips")
-    assert spec.feature == 6 and spec.cli == "scripts/creature_clips.py"
+    assert spec.cli == "scripts/creature_clips.py"
     assert step_catalog.check("clips", {"family": "wizard"})[0].startswith("family must be one of")
     assert step_catalog.check("clips", {"variation_factor": 50})[0].startswith("variation_factor must be")
 

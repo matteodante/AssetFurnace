@@ -14,7 +14,7 @@ times, and three things are measured against the rest pose:
 
 The thresholds are provisional and warn only until a pilot calibrates them: the preset
 moves already accepted on generated humanoids measure 0.25-1.2% stretched and 0.3-1.7%
-flipped (mostly armpits and hips folding), the werewolf's test walk 0.05% and 0.09%.
+flipped (mostly armpits and hips folding), a digitigrade creature's test walk 0.05% and 0.09%.
 
 The clips are the GLB's own animations, plus, for a `<base>_rigged.glb`, every
 `<base>_<clip>.glb` beside it: the files the studio lists as that rig's clips.

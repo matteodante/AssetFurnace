@@ -1,6 +1,6 @@
 """`concept`: a new concept drawn from the row's picture, as the studio's "Draw from a
-reference" panel and `scripts/reference_concept.py make` draw it (feature 2,
-`image_to_3dlab/concept/requests.py`: Qwen-Image 2.1 in edit mode, the GPU lock held while
+reference" panel and `scripts/reference_concept.py make` draw it
+(`image_to_3dlab/concept/requests.py`: Qwen-Image 2.1 in edit mode, the GPU lock held while
 it draws, the `.concept.json` record with the silhouette IoU).
 
 Options (`"concept": {...}`, described in `step_catalog`): mode (required: redraw, dress,

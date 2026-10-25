@@ -218,11 +218,11 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 
 ## Characters in pieces
 
-Feature 4: armour slots worn on a rigged base body. The logic is in `image_to_3dlab/slot_parts/`.
+Armour slots worn on a rigged base body. The logic is in `image_to_3dlab/slot_parts/`.
 
 | Script | What it does |
 |---|---|
-| `slot_parts.py` | Characters in pieces (feature 4): register a base body, then cut a concept into slots. |
+| `slot_parts.py` | Characters in pieces: register a base body, then cut a concept into slots. |
 | `blender_fit_parts.py` | Fit armour pieces onto a rigged base body in Blender, skin them to its skeleton, mask the body. |
 | `blender_segment_parts.py` | Route B0: split a whole-character model into one piece per slot, cut edges closed. |
 

@@ -1,4 +1,4 @@
-"""From a reference to a concept, in the viewer and for other steps (function 2).
+"""From a reference to a concept, in the viewer and for other steps.
 
 A concept is an image job of `image_api` with more arguments: the vision half of the
 encoder and the reference pictures (`image_to_3dlab.concept.edit`), the words of one of

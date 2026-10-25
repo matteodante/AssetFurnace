@@ -1,4 +1,4 @@
-"""The `concept` step (feature 2 in a batch): a concept drawn from the row's pictures,
+"""The `concept` step (in a batch): a concept drawn from the row's pictures,
 with candidates and picks like `picture`; the studio, `reference_concept.py` and the step
 share `image_to_3dlab/concept/requests.py`. The drawing itself is a stand-in."""
 
@@ -147,7 +147,7 @@ def test_the_studio_builds_its_request_with_the_same_plan(tmp_path):
 
 def test_the_concept_step_is_described_with_its_command_line():
     spec = step_catalog.get("concept")
-    assert spec.candidates == "count" and spec.feature == 2 and spec.cli == "scripts/reference_concept.py make"
+    assert spec.candidates == "count" and spec.cli == "scripts/reference_concept.py make"
     assert spec.param("count").flag == "--attempts" and spec.param("style_refs").flag == "--style-ref"
 
 

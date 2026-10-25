@@ -1,7 +1,7 @@
 """`export_unreal`: the row's asset as files Unreal Engine 5.8 imports with no touch-ups.
 
 The same `export_unreal()` that `scripts/export_unreal.py` and the studio's Unreal export
-run (feature 5, `docs/plans/2026-10-15-unreal-profile-design.md`), with the row's `kind`,
+run (`docs/plans/2026-10-15-unreal-profile-design.md`), with the row's `kind`,
 `size_cm` and `measure`. It writes into the step's folder and leaves the row's asset as it
 was: the export is an extra output, listed under `unreal` in `outputs.json`. A creature
 takes the clips the steps before made (`animate`) as its animations, unless the row names

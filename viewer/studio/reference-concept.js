@@ -1,4 +1,4 @@
-// Draw from a reference (function 2): a sheet over the viewer that turns a model or a picture
+// Draw from a reference: a sheet over the viewer that turns a model or a picture
 // into the map a concept is drawn from, runs one of the four ways through the image queue,
 // and shows the reference beside each result with its silhouette IoU and a keep/discard.
 // The server side is viewer/concept_api.py. The pure parts come first, so Node tests import

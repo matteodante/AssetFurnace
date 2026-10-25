@@ -1,5 +1,5 @@
 """`clips`: a rigged creature's family and its test clips, as the studio makes them after a
-rig (feature 6, `scripts/creature_clips.py`): the CC0 library's clips carried onto the rig
+rig (`scripts/creature_clips.py`): the CC0 library's clips carried onto the rig
 by chains, the procedural ones for the rest, and the library's loops also as longer
 varied takes (GenMM).
 

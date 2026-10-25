@@ -3,7 +3,6 @@
 Data: 15 ottobre 2026. Stato: **approvato e implementato** sul ramo `claude/feat-checks-review-744c44` (in attesa di
 merge). Le compenetrazioni nelle pose restano per un secondo passo. Le differenze rispetto alla proposta sono segnate
 con *Implementato*.
-Piano di riferimento: il piano di produzione (privato), funzione 7.
 
 In breve: un registro di controlli che danno tutti lo stesso JSON, un file di esito accanto a ogni GLB, e una coda
 nello studio dove l'utente approva o rimanda con una nota. Tutto gira sul processore (CPU): niente GPU, niente modelli.

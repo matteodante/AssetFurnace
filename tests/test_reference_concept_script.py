@@ -1,4 +1,4 @@
-"""The command line of function 2: the same request the studio sends, and one seed per attempt."""
+"""The command line of Draw from a reference: the same request the studio sends, and one seed per attempt."""
 
 from __future__ import annotations
 

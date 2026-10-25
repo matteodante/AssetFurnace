@@ -1,6 +1,6 @@
 """The review queue: an append-only log where a sent-back asset keeps its note.
 
-Acceptance for feature 7: "a send-back returns to the queue with its note".
+Acceptance for the review queue: "a send-back returns to the queue with its note".
 """
 
 from __future__ import annotations
@@ -126,7 +126,7 @@ def test_check_and_enqueue_writes_the_report_and_queues_it(tmp_path, log):
 
 
 def test_a_batch_output_can_be_queued_before_any_check_ran(tmp_path, log):
-    """Feature 1 queues batch outputs; the checks step may not have run yet."""
+    """The batch runner queues its outputs; the checks step may not have run yet."""
     glb = fx.clean(tmp_path / "row_07.glb")
     item = review.enqueue_for_review(glb, "row_07", source="batch:props-01", kind="prop", log=log, now=T[0])
     assert item["state"] == "to_review"

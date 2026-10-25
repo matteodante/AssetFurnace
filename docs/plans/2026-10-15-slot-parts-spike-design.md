@@ -16,7 +16,6 @@ eseguire anche la strada A e **si assume la responsabilità della licenza NVIDIA
 
 I gruppi 3 e 4 si richiedono solo se servono.
 
-Piano di riferimento: il piano di produzione (privato), sezione 4 e "Quale modello per le parti".
 È una prova, non la funzione: gli script stanno in `journal/spike-slot-parts/` (fuori dalla repo consegnata). Nella PR
 finale entrano solo il rapporto e gli script che generalizzano (regola 2 di `AGENTS.md`).
 
@@ -146,7 +145,7 @@ cancellati a fine prova se la strada perde.
 ## GPU condivisa
 
 Prima di ogni lavoro sulla GPU (Qwen, Pixal3D, SkinTokens, OmniPart, HoloPart) lo script crea in modo esclusivo
-`C:\Users\Matteo\AppData\Local\Temp\assetfurnace-gpu.lock` con pid e nome della sessione (`spike-slot-parts`), e lo
+`%TEMP%\assetfurnace-gpu.lock` con pid e nome della sessione (`spike-slot-parts`), e lo
 cancella alla fine anche in caso d'errore. Se esiste e il processo è vivo, aspetta. Per i lavori in WSL il blocco lo
 prende lo script Windows che lancia `wsl`, così vale per tutte le sessioni.
 

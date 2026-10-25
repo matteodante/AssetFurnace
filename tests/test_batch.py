@@ -1,5 +1,5 @@
 """Batch runner: spec parsing, state and resume, the step registry, and the acceptance
-criteria of function 1 (docs/plans/2026-10-15-batch-mcp-design.md), all with a fake
+criteria of the batch design (docs/plans/2026-10-15-batch-mcp-design.md), all with a fake
 generator. No test here loads a model or starts Blender."""
 
 from __future__ import annotations
@@ -613,7 +613,7 @@ def test_finished_rows_are_queued_for_review(tmp_path, monkeypatch, fake_finish)
     event = events[0]
     directory = spec_path.parent / "out" / "test-batch"
     asset = directory / "rows" / "SM_row01" / "finish" / "SM_row01.glb"
-    # feature 7's format (image_to_3dlab.checks.review.enqueue_for_review)
+    # the review queue's format (image_to_3dlab.checks.review.enqueue_for_review)
     assert event["event"] == "queued" and event["asset_sha256"] == _sha(asset)
     assert event["asset"] == str(asset.resolve()) and event["at"]
     assert event["source"] == "batch:test-batch" and event["kind"] == "prop"
@@ -663,7 +663,7 @@ def test_a_report_for_another_file_is_not_attached(tmp_path, monkeypatch):
 
 def test_feature_7s_queue_function_is_used_when_it_is_installed(tmp_path, monkeypatch,
                                                                 fake_finish):
-    """After feature 7 merges, its enqueue_for_review writes the line, not this module."""
+    """The checks' enqueue_for_review writes the line, not this module."""
     import sys
     import types
 
