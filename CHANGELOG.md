@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **The studio reads and writes its text files as UTF-8 on every computer.** On Windows
+  Python defaults to cp1252, so non-ASCII text such as an em dash or a middle dot read from
+  `prompt_recipes.json` and similar files came out garbled.
+
 ### Security
 - **A web page can no longer drive the studio behind your back.** Every write (setup and
   weight removal, the Hugging Face sign-in, jobs, Library changes) now needs the studio's own

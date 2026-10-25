@@ -420,7 +420,7 @@ def run_job(job: AnimateJob, manager: AnimateJobManager = ANIMATE_JOBS) -> None:
                       "log_tail": "\n".join(job.log_lines)[-6000:]})
         else:
             job.result.with_suffix(".provenance.json").write_text(
-                json.dumps(job.record, indent=2))
+                json.dumps(job.record, indent=2), encoding="utf-8")
             job.status = "done"
             usage_api.count_done("rig" if job.kind == "rig" else "animation")
             fit = rig_fit(job.result) if job.kind == "rig" else {}
@@ -464,6 +464,6 @@ def served_url(path: Path) -> str | None:
 
 def _read_json(path: Path) -> dict[str, Any] | None:
     try:
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
