@@ -205,23 +205,21 @@ def corrections(folder: Path) -> dict[str, str]:
     return {slot: check(word) for slot, word in (data.get("pieces") or {}).items()}
 
 
-MIGRATION = "scripts/migrate_set_outfits.py"
+NO_OUTFIT = "no outfit words were recorded with this set's concept"
 
 
-def outfit_words(parts: dict, folder: Path) -> str:
+def outfit_words(parts: dict) -> str | None:
     """The outfit's words a set's concept was drawn from, as saved with it (``concept.outfit``).
 
     A set of weapons and shields alone has no concept, and a concept given ready-made has no
-    words: both read as no words. A concept saved before its words were (18/10/2026) is refused
-    with the command that writes them into the set (in `folder`), once.
+    words: both read as no words (""). A concept saved before its words were (18/10/2026) has
+    none recorded: None, so the rule says so rather than guess them from the edit prompt.
     """
     concept = parts.get("concept")
     if concept is None:
         return ""
-    if not isinstance(concept.get("outfit"), str):
-        raise ValueError(f"the set {parts.get('set')!r} was made before the outfit's words were saved with its "
-                         f"concept: run `python {MIGRATION} \"{folder}\"` once to write them in")
-    return concept["outfit"]
+    outfit = concept.get("outfit")
+    return outfit if isinstance(outfit, str) else None
 
 
 def set_materials(folder: Path) -> dict[str, dict]:
@@ -231,7 +229,7 @@ def set_materials(folder: Path) -> dict[str, dict]:
     then the rule.
     """
     parts = _parts(folder)
-    outfit = outfit_words(parts, Path(folder))
+    outfit = outfit_words(parts)
     fixed = corrections(folder)
     out = {}
     for slot, asked in (parts.get("slots") or {}).items():
@@ -242,7 +240,10 @@ def set_materials(folder: Path) -> dict[str, dict]:
             out[slot] = {"material": check(asked["material"]), "by": "asked", "reason": "chosen before the run"}
         else:
             words = asked.get("prompt") or (piece.get("prompt", "") if piece.get("held") else "")
-            out[slot] = propose(slot=slot, words=words, outfit=outfit)
+            proposed = propose(slot=slot, words=words, outfit=outfit or "")
+            if outfit is None and proposed["reason"].startswith("default"):
+                proposed["reason"] += f" ({NO_OUTFIT})"
+            out[slot] = proposed
     return out
 
 

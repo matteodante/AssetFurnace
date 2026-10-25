@@ -385,14 +385,15 @@ def test_saving_materials_sends_only_what_a_person_changed():
     assert out == {"legs": "cloth"}
 
 
-def test_a_set_to_migrate_says_so_in_the_list(tmp_path):
+def test_a_set_without_outfit_words_says_so_in_the_list(tmp_path):
     output = tmp_path / "output"
     folder = _made_set(output)
     record = json.loads((folder / "red.parts.json").read_text())
     del record["concept"]["outfit"]
     (folder / "red.parts.json").write_text(json.dumps(record))
     listed = slot_parts_api.list_sets(output)[0]
-    assert listed["materials"] == {} and "scripts/migrate_set_outfits.py" in listed["materials_problem"]
+    assert "materials_problem" not in listed
+    assert "no outfit words" in listed["materials"]["boots"]["reason"]
     record["concept"]["outfit"] = "red plate"
     (folder / "red.parts.json").write_text(json.dumps(record))
-    assert "materials_problem" not in slot_parts_api.list_sets(output)[0]
+    assert "no outfit words" not in slot_parts_api.list_sets(output)[0]["materials"]["boots"]["reason"]

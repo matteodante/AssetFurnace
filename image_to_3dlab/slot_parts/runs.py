@@ -85,7 +85,7 @@ def list_sets(output: Path) -> list[dict[str, Any]]:
         problem = None
         try:
             materials = piece_materials.set_materials(path.parent)
-        except (OSError, ValueError) as exc:   # said with the set, not hidden: a set to migrate, say
+        except (OSError, ValueError) as exc:   # said with the set, not hidden: a broken record, say
             materials, problem = {}, str(exc)
         found.append({"set": parts.get("set"), "body": (parts.get("body") or {}).get("name"), "mode": parts.get("mode"),
                       "pieces": sorted(parts.get("pieces") or {}), "created": parts.get("created"),

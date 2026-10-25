@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 import pytest
 
@@ -152,19 +151,23 @@ def test_prompt_for_follows_the_inputs_to_the_words(tmp_path):
 
 
 def test_outfit_words_are_read_from_the_concept_as_saved():
-    here = Path("sets/red/human")
     assert pm.outfit_words({"concept": {"prompt": "Add a hood to the character in image 1.",
-                                        "outfit": "red plate"}}, here) == "red plate"
-    assert pm.outfit_words({"concept": {"given": True, "outfit": ""}}, here) == ""   # a concept given ready-made
-    assert pm.outfit_words({"concept": None}, here) == ""                           # weapons and shields alone
+                                        "outfit": "red plate"}}) == "red plate"
+    assert pm.outfit_words({"concept": {"given": True, "outfit": ""}}) == ""   # a concept given ready-made
+    assert pm.outfit_words({"concept": None}) == ""                           # weapons and shields alone
+    assert pm.outfit_words({"concept": {"prompt": "Add red plate."}}) is None  # saved before the words were
 
 
-def test_a_set_saved_before_the_outfit_words_says_how_to_migrate_it(tmp_path):
-    folder = _set_folder(tmp_path, slots={"boots": {"prompt": ""}}, pieces={"boots": {}})
+def test_a_set_saved_before_the_outfit_words_says_it_has_none(tmp_path):
+    """No guess from the edit prompt: the rule falls back to the piece's words and the slot's
+    default, and the default says why."""
+    folder = _set_folder(tmp_path, slots={"boots": {"prompt": ""}, "helmet": {"prompt": "a leather hood"}},
+                         pieces={"boots": {}, "helmet": {}})
     path = folder / "red.parts.json"
     record = json.loads(path.read_text())
     del record["concept"]["outfit"]
     path.write_text(json.dumps(record))
-    with pytest.raises(ValueError, match="migrate_set_outfits.py") as refused:
-        pm.set_materials(folder)
-    assert str(refused.value).endswith(f'migrate_set_outfits.py "{folder}"` once to write them in')
+    got = pm.set_materials(folder)
+    assert got["boots"]["material"] == pm.SLOT_DEFAULTS["boots"] and got["boots"]["by"] == "rule"
+    assert got["boots"]["reason"].endswith(f"({pm.NO_OUTFIT})")
+    assert got["helmet"]["material"] == "leather" and pm.NO_OUTFIT not in got["helmet"]["reason"]
