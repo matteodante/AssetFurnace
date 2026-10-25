@@ -114,7 +114,7 @@ the picture first, then carries on to 3D. It runs Qwen-Image 2.1 on your own mac
 
 ![Three creatures generated from text prompts on a laptop, about four and a half minutes each](docs/images/prompt-to-source-image.jpg)
 
-Built with Qwen. Its [licence](https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE) allows it for non-commercial use only, research or evaluation (sections 1(i) and 2(a)); every picture's record says so.
+Built with Qwen. The pictures you make are yours ([Qwen's statement](https://x.com/QwenDevs/status/2101917379785838660)).
 
 Six backends, one studio. Sadly life is full of trade-offs, so pick the tradeoff you want (lol):
 

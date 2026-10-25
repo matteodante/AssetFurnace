@@ -61,7 +61,6 @@ INSTALL_HINT = 'The MCP server needs the MCP SDK: pip install "mcp>=2.3,<3"'
 class Checked(TypedDict, total=False):
     ok: bool
     problems: list[str]
-    warnings: list[str]
     steps: dict[str, bool]
     name: str
     directory: str
@@ -277,7 +276,7 @@ def validate_batch(spec: str, use_case: str | None = None, distribution: str | N
                               "steps": batch.available_steps()}
     if loaded is not None:
         result.update(name=loaded.name, directory=str(loaded.directory),
-                      rows=len(loaded.rows), intent=loaded.intent, warnings=loaded.warnings)
+                      rows=len(loaded.rows), intent=loaded.intent)
     return result
 
 

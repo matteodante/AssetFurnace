@@ -185,12 +185,12 @@ def test_a_single_file_counts_as_present_by_its_own_size(tmp_path):
     assert bc._dir_state(model) == (True, 5)
 
 
-def test_the_image_route_names_its_licence_and_says_it_is_non_commercial():
-    """The licence's own words: research or evaluation only (1.i, 2.a)."""
+def test_the_image_route_names_its_licence_and_says_the_pictures_are_yours():
+    """Qwen confirmed outputs are the user's; the card names the licence, with no warning box."""
     entry = next(b for b in bc.catalog_status()["backends"] if b["id"] == "qwen-image")
     assert entry["license"]["name"] == "Qwen Research License"
-    assert "research or evaluation" in entry["caveat"]
-    assert "yours" not in entry["tradeoff"]
+    assert not entry.get("caveat")
+    assert "yours" in entry["tradeoff"]
 
 
 def test_sf3d_is_labelled_free_including_commercial_under_the_revenue_cap():

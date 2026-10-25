@@ -586,12 +586,9 @@ CATALOG: tuple[Backend, ...] = (
         label="Qwen-Image 2.1 Turbo (text to image)",
         kind="image",
         best_for="Makes the source image when you do not have one. Prompt in, picture out.",
-        tradeoff="Runs on your machine, 8 steps at cfg 1, about 15 s a picture on an RTX 5070 Ti.",
+        tradeoff="Runs on your machine, and the pictures you make are yours.",
         license_name="Qwen Research License",
         license_url="https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE",
-        caveat=("Non-commercial only: the licence allows the model for research or evaluation "
-                "purposes only (sections 1(i), 2(a)); commercial use needs Qwen's separate "
-                "licence. Every picture's record says so."),
         install="Prebuilt stable-diffusion.cpp binary in vendor/sdcpp/",
         runs_on=(APPLE, NVIDIA, AMD),
         setup_minutes=15,

@@ -426,21 +426,13 @@ def class_problem(classification: str, intent: dict[str, Any],
         return f"it is {classification}; the policy disallows conditional models"
     if classification == "research-only" and policy.get("allow_research_only") is False:
         return "it is research-only; the policy disallows research-only models"
-    # as validate_run_policy for a backend: refused only for a run with commercial intent; any
-    # other run goes on, warned (class_warning) and recorded (user decision, 2026-10-17)
-    if classification == "research-only" and intent.get("commercial_intent"):
-        return "it is research-only (non-commercial): a run with commercial intent needs its commercial licence"
+    if classification == "research-only" and not (
+            intent["use_case"] == "showcase" and intent["distribution"] == "private"
+            and not intent.get("commercial_intent")):
+        return "it is research-only (non-commercial): a private, non-commercial showcase only"
     if (classification == "territory-restricted" and intent["use_case"] == "game"
             and intent["distribution"] == "worldwide"):
         return "it is territory-restricted, not cleared for worldwide game distribution"
-    return None
-
-
-def class_warning(classification: str, intent: dict[str, Any]) -> str | None:
-    """What a run must know about a licence class it may use: research-only is non-commercial."""
-    if classification == "research-only" and not intent.get("commercial_intent"):
-        return ("it is research-only (non-commercial: research or evaluation only); fine for this "
-                "non-commercial run, and its record says so")
     return None
 
 
@@ -452,7 +444,6 @@ class BatchSpec:
     intent: dict[str, Any]
     license_policy: dict[str, Any]
     output_dir: Path
-    warnings: list[str] = field(default_factory=list)   # licence classes the run may use, said once
 
     @property
     def directory(self) -> Path:
@@ -503,7 +494,6 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
     path = path.expanduser().resolve()
     intent = {key: value for key, value in (intent or {}).items() if value is not None}
     problems: list[str] = []
-    warnings: list[str] = []
     if not path.is_file():
         raise BatchError(f"batch spec does not exist: {path}")
     if path.suffix.lower() == ".csv":
@@ -631,8 +621,7 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
             try:
                 validate_run_policy(backend, resolved_intent["use_case"],
                                     resolved_intent["distribution"],
-                                    policy.get("allow_conditional", True),
-                                    commercial_intent=bool(resolved_intent.get("commercial_intent")))
+                                    policy.get("allow_conditional", True))
             except ValueError as exc:
                 problems.append(f"row {row.id}: license policy for {what}: {exc}")
         for step, files in row.replace.items():
@@ -651,9 +640,6 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
                     problem = class_problem(classification, resolved_intent, policy)
                     if problem:
                         problems.append(f"row {row.id}: license policy for the file replacing {step}: {problem}")
-                    warning = class_warning(classification, resolved_intent)
-                    if warning:
-                        warnings.append(f"row {row.id}: the file replacing {step}: {warning}")
         if "generate" not in row.steps:
             # a source can carry more than its generator: a repaint, a matte, whatever
             # finished it before. Every class its records name is held to the policy.
@@ -661,13 +647,10 @@ def load_batch(path: Path, intent: dict[str, Any] | None = None) -> BatchSpec:
                 problem = class_problem(classification, resolved_intent, policy)
                 if problem:
                     problems.append(f"row {row.id}: license policy for its source: {problem}")
-                warning = class_warning(classification, resolved_intent)
-                if warning:
-                    warnings.append(f"row {row.id}: its source: {warning}")
     if problems:
         raise BatchError(problems)
     return BatchSpec(name=name, path=path, rows=rows, intent=resolved_intent,
-                     license_policy=policy, output_dir=output_dir, warnings=list(dict.fromkeys(warnings)))
+                     license_policy=policy, output_dir=output_dir)
 
 
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
@@ -1405,8 +1388,6 @@ def run_batch(spec: BatchSpec, retry_failed: bool = False,
                 f"the intent or licence policy of batch {spec.name} changed since it ran "
                 f"(see {state_path}). Give the batch a new name, or remove its folder")
         directory.mkdir(parents=True, exist_ok=True)
-        for warning in spec.warnings:
-            log(f"licence: {warning}")
         return _run_rows(spec, state or {}, retry_failed, log)
     finally:
         release_lock(spec.output_dir, token)
@@ -1446,7 +1427,6 @@ def _run_rows(spec: BatchSpec, state: dict[str, Any], retry_failed: bool,
     state = {"schema_version": 1, "name": spec.name,
              "spec": {"path": str(spec.path), "sha256": sha256_file(spec.path)},
              "intent": spec.intent, "license_policy": spec.license_policy,
-             "licence_warnings": spec.warnings,
              "intent_fingerprint": spec.intent_fingerprint(),
              "started_at": now(), "pid": os.getpid(), "rows": rows,
              **({"removed_rows": removed} if removed else {})}

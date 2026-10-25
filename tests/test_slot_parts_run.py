@@ -221,9 +221,7 @@ def test_every_fitted_file_gets_a_licence_record_bound_to_it(tmp_path):
     record = json.loads(written[0].read_text())
     assert record["source"]["path"] == str(source) and record["source"]["sha256"]
     report = run_checks(Asset(glb=out / "gloves_R.glb"), profile="equipment_part", only=["license.components"])
-    # bound and readable; it warns because the pieces come from Qwen pictures (non-commercial)
-    assert report["results"][0]["status"] == "warn"
-    assert "non-commercial" in report["results"][0]["message"]
+    assert report["results"][0]["status"] == "pass"
 
 
 def test_a_set_run_is_one_object_and_the_fit_is_steps():

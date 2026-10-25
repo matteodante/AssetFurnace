@@ -22,16 +22,14 @@ class LicenseProfile:
     conditions: tuple[str, ...]
 
 
-# What the Qwen Research License Agreement (Release Date 2026-09-20, read 2026-10-17 at
-# https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE) says, in its own
-# terms. It grants use "FOR NON-COMMERCIAL PURPOSES ONLY" (2.a), defines Non-Commercial as "for research or evaluation purposes only" (1.i), asks a
-# separate licence for any commercial purpose (2.b), and says nothing about who owns the
-# outputs. AssetFurnace is a non-commercial project, so this is what its pictures carry.
+# Qwen confirmed on 2026-09-21 that outputs are not part of the licensed Materials, so the
+# pictures belong to whoever made them. The model runs on the user's own machine and its
+# weights are never redistributed by us. The statement is cited so the record stands alone.
+QWEN_OUTPUT_STATEMENT = "https://x.com/QwenDevs/status/2101917379785838660"
 QWEN_OUTPUT_RIGHTS = (
-    "Non-commercial use only: the Qwen Research License allows the model for research or "
-    "evaluation purposes only (sections 1(i) and 2(a)); any commercial use needs a separate "
-    "licence from Qwen (2(b)). The licence does not say who owns the outputs. The model runs "
-    "on your own machine; its weights are not redistributed."
+    "The pictures you generate are yours: Qwen confirmed that outputs are not part of the "
+    f"licensed Materials ({QWEN_OUTPUT_STATEMENT}, 21 Sept 2026). The model runs on your own "
+    "machine; its weights are not redistributed."
 )
 
 
@@ -94,13 +92,12 @@ LICENSES = {
         ),
     ),
     "qwen-image-2.1": LicenseProfile(
-        # The licence's own words: research or evaluation only (see QWEN_OUTPUT_RIGHTS).
-        # Fine for this non-commercial project, which validate_run_policy lets through;
-        # refused only with commercial intent.
-        classification="research-only",
+        # Qwen confirmed the outputs are the user's, and the model runs on their own machine;
+        # the one condition left is the credit, so it sits with the other conditional models.
+        classification="commercial-conditional",
         folder="conditional",
         license_name="Qwen Research License Agreement",
-        license_url="https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE",
+        license_url="https://huggingface.co/Qwen/Qwen-Image-2.1/blob/main/LICENSE",
         conditions=(
             QWEN_OUTPUT_RIGHTS,
             "Attribution: say 'Built with Qwen'.",
@@ -124,7 +121,6 @@ def validate_run_policy(
     use_case: str,
     distribution: str,
     allow_conditional: bool,
-    commercial_intent: bool = False,
 ) -> LicenseProfile:
     if use_case not in {"showcase", "game"}:
         raise ValueError("use_case must be 'showcase' or 'game'")
@@ -140,13 +136,15 @@ def validate_run_policy(
         raise ValueError(
             f"{backend} is {profile.classification}; manifest disallows conditional models"
         )
-    # research-only is non-commercial: refused for a run with commercial intent. Without
-    # it (AssetFurnace's own use, which is never commercial) it runs, and the record and
-    # the licence check say non-commercial only (user decision, 2026-10-17).
-    if profile.classification == "research-only" and commercial_intent:
+    # research-only is stricter than conditional and is not covered by allow_conditional.
+    # Running a non-commercial model is refused for anything but a private showcase,
+    # whatever the manifest says. (Its outputs are the user's; running it is the limit.)
+    if profile.classification == "research-only" and not (
+        use_case == "showcase" and distribution == "private"
+    ):
         raise ValueError(
-            f"{backend} is research-only (non-commercial: research or evaluation only); "
-            "a run with commercial intent needs the model's commercial licence"
+            f"{backend} is research-only (non-commercial); it is permitted only for a "
+            f"private showcase, not for use_case={use_case!r} distribution={distribution!r}"
         )
     if (
         use_case == "game"

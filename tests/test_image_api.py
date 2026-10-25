@@ -2,7 +2,7 @@
 
 A generation run costs minutes, so everything cheap is checked here: that the command line
 is the Turbo recipe on the Turbo weights, that a prompt cannot smuggle
-arguments, that progress lines parse, and that the non-commercial licence reaches the
+arguments, that progress lines parse, and that the licence reaches the
 sidecar. The pure functions are imported, never re-implemented.
 """
 
@@ -172,19 +172,20 @@ def test_slug_survives_a_prompt_with_nothing_usable():
 def test_provenance_records_the_licence_and_its_class():
     """A PNG in a folder six months from now remembers nothing on its own."""
     record = api.provenance("a fox", api.clean_settings({}), 262.3, Path("/o/fox.png"))
-    assert record["license"]["classification"] == "research-only"
+    assert record["license"]["classification"] == "commercial-conditional"
     assert "Built with Qwen" == record["license"]["attribution"]
     assert record["prompt"] == "a fox"
     json.dumps(record)  # must survive being written to the sidecar
 
 
-def test_provenance_says_what_the_licence_allows_and_cites_it():
-    """The sidecar quotes the licence text, so the record stands on its own."""
+def test_provenance_says_the_output_is_yours_and_cites_qwen():
+    """Qwen stated on 2026-09-21 that outputs are not licensed Materials. The sidecar says
+    the picture is yours and cites the statement, so the record stands on its own."""
     note = api.provenance("a fox", api.clean_settings({}), 1.0, Path("/o/f.png"))[
         "license"]["inherited_by_derivatives"]
     assert note == api.OUTPUT_RIGHTS
-    assert "non-commercial" in note.lower() and "research or evaluation" in note
-    assert "x.com" not in note
+    assert "yours" in note and "non-commercial" not in note.lower()
+    assert "https://x.com/QwenDevs/status/2101917379785838660" in note
 
 
 def test_output_goes_to_the_images_folder():
