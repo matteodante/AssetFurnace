@@ -134,7 +134,7 @@ export function createUnrealPanel({ root, url, assets }) {
         <label class="field">Detail levels<select data-lods><option value="auto" title="the _LOD files beside the model">Auto</option><option value="none">None</option></select></label>
       </div>
       <div class="pair">
-        <label class="field">Tint mask<select data-tint><option value="auto" title="a T_&lt;name&gt;_Tint.png beside the model, if there is one (only the zones trial writes one)">Auto</option><option value="none">None</option></select></label>
+        <label class="field">Tint mask<select data-tint><option value="auto" title="a T_&lt;name&gt;_Tint.png beside the model, if there is one">Auto</option><option value="none">None</option></select></label>
         <label class="field" title="Which way the model faces in Blender; Auto reads a creature's family">Facing<select data-forward>${FACINGS.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>
       </div>
     </details>

@@ -1,11 +1,12 @@
-"""The models the style judges use: where they come from, how big they are, their licences.
+"""The models the style judge uses: where they come from, how big they are, their licences.
 
-Pure data plus lookups on disk. `scripts/bootstrap_style.py` downloads from here after
-asking; everything else only *finds* files and says how to get them when they are not
-there. Nothing in this module downloads.
+Pure data plus lookups on disk. `scripts/bootstrap_style.py` installs llama.cpp from here
+after asking; the Qwen3-VL model comes with Qwen-Image's setup. Everything else only
+*finds* files and says how to get them when they are not there. Nothing in this module
+downloads.
 
 Revisions and checksums were pinned on 2026-10-15, so a changed upstream file cannot
-change what a judge measures without someone noticing.
+change what the judge measures without someone noticing.
 """
 
 from __future__ import annotations
@@ -35,28 +36,6 @@ class HubModel:
     def cache_dir(self, hub: Path | None = None) -> Path:
         return (hub or HF_HUB) / f"models--{self.repo.replace('/', '--')}"
 
-    def path(self, name: str, hub: Path | None = None) -> Path | None:
-        """The cached file at the pinned revision, or None when it is not downloaded."""
-        candidate = self.cache_dir(hub) / "snapshots" / self.revision / name
-        return candidate if candidate.is_file() else None
-
-
-SIGLIP2 = HubModel(
-    key="siglip2", label="SigLIP 2 base/16 224 (general image embedding)",
-    repo="google/siglip2-base-patch16-224", revision="75de2d55ec2d0b4efc50b3e9ad70dba96a7b2fa2",
-    files=("config.json", "preprocessor_config.json", "model.safetensors"),
-    size=1_500_800_904 + 253 + 394, license="Apache-2.0",
-    license_url="https://huggingface.co/google/siglip2-base-patch16-224",
-    note="One file with the image and text towers; only the image tower is used.")
-
-CSD = HubModel(
-    key="csd", label="CSD ViT-L (style embedding)",
-    repo="tomg-group-umd/CSD-ViT-L", revision="5bc26a6fb0487f3f00a2a7313135103a005b1b67",
-    files=("config.json", "pytorch_model.bin"),
-    size=2_438_228_893 + 34, license="CC-BY-4.0 (from OpenAI CLIP ViT-L/14, MIT)",
-    license_url="https://huggingface.co/tomg-group-umd/CSD-ViT-L",
-    note="A pickle file: loaded with torch.load(weights_only=True), which runs no code from it. "
-         "Attribution: Somepalli et al., 'Measuring Style Similarity in Diffusion Models', 2024.")
 
 QWEN3VL = HubModel(
     key="qwen3vl", label="Qwen3-VL-8B-Instruct Q4_K_M (judge; Qwen-Image's text encoder)",
@@ -68,8 +47,6 @@ QWEN3VL = HubModel(
 # The vision half of Qwen3-VL. Qwen-Image's setup owns it (its edit route needs it too);
 # the judge only looks for it, in whatever snapshot it landed.
 MMPROJ = "mmproj-Qwen3VL-8B-Instruct-F16.gguf"
-
-HUB_MODELS = {m.key: m for m in (SIGLIP2, CSD)}
 
 
 @dataclass(frozen=True)
@@ -124,13 +101,3 @@ def mmproj_path(hub: Path | None = None) -> Path | None:
 
 class MissingModel(RuntimeError):
     """A judge's files are not on disk; the message says how to get them."""
-
-
-def require(model: HubModel, hub: Path | None = None) -> dict[str, Path]:
-    """Every file of `model` at its pinned revision, or MissingModel naming the command."""
-    paths = {name: model.path(name, hub) for name in model.files}
-    missing = [name for name, path in paths.items() if path is None]
-    if missing:
-        raise MissingModel(f"{model.label} is not downloaded ({', '.join(missing)}); "
-                           f"run: {BOOTSTRAP} --only {model.key}")
-    return paths  # type: ignore[return-value]

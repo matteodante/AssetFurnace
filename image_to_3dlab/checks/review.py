@@ -185,7 +185,7 @@ def enqueue(log: Path, report: dict, report_file: str | Path, key: str | None = 
 def enqueue_for_review(glb: str | Path, key: str, *, source: str | None = None, kind: str | None = None,
                        report: dict | None = None, report_file: str | Path | None = None,
                        log: Path = LOG, now: str | None = None, lock_timeout: float = 10.0) -> dict:
-    """Put a GLB in the review queue, with or without a checks report. Stable: feature 1 calls it.
+    """Put a GLB in the review queue, with or without a checks report. Stable: the batch runner calls it.
 
     `key` is the asset's id (a batch row's id); `source` says who queued it ("batch:<name>"),
     `kind` what it is (prop, creature, equipment_part). Without a report the item's status

@@ -21,6 +21,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     is read.
 
 ### Removed
+- The material and style trials that missed their bar or were switched off: PBR estimation,
+  baked-light removal, tint zones by material (and `game_materials.py --zones`), the material
+  label set, the multi-view renders that fed them, and the style race with its SigLIP 2 / CSD
+  embeddings. Their scripts, the Studio label panel, and the Marigold, Qwen3.5 and SAM cards
+  in Setup go too; `bootstrap_style.py` now installs only llama.cpp, and `transformers` is no
+  longer a requirement.
+- The shelved guided editor: `edit_document`, `edit_math`, `edit_probe`, `edit_topology`,
+  `scripts/inspect_edit_asset.py` and `scripts/blender_edit_bridge.py`. Opening an asset in
+  Blender (`blender_open_asset.py`, the Blender edit panel) stays.
+- `scripts/migrate_set_outfits.py`, a one-off migration: a set made before its outfit's words
+  were saved now gets the slot defaults, and says why, instead of being refused.
 - FLUX.2 klein 4B from Setup & Status and its `scripts/bootstrap_flux2_klein.py`: no step
   used it, and Setup offered 12.3 GB for nothing. Weights already fetched stay in the Hugging
   Face cache (`models--black-forest-labs--FLUX.2-klein-4B`, `models--unsloth--Qwen3-4B-GGUF`,
@@ -37,8 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   way to the garment or material beside it, so "a golden silk tunic" is cloth, no longer
   metal; with nothing else in the clause, "a golden crown" is still metal. A set's concept
   saves the outfit's words it was drawn from (`concept.outfit`), no longer read back out of
-  its edit prompt; a set made before is refused, in the Pieces page too, until
-  `python scripts/migrate_set_outfits.py` writes them in, once.
+  its edit prompt; for a set made before, the rule says no outfit words were recorded and
+  falls back to the piece's words and the slot's default.
 - From the code read of 18/10/2026 ([backlog](docs/plans/2026-10-18-code-read-fixes.md)):
   - the Pieces page follows a run from `output/sets/.run.json`: after a restart, or for a run
     an agent started, it shows it and can stop it; its exit code is kept beside its log;
@@ -97,8 +108,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - a link to a file on a network share (`file://server/share/...`) is read with MCP's
     `resources/read`, through the same check as any other.
 - Batches, from the second final review:
-  - a batch with commercial intent is refused when it draws with Qwen-Image (research-only),
-    as the licence asks;
   - the checks measure the size on the model as exported, never the source at its own size;
   - a reference named like the staged concept no longer overwrites it;
   - a row that starts from a concept passes Finish's preflight;
@@ -124,10 +133,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   offers the card's seven presets, square 2048 first, with 1024 as a fast draft. The catalogue
   says a negative prompt works only with `cfg_scale` above 1, and carries the Unreal export's
   `two_sided` (`--two-sided` on `scripts/export_unreal.py`).
-- A batch refuses a research-only source (Qwen's pictures, since its licence was read) only
-  for a run with commercial intent, as a run's own backends are; any other run goes on, with
-  a warning in its log, its state (`licence_warnings`) and `validate_batch`. A set's record
-  takes its licence class from the models that made it (research-only) instead of a fixed one.
+- A set's record takes its licence class from the models that made it instead of a fixed one.
 - The final review of the step parity work (Codex, by area) found these, each fixed with a test:
   - a row that starts from words passes Finish's preflight before its picture is drawn;
   - Checks and Finish's repaint use the picture the model was made from (a concept step's),
@@ -513,6 +519,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concept record and `output/concept/judgements.jsonl`.
 
 ### Changed
+- Code, tests and docs no longer number features after a private production plan or point at
+  it, nor name a local user folder; the step catalogue drops its `feature` number (also gone
+  from `describe_steps`).
+- Qwen-Image's licence is worded as upstream words it again: `commercial-conditional`, the
+  pictures you make are yours (Qwen's statement), and `validate_run_policy` has no
+  `commercial_intent`; a research-only class is again for a private showcase only.
 - The studio server answers its own paths from two route tables (`GET_ROUTES`, `POST_ROUTES`
   in `viewer/generate_api.py`) instead of two long `if` chains: the same paths, order, checks
   and status codes (20,379 requests answered the same before and after), with a test that
@@ -536,12 +548,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   machine with the text encoder already installed. The rewriting's system prompt comes with
   the Qwen-Image setup; without it the picture is drawn from the prompt as written. Runs from
   reference pictures stay at 1024: 2048 with references does not fit 16 GB.
-- Qwen-Image's licence class now says what its licence says: `research-only` (the Qwen
-  Research License allows it "for research or evaluation purposes only", 1(i) and 2(a)),
-  and the records cite the licence text instead of an unverified post about output rights.
-  This project's own, non-commercial use keeps working: a run is refused only with
-  commercial intent, and the licence check warns "non-commercial use only" instead of
-  passing. Exports and derived assets carry the class.
 - SF3D's licence label: free, commercial use included, under $1M annual revenue, with
   registration (it said non-commercial). The DINOv3 terms for passing the encoder on
   (a copy of the licence, "Built with DINOv3") are in the Pixal3D and TRELLIS.2 records,

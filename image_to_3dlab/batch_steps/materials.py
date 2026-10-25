@@ -1,4 +1,4 @@
-"""`materials`: the row's one material, as the user closed function 8 (one material per piece
+"""`materials`: the row's one material, as the user decided (one material per piece
 or asset, `image_to_3dlab/piece_materials.py`; no automatic zones).
 
 Options (`"materials": {...}`, described in `step_catalog`): material, the person's choice

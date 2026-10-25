@@ -40,7 +40,7 @@ SYSTEM_PROMPT_URL = ("https://raw.githubusercontent.com/QwenLM/Qwen-Image-2.1/"
                      f"{SYSTEM_PROMPT_COMMIT}/prompt_rewrite/prompts/system_prompt_t2i.txt")
 SYSTEM_PROMPT_SHA256 = "a77c9a06c59b120741141d9514b95682bb8761d02bec49ca61def7b2b3d9fb99"
 SYSTEM_PROMPT_BYTES = 10_045
-SYSTEM_PROMPT_LICENSE = "Qwen Research License Agreement (non-commercial: research or evaluation)"
+SYSTEM_PROMPT_LICENSE = "Qwen Research License Agreement"
 SYSTEM_PROMPT_FILE = REPO / "vendor" / "qwen-image-pe" / "system_prompt_t2i.txt"
 
 # pe_core.py's PROFILES["t2i"]: "a wrong penalty does not fail, it quietly changes the

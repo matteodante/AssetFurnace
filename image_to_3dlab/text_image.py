@@ -34,10 +34,9 @@ draw from references (concepts, the pieces of a character) keep `DEFAULTS`, 1024
 prompt as written. `DEFAULTS` is also what the batches start from, through the step
 catalogue.
 
-**The licence travels with the image.** Qwen-Image's licence allows it for non-commercial
-use only, research or evaluation (Qwen Research License 1(i), 2(a)). Every run writes a
-sidecar saying so, with the licence, because a PNG in a folder six months from now
-remembers nothing on its own.
+**The licence travels with the image.** The pictures Qwen-Image makes are yours, per Qwen's
+own statement. Every run writes a sidecar saying so, with the licence, because
+a PNG in a folder six months from now remembers nothing on its own.
 """
 
 from __future__ import annotations

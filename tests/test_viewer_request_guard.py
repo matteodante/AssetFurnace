@@ -255,7 +255,7 @@ def test_the_request_marker_tags_same_origin_writes_only():
 
 # ---- a refused request still gets its answer ---------------------------------------------
 
-@pytest.mark.parametrize("path", ["/api/blender-edit/sessions", "/api/review/decide", "/api/material-labels",
+@pytest.mark.parametrize("path", ["/api/blender-edit/sessions", "/api/review/decide",
                                   "/api/concept/jobs", "/api/batch", "/api/unreal-export/jobs"])
 def test_a_refused_post_with_a_body_gets_its_403_not_a_reset(server, path):
     """Closing on unread request bytes makes Windows reset the connection, so the client saw

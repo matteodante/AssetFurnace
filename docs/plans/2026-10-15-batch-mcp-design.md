@@ -3,7 +3,6 @@
 Data: 15 ottobre 2026. Stato: **approvato e implementato** (15/10/2026). Uso: [`docs/batches.md`](../batches.md).
 
 Decisioni dell'utente: ridipintura spenta nei lotti (solo come opzione esplicita `"finish": {"paint": true}`); righe fallite riprovate solo con `--retry-failed`; le uscite arrivano alla coda di revisione della funzione 7 tramite `outputs.json`.
-Piano generale: il piano di produzione (privato), funzione 1.
 
 In breve: un lotto è un elenco di righe; ogni riga diventa un **run manifest** come quelli di oggi e passa per gli
 stessi codici di generazione e provenienza. Il lotto aggiunge solo tre cose: la lettura dell'elenco, uno stato per

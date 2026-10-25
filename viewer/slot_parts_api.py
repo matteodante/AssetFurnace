@@ -1,4 +1,4 @@
-"""The studio's Characters in pieces page (feature 4).
+"""The studio's Characters in pieces page: armour pieces worn on a rigged base body.
 
     GET  /api/slot-parts                 base bodies, sets made so far, the slot catalogue, the run
     POST /api/slot-parts/bodies          {"name", "picture", "model", "rigged", "clips", "labels"}:

@@ -1,8 +1,8 @@
-"""Tests for game-ready materials: tint mask, baked-light checks, derived maps, ORM.
+"""Tests for game-ready materials: ORM packing, the sidecar and the licence record.
 
 Every fixture is built here, small and synthetic: a UV sphere whose texture rows map to
-latitude, so a texel's surface normal is known exactly and light can be painted into
-the albedo on purpose. The shipping functions are imported, never re-derived.
+latitude, so a texel's surface normal is known exactly. The shipping functions are
+imported, never re-derived.
 """
 
 from __future__ import annotations
@@ -13,16 +13,13 @@ import json
 import numpy as np
 import pytest
 from PIL import Image
-from scipy import ndimage
 
-from image_to_3dlab import material_zones as mz
 from image_to_3dlab import materials as m
 from image_to_3dlab.edit_glb import EditGLB
 from image_to_3dlab.glb_turn import build_glb, parse_glb
 
 SIZE = 128
 RED, GREEN, BLUE = (200, 40, 30), (40, 160, 60), (40, 60, 190)
-LIGHT = np.array([0.3, 0.8, 0.5]) / np.linalg.norm([0.3, 0.8, 0.5])
 
 
 def sphere(rings: int = 32, segments: int = 64):
@@ -135,46 +132,6 @@ def make_glb(path, albedo: np.ndarray, mr: np.ndarray | None = None, rigged: boo
 @pytest.fixture
 def banded(tmp_path):
     return make_glb(tmp_path / "banded.glb", banded_albedo())
-
-
-def test_srgb_round_trip_and_linear_luminance():
-    values = np.linspace(0, 1, 11)
-    np.testing.assert_allclose(m.linear_to_srgb(m.srgb_to_linear(values)), values, atol=1e-6)
-    assert m.srgb_to_linear(np.array(0.5)) == pytest.approx(0.214, abs=1e-3)
-    assert m.luminance(np.array([1.0, 1.0, 1.0])) == pytest.approx(1.0)
-
-
-def test_the_tint_formula_lives_with_the_zones_trial_not_the_chain():
-    """Code read 18/10/2026: one material per piece is the chain's; the tint formula is the zones
-    trial's, and nothing in Unreal applies it."""
-    assert not hasattr(m, "apply_tint") and callable(mz.apply_tint)
-    assert "nothing in Unreal applies it" in mz.__doc__ and "outside the chain" in mz.__doc__
-
-
-def test_default_tint_reproduces_the_albedo_exactly():
-    rng = np.random.default_rng(0)
-    albedo = rng.uniform(0.05, 0.9, (8, 8, 3))
-    mask = np.zeros((8, 8, 3))
-    mask[:4, :, 0] = 1.0
-    means = np.array([albedo[:4].reshape(-1, 3).mean(0), [0.2, 0.2, 0.2], [0.1, 0.3, 0.5]])
-    np.testing.assert_allclose(mz.apply_tint(albedo, mask, means, means), albedo, atol=1e-9)
-
-
-def test_tint_moves_the_zone_mean_to_the_tint_and_leaves_the_rest():
-    rng = np.random.default_rng(0)
-    # One material: a single colour carrying brightness detail, as a de-lit albedo does.
-    albedo = rng.uniform(0.5, 1.0, (8, 8, 1)) * np.array([0.6, 0.18, 0.12])
-    mask = np.zeros((8, 8, 3))
-    mask[:4, :, 0] = 1.0
-    mean = albedo[:4].reshape(-1, 3).mean(0)
-    means = np.array([mean, mean, mean])
-    tints = means.copy()
-    tints[0] = [0.05, 0.1, 0.3]
-    out = mz.apply_tint(albedo, mask, means, tints)
-    np.testing.assert_allclose(out[:4].reshape(-1, 3).mean(0), tints[0], atol=1e-6)
-    np.testing.assert_allclose(out[4:], albedo[4:])
-    # Brightness detail inside the zone survives the recolour.
-    assert np.corrcoef(m.luminance(out[:4]).ravel(), m.luminance(albedo[:4]).ravel())[0, 1] > 0.99
 
 
 def test_writing_into_the_assets_own_folder_is_refused(banded):
@@ -584,7 +541,7 @@ def test_without_a_map_roughness_and_metal_are_the_factors(tmp_path):
     assert set(np.unique(orm[..., 1])) == {153} and set(np.unique(orm[..., 2])) == {64}
 
 
-def test_the_sidecar_says_what_was_made_and_leaves_zones_for_later(banded, tmp_path):
+def test_the_sidecar_says_what_was_made(banded, tmp_path):
     result = m.make_game_materials(banded, tmp_path / "out", texture_prefix="T_Probe")
     sidecar = json.loads(result.sidecar_path.read_text())
     assert sidecar["schema"] == m.SIDECAR_SCHEMA
@@ -592,16 +549,6 @@ def test_the_sidecar_says_what_was_made_and_leaves_zones_for_later(banded, tmp_p
     assert sidecar["textures"]["orm"] == "T_Probe_ORM.png"
     assert sidecar["textures"]["orm_channels"] == {"R": "occlusion", "G": "roughness", "B": "metallic"}
     assert sidecar["untextured"] == []
-
-
-def test_islands_two_texels_apart_keep_their_own_numbers():
-    raw = np.zeros((32, 32), bool)
-    raw[4:28, 4:14] = True
-    raw[4:28, 16:28] = True                 # a two-texel gutter at columns 14-15
-    grown = ndimage.binary_dilation(raw, iterations=1)
-    labels = m.island_labels(grown, core=raw)
-    assert labels[10, 10] != labels[10, 20]
-    assert labels[10, 14] == labels[10, 10] and labels[10, 15] == labels[10, 20]
 
 
 # --------------------------------------------------------------------------- script

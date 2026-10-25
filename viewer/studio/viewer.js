@@ -22,7 +22,7 @@ const ICON = {
   pause: '<svg viewBox="0 0 24 24"><path d="M7 5h3v14H7zM14 5h3v14h-3z"/></svg>',
 };
 
-export function createStudioViewer({ stage, logoUrl, onClipChange, onModelLoaded }) {
+export function createStudioViewer({ stage, logoUrl, onClipChange }) {
   const pane = document.createElement('div');
   pane.className = 'sv-pane';
   pane.innerHTML = '<span class="stats" hidden></span>';
@@ -266,7 +266,6 @@ export function createStudioViewer({ stage, logoUrl, onClipChange, onModelLoaded
         setTurntable(turning);
         resize();
         drawGizmo();
-        onModelLoaded?.(loaded, requestRender);
       },
       onError: (error) => {
         if (token !== loadToken) return;

@@ -2,12 +2,11 @@
 
 I documenti in questa cartella descrivono funzionalità proposte. Lo stato di un piano non implica che il codice sia già implementato.
 Stato aggiornato al 18/10/2026. Le regole trasversali decise dall'utente (niente controlli sui pixel, controlli imparati
-validati sui suoi giudizi, motori in `vendor/` senza ComfyUI, turni sulla GPU, review di Codex facoltativa) sono nel
-piano della pipeline (privato).
+validati sui suoi giudizi, motori in `vendor/` senza ComfyUI, turni sulla GPU, review di Codex facoltativa) sono in
+`AGENTS.md`.
 
 | Piano | Stato | Revisione |
 | --- | --- | --- |
-| Pipeline di produzione per un gioco intero (piano privato) | Tutte e otto le funzioni chiuse su `main` (18/10/2026), con la parità dei passi su studio, riga di comando e agenti e due controlli rispetto agli standard. Tabella dello stato e regole trasversali nel documento | — |
 | [Funzione 1: lotti e accesso per agenti (progetto)](2026-10-15-batch-mcp-design.md) | Implementato (PR #2): lotti JSON/CSV con ripresa, server MCP, pagina Batches; [uso](../batches.md) | Codex, poi stop |
 | [Funzione 2: dal riferimento al concept (progetto)](2026-10-15-reference-concept-design.md) | Costruita: pacchetto, mappe, API e `generate`, pannello "Draw from a reference" dello studio (PR #23, #24, #33, #36); [uso](../reference-concept.md) | Codex facoltativo, non fatto |
 | [Funzione 3: bibbia dello stile (progetto)](2026-10-15-style-bible-design.md) | Chiusa il 17/10/2026: bibbia, prompt e riferimenti (PR #10), facoltativa su tutte e tre le strade (PR #74); lo stile si dà solo con il testo; il giudice automatico di stile è rimandato | Codex, 2 giri |

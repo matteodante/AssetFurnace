@@ -17,12 +17,13 @@ from image_to_3dlab.batch_steps import generate as generate_step
 from tests.test_batch_steps import _context, _row
 
 
-def test_a_commercial_batch_is_held_to_the_picture_models_licence(tmp_path):
+def test_a_batch_is_held_to_the_picture_models_licence(tmp_path):
     spec = tmp_path / "lot.json"
     spec.write_text(json.dumps({"schema_version": 1, "name": "lot", "use_case": "game", "distribution": "worldwide",
-                                "commercial_intent": True, "output": {"directory": str(tmp_path / "out")},
+                                "license_policy": {"allow_conditional": False},
+                                "output": {"directory": str(tmp_path / "out")},
                                 "rows": [{"id": "SM_A", "prompt": "a red barrel", "steps": ["picture"]}]}))
-    with pytest.raises(batch.BatchError, match="commercial"):   # Qwen-Image is research-only
+    with pytest.raises(batch.BatchError, match="the picture model"):   # Qwen-Image is conditional
         batch.load_batch(spec)
 
 

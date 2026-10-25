@@ -3,7 +3,7 @@
 Data: 15 ottobre 2026. Stato: **costruita** (sezione 6): pacchetto PR #23, mappe d'ingresso PR #24, API e
 `generate` PR #33, pannello dello studio PR #36. Prova decisa e rifatta con la ricetta Turbo (sezione 10). File della
 visione scaricato dal catalogo (PR #9).
-Piano delle funzioni: il piano di produzione (privato), funzione 2. La
+La
 funzione è generica: vale per qualunque riferimento e qualunque progetto.
 
 In breve: si vuole un'immagine **nuova** che si riconosca dalla forma di un riferimento (un'immagine o un modello),

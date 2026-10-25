@@ -1,4 +1,4 @@
-"""Acceptance for feature 7: an asset broken on purpose is stopped by the right check.
+"""Acceptance for the checks: an asset broken on purpose is stopped by the right check.
 
 Each fixture in `_check_fixtures.py` carries one defect. The clean asset passes every
 check; each broken copy fails the check meant to catch it, and (where the defect is

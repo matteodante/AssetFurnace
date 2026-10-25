@@ -1,4 +1,4 @@
-"""The MCP tools for the review queue (feature 7) and characters in pieces (feature 4),
+"""The MCP tools for the review queue and characters in pieces,
 called as plain functions. The same library calls as the studio's review sheet and pieces
 page: docs/plans/2026-10-17-step-parity-design.md, section 6. No run really starts."""
 

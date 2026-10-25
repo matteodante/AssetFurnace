@@ -1,4 +1,4 @@
-"""Characters in pieces: armour slots worn on a rigged base body (feature 4).
+"""Characters in pieces: armour slots worn on a rigged base body.
 
     from image_to_3dlab.slot_parts import body, cuts, masks, slots
 

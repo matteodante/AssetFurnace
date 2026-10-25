@@ -1,4 +1,4 @@
-"""A concept request, from words and pictures to a drawn picture with its record (feature 2).
+"""A concept request, from words and pictures to a drawn picture with its record.
 
 The studio's "Draw from a reference" panel (`viewer/concept_api.py`), the command line
 (`scripts/reference_concept.py make`) and the batch step `concept` all go through here:
@@ -72,7 +72,7 @@ def plan(mode: str, shape: list[Path], style_refs: list[Path], fields: dict[str,
         piece = _text(fields, "piece")
         prompt, name, against, fit = prompts.add_piece(piece, style=style), piece, shape[0], False
     elif mode == "complete_piece":
-        # A cut-out piece on grey (function 4): no outline of its own to measure against.
+        # A cut-out piece on grey (characters in pieces): no outline of its own to measure against.
         piece = _text(fields, "piece")
         prompt, name, against, fit = prompts.complete_piece(piece, style=style), piece, None, False
     else:

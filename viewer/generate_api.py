@@ -36,7 +36,6 @@ import image_api
 import blender_edit_api
 import batch_api
 import review_api
-import material_labels_api
 import concept_api
 import creature_family_api
 import slot_parts_api
@@ -2060,8 +2059,7 @@ def _job_status_payload(job: Job) -> dict[str, Any]:
 
 # The studio's own pages, asked first and in this order: each answers the paths it knows and
 # checks its requests itself (request_utils), so it comes before the checks below.
-PAGE_APIS = (blender_edit_api, review_api, material_labels_api, concept_api, unreal_export_api, batch_api,
-             slot_parts_api)
+PAGE_APIS = (blender_edit_api, review_api, concept_api, unreal_export_api, batch_api, slot_parts_api)
 FRONT_DOOR = ("", "/", "/viewer", "/viewer/")   # these paths open the studio
 ANY = None   # in a route's parts: any one part, handed to the handler
 NEXT = object()   # a route handler's answer for a path it leaves to the routes after it

@@ -1,6 +1,6 @@
 # Prova rapida della funzione 4: parti per slot e adattamento a un corpo base (risultati)
 
-Date: 15–16 ottobre 2026. Progetto e decisioni: `2026-10-15-slot-parts-spike-design.md`. Piano: il piano di produzione (privato), sezione 4.
+Date: 15–16 ottobre 2026. Progetto e decisioni: `2026-10-15-slot-parts-spike-design.md`.
 Script usa e getta in `journal/spike-slot-parts/` (locale, non in questa PR).
 
 > **Aggiornamento del 16/10/2026, sera**: una seconda prova della strada C ribalta la scelta per la qualità dei pezzi.

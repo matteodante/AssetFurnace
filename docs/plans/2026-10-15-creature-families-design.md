@@ -4,7 +4,6 @@
 
 Data: 15 ottobre 2026. Stato: **approvato; PR 1 implementata** (riconoscimento, controllo, bipede digitigrado e
 quadrupede, studio). Le differenze rispetto al progetto sono nella sezione 11.
-Piano di riferimento: il piano di produzione (privato), funzione 6.
 
 In una riga: dopo il rig automatico, AssetFurnace **riconosce la famiglia** della creatura dallo scheletro (umanoide,
 bipede digitigrado, quadrupede, molte zampe, alata, serpente, pianta), dà un **nome a ogni catena di ossa** (zampe,
@@ -200,7 +199,7 @@ Solo la PR 4 dipende dalla funzione 5 (PR #6): parte dopo il suo merge. Le altre
 ## 7. GPU e tempi
 
 Tutto il lavoro su GPU (generazione delle 4 creature, SkinTokens, eventuale UniRig) prende prima il lucchetto
-`C:\Users\Matteo\AppData\Local\Temp\assetfurnace-gpu.lock` (pid e nome della sessione) e lo libera alla fine.
+`%TEMP%\assetfurnace-gpu.lock` (pid e nome della sessione) e lo libera alla fine.
 Stima per creatura: immagine ~1 min, Pixal3D ~4-5 min, finitura ~4 min, SkinTokens ~1 min. Le clip e i controlli
 girano in Blender su CPU.
 

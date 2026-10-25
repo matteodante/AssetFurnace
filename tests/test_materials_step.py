@@ -1,4 +1,4 @@
-"""The materials step on every route, as the user closed function 8: one material per asset or
+"""The materials step on every route, as the user decided: one material per asset or
 piece, proposed by a rule and chosen by a person; no automatic zones and no zone masks
 (section 9 of docs/plans/2026-10-17-step-parity-design.md). It can be left out, chosen,
 and run again on its own."""
@@ -107,7 +107,7 @@ def test_a_material_not_in_the_list_stops_the_batch_first(tmp_path, monkeypatch)
 
 def test_the_step_is_described_with_its_command_line():
     spec = step_catalog.get("materials")
-    assert spec.feature == 8 and spec.skip and spec.replace == ()
+    assert spec.skip and spec.replace == ()
     assert [p.name for p in spec.params] == ["material"]
     assert "leather" in step_catalog.choices(spec.param("material"))
     import export_unreal

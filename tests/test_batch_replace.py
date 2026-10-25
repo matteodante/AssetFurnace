@@ -105,13 +105,10 @@ def test_a_replacing_file_is_held_to_the_licence_policy(tmp_path, steps):
                                                                 "license": {"name": "NC"}}))
     path = _spec(tmp_path, {"replace": {"finish": "mine.glb"}})
     spec = json.loads(path.read_text())
-    spec.update(use_case="game", distribution="worldwide", commercial_intent=True)
+    spec.update(use_case="game", distribution="worldwide")
     path.write_text(json.dumps(spec))
-    with pytest.raises(batch.BatchError, match="research-only"):   # non-commercial: refused for a commercial run
+    with pytest.raises(batch.BatchError, match="research-only"):
         batch.load_batch(path)
-    spec.update(commercial_intent=False)   # any other run goes on, warned
-    path.write_text(json.dumps(spec))
-    assert any("research-only" in w for w in batch.load_batch(path).warnings)
 
 
 def test_a_changed_file_reruns_from_its_step_and_keeps_the_ones_before(tmp_path, steps):

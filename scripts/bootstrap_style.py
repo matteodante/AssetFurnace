@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""Install the style judges' models and llama.cpp, after saying what, how big and under which licence.
+"""Install llama.cpp for the style judge, after saying what, how big and under which licence.
 
-    python scripts/bootstrap_style.py                      # all of it, asks first
-    python scripts/bootstrap_style.py --only siglip2,csd   # just these
+    python scripts/bootstrap_style.py                      # asks first
+    python scripts/bootstrap_style.py --only llama         # the same, named
     python scripts/bootstrap_style.py --yes                # non-interactive (agents, batch setup)
 
-Parts: `siglip2` (SigLIP 2, a general image embedding, Apache-2.0), `csd` (CSD ViT-L, an
-embedding trained for style, CC-BY-4.0), `llama` (llama.cpp, MIT, which runs the
-Qwen3-VL judge). The Qwen3-VL model itself comes with Qwen-Image's setup. Hugging Face
-files are fetched at a pinned revision into the usual cache; llama.cpp is checked
-against a pinned checksum and unpacked into `vendor/llama-cpp/`.
+The one part is `llama` (llama.cpp, MIT, which runs the Qwen3-VL judge). The Qwen3-VL model
+itself comes with Qwen-Image's setup. llama.cpp is checked against a pinned checksum and
+unpacked into `vendor/llama-cpp/`.
 
 Nothing is fetched without an explicit yes.
 """
@@ -31,7 +29,7 @@ if str(REPO) not in sys.path:
 
 from image_to_3dlab.style import models  # noqa: E402
 
-PARTS = ("siglip2", "csd", "llama")
+PARTS = ("llama",)
 
 
 def parts(only: str | None) -> list[str]:
@@ -49,31 +47,17 @@ def _size(value: int) -> str:
 
 
 def announcement(chosen: list[str], build: models.LlamaBuild | None) -> str:
-    lines, total = ["Style judges: this will download"], 0
-    for key in chosen:
-        if key == "llama":
-            if build is None:
-                lines.append("  llama.cpp: no prebuilt build for this machine; build it yourself into vendor/llama-cpp/")
-                continue
+    lines, total = ["Style judge: this will download"], 0
+    if "llama" in chosen:
+        if build is None:
+            lines.append("  llama.cpp: no prebuilt build for this machine; build it yourself into vendor/llama-cpp/")
+        else:
             lines.append(f"  llama.cpp {models.LLAMA_TAG} ({models.LLAMA_LICENSE})  {_size(build.size)}\n"
                          f"      from {models.LLAMA_RELEASES}{build.archive}\n"
                          f"      to   vendor/llama-cpp/")
             total += build.size
-        else:
-            model = models.HUB_MODELS[key]
-            lines.append(f"  {model.label} ({model.license})  {_size(model.size)}\n"
-                         f"      from https://huggingface.co/{model.repo} at {model.revision[:12]}\n"
-                         f"      {model.note}")
-            total += model.size
     lines.append(f"  total {_size(total)}")
     return "\n".join(lines)
-
-
-def fetch_hub(model: models.HubModel) -> None:
-    from huggingface_hub import hf_hub_download
-
-    for name in model.files:
-        hf_hub_download(model.repo, name, revision=model.revision)
 
 
 def download(url: str) -> bytes:
@@ -161,18 +145,14 @@ def main(argv: list[str] | None = None) -> int:
         if input("Continue? [y/N] ").strip().lower() not in {"y", "yes"}:
             print("Nothing downloaded.")
             return 1
-    for key in chosen:
-        if key == "llama":
-            if build is None:
-                print("llama.cpp has no prebuilt release for this machine (Windows x64, Linux x64 and Apple "
-                      "Silicon only): build it from https://github.com/ggml-org/llama.cpp into vendor/llama-cpp/",
-                      flush=True)
-                return 1
-            print("Downloading llama.cpp...", flush=True)
-            fetch_llama(build)
-        else:
-            print(f"Downloading {models.HUB_MODELS[key].label}...", flush=True)
-            fetch_hub(models.HUB_MODELS[key])
+    if "llama" in chosen:
+        if build is None:
+            print("llama.cpp has no prebuilt release for this machine (Windows x64, Linux x64 and Apple "
+                  "Silicon only): build it from https://github.com/ggml-org/llama.cpp into vendor/llama-cpp/",
+                  flush=True)
+            return 1
+        print("Downloading llama.cpp...", flush=True)
+        fetch_llama(build)
     print("Done.", flush=True)
     return 0
 

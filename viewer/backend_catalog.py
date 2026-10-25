@@ -35,7 +35,6 @@ if str(REPO) not in sys.path:
 from image_to_3dlab import blender as _blender
 from image_to_3dlab import clip_library as _clips
 from image_to_3dlab import host as _host
-from image_to_3dlab import material_models as _material_models
 from image_to_3dlab import matte as _matte
 from image_to_3dlab import moge_fov as _moge
 from image_to_3dlab import prompt_rewrite as _prompt_rewrite
@@ -587,12 +586,9 @@ CATALOG: tuple[Backend, ...] = (
         label="Qwen-Image 2.1 Turbo (text to image)",
         kind="image",
         best_for="Makes the source image when you do not have one. Prompt in, picture out.",
-        tradeoff="Runs on your machine, 8 steps at cfg 1, about 15 s a picture on an RTX 5070 Ti.",
+        tradeoff="Runs on your machine, and the pictures you make are yours.",
         license_name="Qwen Research License",
         license_url="https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE",
-        caveat=("Non-commercial only: the licence allows the model for research or evaluation "
-                "purposes only (sections 1(i), 2(a)); commercial use needs Qwen's separate "
-                "licence. Every picture's record says so."),
         install="Prebuilt stable-diffusion.cpp binary in vendor/sdcpp/",
         runs_on=(APPLE, NVIDIA, AMD),
         setup_minutes=15,
@@ -699,69 +695,6 @@ CATALOG: tuple[Backend, ...] = (
                       HF_HUB_DIR / "models--VAST-AI--SkinTokens",
                       note="Pinned to the revision we tested. Setup also fetches "
                            "Qwen3-0.6B's config and tokenizer (~16 MB, no weights)."),
-        ),
-    ),
-    Backend(
-        id="materials-light",
-        label="Baked-light removal (Marigold-IID Lighting)",
-        kind="tool",
-        best_for=("Takes the light painted into a texture back out, so a model lit in the "
-                  "engine is not lit twice."),
-        tradeoff=("Optional, and off until it passes the test against your own labels. "
-                  "Trained on interiors and photos; untried on stylised art."),
-        license_name="CreativeML Open RAIL++-M (weights); Apache-2.0 (code)",
-        license_url=_material_models.OPENRAIL_URL,
-        install="scripts/bootstrap_materials.py --only env,marigold-lighting",
-        runs_on=(NVIDIA,),
-        setup_minutes=10,
-        caveat=("The weights come with use restrictions (no medical advice, no law "
-                "enforcement, no harassment...), and anyone you pass them on to is bound "
-                "by them too. Your results are yours."),
-        build_probes=(_material_models.env_marker(),),
-        upstream=("prs-eth Marigold", "https://github.com/prs-eth/Marigold"),
-        weights=(
-            WeightSet(_material_models.MARIGOLD_LIGHTING.label,
-                      _material_models.MARIGOLD_LIGHTING.repo,
-                      _material_models.MARIGOLD_LIGHTING.size,
-                      HF_HUB_DIR / "models--prs-eth--marigold-iid-lighting-v1-1",
-                      note="fp16 files only, at a pinned revision. Setup also makes its own "
-                           "Python environment (~3 GB, mostly PyTorch)."),
-        ),
-    ),
-    Backend(
-        id="materials-zones",
-        label="Tint zones by material, a trial (Qwen3.5 + SAM 3.1, or SAM 2.1)",
-        kind="tool",
-        best_for=("A trial outside the pipeline: splits an asset's colour into its materials (leather, "
-                  "metal, cloth...) for scripts/zones_trial.py and game_materials.py --zones. The "
-                  "pipeline gives each piece one material, which you correct."),
-        tradeoff=("Not used by any step: it reached 72% against your labels, under the bar. Install it "
-                  "only to run the trial again. SAM 3.1 is gated: request access on its Hugging Face "
-                  "page first; until then SAM 2.1 regions named by Qwen3.5 stand in."),
-        license_name="Apache-2.0 (Qwen3.5-4B, SAM 2.1); SAM License (SAM 3.1)",
-        license_url=_material_models.SAM31.license_url,
-        install="scripts/bootstrap_materials.py --only env,qwen35,sam21,sam31",
-        runs_on=(NVIDIA,),
-        setup_minutes=20,
-        caveat=("SAM 3.1 needs Meta's approval: its Hugging Face page asks for your name, date of "
-                "birth, country, affiliation and role. The SAM License is free and worldwide but "
-                "forbids uses under arms-export rules (ITAR) or barred by trade controls: military "
-                "or warfare, nuclear, espionage, developing or using guns or illegal weapons "
-                "(section 1.b.v). Meta may change it at any time (section 8)."),
-        gated_repo=_material_models.SAM31.repo,
-        build_probes=(_material_models.env_marker(),),
-        upstream=("Meta SAM 3", "https://github.com/facebookresearch/sam3"),
-        weights=(
-            WeightSet(_material_models.QWEN35.label, _material_models.QWEN35.repo, _material_models.QWEN35.size,
-                      HF_HUB_DIR / "models--Qwen--Qwen3.5-4B",
-                      note="bf16, at a pinned revision; names the materials it sees."),
-            WeightSet(_material_models.SAM31.label, _material_models.SAM31.repo, _material_models.SAM31.size,
-                      HF_HUB_DIR / "models--facebook--sam3.1",
-                      note="Gated. Meta's checkpoint at a pinned revision; setup converts its image "
-                           "detector for transformers."),
-            WeightSet(_material_models.SAM21.label, _material_models.SAM21.repo, _material_models.SAM21.size,
-                      HF_HUB_DIR / "models--facebook--sam2.1-hiera-large",
-                      note="Apache-2.0, not gated: the fallback until SAM 3 is granted."),
         ),
     ),
     Backend(

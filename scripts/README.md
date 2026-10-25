@@ -12,12 +12,10 @@ docstring, so a new script is not finished until it is listed here.
 Most tools print their real documentation with `--help`; the docstring at the top of
 each file explains *why* it exists, which is usually the part you need.
 
-## Guided editor feasibility
+## Open an asset in Blender
 
 | Script | What it does |
 |---|---|
-| `inspect_edit_asset.py` | Check a GLB for the guided editor and save reproducible S0/RIG0 evidence. |
-| `blender_edit_bridge.py` | Round-trip canonical editing buffers through Blender without reimporting the GLB. |
 | `blender_open_asset.py` | Open an isolated GLB editing copy in Blender and save a resumable workspace. |
 
 ## Generate an asset
@@ -47,7 +45,7 @@ game-ready LODs), start with [the prop sheet guide](../docs/prop-sheets.md).
 | `bootstrap_blender.py` | Install Blender 4.2 LTS for Finish on Linux, from blender.org. |
 | `bootstrap_gltfpack.py` | Install gltfpack for split props, from meshoptimizer's GitHub release. |
 | `bootstrap_gltf_validator.py` | Install Khronos' glTF-Validator for the asset checks, from its GitHub release. |
-| `bootstrap_style.py` | Install the style judges' models and llama.cpp, after saying what, how big and under which licence. |
+| `bootstrap_style.py` | Install llama.cpp for the style judge, after saying what, how big and under which licence. |
 | `bootstrap_hunyuan_xiong.py` | Set up Hunyuan3D-MLX (Xiong, full pipeline): both Python environments, then the weights. |
 | `bootstrap_matte.py` | Install BiRefNet-lite, the background remover every backend uses once it is present. |
 | `bootstrap_clip_library.py` | Install the CC0 creature clip library. |
@@ -121,20 +119,10 @@ The asset's surface, as opposed to its shape.
 | `feature_mask.py` | Build a UV-space mask for one feature of a mesh, from a point in 3D. |
 | `bake_stiffness.py` | Bake foliage stiffness into a GLB as vertex colours, for engine-side wind. |
 | `classify_thickness.py` | Separate solid body from thin foliage by measuring local thickness. |
-| `material_label_set.py` | Queue assets for the user's material labels, follow the progress, export what is complete. |
-| `label_sheet.py` | Build the pictures of the material label sheet, and bring its labels back into the project's record. |
 | `autorig.py` | Give a model a skeleton, or play preset clips on a rigged one, as the studio's Animate tab does. |
 | `text_image.py` | Make a picture from words, as the studio's Create does, from the command line. |
 | `reference_concept.py` | Draw a new concept from a reference: prepare a map, then redraw, dress, add a piece or turn it. |
 | `game_materials.py` | Pack a generated GLB's own maps as a game-ready ORM, with its sidecar and licence record. |
-| `bootstrap_materials.py` | Install the game-material models and their environment, after saying what, how big and under which licence. |
-| `delight_materials.py` | Take the light painted into an asset's texture, or into a concept, back out. |
-| `estimate_pbr.py` | Estimate roughness and metallic for an asset's materials that have none. |
-| `pbr_trial.py` | Run the Poly Haven trial for estimated roughness and metallic. |
-| `baked_light_trial.py` | Build, train and test the learned baked-light check. |
-| `zones_trial.py` | Test tint zones by material, and the roughness and metallic they imply. |
-| `materials_worker.py` | Run a material model on images, inside the materials environment. |
-| `sam3_keys.py` | Map a SAM 3 / SAM 3.1 checkpoint from Meta's layout to the one transformers' Sam3Model loads. |
 
 ## Measure and judge
 
@@ -147,7 +135,6 @@ Numbers and renders to decide whether a change helped. Read `docs/` before trust
 | `check_asset.py` | Run the automatic checks on a GLB, write `<name>.checks.json` and put it in the review queue. |
 | `review_queue.py` | See the review queue, and approve an asset or send it back with a note. |
 | `style_bible.py` | Keep a project's style bible: approved and rejected pictures with notes, prompts and style references. |
-| `style_race.py` | Race the style judges on concepts the user has labelled, and say which ones may be used. |
 | `ribbon_metric.py` | Measure how torn a generated mesh is, and gate post-processing on it. |
 | `tear_provenance.py` | Ask of every large tear: could the input view see it?. |
 | `glb_forensics.py` | Dump what a GLB actually contains, so a reference asset can be diffed against ours. |
@@ -169,7 +156,6 @@ These talk to a running Blender over the `execute_code` socket on port 9876 unle
 | `blender_render_asset.py` | Import a GLB into the local Blender MCP scene and render cardinal previews. |
 | `blender_turntable.py` | Render a seamlessly looping 360-degree turntable of a GLB via the Blender MCP scene. |
 | `blender_light_orbit.py` | Render a GLB under an orbiting key light, holding the camera still. |
-| `blender_render_views.py` | Render a GLB's albedo unlit from an orbit of views, with the UV and normal of every pixel. |
 | `blender_concept_views.py` | Render a GLB for a concept: a lit colour picture and a depth map per view, plus the bones. |
 | `blender_lineup_sweep.py` | Render a camera sweep past a line-up of assets, headless. |
 | `blender_orbit_camera.py` | Point an orbit camera at a target and (optionally) render. |
@@ -232,14 +218,13 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 
 ## Characters in pieces
 
-Feature 4: armour slots worn on a rigged base body. The logic is in `image_to_3dlab/slot_parts/`.
+Armour slots worn on a rigged base body. The logic is in `image_to_3dlab/slot_parts/`.
 
 | Script | What it does |
 |---|---|
-| `slot_parts.py` | Characters in pieces (feature 4): register a base body, then cut a concept into slots. |
+| `slot_parts.py` | Characters in pieces: register a base body, then cut a concept into slots. |
 | `blender_fit_parts.py` | Fit armour pieces onto a rigged base body in Blender, skin them to its skeleton, mask the body. |
 | `blender_segment_parts.py` | Route B0: split a whole-character model into one piece per slot, cut edges closed. |
-| `migrate_set_outfits.py` | Write the outfit's words into sets made before they were saved with the concept. |
 
 ## Export for Unreal
 

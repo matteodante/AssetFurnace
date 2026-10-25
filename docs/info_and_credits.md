@@ -30,11 +30,8 @@ This lab builds on other people's models and ports. Thank you.
 
 ## Licences travel with the output
 
-- Qwen-Image: non-commercial use only. The
-  [Qwen Research License](https://huggingface.co/Qwen/Qwen-Image-2.1-Turbo/blob/main/LICENSE)
-  (Release Date 20 Sept 2026) allows the model "for research or evaluation purposes only"
-  (1(i), 2(a)), asks a separate licence for commercial use (2(b)), and says nothing about who
-  owns the outputs. AssetFurnace is a non-commercial project.
+- Qwen-Image: the pictures you make are yours
+  ([Qwen's statement](https://x.com/QwenDevs/status/2101917379785838660), 21 Sept 2026).
 - The Hunyuan3D weights are **not licensed in the EU, the UK or South Korea**. dgrauet's
   shape port is Tencent-licensed code too, which is why it is cloned separately rather than
   shipped here.

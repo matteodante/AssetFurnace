@@ -42,8 +42,7 @@ def models(matte: str | None = None) -> list[dict]:
 
 
 def classification() -> str:
-    """The set's licence class: the strictest of the models every set goes through (Qwen's
-    research-only since its licence was read, 2026-10-17)."""
+    """The set's licence class: the strictest of the models every set goes through."""
     from image_to_3dlab.unreal_profile import strictest_class
 
     return strictest_class(m.get("classification") for m in models()) or "commercial-conditional"

@@ -58,7 +58,6 @@ class StepSpec:
     replace: tuple[str, ...]         # file types that can stand in for its output
     cli: str                         # its command line
     run: str                         # its one implementation, module:function
-    feature: int | None = None       # the feature number in the production plan, if any
     candidates: str | None = None    # the parameter that makes several to pick from
     gpu: bool = False
     note: str = ""
@@ -126,7 +125,7 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
              "waits for a pick; the candidates are kept, so picking draws nothing again.",
     ),
     StepSpec(
-        name="concept", label="Concept from a reference", feature=2, takes=("picture",), makes="picture",
+        name="concept", label="Concept from a reference", takes=("picture",), makes="picture",
         params=(
             Param("mode", "choice", None, choices=MODES, flag="",
                   help="redraw, dress, add_piece, other_view or complete_piece"),
@@ -209,7 +208,7 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
              "rigged GLB becomes the row's asset.",
     ),
     StepSpec(
-        name="clips", label="Family clips", feature=6, takes=("asset",), makes="clips",
+        name="clips", label="Family clips", takes=("asset",), makes="clips",
         params=(
             Param("family", "choice", "auto", choices=FAMILIES, help="the creature's family; auto: recognised"),
             Param("clips", "bool", True, flag="--no-clips",
@@ -240,7 +239,7 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
              "model; the export takes the clips.",
     ),
     StepSpec(
-        name="materials", label="Material", feature=8, takes=("asset",), makes="material",
+        name="materials", label="Material", takes=("asset",), makes="material",
         params=(
             Param("material", "choice", None, choices=None,
                   help="the asset's one material (metal, leather, cloth...); default the rule's, from "
@@ -249,11 +248,11 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
         row_fields=("kind",),
         skip="the export keeps the model's own roughness and metal", replace=(),
         cli="scripts/export_unreal.py", run="image_to_3dlab.batch_steps.materials:run",
-        note="One material per asset or piece (function 8); no zones. The export packs its roughness and "
+        note="One material per asset or piece; no zones. The export packs its roughness and "
              "metal into the ORM. A set's pieces: slot_parts.py materials and pieces_materials.",
     ),
     StepSpec(
-        name="export_unreal", label="Unreal export", feature=5, takes=("asset",), makes="export",
+        name="export_unreal", label="Unreal export", takes=("asset",), makes="export",
         params=(
             Param("kind", "choice", "prop", choices=("prop", "creature", "equipment"), row=True),
             Param("size_cm", "float", None, range=(0, SIZE_LIMIT_CM), row=True,
@@ -266,7 +265,7 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
             Param("lods", "files", None, help="detail levels; default the _LODn files beside "
                                               "the model, [] for none"),
             Param("tint", "file", None, off=True, help="tint mask; default the model's own T_<model>_Tint.png "
-                                                       "(only the zones trial writes one); false for none"),
+                                                       "if there is one; false for none"),
             Param("forward", "vector3", None, help="which way the model faces, in Blender axes; "
                                                    "default from the creature family, else 0 -1 0"),
             Param("body", "file", None, help="equipment: the rigged body it belongs to"),
@@ -288,7 +287,7 @@ CATALOG: dict[str, StepSpec] = {spec.name: spec for spec in (
         note="The export is an extra output: the row's asset stays the finished model.",
     ),
     StepSpec(
-        name="checks", label="Checks", feature=7, takes=("asset", "picture"), makes="report",
+        name="checks", label="Checks", takes=("asset", "picture"), makes="report",
         params=(
             Param("profile", "choice", None, choices=None,
                   help="thresholds profile; default from the row's kind"),

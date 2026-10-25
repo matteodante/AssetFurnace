@@ -22,7 +22,7 @@ NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 
 
 # How a base body is dressed under its pieces: the user's choice when it is registered
-# (17/10/2026), never assumed. Simple clothes are what classic MMORPGs show between armour pieces.
+# (17/10/2026), never assumed. Simple clothes are what many games show between armour pieces.
 DRESSINGS = {
     "bodysuit": "bodysuit",
     "clothes": "simple clothes (a plain shirt, breeches and cloth shoes)",

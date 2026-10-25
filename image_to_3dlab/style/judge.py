@@ -32,9 +32,11 @@ from pathlib import Path
 from PIL import Image
 
 from image_to_3dlab.style import models
-from image_to_3dlab.style.embed import open_rgb
 
 SIDE = 448  # longest side sent to the model: about 200 vision tokens a picture
+# Concepts are drawn on light grey; a cut-out (alpha) picture is put back on the same grey,
+# or its transparent corners would read as black.
+BACKGROUND = (214, 214, 214)
 YES = {"yes", "y"}
 NO = {"no", "n"}
 PROMPT = ("The first {count} pictures are approved concept art that defines a game's art style. "
@@ -53,6 +55,17 @@ def yes_probability(top_logprobs: list[dict]) -> float:
         elif word in NO:
             no += probability
     return 0.5 if yes + no == 0 else yes / (yes + no)
+
+
+def open_rgb(path: Path) -> Image.Image:
+    with Image.open(path) as image:
+        image.load()
+        if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+            rgba = image.convert("RGBA")
+            flat = Image.new("RGB", rgba.size, BACKGROUND)
+            flat.paste(rgba, mask=rgba.getchannel("A"))
+            return flat
+        return image.convert("RGB")
 
 
 def _data_url(path: Path) -> str:

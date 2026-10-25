@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Characters in pieces (feature 4): register a base body, then cut a concept into slots.
+"""Characters in pieces: register a base body, then cut a concept into slots.
 
     python scripts/slot_parts.py body knight --image body.png --rigged body_rigged.glb \
         --views body.svviews --dressing clothes [--label race=human --label sex=male]
