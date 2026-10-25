@@ -41,6 +41,8 @@ from generate_api import (
     _terminate_active_job,
 )
 
+from image_to_3dlab import processes
+
 REPO = Path(__file__).resolve().parents[1]
 
 
@@ -119,6 +121,10 @@ def main() -> int:
 
     signal.signal(signal.SIGTERM, _handle_shutdown_signal)
     signal.signal(signal.SIGINT, _handle_shutdown_signal)
+
+    # Windows: sd-cli and the other workers die with this server, also when it is killed
+    # from Task Manager (TerminateProcess runs none of the handlers above).
+    processes.kill_children_with_this_process()
 
     import functools
     handler = functools.partial(Handler, directory=str(REPO))
