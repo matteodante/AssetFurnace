@@ -1,7 +1,7 @@
 """Structural checks for self-contained Blender exports, without rewriting their bytes.
 
-This is not a full glTF conformance or Unreal compatibility validator. Unlike the
-experimental guided editor, manual exchange permits morphs and multiple skins.
+This is not a full glTF conformance or Unreal compatibility validator. Manual exchange
+permits morphs and multiple skins.
 """
 
 from __future__ import annotations

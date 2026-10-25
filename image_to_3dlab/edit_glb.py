@@ -1,6 +1,6 @@
-"""Bounded, read-only GLB inspection for the editor feasibility gate.
+"""Bounded, read-only GLB inspection, shared by the material, export and Blender steps.
 
-This is deliberately not EditDocument or a general glTF validator. Unsupported
+This is deliberately not a general glTF validator. Unsupported
 features fail explicitly; nothing fetches external resources or rewrites an asset.
 Accessor copies have stable source indices, never welded by coincident position.
 """

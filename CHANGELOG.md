@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   embeddings. Their scripts, the Studio label panel, and the Marigold, Qwen3.5 and SAM cards
   in Setup go too; `bootstrap_style.py` now installs only llama.cpp, and `transformers` is no
   longer a requirement.
+- The shelved guided editor: `edit_document`, `edit_math`, `edit_probe`, `edit_topology`,
+  `scripts/inspect_edit_asset.py` and `scripts/blender_edit_bridge.py`. Opening an asset in
+  Blender (`blender_open_asset.py`, the Blender edit panel) stays.
 - FLUX.2 klein 4B from Setup & Status and its `scripts/bootstrap_flux2_klein.py`: no step
   used it, and Setup offered 12.3 GB for nothing. Weights already fetched stay in the Hugging
   Face cache (`models--black-forest-labs--FLUX.2-klein-4B`, `models--unsloth--Qwen3-4B-GGUF`,

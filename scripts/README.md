@@ -12,12 +12,10 @@ docstring, so a new script is not finished until it is listed here.
 Most tools print their real documentation with `--help`; the docstring at the top of
 each file explains *why* it exists, which is usually the part you need.
 
-## Guided editor feasibility
+## Open an asset in Blender
 
 | Script | What it does |
 |---|---|
-| `inspect_edit_asset.py` | Check a GLB for the guided editor and save reproducible S0/RIG0 evidence. |
-| `blender_edit_bridge.py` | Round-trip canonical editing buffers through Blender without reimporting the GLB. |
 | `blender_open_asset.py` | Open an isolated GLB editing copy in Blender and save a resumable workspace. |
 
 ## Generate an asset
