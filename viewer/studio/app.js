@@ -6,7 +6,7 @@ import { createStudioViewer } from './viewer.js';
 import { readyEngines, readableLog, copyDetails } from './jobs.js';
 import { stepBody, wireStep } from './steps.js';
 import { openCreate, runChain } from './create.js';
-import { openActivity, openAbout, openGuide, openReport, closeSheet, usageNotice } from './pages.js';
+import { openActivity, openAbout, openGuide, openReport, closeSheet, usageNotice, openNews, refreshNews } from './pages.js';
 import { STEP_LABELS } from './plan.js';
 import { mountSkins } from './skins.js';
 
@@ -93,13 +93,15 @@ function renderLibrary() {
 
 function summaries(asset) {
   const faces = fileName(asset.finished).match(/_(\d+k)\.glb$/)?.[1];
-  return {
+  const out = {
     picture: asset.picture ? 'Done' : 'No picture kept (model uploaded or older run)',
     model: asset.model ? engineOf(asset.model) : asset.finished ? 'Made outside the app' : '',
     finished: asset.kind === 'prop set' ? `${asset.props.length} props cut out, each with detail levels` : faces ? `${faces.replace('k', ',000')} triangles` : /_full\.glb$/.test(fileName(asset.finished)) ? 'Full detail · every triangle, for renders' : /_hero\.glb$/.test(fileName(asset.finished)) ? 'Hero · sharper face, built on its own' : 'Done',
     rigged: 'Auto-rig',
     animated: asset.clips.map((c) => c.name.replace(/_/g, ' ')).join(', '),
   };
+  if (asset.pixel_match && asset.kind !== 'prop set') out.finished += ` · Pixel Match: ${asset.pixel_match}`;
+  return out;
 }
 
 function renderSteps(asset) {
@@ -668,6 +670,8 @@ window.addEventListener('drop', (event) => {
 
 $('guideBtn').addEventListener('click', () => openGuide($('stage')));
 $('activityBtn').addEventListener('click', () => openActivity($('stage')));
+$('newsBtn').addEventListener('click', () => openNews($('stage'), $('newsBtn')));
+refreshNews($('newsBtn'));   // the count only: the list opens when the person asks
 $('aboutBtn').addEventListener('click', () => openAbout($('stage')));
 $('reportBtn').addEventListener('click', () => openReport($('stage')));
 

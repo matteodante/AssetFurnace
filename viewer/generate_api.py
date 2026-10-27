@@ -38,9 +38,11 @@ import fixspot_api
 import hf_api
 import image_api
 import model_info_api
+import notices_api
 import preview_api
 import request_utils
 import skins_api
+import studio_auth
 import usage_api
 from activity_api import ChainRunner, chain_from_form, read_history
 from assets_api import assets_payload, list_assets
@@ -170,11 +172,14 @@ from rig_api import (
 from update_api import check as update_check
 from welcome_api import payload as welcome_payload
 
-from image_to_3dlab import processes
+from image_to_3dlab import models_home, processes
 from image_to_3dlab.blender import find_blender
 from image_to_3dlab.blender import missing_help as blender_missing_help
 from image_to_3dlab.gpu_memory import gpu_busy_note
-from image_to_3dlab.host import executable  # image_api put the repo on sys.path
+from image_to_3dlab.host import (
+    executable,  # image_api put the repo on sys.path
+    find_uv,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 WRAPPER = REPO / "scripts" / "trellis_space_generate.py"
@@ -232,11 +237,14 @@ TINYCLIP_TIMEOUT_SECONDS = 300
 HUNYUAN_WRAPPER = REPO / "scripts" / "hunyuan_mlx_generate.py"
 HUNYUAN_PYTHON = REPO / "vendor" / "hunyuan-mlx" / ".venv" / "bin" / "python"
 PIXAL3D_ROOT = REPO / "vendor" / "pixal3d-cpp"
+# The models folder this run uses; a new choice in Setup waits for the next start.
+MODELS_STARTED_WITH = models_home.apply()
+MODELS_SETTING_REPO = REPO   # where output/.models-folder is kept; tests point it at a temp folder
 PIXAL3D_CLI = executable(PIXAL3D_ROOT / "build", "trellis-cli")
-PIXAL3D_MODELS = PIXAL3D_ROOT / "models" / "pixal3d-sv"
+PIXAL3D_MODELS = models_home.vendor_models("pixal3d-cpp") / "pixal3d-sv"
 PIXAL3D_WRAPPER = REPO / "scripts" / "pixal3d_generate.py"
 # Front + back: the multi-view set (scripts/bootstrap_pixal3d.py --multiview).
-PIXAL3D_MV_MODELS = PIXAL3D_ROOT / "models" / "pixal3d-q8_0-v1"
+PIXAL3D_MV_MODELS = models_home.vendor_models("pixal3d-cpp") / "pixal3d-q8_0-v1"
 
 # Routes that cut their own picture out with our remover (image_to_3dlab/matte.py), so the
 # server need not (requires_alpha=False). (backend id, host or None for any) -> the file
@@ -690,7 +698,7 @@ def setup_available(host: str | None = None) -> tuple[bool, str | None]:
     if (host or host_platform()) != APPLE:
         return False, ("this setup runs the Mac port; on this machine use Setup & Status "
                        "> TRELLIS.2 > Set up")
-    if shutil.which("uv") is None:
+    if find_uv() is None:
         return False, "uv is not installed — install it first (https://docs.astral.sh/uv/)"
     bootstrap = REPO / "scripts" / "bootstrap_trellis_space_macos.py"
     if not bootstrap.is_file():
@@ -2487,6 +2495,9 @@ class Handler(SimpleHTTPRequestHandler):
     def _path_parts(self) -> list[str]:
         return [unquote(p) for p in urlparse(self.path).path.split("/") if p]
 
+    # the key a studio reachable from a network needs (studio_auth); None on 127.0.0.1. Set by serve.py.
+    studio_token: ClassVar[str | None] = None
+
     # one runner per server: it calls this server's own job endpoints, so a plan keeps going
     # after the browser tab that started it is closed
     _chain_runner: ClassVar[ChainRunner | None] = None
@@ -2496,7 +2507,7 @@ class Handler(SimpleHTTPRequestHandler):
         if cls._chain_runner is None:
             host, port = self.server.server_address[:2]
             host = "127.0.0.1" if host in ("", "0.0.0.0") else host
-            cls._chain_runner = ChainRunner(OUTPUT_ROOT, activity_api.local_request(f"http://{host}:{port}"))
+            cls._chain_runner = ChainRunner(OUTPUT_ROOT, activity_api.local_request(f"http://{host}:{port}", cls.studio_token))
         return cls._chain_runner
 
     def send_response(self, code, message=None) -> None:
@@ -2517,7 +2528,24 @@ class Handler(SimpleHTTPRequestHandler):
         self._send_json(status, {"error": message})
 
     def _allowed(self, *, mutation: bool) -> bool:
-        """The studio page's own requests and local tools only (request_utils.check_request)."""
+        """The studio page's own requests and local tools only (request_utils.check_request),
+        with the studio's key when it is reachable from a network (studio_auth)."""
+        verdict = studio_auth.check(token=type(self).studio_token, path=self.path, headers=self.headers)
+        if not verdict.ok:
+            self._refuse(401, "This studio needs its key: open the link it printed when it started "
+                              "(the one ending in ?token=...).")
+            return False
+        if verdict.redirect:
+            # the key came in the address: keep it in a cookie and drop it from the address bar
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header("Location", verdict.redirect)
+            self.send_header("Set-Cookie", verdict.set_cookie)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return False
+        if studio_auth.hidden_path(self.path):
+            self._refuse(404, "Not found")
+            return False
         try:
             request_utils.check_request(self, mutation=mutation)
         except PermissionError as exc:
@@ -2586,6 +2614,16 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parts == ["api", "blender", "install"]:
             self._start_blender_install()
+            return
+        if parts == ["api", "models-folder"]:
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length)) if 0 < length <= 4096 else {}
+                models_home.save(str(payload.get("path") or ""), MODELS_SETTING_REPO)
+            except (ValueError, json.JSONDecodeError, AttributeError) as exc:
+                self._send_json(422, {"error": str(exc) or "send {\"path\": \"/full/path\"}"})
+                return
+            self._send_json(200, models_home.describe(MODELS_STARTED_WITH, MODELS_SETTING_REPO))
             return
         if parts == ["api", "gltfpack", "install"]:
             self._start_gltfpack_install()
@@ -2713,10 +2751,30 @@ class Handler(SimpleHTTPRequestHandler):
         if parts == ["api", "usage"]:
             self._usage_choice()
             return
+        if parts == ["api", "notices", "read"]:
+            # {ids: [...]}: the bell's notices the person has now seen
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(length)) if 0 < length <= 4096 else {}
+            except ValueError:
+                body = {}
+            ids = body.get("ids") if isinstance(body, dict) else None
+            notices_api.mark_read(ids if isinstance(ids, list) else [])
+            self._send_json(200, self._notices())
+            return
         if len(parts) == 4 and parts[:2] == ["api", "image"] and parts[3] == "cancel":
             self._cancel_image_job(parts[2])
             return
         self.send_error(HTTPStatus.NOT_FOUND)
+
+    def _notices(self) -> dict:
+        """The bell's notices: ours from the site, plus a newer release (notices_api)."""
+        import image_to_3dlab
+        try:
+            update = update_check()
+        except Exception:
+            update = None
+        return notices_api.notices(image_to_3dlab.__version__, update)
 
     def _create_back_job(self) -> None:
         """Draw the back of a picture already in output/ (front + back builds)."""
@@ -3047,6 +3105,9 @@ class Handler(SimpleHTTPRequestHandler):
         if parts[:2] == ["api", "skins"]:
             self._skins_get(parts[2:])
             return
+        if parts == ["api", "models-folder"]:
+            self._send_json(200, models_home.describe(MODELS_STARTED_WITH, MODELS_SETTING_REPO))
+            return
         if parts == ["api", "hf", "status"]:
             self._send_json(200, hf_api.status())
             return
@@ -3115,6 +3176,9 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parts == ["api", "update-check"]:
             self._send_json(200, update_check())
+            return
+        if parts == ["api", "notices"]:
+            self._send_json(200, self._notices())
             return
         if parts == ["api", "usage"]:
             usage_api.send_soon()   # asked once per page load; at most one message a day goes out
