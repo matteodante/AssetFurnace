@@ -233,3 +233,64 @@ def test_check_judges_the_clip_as_it_would_be_fitted(tmp_path, capsys):
     code, report, _ = _run(capsys, "check", det, rig)
     assert code == 0
     assert {"verdict", "verdict_as_generated", "feet_agreement", "sync"} <= set(report)
+
+
+# --- prepare, dataset, train, film ----------------------------------------------------------
+
+
+def test_the_prepare_command_runs_blender_headless_with_the_creatures_size():
+    cmd = cli.prepare_command(Path("blender"), Path("wolf_rigged.glb"), Path("wolf"), 1.6, "y", 60.0, 32, False)
+    assert cmd[:4] == ["blender", "--background", "--factory-startup", "--disable-autoexec"]
+    assert cmd[cmd.index("--python") + 1].endswith("blender_twocam_prepare.py")
+    after = cmd[cmd.index("--") + 1:]
+    assert after[:2] == ["wolf_rigged.glb", "wolf"]
+    assert after[after.index("--length-m") + 1] == "1.6" and after[after.index("--yaw-deg") + 1] == "60.0"
+    assert "--no-render" in after
+
+
+def test_the_dataset_is_split_across_blender_processes_without_gaps():
+    cmds = cli.dataset_commands(Path("blender"), Path("rig.blend"), Path("rig_info.json"), Path("ds"),
+                                count=1001, procs=3, seed=500, scale=0.6)
+    spans = [(int(c[-4]), int(c[-3])) for c in cmds]
+    assert spans == [(0, 334), (334, 334), (668, 333)]
+    assert all(c[4] == "rig.blend" for c in cmds)
+
+
+@pytest.mark.parametrize("labels, sentence", [
+    (["front-left leg", "front-right leg", "hind-left leg", "hind-right leg"], "Exactly four legs."),
+    (["left arm", "right arm", "left leg", "right leg"], "Exactly two arms, two legs."),
+    ([], ""),
+])
+def test_the_count_sentence_comes_from_the_limbs(labels, sentence):
+    assert cli.count_sentence({str(i): {"label": label} for i, label in enumerate(labels)}) == sentence
+
+
+def test_film_needs_a_prepared_creature(tmp_path, capsys):
+    code, _, err = _run(capsys, "film", tmp_path, "it howls", tmp_path / "clips")
+    assert code == 1 and "creature.json" in err
+
+
+def test_film_never_downloads_the_video_model_unasked(tmp_path, capsys, monkeypatch):
+    from image_to_3dlab.twocam import video
+
+    (tmp_path / "creature.json").write_text(json.dumps({"noun": "wolf", "colour_code": "x"}), encoding="utf-8")
+    (tmp_path / "ref.png").write_bytes(b"png")
+    monkeypatch.setattr(video, "hub_root", lambda env=None: tmp_path / "empty-cache")
+    monkeypatch.setattr(video, "download", lambda **_k: (_ for _ in ()).throw(AssertionError("downloaded")))
+    code, _, err = _run(capsys, "film", tmp_path, "it howls", tmp_path / "clips")
+    assert code == 1 and "--download" in err and "GB" in err and "Community License" in err
+    code, _, err = _run(capsys, "film", tmp_path, "it howls", tmp_path / "clips", "--download")
+    assert code == 1 and "--yes" in err
+
+
+def test_train_asks_before_fetching_dinov2(tmp_path, capsys, monkeypatch):
+    from image_to_3dlab.twocam import train
+
+    info = toy_rig()
+    rig = write_rig(tmp_path, info)
+    monkeypatch.setattr(train, "check_dataset", lambda *_a: 2200)
+    monkeypatch.setattr(train, "backbone_cached", lambda: False)
+    monkeypatch.setattr(train, "train", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("trained")))
+    monkeypatch.setattr(cli.sys, "stdin", None)
+    code, _, err = _run(capsys, "train", tmp_path, rig, tmp_path / "reader.pt")
+    assert code == 1 and "346 MB" in err and "--yes" in err

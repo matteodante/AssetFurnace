@@ -5,18 +5,21 @@ The method is @CanItCode's; the code is ported from Patch's AnyMove (Apache-2.0)
 model films the creature front-on (left) and side-on (right) in one frame; a joint reader
 trained on that creature finds every joint in both halves; the rig is fitted to them.
 
-    python scripts/twocam_mocap.py read VIDEO.mp4 READER.pt RIG_INFO.json DET.npz --ref REF.png
-    python scripts/twocam_mocap.py check DET.npz RIG_INFO.json
-    python scripts/twocam_mocap.py fit DET.npz RIG_INFO.json MOTION.json
-    python scripts/twocam_mocap.py apply RIGGED.blend RIG_INFO.json MOTION.json OUT_DIR
-    python scripts/twocam_mocap.py capture VIDEO.mp4 READER.pt RIG_INFO.json RIGGED.blend OUT_DIR --ref REF.png
-    python scripts/twocam_mocap.py exam RIG_INFO.json
+Once per creature (any rigged model: the Animate tab's SkinTokens rig, or one by hand):
 
-`capture` is read + fit + apply. `exam` fits a made-up motion with known joints and
-scores it in centimetres: no video, Blender or weights needed, so it is the quick check
-that a rig can be fitted at all. A trained reader file holds its whole network, so
-reading downloads nothing. The rig files (`rigged.blend`, `rig_info.json`) and readers
-come from AnyMove's rig builder and trainer.
+    python scripts/twocam_mocap.py prepare RIGGED.glb CREATURE/ --length-m 1.6 --noun "grey wolf"
+    python scripts/twocam_mocap.py dataset CREATURE/rigged.blend CREATURE/rig_info.json CREATURE/dataset
+    python scripts/twocam_mocap.py train CREATURE/dataset CREATURE/rig_info.json CREATURE/reader.pt
+
+Then per move, all on this machine (MiniMax H3 through stable-diffusion.cpp films it):
+
+    python scripts/twocam_mocap.py film CREATURE/ "it rears up and howls" CLIPS/ --takes 3 --reader CREATURE/reader.pt
+    python scripts/twocam_mocap.py capture CLIPS/take1_s1.webm CREATURE/reader.pt CREATURE/rig_info.json         CREATURE/rigged.blend OUT/ --ref CREATURE/ref.png
+
+`capture` is read + fit + apply; each also runs alone (`check` judges a read clip before the
+fit). `exam` fits a made-up motion with known joints and scores it in centimetres: no
+video, Blender or weights needed. Nothing is downloaded without --yes (DINOv2 for `train`,
+346 MB; the video model for `film --download`, about 30 GB).
 """
 
 from __future__ import annotations
@@ -39,6 +42,11 @@ from image_to_3dlab.twocam.layout import Layout
 from image_to_3dlab.twocam.motion import load_motion, write_motion
 
 APPLY_SCRIPT = REPO / "scripts" / "blender_twocam_apply.py"
+PREPARE_SCRIPT = REPO / "scripts" / "blender_twocam_prepare.py"
+DATASET_SCRIPT = REPO / "scripts" / "blender_twocam_dataset.py"
+DINO_DOWNLOAD = ("the joint reader starts from Meta's DINOv2 with registers (facebook/dinov2-with-registers-base, "
+                 "Apache-2.0, 346 MB download)")
+NUMBERS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"]
 DET_KEYS = (*solve.DETECTION_KEYS, "fps", "names", "calib")
 
 
@@ -205,6 +213,232 @@ def cmd_apply(args) -> dict:
     return report
 
 
+def prepare_command(blender: Path, glb: Path, out: Path, length_m: float, axis: str = "y",
+                    yaw_deg: float | None = None, samples: int = 64, render: bool = True) -> list[str]:
+    cmd = [str(blender), "--background", "--factory-startup", "--disable-autoexec",
+           "--python-exit-code", "1", "--python", str(PREPARE_SCRIPT), "--",
+           str(glb), str(out), "--length-m", str(length_m), "--axis", axis, "--samples", str(samples)]
+    if yaw_deg is not None:
+        cmd += ["--yaw-deg", str(yaw_deg)]
+    if not render:
+        cmd.append("--no-render")
+    return cmd
+
+
+def count_sentence(paint: dict) -> str:
+    """"Exactly four legs." or "Exactly two arms, two legs." from the limbs' labels."""
+    kinds: dict[str, int] = {}
+    for group in paint.values():
+        word = group["label"].split()[-1]
+        kinds[word] = kinds.get(word, 0) + 1
+    parts = [f"{NUMBERS[n] if n < len(NUMBERS) else n} {word}{'s' if n != 1 else ''}" for word, n in kinds.items()]
+    return "Exactly " + ", ".join(parts) + "." if parts else ""
+
+
+def read_rgba(path: Path) -> np.ndarray:
+    import cv2
+
+    img = cv2.imdecode(np.fromfile(str(path), np.uint8), cv2.IMREAD_UNCHANGED)
+    if img is None or img.ndim != 3 or img.shape[2] != 4:
+        raise CaptureError(f"{path} is not an RGBA render")
+    return img[..., [2, 1, 0, 3]]
+
+
+def write_rgb(path: Path, rgb: np.ndarray) -> None:
+    import cv2
+
+    ok, data = cv2.imencode(Path(path).suffix or ".png", np.ascontiguousarray(rgb[..., ::-1]))
+    if not ok:
+        raise CaptureError(f"cannot encode {path}")
+    data.tofile(str(path))
+
+
+def joints_preview(ref: np.ndarray, info: dict) -> np.ndarray:
+    """The reference frame with every rest joint drawn on, both views (left pink, right blue)."""
+    import cv2
+
+    layout = Layout.from_rig_info(info)
+    img = np.ascontiguousarray(ref.copy())
+    rest = np.array([k["rest"] for k in info["keypoints"]])
+    front, side = layout.project(rest)
+    for k, f, s in zip(info["keypoints"], front, side):
+        n = k["name"]
+        colour = (245, 60, 209) if n.endswith("_L") else (47, 107, 255) if n.endswith("_R") else (255, 255, 255)
+        for (u, v), x0 in ((f, 0), (s, layout.w_front)):
+            cv2.circle(img, (int(u + x0), int(v)), 4, colour, -1, cv2.LINE_AA)
+    return img
+
+
+def cmd_prepare(args) -> dict:
+    from image_to_3dlab.twocam import records, rigging
+
+    if not args.glb.is_file():
+        raise CaptureError(f"no rigged model at {args.glb}")
+    blender = find_blender_or_fail(args.blender)
+    out = args.out
+    out.mkdir(parents=True, exist_ok=True)
+    cmd = prepare_command(blender, args.glb, out, args.length_m, args.axis, args.yaw_deg, args.samples,
+                          not args.no_render)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+    line = next((x for x in result.stdout.splitlines() if x.startswith("I2L_TWOCAM_PREPARE::")), None)
+    if result.returncode != 0 or line is None:
+        tail = "\n".join((result.stdout + result.stderr).splitlines()[-25:])
+        raise CaptureError(f"Blender failed (exit {result.returncode}):\n{tail}")
+    plan = json.loads(line.split("::", 1)[1])
+    info = load_rig_info(out / "rig_info.json")
+    layout = Layout.from_rig_info(info)
+    creature = {
+        "name": args.name or out.name, "noun": args.noun, "describe": args.describe or "",
+        "colour_code": rigging.colour_code(plan["paint"]), "count": count_sentence(plan["paint"]),
+        "layout": {k: v for k, v in layout.to_dict().items() if k != "Z_CENTER"},
+        "paint": {k: {"color": g["color"], "bones": g["bones"]} for k, g in plan["paint"].items()},
+        "feet": solve.ground_joints(info),
+        "prep": {"length_m": args.length_m, "axis": args.axis, "yaw_deg": plan["yaw_deg"]},
+    }
+    (out / "creature.json").write_text(json.dumps(creature, indent=1), encoding="utf-8")
+    source = records.source_record_for(args.source_model or args.glb)
+    if source is not None:  # the prepared rig keeps the model's licence, so apply finds it
+        records.write_sidecar(out / "rigged.blend", source)
+    summary = {"creature": str(out), "limbs": plan["limbs"], "bones": plan["bones"], "keypoints": plan["keypoints"],
+               "turned_deg": plan["yaw_deg"], "size_m": plan["size_m"], "colour_code": creature["colour_code"],
+               "feet": creature["feet"], "licence": (source or {}).get("license") or records.NO_LICENCE}
+    if not args.no_render:
+        ref = layout.compose(read_rgba(out / "ref_front.png"), read_rgba(out / "ref_side.png"))
+        write_rgb(out / "ref.png", ref)
+        write_rgb(out / "preview.png", joints_preview(ref, info))
+        summary.update(ref=str(out / "ref.png"), preview=str(out / "preview.png"),
+                       render_device=plan.get("render_device"))
+    if not plan["limbs"]:
+        summary["warning"] = ("no left/right limbs were found: check the turn in preview.png, or pass --yaw-deg; "
+                              "without painted limbs a video model easily swaps left and right")
+    return summary
+
+
+def ask_yes(what: str, yes: bool) -> None:
+    """A download needs an affirmative answer: --yes, or y typed at a terminal."""
+    if yes:
+        return
+    if sys.stdin is not None and sys.stdin.isatty():
+        answer = input(f"Download {what}? [y/N] ").strip().lower()
+        if answer in ("y", "yes"):
+            return
+    raise CaptureError(f"not downloaded: {what}. Pass --yes to download it")
+
+
+def dataset_commands(blender: Path, blend: Path, rig_info: Path, out: Path, count: int, procs: int,
+                     seed: int, scale: float) -> list[list[str]]:
+    per = -(-count // procs)
+    return [[str(blender), "--background", "--factory-startup", "--disable-autoexec", str(blend),
+             "--python-exit-code", "1", "--python", str(DATASET_SCRIPT), "--", str(rig_info), str(out),
+             str(k * per), str(min(per, count - k * per)), str(seed), str(scale)]
+            for k in range(procs) if k * per < count]
+
+
+def cmd_dataset(args) -> dict:
+    import time
+
+    load_rig_info(args.rig_info)
+    if not args.blend.is_file():
+        raise CaptureError(f"no prepared rig at {args.blend}: run prepare first")
+    blender = find_blender_or_fail(args.blender)
+    args.out.mkdir(parents=True, exist_ok=True)
+    logs = []
+    procs = []
+    for k, cmd in enumerate(dataset_commands(blender, args.blend, args.rig_info, args.out, args.count,
+                                             args.procs, args.seed, args.scale)):
+        log = open(args.out / f"render_{k}.log", "w", encoding="utf-8")  # noqa: SIM115 - closed below
+        logs.append(log)
+        procs.append(subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT))
+    start = time.time()
+    try:
+        while any(p.poll() is None for p in procs):
+            time.sleep(10)
+            done = len(list(args.out.glob("*_meta.json")))
+            if not args.quiet:
+                print(f"{done}/{args.count} poses rendered, {time.time() - start:.0f} s", file=sys.stderr, flush=True)
+    finally:
+        for p in procs:
+            if p.poll() is None:
+                p.terminate()
+        for log in logs:
+            log.close()
+    failed = [k for k, p in enumerate(procs) if p.returncode != 0]
+    done = len(list(args.out.glob("*_meta.json")))
+    if failed:
+        raise CaptureError(f"Blender stopped in render_{failed[0]}.log ({done} poses kept; run again to resume)")
+    return {"dataset": str(args.out), "poses": done, "minutes": round((time.time() - start) / 60, 1)}
+
+
+def cmd_train(args) -> dict:
+    from image_to_3dlab.twocam import train
+
+    info = load_rig_info(args.rig_info)
+    samples = train.check_dataset(args.dataset, info)
+    if not train.backbone_cached():
+        ask_yes(DINO_DOWNLOAD, args.yes)
+    device = solve.pick_device(args.device)
+    log = None if args.quiet else (lambda msg: print(msg, file=sys.stderr, flush=True))
+    result = train.train(args.dataset, info, args.out, epochs=args.epochs, batch=args.batch, device=device,
+                         workers=args.workers, log=log)
+    return {"reader": str(args.out), "samples": samples, "device": device,
+            "held_out_error_px": {k: round(v, 2) for k, v in result.items()}}
+
+
+def cmd_film(args) -> dict:
+    from image_to_3dlab import host
+    from image_to_3dlab.twocam import prompt as prompts
+    from image_to_3dlab.twocam import records, video
+
+    creature_dir = args.creature
+    try:
+        creature = json.loads((creature_dir / "creature.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise CaptureError(f"{creature_dir} is not a prepared creature (no creature.json): {exc}") from exc
+    start = creature_dir / "ref.png"
+    if not start.is_file():
+        raise CaptureError(f"no reference frame at {start}: prepare the creature without --no-render")
+    plan = video.weights_plan()
+    if not plan["ready"]:
+        if not args.download:
+            raise CaptureError(f"the video model is not here: {', '.join(plan['missing'])}. Pass --download "
+                               f"(and --yes) to fetch {plan['download_gb']} GB. {plan['license']}: "
+                               f"{plan['license_note']}")
+        ask_yes(f"{plan['engine']}, {plan['download_gb']} GB ({plan['license']}; {plan['license_note']})", args.yes)
+        video.download(log=lambda msg: print(msg, file=sys.stderr, flush=True))
+    text = prompts.make_prompt(creature, args.action, args.end, seconds=round(args.seconds))
+    binary = host.executable(REPO / "vendor" / "sdcpp", "sd-cli")
+    args.out.mkdir(parents=True, exist_ok=True)
+    log = None if args.quiet else (lambda msg: print(msg, file=sys.stderr, flush=True))
+    rig_info = creature_dir / "rig_info.json"
+    reader_path = args.reader
+    takes = []
+    for k in range(args.takes):
+        seed = args.seed + k
+        clip = args.out / f"take{k + 1}_s{seed}.webm"
+        video.film(binary, text, start, clip, width=args.width, height=args.height, seconds=args.seconds,
+                   seed=seed, steps=args.steps, log=log)
+        record = {"schema_version": 1, "created_at": records.now(), "tool": "scripts/twocam_mocap.py film",
+                  "made_with": plan["engine"], "license": plan["license"], "license_url": plan["license_url"],
+                  "license_note": plan["license_note"], "prompt": text, "seed": seed,
+                  "start_frame": records.sha256_file(start), "settings": {
+                      "width": args.width, "height": args.height, "seconds": args.seconds, "steps": args.steps}}
+        records.write_sidecar(clip, record)
+        take = {"clip": str(clip), "seed": seed}
+        if reader_path:
+            det = clip.with_suffix(".npz")
+            cmd_read(argparse.Namespace(video=clip, reader=reader_path, rig_info=rig_info, out=det, ref=start,
+                                        no_calib=False, overlay=None, fps=None, made_with=plan["engine"],
+                                        video_license=plan["license"], reader_license=None, device=args.device))
+            info = load_rig_info(rig_info)
+            d, _ = load_detections(det, info)
+            take["check"] = clip_report(d, info)["verdict"]
+        takes.append(take)
+    rank = {"good": 0, "doubtful": 1, "bad": 2}
+    checked = [t for t in takes if "check" in t]
+    best = min(checked, key=lambda t: (rank[t["check"]["level"]], t["check"]["height_gap_fraction"])) if checked else None
+    return {"prompt": text, "takes": takes, "best": best["clip"] if best else None}
+
+
 def cmd_capture(args) -> dict:
     out = args.out
     out.mkdir(parents=True, exist_ok=True)
@@ -276,6 +510,60 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--source-model", type=Path,
                        help="the model whose licence sidecar to carry over (default: the .blend's)")
 
+    s = sub.add_parser("prepare", help="make a rigged GLB ready: turned, sized, limbs named and painted")
+    s.add_argument("glb", type=Path, help="the rigged model (e.g. the Animate tab's *_rigged.glb)")
+    s.add_argument("out", type=Path, help="the creature's folder")
+    s.add_argument("--length-m", type=float, required=True, help="its real size along --axis, in metres")
+    s.add_argument("--axis", choices=("x", "y", "z"), default="y",
+                   help="y: nose to tail (default), x: side to side, z: height")
+    s.add_argument("--noun", required=True, help='what it is, for the video prompt: "grey wolf"')
+    s.add_argument("--describe", help='how it looks, for the video prompt: "grey fur, cream chest"')
+    s.add_argument("--name", help="a short name (default: the folder's)")
+    s.add_argument("--yaw-deg", type=float, help="turn it by this much instead of finding the turn")
+    s.add_argument("--samples", type=int, default=64, help="render samples for the reference frame")
+    s.add_argument("--no-render", action="store_true", help="skip the reference frame")
+    s.add_argument("--blender", type=Path)
+    s.add_argument("--source-model", type=Path, help="the model whose licence sidecar to carry over")
+
+    s = sub.add_parser("film", help="film the creature from both cameras with MiniMax H3, on this machine")
+    s.add_argument("creature", type=Path, help="a prepared creature's folder (creature.json, ref.png)")
+    s.add_argument("action", help='one sentence: "the wolf rears up and howls, then drops back onto all fours"')
+    s.add_argument("out", type=Path, help="folder for the takes")
+    s.add_argument("--end", help='how it ends, in both views: "standing on all four legs"')
+    s.add_argument("--seconds", type=float, default=3.0)
+    s.add_argument("--width", type=int, default=1024)
+    s.add_argument("--height", type=int, default=576)
+    s.add_argument("--steps", type=int, default=20)
+    s.add_argument("--seed", type=int, default=1)
+    s.add_argument("--takes", type=int, default=1, help="film this many takes, seeds counting up from --seed")
+    s.add_argument("--reader", type=Path, help="read and judge every take with this reader; the best is named")
+    s.add_argument("--device", default="auto", help="for reading the takes")
+    s.add_argument("--download", action="store_true", help="fetch the video model if it is missing")
+    s.add_argument("--yes", action="store_true", help="say yes to the download without asking")
+    s.add_argument("--quiet", action="store_true")
+
+    s = sub.add_parser("dataset", help="render the poses a reader learns the creature from")
+    s.add_argument("blend", type=Path, help="the prepared rigged.blend")
+    s.add_argument("rig_info", type=Path)
+    s.add_argument("out", type=Path)
+    s.add_argument("--count", type=int, default=2200)
+    s.add_argument("--procs", type=int, default=2, help="Blender processes side by side")
+    s.add_argument("--seed", type=int, default=500)
+    s.add_argument("--scale", type=float, default=0.6, help="render size as a fraction of the layout")
+    s.add_argument("--blender", type=Path)
+    s.add_argument("--quiet", action="store_true")
+
+    s = sub.add_parser("train", help="teach the joint reader the creature, from its rendered poses")
+    s.add_argument("dataset", type=Path)
+    s.add_argument("rig_info", type=Path)
+    s.add_argument("out", type=Path, help="the reader file to write (.pt)")
+    s.add_argument("--epochs", type=int, default=20)
+    s.add_argument("--batch", type=int, default=20)
+    s.add_argument("--workers", type=int, default=4)
+    s.add_argument("--device", default="auto")
+    s.add_argument("--yes", action="store_true", help="say yes to DINOv2's download without asking")
+    s.add_argument("--quiet", action="store_true")
+
     s = sub.add_parser("read", help="read every joint in both views of a clip")
     s.add_argument("video", type=Path)
     s.add_argument("reader", type=Path)
@@ -331,7 +619,8 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
-COMMANDS = {"read": cmd_read, "check": cmd_check, "fit": cmd_fit, "apply": cmd_apply,
+COMMANDS = {"prepare": cmd_prepare, "dataset": cmd_dataset, "train": cmd_train, "film": cmd_film,
+            "read": cmd_read, "check": cmd_check, "fit": cmd_fit, "apply": cmd_apply,
             "capture": cmd_capture, "exam": cmd_exam}
 
 
