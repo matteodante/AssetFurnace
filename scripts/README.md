@@ -196,6 +196,8 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 | `rignet_infer.py` | Run vendored RigNet inference on one of our own generated meshes. |
 | `arm_clearance.py` | Keep a retargeted character's arms out of its own body. |
 | `bootstrap_autorig.py` | Install the auto-rigger: SkinTokens (VAST-AI, MIT), which gives a humanoid mesh a skeleton and skin weights. |
+| `bootstrap_unirig.py` | Install UniRig (VAST-AI, MIT), which draws the skeleton of any creature for the creature rig. |
+| `bootstrap_video_capture.py` | Fetch what Animate from video needs: MiniMax H3 to film, DINOv2 to read the joints. |
 | `pack_kimodo_clip.py` | Shrink a Kimodo motion clip to what `kimodo_retarget.py` reads, about 12x smaller. |
 | `clean_skin_weights.py` | Drop skin weights that come from bones far away in the skeleton, then rebalance. |
 | `kimodo_retarget.py` | Play a Kimodo text-to-motion clip on a SkinTokens-rigged humanoid and export an animated GLB. |
@@ -244,6 +246,7 @@ Numbers about the project itself, not about any asset.
 | `patch_pixal3d_steps.py` | Let Pixal3D (pixal3d.cpp) run fewer sampling steps, via `PIXAL3D_STEPS=N`. |
 | `patch_pixal3d_shape_reuse.py` | Let Pixal3D save a run's shape and later repaint it from new pictures, via `PIXAL3D_SAVE_SHAPE` / `PIXAL3D_LOAD_SHAPE`. |
 | `patch_skintokens_portable.py` | Let SkinTokens (the auto-rigger) run on an Apple Silicon Mac, and on NVIDIA without flash-attn. |
+| `patch_unirig_portable.py` | Make UniRig's skeleton model run without flash-attn. |
 | `patch_hunyuan_rocm.py` | Make Tencent's Hunyuan3D-2.1 survive on an AMD card, without touching what NVIDIA runs. |
 | `photo_paint.py` | Paint a finished model with the real pixels of its source photos, where they can see. |
 | `patch_trellis_no_bria.py` | Disable TRELLIS' configured background model for license-controlled runs. |
