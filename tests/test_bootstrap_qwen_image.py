@@ -445,10 +445,8 @@ def test_a_mac_is_not_probed(monkeypatch):
     assert boot.main(["--yes"]) == 0
 
 
-def test_probe_gpu_runs_the_binary_and_returns_its_chatter(tmp_path):
-    fake = tmp_path / "sd-cli"
-    fake.write_text("#!/bin/sh\necho 'ggml_vulkan: Found 1 Vulkan devices:'\nexit 1\n")
-    fake.chmod(0o755)
+def test_probe_gpu_runs_the_binary_and_returns_its_chatter(fake_program):
+    fake = fake_program("sd-cli", ("ggml_vulkan: Found 1 Vulkan devices:",), code=1)
     assert "Found 1" in boot.probe_gpu(fake)
 
 

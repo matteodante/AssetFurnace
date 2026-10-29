@@ -263,8 +263,10 @@ def test_the_build_environment_names_the_card_the_toolkit_and_the_jobs(tmp_path)
     assert int(env["MAX_JOBS"]) >= 1
 
 
-def test_the_build_environment_without_a_toolkit_still_names_the_card():
+def test_the_build_environment_without_a_toolkit_still_names_the_card(monkeypatch):
     """So the failure is hipcc's, not a missing GPU_ARCHS."""
+    # The real probe compiles with this machine's c++, which Windows does not have.
+    monkeypatch.setattr(boot, "noinline_collides", lambda: False)
     env = boot.build_env(["gfx1100"], None, {})
     assert env["GPU_ARCHS"] == "gfx1100"
     assert "ROCM_PATH" not in env
@@ -507,17 +509,13 @@ def test_the_probe_reproduces_the_collision_it_guards():
     assert "#include <format>" in boot.NOINLINE_PROBE_SOURCE
 
 
-def test_the_probe_says_false_for_a_compiler_that_always_works(tmp_path):
-    fake = tmp_path / "always-ok"
-    fake.write_text("#!/bin/sh\nexit 0\n")
-    fake.chmod(0o755)
+def test_the_probe_says_false_for_a_compiler_that_always_works(tmp_path, fake_program):
+    fake = fake_program("always-ok", code=0)
     assert boot.noinline_collides(compiler=str(fake), tmp_dir=tmp_path) is False
 
 
-def test_the_probe_says_true_for_a_compiler_that_always_fails(tmp_path):
-    fake = tmp_path / "always-fails"
-    fake.write_text("#!/bin/sh\nexit 1\n")
-    fake.chmod(0o755)
+def test_the_probe_says_true_for_a_compiler_that_always_fails(tmp_path, fake_program):
+    fake = fake_program("always-fails", code=1)
     assert boot.noinline_collides(compiler=str(fake), tmp_dir=tmp_path) is True
 
 
