@@ -496,7 +496,10 @@ def test_an_existing_loader_path_is_kept_in_front(tmp_path, monkeypatch):
 
 
 def test_rocm_is_not_added_twice(tmp_path, monkeypatch):
-    root = tmp_path / "rocm"
+    # A relative root: LD_LIBRARY_PATH is Linux's and splits on ':', and a Windows
+    # tmp_path has one after its drive letter.
+    monkeypatch.chdir(tmp_path)
+    root = Path("rocm")
     (root / "lib").mkdir(parents=True)
     monkeypatch.setattr(px, "_rocm_root", lambda: root)
     env = px.run_env(None, {"LD_LIBRARY_PATH": str(root / "lib")})
