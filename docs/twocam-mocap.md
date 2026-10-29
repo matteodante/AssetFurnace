@@ -15,43 +15,66 @@ port of [Patch's AnyMove](https://github.com/Patch-gg/anymove) (Apache-2.0).
 
 | | Where it comes from |
 |---|---|
-| `rigged.blend` + `rig_info.json` | AnyMove's rig builder (`tools/prep.sh`, `tools/rig.sh`) |
-| `reader.pt`, the trained joint reader | AnyMove's renders and trainer (about 45 min on one RTX 4090, per AnyMove), or its release |
-| a two-camera clip + its first frame `ref.png` | a video model (AnyMove used MiniMax H3 on fal) |
+| a rigged model | the studio's Animate step (SkinTokens), or any GLB with one armature |
 | Blender 4.2+ | found the same way Finish finds it |
+| an NVIDIA card with 16 GB for filming | MiniMax H3 runs here through stable-diffusion.cpp |
 
-Reading needs `transformers` 4.48 or newer (`uv pip install transformers`). A reader file holds its
-whole network, so reading downloads nothing.
+Downloads, each only with `--yes` (or a y typed at a terminal):
+
+- DINOv2 with registers for `train` (Meta, Apache-2.0, 346 MB);
+- MiniMax H3 for `film --download`: the pruned model, its text encoder and video VAE,
+  about 30 GB, under the MiniMax H3 Community License. MiniMax asks users in the USA, the
+  EU, the UK and South Korea to apply with the form on its model page first.
+
+Reading needs `transformers` 4.48 or newer (`uv pip install transformers`).
 
 ## Run it
 
+Once per creature:
+
 ```bash
-# all at once: read the joints, fit the rig, export the GLB
-python scripts/twocam_mocap.py capture clip.mp4 reader.pt rig_info.json rigged.blend out/ --ref ref.png
-
-# or step by step
-python scripts/twocam_mocap.py read clip.mp4 reader.pt rig_info.json out/det.npz --ref ref.png
-python scripts/twocam_mocap.py check out/det.npz rig_info.json    # are the two views in step?
-python scripts/twocam_mocap.py fit out/det.npz rig_info.json out/motion.json
-python scripts/twocam_mocap.py apply rigged.blend rig_info.json out/motion.json out/
-
-# no video at all: fit a made-up motion and score it in centimetres
-python scripts/twocam_mocap.py exam rig_info.json
+# turned to face -Y, sized, left and right named, each limb painted; writes ref.png and preview.png
+python scripts/twocam_mocap.py prepare wolf_rigged.glb wolf/ --length-m 1.6 --noun "grey wolf"
+# 2,200 random poses from both cameras, then the joint reader learns them
+python scripts/twocam_mocap.py dataset wolf/rigged.blend wolf/rig_info.json wolf/dataset
+python scripts/twocam_mocap.py train wolf/dataset wolf/rig_info.json wolf/reader.pt --yes
 ```
 
-`check` says `good`, `doubtful` or `bad`. `fit` refuses a `bad` clip (two halves showing
-different motions cannot make one true motion) unless you pass `--force`.
+Check `preview.png` after `prepare`: the creature faces you on the left and looks right on
+the right, with its left limbs pink and yellow. `--yaw-deg` turns it by hand if the
+symmetry search got it wrong.
 
-Every step leaves a licence record: `det.provenance.json` (video, reader, rig, with
-hashes), copied into `motion.json`, and `<name>.provenance.json` beside the GLB, which
-also carries the model's own licence.
+Then per move:
+
+```bash
+# three takes on this machine, each read and judged; the best is named
+python scripts/twocam_mocap.py film wolf/ "the wolf rears up and howls" clips/     --end "standing on all four legs" --takes 3 --reader wolf/reader.pt
+python scripts/twocam_mocap.py capture clips/take1_s1.webm wolf/reader.pt wolf/rig_info.json     wolf/rigged.blend out/ --ref wolf/ref.png
+
+# or step by step: read, check (are the two views in step?), fit, apply
+python scripts/twocam_mocap.py exam wolf/rig_info.json   # no video: fit a made-up motion, score in cm
+```
+
+`check` says `good`, `doubtful` or `bad`, judged on the typical joint (a limb hidden in
+one view is guessed there) and on whether moving feet agree. `fit` refuses a `bad` clip
+unless you pass `--force`.
+
+Every step leaves a licence record: each take's `.provenance.json` (video model, licence,
+prompt, seed), `det.provenance.json` (video, reader, rig, with hashes), copied into
+`motion.json`, and `<name>.provenance.json` beside the GLB, which also carries the model's
+own licence (`prepare` copies it next to `rigged.blend`).
 
 ## Tested on
 
-AnyMove's dragon roar (release `examples-v1`), on Windows 11 with an RTX 5070 Ti and
-Blender 5.2: 30 s from clip to GLB (reading 15 s on the GPU, fitting 18 s on the CPU).
-The joints match AnyMove's own run to 0.01 cm on average; Blender's joints match the
-solver's to 0.1 mm.
+Windows 11, an RTX 5070 Ti (16 GB), Blender 5.2:
+
+- AnyMove's dragon roar (release `examples-v1`, filmed by H3 Max on fal): 30 s from clip
+  to GLB. The joints match AnyMove's own run to 0.01 cm on average; Blender's joints
+  match the solver's to 0.1 mm.
+- The same dragon filmed here by MiniMax H3 (pruned, Q4): 1024 x 576, 3 s, in 6.5 min;
+  judged doubtful (typical joint 2.8% apart against fal's 1.2%), fitted at 13-22 px.
+- A wolf the studio made from a sentence (picture, Pixal3D, Finish, SkinTokens rig):
+  prepared, filmed here, reader trained and captured. See the pull request for numbers.
 
 ## What changed from AnyMove
 
@@ -73,10 +96,12 @@ Big single gestures: rearing, roaring, slamming, taking off, pouncing. AnyMove f
 eight-legged walks do not fit (the two views disagree on which legs are up) and that lying
 down does not either; neither was retried here.
 
-## Not ported (yet)
+## Not done (yet)
 
-Rendering the training poses and training a reader, the rig builder, and video
-generation. They still run in AnyMove.
+- A LoRA that teaches the video model the two-camera layout (@Graalitoo's idea in
+  AnyMove, trained there on fal per creature). The plan is to train one here, for every
+  creature, from clips rendered in Blender.
+- The browser: the studio's Animate step still offers only the humanoid presets.
 
 ## Licences
 
