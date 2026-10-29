@@ -64,6 +64,28 @@ prompt, seed), `det.provenance.json` (video, reader, rig, with hashes), copied i
 `motion.json`, and `<name>.provenance.json` beside the GLB, which also carries the model's
 own licence (`prepare` copies it next to `rigged.blend`).
 
+## In the studio
+
+A rigged model that is not a humanoid gets **Animate from video** in its Animate step, in
+place of the preset moves. Four stages, each one run of `scripts/twocam_mocap.py`:
+
+1. **Prepare** (about 10 s): how long it is nose to tail, and what it is. The card shows the
+   reference frame with its joints, left pink and right blue: check the sides and the facing.
+2. **Teach the reader** (about an hour, once per creature). The button names DINOv2 (346 MB,
+   Apache-2.0) when it still has to download it. It keeps going with the tab closed and can
+   be cancelled; the practice poses already rendered are kept.
+3. **Film**: what it does in one sentence, how it ends (optional), one to three takes (about
+   6.5 minutes each). A missing video model is shown first (MiniMax H3, about 30 GB, its
+   licence, and the form users in the USA, the EU, the UK and South Korea must fill in), with
+   its own **Download the video model** button. Each take plays in the card with its verdict.
+4. **Capture**: **Use this take** adds the move to the model. A bad take goes only through
+   **Fit anyway**.
+
+The move lands beside the presets as `output/animate/<run>/<name>_<move>.glb`, with its
+`.provenance.json`. The rest stays in `output/animate/<run>/twocam/`: `creature/`,
+`clips/<move>/`, `captures/<move>/` and `steps/run.log`. Agents run the script: the studio's
+routes for this are not MCP tools.
+
 ## Tested on
 
 Windows 11, an RTX 5070 Ti (16 GB), Blender 5.2:
