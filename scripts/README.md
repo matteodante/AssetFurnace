@@ -202,6 +202,10 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 | `clean_skin_weights.py` | Drop skin weights that come from bones far away in the skeleton, then rebalance. |
 | `kimodo_retarget.py` | Play a Kimodo text-to-motion clip on a SkinTokens-rigged humanoid and export an animated GLB. |
 | `rig_check.py` | Say whether a rigged GLB fits the preset moves (a humanoid), read without Blender. |
+| `creature_rig.py` | Rig a generated creature automatically: UniRig draws skeletons, the best is checked on the mesh and named, Blender skins it. |
+| `blender_creature_rig_prepare.py` | Get a generated creature ready for the auto-rig in Blender: turned to face -Y, placed, and a watertight shell saved. |
+| `blender_creature_rig_read.py` | Read the skeletons UniRig drew into the auto-rig's draw files, in the model's own frame. |
+| `blender_creature_rig_build.py` | Rig a prepared creature in Blender: the armature from joints.json, skin weights by bone heat, a rigged GLB and a sheet of test poses. |
 | `twocam_mocap.py` | Animate a rigged creature from a two-camera AI video: read the joints, fit the rig, export a GLB. |
 | `blender_twocam_apply.py` | Key a two-camera capture's motion onto its rig in Blender and export an animated GLB, headless. |
 | `blender_twocam_prepare.py` | Make a rigged GLB ready for two-camera capture in Blender: turned, sized, sides named, limbs painted, headless. |
