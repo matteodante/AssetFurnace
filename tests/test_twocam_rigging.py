@@ -221,3 +221,17 @@ def test_a_humanoid_neck_starts_above_the_shoulders():
     plan = rigging.plan_bones(sk, tolerance=0.03)
     roles = rigging.middle_roles(sk, plan.sides)
     assert roles[1] == "spine" and roles[2] == "neck" and roles[3] == "neck"
+
+
+def test_fingers_keep_their_own_names_all_the_way_down():
+    """SkinTokens gives humanoids five-fingered hands: only each finger's first bone had a
+    letter, so the second bones of all five fingers shared one name."""
+    b = Builder()
+    root = b.bone(-1, (0, 0, 1.0), (0, 0, 1.4))
+    for sx in (1, -1):
+        hand = b.chain(root, [(0.2 * sx, 0, 1.4), (0.5 * sx, 0, 1.2), (0.6 * sx, 0, 1.1)])
+        for f, y in enumerate((-0.03, 0.0, 0.03)):
+            b.chain(hand, [(0.6 * sx, y, 1.1), (0.64 * sx, y, 1.08), (0.67 * sx, y, 1.06)])
+    plan = rigging.plan_bones(b.skeleton(), tolerance=0.03)
+    assert len(set(plan.names)) == len(plan.names)
+    assert {"limb1_3a_L", "limb1_4a_L", "limb1_4c_R"} <= set(plan.names)

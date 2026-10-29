@@ -246,6 +246,7 @@ def plan_bones(skeleton: Skeleton, tolerance: float) -> Plan:
         for i in skeleton.subtree(root):
             if i in mirrors:
                 limbs[i] = limbs[mirrors[i]] = k
+    branches: dict[int, str] = {}  # the letters of every fork on the way down a limb (fingers)
     for i in skeleton.order():
         if sides[i] != "L" or not limbs[i]:
             continue
@@ -255,9 +256,11 @@ def plan_bones(skeleton: Skeleton, tolerance: float) -> Plan:
         while p >= 0 and sides[p]:
             depth += 1
             p = skeleton.parents[p]
-        siblings = [c for c in skeleton.children[skeleton.parents[i]] if sides[c] == "L" and limbs[c] == k]
-        branch = "" if len(siblings) <= 1 or depth == 1 else "abcdefghij"[siblings.index(i) % 10]
-        stem = f"limb{k}_{depth}{branch}"
+        parent = skeleton.parents[i]
+        siblings = [c for c in skeleton.children[parent] if sides[c] == "L" and limbs[c] == k]
+        letter = "" if len(siblings) <= 1 or depth == 1 else "abcdefghijklmnopqrstuvwxyz"[siblings.index(i) % 26]
+        branches[i] = (branches.get(parent, "") if depth > 1 else "") + letter
+        stem = f"limb{k}_{depth}{branches[i]}"
         names[i] = f"{stem}_L"
         names[mirrors[i]] = f"{stem}_R"
     if len(set(names)) != n:
