@@ -413,11 +413,25 @@ def follow_report(per_joint_px: Mapping[str, float], height_px: float) -> dict[s
     stretched wolf 3.9%."""
     v = np.array(list(per_joint_px.values()), float)
     if not len(v):
-        return {"level": "good", "typical": 0.0, "worst_tenth": 0.0}
+        return {"level": "good", "typical": 0.0, "worst_tenth": 0.0, "reasons": []}
     typical = float(np.median(v)) / max(height_px, 1e-6)
     worst = float(np.percentile(v, 90)) / max(height_px, 1e-6)
     level = "good" if typical <= 0.025 else "doubtful" if typical <= 0.045 else "bad"
-    return {"level": level, "typical": round(typical, 4), "worst_tenth": round(worst, 4)}
+    loose = (f"the rig follows it loosely: a typical joint stays {typical:.1%} of its height away "
+             "(the video may stretch or squash the body)")
+    reasons = [] if level == "good" else [loose]
+    return {"level": level, "typical": round(typical, 4), "worst_tenth": round(worst, 4), "reasons": reasons}
+
+
+def combined_verdict(check: Mapping[str, Any], follow: Mapping[str, Any]) -> dict[str, Any]:
+    """One verdict for a take: the worse of the two views' agreement and the rig's follow."""
+    rank = {"good": 0, "doubtful": 1, "bad": 2}
+    out = dict(check)
+    if rank[follow["level"]] > rank[check["level"]]:
+        out["level"] = follow["level"]
+    out["reasons"] = [*check.get("reasons", []), *follow.get("reasons", [])]
+    out["follow"] = follow["typical"]
+    return out
 
 
 # --- the fit ------------------------------------------------------------------------------

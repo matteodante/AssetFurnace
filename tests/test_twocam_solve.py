@@ -278,3 +278,11 @@ def test_a_capture_says_how_closely_the_rig_follows():
     truth, _, d = _clip(info)
     follow = solve.capture(d, info, truth["fps"], iters=200)["follow"]
     assert follow["level"] == "good" and follow["typical"] < 0.02
+
+
+def test_a_take_is_judged_on_the_worse_of_agreement_and_follow():
+    check = {"level": "good", "height_gap_fraction": 0.013, "feet_agreement": 0.99, "reasons": []}
+    loose = solve.follow_report({f"j{i}": 11.8 for i in range(10)}, height_px=300)
+    verdict = solve.combined_verdict(check, loose)
+    assert verdict["level"] == "doubtful" and "follows it loosely" in verdict["reasons"][0]
+    assert solve.combined_verdict(check, solve.follow_report({"j": 3.0}, 300))["level"] == "good"

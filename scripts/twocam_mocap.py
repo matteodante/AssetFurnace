@@ -442,13 +442,12 @@ def cmd_film(args) -> dict:
                                         no_calib=False, overlay=None, fps=None, made_with=plan["engine"],
                                         video_license=plan["license"], reader_license=None, device=args.device))
             d, fps = load_detections(det, info)
-            take["check"] = clip_report(d, info)["verdict"]
             # a quick fit says whether a skeleton can make what the two views agree on
             take["follow"] = solve.capture(d, info, fps, iters=400)["follow"]
+            take["check"] = solve.combined_verdict(clip_report(d, info)["verdict"], take["follow"])
     rank = {"good": 0, "doubtful": 1, "bad": 2}
     checked = [t for t in filmed if "check" in t]
-    best = min(checked, key=lambda t: (max(rank[t["check"]["level"]], rank[t["follow"]["level"]]),
-                                       t["follow"]["typical"])) if checked else None
+    best = min(checked, key=lambda t: (rank[t["check"]["level"]], t["follow"]["typical"])) if checked else None
     return {"prompt": text, "takes": takes, "best": best["clip"] if best else None}
 
 
