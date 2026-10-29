@@ -146,11 +146,14 @@ def test_the_bpy_pin_survives_the_filter():
     assert not any(line.startswith("bpy==4.0") for line in filtered)
 
 
-def test_the_compile_targets_this_card_and_not_some_other_one():
-    env = boot.build_env(["gfx1100"], HIPCC, base={"PATH": "/usr/bin"})
+def test_the_compile_targets_this_card_and_not_some_other_one(tmp_path):
+    # A real absolute folder: ROCM_HOME comes from hipcc's resolved path, and Windows
+    # resolves /opt/rocm onto a drive.
+    hipcc = tmp_path / "rocm" / "bin" / "hipcc"
+    env = boot.build_env(["gfx1100"], str(hipcc), base={"PATH": "/usr/bin"})
     assert env["PYTORCH_ROCM_ARCH"] == "gfx1100"
-    assert env["ROCM_HOME"] == "/opt/rocm"
-    assert "/opt/rocm/bin" in env["PATH"]
+    assert env["ROCM_HOME"] == str(tmp_path / "rocm")
+    assert str(hipcc.parent) in env["PATH"]
     assert env["MAX_JOBS"]
 
 

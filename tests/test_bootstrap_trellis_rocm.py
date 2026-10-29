@@ -252,11 +252,14 @@ def test_archs_are_semicolon_separated():
     assert boot.arch_list(["gfx1100", "gfx1030"]) == "gfx1100;gfx1030"
 
 
-def test_the_build_environment_names_the_card_the_toolkit_and_the_jobs():
-    env = boot.build_env(["gfx1100"], "/opt/rocm/bin/hipcc", {}, format_workaround=False)
+def test_the_build_environment_names_the_card_the_toolkit_and_the_jobs(tmp_path):
+    # A real absolute folder: ROCM_PATH comes from hipcc's resolved path, and Windows
+    # resolves /opt/rocm onto a drive.
+    hipcc = tmp_path / "rocm" / "bin" / "hipcc"
+    env = boot.build_env(["gfx1100"], str(hipcc), {}, format_workaround=False)
     assert env["GPU_ARCHS"] == "gfx1100"
-    assert env["ROCM_PATH"] == "/opt/rocm"
-    assert "/opt/rocm/bin" in env["PATH"]
+    assert env["ROCM_PATH"] == str(tmp_path / "rocm")
+    assert str(hipcc.parent) in env["PATH"]
     assert int(env["MAX_JOBS"]) >= 1
 
 
