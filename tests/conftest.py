@@ -50,7 +50,7 @@ def fake_program(tmp_path):
         if os.name == "nt":
             program = tmp_path / f"{name}.cmd"
             body = ["@echo off", *(f"echo {line}" for line in lines), f"exit /b {code}"]
-            program.write_text("\r\n".join(body) + "\r\n")
+            program.write_text("\n".join(body) + "\n")   # text mode writes \r\n on Windows
         else:
             program = tmp_path / name
             body = ["#!/bin/sh", *(f"echo '{line}'" for line in lines), f"exit {code}"]
