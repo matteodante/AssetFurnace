@@ -183,9 +183,9 @@ export function twocamHtml(state, asset, url, { dismissed = new Set() } = {}) {
     return `<li class="tc-stage ${st}" data-stage="${stage.id}"><p class="tc-head"><span class="dot">${st === 'done' ? '✓' : i + 1}</span><b>${stage.label}</b>${sum ? `<span class="hint">${esc(sum)}</span>` : ''}</p>
       ${extra}${mine && live && stage.id !== 'film' ? '' : bodies[stage.id](st)}</li>`;
   }).join('');
-  const why = asset.fits_moves === false || asset.kind === 'creature'
-    ? 'Preset moves are for humanoids. This one moves from a video instead'
-    : 'For a move the presets lack ("swings a sword", "lifts a log"), film it instead';
+  const why = asset.fits_moves === false ? 'Preset moves are for humanoids. This one moves from a video instead'
+    : asset.kind === 'creature' ? 'A creature moves from a video'
+      : 'For a move the presets lack ("swings a sword", "lifts a log"), film it instead';
   return `<p class="hint">${why}: an AI film of it from two cameras, read joint by joint and fitted to its rig.</p>
     ${top}<ol class="tc-stages">${stages}</ol>`;
 }

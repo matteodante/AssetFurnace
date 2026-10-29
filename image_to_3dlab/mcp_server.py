@@ -275,7 +275,7 @@ def continue_steps(asset: dict[str, Any], want: str, up_to: str | None, front_ba
     full = plan_for("idea", want, front_back=front_back and not made.get("model"))
     have = set(made) | ({"animated"} if asset.get("clips") else set()) | ({"split"} if asset.get("props") else set())
     todo = [s for s in stop_after(full, up_to) if s not in have]
-    if not todo and up_to == "animated" and made.get("rigged"):
+    if not todo and up_to == "animated" and made.get("rigged") and want != "creature":
         return ["animated"]
     return todo
 
@@ -1069,7 +1069,7 @@ def build_server(studio: Studio | None = None):
     @server.tool(name="list_assets", structured_output=False)
     def tool_list_assets(search: str = "", kind: str | None = None, limit: int = 20):
         """The Library, newest first: ids, names, how far each got, file paths, moves.
-        kind: picture | character | prop | "prop set" | model. search: words in the name or prompt."""
+        kind: picture | character | creature | prop | "prop set" | model. search: words in the name or prompt."""
         return safe(lambda: list_assets(studio, search=search, kind=kind, limit=limit))
 
     @server.tool(name="list_versions", structured_output=False)

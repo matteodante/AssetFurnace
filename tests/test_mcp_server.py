@@ -712,7 +712,7 @@ def test_status_says_where_models_go_and_survives_an_older_studio():
 
 @pytest.mark.skipif(__import__("shutil").which("node") is None, reason="Node runs the studio's steps.js")
 def test_continuing_an_asset_asks_for_what_the_studio_would_ask():
-    """A creature carried on by an agent stays a creature: its next 3D try is measured again."""
+    """A creature carried on by an agent is asked for as a creature (whose 3D step the studio measures)."""
     import subprocess
     kinds = ["character", "creature", "prop", "prop set", "model", "picture"]
     url = (Path(__file__).resolve().parents[1] / "viewer" / "studio" / "steps.js").as_uri()
@@ -721,3 +721,11 @@ def test_continuing_an_asset_asks_for_what_the_studio_would_ask():
                                        capture_output=True, text=True, encoding="utf-8").stdout)
     assert [ms.want_for({"kind": k}) for k in kinds] == studio
     assert ms.want_for({"kind": "creature"}) == "creature"
+
+
+
+def test_a_rigged_creature_is_not_sent_a_preset_move():
+    dragon = {"kind": "creature", "picture": "p.png", "model": "m.glb", "finished": "f.glb", "rigged": "r.glb", "clips": []}
+    knight = {**dragon, "kind": "character"}
+    assert ms.continue_steps(dragon, "creature", "animated", False) == []
+    assert ms.continue_steps(knight, "character", "animated", False) == ["animated"]

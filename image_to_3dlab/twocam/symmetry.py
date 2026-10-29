@@ -58,7 +58,7 @@ def surface_points(model: Path, count: int = POINTS, seed: int = 0) -> np.ndarra
     """Points spread evenly over a GLB's surface, Z up (glTF is Y up)."""
     import trimesh
 
-    mesh = trimesh.load(str(model), force="scene").to_geometry()
+    mesh = trimesh.load(str(model), force="mesh")   # a scene's meshes joined, their transforms applied
     if not hasattr(mesh, "sample") or len(getattr(mesh, "faces", [])) == 0:
         raise ValueError(f"{Path(model).name} has no surface to measure")
     points = np.asarray(mesh.sample(count, seed=seed), float)

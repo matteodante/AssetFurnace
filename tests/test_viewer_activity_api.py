@@ -444,3 +444,24 @@ def test_the_studio_measures_a_real_model_and_keeps_the_report_beside_it(tmp_pat
     report = aa.measure_shape(model)
     assert report["lopsided"] is False
     assert json.loads((tmp_path / "beast.symmetry.json").read_text(encoding="utf-8")) == report
+
+
+
+def test_an_uploaded_creature_is_recorded_as_one_even_when_its_3d_step_fails(tmp_path):
+    """The Library knows a creature by its history; an uploaded picture has no prompt to tell by."""
+    runner, _ = _runner(tmp_path, fail="model")
+    chain = aa.Chain(title="wolf", want="creature", steps=["model", "finished", "rigged"], upload=("wolf.png", b"png"))
+    runner.submit(chain, background=False)
+    assert chain.status == "error"
+    picture = [h for h in aa.read_history(tmp_path) if h["step"] == "picture"]
+    assert picture and picture[0]["want"] == "creature" and picture[0]["made"].startswith("images/uploads/wolf__")
+
+
+def test_a_lopsided_upload_is_told_to_try_another_picture_and_the_reason_is_kept(tmp_path):
+    check, _ = _shape(4.2)
+    runner, _ = _runner(tmp_path, shape_check=check)
+    chain = aa.Chain(title="wolf", want="creature", steps=["model", "finished"], upload=("wolf.png", b"png"))
+    runner.submit(chain, background=False)
+    assert "Try another picture" in chain.note and "Draw another" not in chain.note
+    model = [h for h in aa.read_history(tmp_path) if h["step"] == "model"][0]
+    assert "lopsided" in model["note"]           # after a restart, Activity still says why it stopped

@@ -196,7 +196,9 @@ def test_a_humanoid_hears_why_it_would_film_a_move_and_a_creature_why_it_must():
         dragon: m.twocamHtml(s, {{ ...{json.dumps(WOLF)}, fits_moves: true, kind: 'creature' }}, url),
       }}));""")
     assert "the presets lack" in out["knight"] and "Preset moves are for humanoids" not in out["knight"]
-    assert "Preset moves are for humanoids" in out["wolf"] and "Preset moves are for humanoids" in out["dragon"]
+    assert "Preset moves are for humanoids" in out["wolf"]
+    # a creature whose rig would fit the presets is not told it is no humanoid
+    assert "A creature moves from a video" in out["dragon"] and "Preset moves are for humanoids" not in out["dragon"]
 
 
 def test_a_person_is_measured_by_height_and_a_creature_nose_to_tail():

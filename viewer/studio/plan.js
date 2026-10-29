@@ -50,6 +50,11 @@ export function frontBackByDefault(want, ready) {
   return Boolean(ready) && want !== 'creature';
 }
 
+/** Front + back for this goal: what the user chose for it in this sheet, else the default. */
+export function frontBackFor(want, ready, choices = {}) {
+  return Boolean(ready) && (choices[want] ?? frontBackByDefault(want, ready));
+}
+
 /** Cut a plan after a step the user clicked, or keep it whole. */
 export function stopAfter(steps, last) {
   const i = steps.indexOf(last);

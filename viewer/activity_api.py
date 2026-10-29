@@ -56,10 +56,12 @@ def measure_shape(model: Path) -> dict[str, Any]:
     return report
 
 
-def lopsided_note(report: dict[str, Any]) -> str:
+def lopsided_note(report: dict[str, Any], drawn: bool = True) -> str:
+    """`drawn`: the picture came from a description, so it can be drawn again; an upload cannot."""
+    again = "Draw another picture" if drawn else "Try another picture"
     return (f"This creature came out lopsided: its two sides are {report['mirror_gap_pct']:g}% apart "
             f"(a straight one is under {report['limit_pct']:g}%). Animating it from a video needs a body whose "
-            "sides mirror each other, so the run stopped here. Draw another picture, or carry on with Finish and "
+            f"sides mirror each other, so the run stopped here. {again}, or carry on with Finish and "
             "Rig from its Steps.")
 
 
@@ -205,6 +207,9 @@ class ChainRunner:
         if self._picture_upload(chain) and not chain.made.get("picture"):
             try:
                 self._kept_upload(chain)   # kept from the start, so the Library shows it even on a front-only run
+                # and recorded, so it is filed as what it was asked to become (a creature) even if
+                # the next step fails: an upload has no prompt to tell by
+                self._history(chain, "picture", "done", self.now(), "the uploaded picture, kept", "")
             except OSError:
                 pass                       # the run still has the bytes; only the Library loses the picture
         for step in chain.steps:
@@ -260,7 +265,7 @@ class ChainRunner:
             return self._fail(chain, step, why, payload.get("log_tail") or "", started, status)
         self._record(chain, step, payload)
         chain.step_seconds[step] = round(self.now() - started, 1)
-        self._history(chain, step, "done", started, chain.message, chain.full_log)
+        self._history(chain, step, "done", started, chain.note or chain.message, chain.full_log)
         return True
 
     def _fail(self, chain: Chain, step: str, why: str, log: str, started: float, status: str = "error") -> bool:
@@ -297,7 +302,7 @@ class ChainRunner:
             chain.full_log += f"\nthe model's symmetry could not be measured: {exc}"
             return
         if chain.shape.get("lopsided"):
-            chain.note = lopsided_note(chain.shape)
+            chain.note = lopsided_note(chain.shape, drawn=bool(chain.prompt))
 
     # ------------------------------------------------------------------ starting each step
     def _file(self, relative: str) -> tuple[str, bytes]:

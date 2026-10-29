@@ -299,12 +299,27 @@ def test_an_older_creature_is_known_by_the_creature_wording_in_its_prompt(output
 
 
 def test_a_creature_carries_how_lopsided_its_model_came_out(output):
-    _, model = _single_creature(output)
+    from viewer import activity_api
+    stem, model = _single_creature(output)
+    activity_api.append_history(output, {"chain": "c4", "step": "picture", "result": "done", "want": "creature",
+                                         "made": f"images/{stem}/{stem}.png"})
     report = {"mirror_gap_pct": 3.1, "limit_pct": 2.5, "lopsided": True}
     _write(model.with_suffix(".symmetry.json"), json.dumps(report), 6100)
     assets = _by_name(aa.list_assets(output))
-    assert assets["a green dragon"]["shape"] == report
+    assert assets["a green dragon"]["kind"] == "creature" and assets["a green dragon"]["shape"] == report
     assert assets["a chunky knight"]["shape"] is None
+
+
+def test_a_creature_picture_drawn_again_as_a_character_is_a_character(output):
+    """"Draw another picture" copies the prompt word for word, the creature wording included;
+    what the run asked for decides, and the wording only tells assets older than the history."""
+    from viewer import activity_api
+    wording = json.loads((Path(aa.__file__).resolve().parents[1] / "image_to_3dlab" / "prompt_recipes.json")
+                         .read_text(encoding="utf-8"))["goals"]["creature"]["wording"]
+    stem, _ = _single_creature(output, prompt=f"A green troll, {wording}")
+    activity_api.append_history(output, {"chain": "c5", "step": "picture", "result": "done", "want": "character",
+                                         "made": f"images/{stem}/{stem}.png"})
+    assert _by_name(aa.list_assets(output))["a green dragon"]["kind"] == "model"
 
 
 def test_an_asset_carries_its_back_picture_when_there_is_one(output):

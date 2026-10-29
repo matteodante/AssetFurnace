@@ -31,7 +31,8 @@ export function stepBody(stepId, asset, ctx) {
 export function shapeWarning(asset, stepId) {
   const shape = asset.kind === 'creature' ? asset.shape : null;
   if (!shape?.lopsided) return '';
-  const next = !asset.finished ? 'finished' : !asset.rigged ? 'rigged' : 'animated';
+  // a rig made from the raw model skips Finish: past the rig, the warning is on Animate
+  const next = asset.rigged ? 'animated' : !asset.finished ? 'finished' : 'rigged';
   if (stepId !== next) return '';
   return `<div class="warning"><p>This creature came out lopsided: its two sides are ${esc(shape.mirror_gap_pct)}% apart (a straight one is under ${esc(shape.limit_pct)}%). Animating it from a video needs a body whose sides mirror each other, and its rig will be wonky.</p>
     ${asset.prompt ? '<button class="ghost" data-newpicture>Draw another picture</button>' : ''}</div>`;

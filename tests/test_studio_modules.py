@@ -1170,3 +1170,25 @@ def test_create_offers_a_moving_creature_beside_a_moving_character():
     assert out[1] == ["picture", "model", "finished", "rigged"]
     create = (REPO / "viewer" / "studio" / "create.js").read_text(encoding="utf-8")
     assert "['creature', 'idea', 'Make a creature']" in create
+
+
+
+@needs_node
+def test_a_lopsided_creature_rigged_from_its_raw_model_is_warned_on_animate():
+    out = _run("steps.js", f"""
+      const raw = {{ ...{json.dumps(DRAGON)}, finished: null, rigged: 'r/d.glb', fits_moves: false }};
+      const ctx = {{ presets: [], engines: [] }};
+      console.log(JSON.stringify([m.stepBody('finished', raw, ctx), m.stepBody('animated', raw, ctx)]));""")
+    assert "lopsided" not in out[0] and "lopsided" in out[1]
+
+
+@needs_node
+def test_a_front_and_back_choice_made_for_a_goal_survives_switching_goals():
+    out = _run("plan.js", """console.log(JSON.stringify([
+      m.frontBackFor('character', true, {}), m.frontBackFor('creature', true, {}),
+      m.frontBackFor('character', true, { character: false }), m.frontBackFor('creature', true, { creature: true }),
+      m.frontBackFor('creature', false, { creature: true }),
+    ]));""")
+    assert out == [True, False, False, True, False]
+    create = (REPO / "viewer" / "studio" / "create.js").read_text(encoding="utf-8")
+    assert "state.frontBackChoices[state.want] = e.target.checked" in create   # the box records the choice

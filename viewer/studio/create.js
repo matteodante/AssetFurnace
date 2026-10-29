@@ -1,7 +1,7 @@
 // Create: one sheet that asks "start from" and "I want", then a runner that carries one
 // thing through every step it needs, using the same job APIs as the Steps panel.
 
-import { HAVES, WANTS, ALLOWED, STEP_LABELS, FULL_GUIDE, planFor, stopAfter, composePrompt, troubleFor, frontBackByDefault } from './plan.js';
+import { HAVES, WANTS, ALLOWED, STEP_LABELS, FULL_GUIDE, planFor, stopAfter, composePrompt, troubleFor, frontBackFor } from './plan.js';
 import { plainError } from './jobs.js';
 import { openPromptGuide, isGuideLink } from './guide.js';
 
@@ -52,9 +52,10 @@ export function openCreate({ stage, recipes, engines, presets, frontBack = null,
   const state = { have: 'idea', want: 'character', stop: null, tips: false, useRecipe: true, text: '', file: null, preview: null,
     engine: engines[0]?.id, firstMove: presets.find((p) => !p.take)?.id,
     pic: { size: 768, steps: 8, newEachTime: true, seed: 42 }, keep: false, hero: false,
-    frontBack: false };
-  // the best result by default, when it can run; a creature's starts off (plan.js frontBackByDefault)
-  const wantNow = (want) => { state.want = want; state.frontBack = frontBackByDefault(want, frontBack?.ready); };
+    frontBack: false, frontBackChoices: {} };
+  // the best result by default, when it can run; a creature's starts off; a box the user ticked
+  // or unticked for a goal stays that way for it (plan.js frontBackFor)
+  const wantNow = (want) => { state.want = want; state.frontBack = frontBackFor(want, frontBack?.ready, state.frontBackChoices); };
   wantNow(state.want);
   // "Draw another picture": the picture's own description, word for word, so nothing is added twice
   if (prefill?.text) { Object.assign(state, { text: prefill.text, useRecipe: false }); wantNow(prefill.want || state.want); }
@@ -152,7 +153,7 @@ export function openCreate({ stage, recipes, engines, presets, frontBack = null,
     q('[data-k="keep"]')?.addEventListener('change', (e) => { state.keep = e.target.checked; });
     sheet.querySelectorAll('[data-face]').forEach((b) => b.onclick = () => { state.hero = b.dataset.face === 'hero'; render(); });
     const reopen3d = () => { const d = sheet.querySelector('[data-k="keep"]')?.closest('details'); if (d) d.open = true; };
-    q('[data-k="frontback"]')?.addEventListener('change', (e) => { state.frontBack = e.target.checked; render(); reopen3d(); });
+    q('[data-k="frontback"]')?.addEventListener('change', (e) => { state.frontBack = state.frontBackChoices[state.want] = e.target.checked; render(); reopen3d(); });
     sheet.querySelectorAll('[data-pic]').forEach((el) => el.addEventListener('change', () => {
       const key = el.dataset.pic;
       state.pic[key] = el.type === 'checkbox' ? el.checked : Number(el.value);

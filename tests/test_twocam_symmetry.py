@@ -70,13 +70,19 @@ def test_too_few_points_or_a_single_point_are_refused():
 
 
 def test_a_glb_is_read_y_up_and_its_report_kept_beside_it(tmp_path):
+    """Turned 30 degrees about glTF's up axis (Y), the beast is straight only if Y is read as up:
+    read Z up, its mirror plane would have to be tilted, which the search does not try."""
     trimesh = pytest.importorskip("trimesh")
+    tf = trimesh.transformations
     pieces = []
-    for x in (-0.3, 0.3):                      # two legs and a body, mirrored in X
-        pieces.append(trimesh.creation.box([0.1, 0.6, 0.1], trimesh.transformations.translation_matrix([x, 0.3, 0])))
-    pieces.append(trimesh.creation.box([0.8, 0.2, 0.3], trimesh.transformations.translation_matrix([0, 0.7, 0])))
+    for x in (-0.3, 0.3):                      # two legs, a body and a head, mirrored in X, Y up
+        pieces.append(trimesh.creation.box([0.1, 0.6, 0.1], tf.translation_matrix([x, 0.3, 0.2])))
+    pieces.append(trimesh.creation.box([0.8, 0.2, 1.0], tf.translation_matrix([0, 0.7, 0])))
+    pieces.append(trimesh.creation.box([0.3, 0.3, 0.3], tf.translation_matrix([0, 0.9, -0.7])))
+    beast = trimesh.util.concatenate(pieces)
+    beast.apply_transform(tf.rotation_matrix(math.radians(30), [0, 1, 0]))
     model = tmp_path / "beast.glb"
-    trimesh.util.concatenate(pieces).export(model)
+    beast.export(model)
     report = symmetry.check(model)
     assert report["lopsided"] is False and report["mirror_gap_pct"] < 1.0
     assert report["limit_pct"] == 2.5
