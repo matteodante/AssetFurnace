@@ -565,3 +565,17 @@ def test_the_delete_endpoints_preview_first_and_need_a_confirmation(output, monk
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_a_creature_rig_shows_its_test_poses_and_draws(output):
+    run = output / "animate" / RIG
+    work = run / "creature_rig"
+    _write(work / "poses-sheet.png", b"png")
+    _write(work / "draws-sheet.png", b"png")
+    _write(run / "a-chunky-knight_40k_rigged.joints.json",
+           json.dumps({"chosen": 1, "draws": [{"score": 3.0}, {"score": 2.0}, {"score": None}]}))
+    knight = _by_name(aa.list_assets(output))["a chunky knight"]
+    sheets = knight["rig_sheets"]
+    assert sheets["poses"] == f"animate/{RIG}/creature_rig/poses-sheet.png" and sheets["draws"].endswith("draws-sheet.png")
+    assert sheets["count"] == 3 and sheets["chosen"] == 1 and sheets["usable"] == [0, 1]
+    assert _by_name(aa.list_assets(output))["orc"]["rig_sheets"] is None

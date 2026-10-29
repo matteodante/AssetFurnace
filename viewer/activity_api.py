@@ -31,6 +31,8 @@ KIND = {"picture": "image", "back": "image", "model": "generate", "finished": "f
         "rigged": "animate", "animated": "animate"}
 # The Finish choices a plan may carry (the same ones the Steps panel's Finish sends).
 MOVE_KEYS = ("speed", "arm_spread")
+# The Rig choices a plan may carry: which rigger, and another draw of an earlier creature rig.
+RIG_KEYS = ("rigger", "draw", "from_rig")
 # Every Detail choice the studio and agents offer must be able to pass (mcp_server.FINISH_DETAILS):
 # "high" and "hero" were dropped here, so an agent asking for them got a plain Finish.
 FINISH_KEYS = ("faces", "keep_mesh", "skip_photo", "skip_edge_fade", "skip_nudge", "texture_size",
@@ -120,6 +122,7 @@ class Chain:
     keep_everything: bool = False                                    # the 3D step keeps its textures, meshes, caches
     finish_settings: dict[str, Any] = field(default_factory=dict)    # detail and Pixel Match (the finish job checks them)
     move_settings: dict[str, Any] = field(default_factory=dict)      # speed, arm_spread (the animate job checks them)
+    rig_settings: dict[str, Any] = field(default_factory=dict)       # rigger, draw, from_rig (the rig job checks them)
     made: dict[str, str | None] = field(default_factory=dict)       # picture/model/finished/rigged paths
     upload: tuple[str, bytes] | None = None                          # (file name, bytes) when the user gave a file
     client: str | None = None                                        # "agent" when the MCP server asked for it
@@ -367,6 +370,7 @@ class ChainRunner:
         if step == "rigged":
             source = chain.made.get("finished") or chain.made.get("model")
             creature = {"creature": "1"} if chain.want == "creature" else {}   # the creature rig
+            creature |= {k: str(chain.rig_settings[k]) for k in RIG_KEYS if chain.rig_settings.get(k) is not None}
             if source:
                 body, ctype = multipart({"model": source, **creature}, {})
             elif chain.upload:
@@ -478,6 +482,7 @@ def chain_from_form(form: dict[str, dict[str, Any]]) -> Chain:
         picture = json.loads(text("picture_settings") or "{}")
         finish = json.loads(text("finish_settings") or "{}")
         move = json.loads(text("move_settings") or "{}")
+        rig = json.loads(text("rig_settings") or "{}")
     except ValueError as exc:
         raise ValueError(f"the plan is not readable: {exc}") from exc
     upload = form.get("file")
@@ -490,6 +495,7 @@ def chain_from_form(form: dict[str, dict[str, Any]]) -> Chain:
         keep_everything=text("keep_everything") in ("1", "true"),
         finish_settings={k: finish[k] for k in FINISH_KEYS if k in finish} if isinstance(finish, dict) else {},
         move_settings={k: move[k] for k in MOVE_KEYS if k in move} if isinstance(move, dict) else {},
+        rig_settings={k: rig[k] for k in RIG_KEYS if k in rig} if isinstance(rig, dict) else {},
         made={k: str(v) for k, v in made.items() if k in ("picture", "back", "model", "finished", "rigged") and v},
         upload=(upload.get("filename") or "upload", upload["data"]) if upload and upload.get("filename") and upload.get("data") else None,
     )

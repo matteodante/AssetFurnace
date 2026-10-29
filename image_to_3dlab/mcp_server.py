@@ -356,6 +356,11 @@ ADVANCED: dict[str, dict[str, Any]] = {
     "rig_from": {
         "step": "rigged", "type": "str", "choices": ["finished", "model"], "default": "finished",
         "what": "Which model gets the skeleton: the finished one, or the raw 3D model (skips Finish)."},
+    "rigger": {
+        "step": "rigged", "type": "str", "choices": ["auto", "unirig", "skintokens"], "default": "auto",
+        "what": "Which rigger draws the skeleton: auto (the creature rig for a creature, SkinTokens otherwise), "
+                "unirig (the creature rig: four tries, the best kept and named) or skintokens (one try; the "
+                "preset moves need its skeletons)."},
     "speed": {
         "step": "animated", "type": "float", "min": 0.5, "max": 2.0, "default": "the move's own pace",
         "what": "Playback speed of the move."},
@@ -637,6 +642,8 @@ def create(studio: Studio, *, want: str, description: str = "", image_path: str 
         form["finish_settings"] = json.dumps(choices)
     if move_settings and "animated" in steps:
         form["move_settings"] = json.dumps(move_settings)
+    if adv["rigger"] != "auto" and "rigged" in steps:
+        form["rig_settings"] = json.dumps({"rigger": adv["rigger"]})
     upload = _upload(image_path, (".png", ".jpg", ".jpeg", ".webp")) or _upload(model_path, (".glb",))
     run = studio.post("api/chains", data=form, files={"file": upload} if upload else None)
     return {"run_id": run["id"], "steps": steps, "engine": form.get("engine"), "move": form.get("first_move"),
@@ -684,6 +691,8 @@ def continue_asset(studio: Studio, *, asset_id: str, up_to: str | None = None, w
         form["finish_settings"] = json.dumps(choices)
     if move_settings and "animated" in steps:
         form["move_settings"] = json.dumps(move_settings)
+    if adv["rigger"] != "auto" and "rigged" in steps:
+        form["rig_settings"] = json.dumps({"rigger": adv["rigger"]})
     if "picture" in steps and asset.get("prompt"):
         form["prompt"] = asset["prompt"]
     if "model" in steps:

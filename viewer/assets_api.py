@@ -233,8 +233,26 @@ def _rigs(output: Path) -> list[dict[str, Any]]:
                 if clip == rigged or name == "rigged" or TAKE_SUFFIX.search(name):
                     continue
                 clips.append({"name": name, "file": clip})
-            found.append({"stem": base, "file": rigged, "input_sha": input_sha, "clips": clips})
+            found.append({"stem": base, "file": rigged, "input_sha": input_sha, "clips": clips,
+                          "sheets": _rig_sheets(rigged)})
     return found
+
+
+def _rig_sheets(rigged: Path) -> dict[str, Any] | None:
+    """What the creature rig left to look at: its test poses and every draw it chose from
+    (None for a SkinTokens rig)."""
+    work = rigged.parent / "creature_rig"
+    if not (work / "poses-sheet.png").is_file():
+        return None
+    try:
+        joints = json.loads(rigged.with_suffix(".joints.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        joints = {}
+    draws = joints.get("draws") or []
+    return {"poses": work / "poses-sheet.png",
+            "draws": work / "draws-sheet.png" if (work / "draws-sheet.png").is_file() else None,
+            "count": len(draws), "chosen": joints.get("chosen"),
+            "usable": [k for k, d in enumerate(draws) if isinstance(d, dict) and d.get("score") is not None]}
 
 
 def _prop_sets(output: Path) -> list[dict[str, Any]]:
@@ -423,6 +441,10 @@ def list_assets(output: Path, with_runs: bool = False) -> list[dict[str, Any]]:
             "finished": rel(fin["file"]) if fin else None,
             "pixel_match": fin["pixel_match"] if fin else None,
             "rigged": rel(rig["file"]) if rig else None,
+            # the creature rig's test poses and draws, for a person to look at and pick another
+            "rig_sheets": ({**rig["sheets"], "poses": rel(rig["sheets"]["poses"]),
+                            "draws": rel(rig["sheets"]["draws"]) if rig["sheets"]["draws"] else None}
+                           if rig and rig.get("sheets") else None),
             **(hashes.rig_facts(rig["file"]) if rig else {"fits_moves": None, "facing": None}),
             "clips": [{"name": c["name"], "file": rel(c["file"])} for c in clips],
             "props": [{"name": p["name"], "file": rel(p["file"])} for p in (prop_set["props"] if prop_set else [])],

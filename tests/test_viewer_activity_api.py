@@ -475,3 +475,14 @@ def test_a_creature_asks_for_the_creature_rig_and_a_character_does_not(tmp_path)
                   background=False)
     rigs = [b for m, p, b in jobs.calls if m == "POST" and p == "/api/animate/rig"]
     assert b'name="creature"\r\n\r\n1' in rigs[0] and b'name="creature"' not in rigs[1]
+
+
+def test_a_plans_rig_choices_reach_the_rig_job(tmp_path):
+    runner, jobs = _runner(tmp_path)
+    chain = aa.chain_from_form({"title": {"value": "dragon"}, "steps": {"value": '["rigged"]'}, "want": {"value": "creature"},
+                                "rig_settings": {"value": '{"draw": 2, "from_rig": "animate/d/d_rigged.glb", "evil": 1}'},
+                                "made": {"value": '{"finished": "finish/f/finished.glb"}'}})
+    assert chain.rig_settings == {"draw": 2, "from_rig": "animate/d/d_rigged.glb"}
+    runner.submit(chain, background=False)
+    body = [b for m, p, b in jobs.calls if m == "POST" and p == "/api/animate/rig"][0]
+    assert b'name="draw"\r\n\r\n2' in body and b'name="from_rig"\r\n\r\nanimate/d/d_rigged.glb' in body

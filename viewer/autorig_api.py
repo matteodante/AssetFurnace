@@ -159,6 +159,11 @@ def resolve_model(relative: str, output: Path = REPO / "output") -> Path:
     raise ValueError(f"not a model this tab offers: {relative!r}")
 
 
+def creature_work_of(rigged: Path) -> Path:
+    """The creature rig's work folder beside a rigged GLB (its prepared model, shell and draws)."""
+    return rigged.parent / "creature_rig"
+
+
 def rig_run_of(glb: Path) -> Path | None:
     """The rig folder a `_rigged.glb` lives in, or None for anything else."""
     run = glb.parent
@@ -210,13 +215,16 @@ def animation_record(rig: dict[str, Any] | None, preset: dict[str, Any],
 # ----------------------------------------------------------------------------- jobs
 
 
-def rig_commands(source: Path, result: Path, creature: bool = False) -> list[tuple[list[str], Path]]:
+def rig_commands(source: Path, result: Path, creature: bool = False, reuse: Path | None = None,
+                 draw: int | None = None) -> list[tuple[list[str], Path]]:
     """SkinTokens, then a skin-weight clean-up: it sometimes weights fingertips to a toe,
     which stretches them into spikes once the hand moves (scripts/clean_skin_weights.py).
-    A creature runs the creature rig instead, which skins with Blender's bone heat."""
+    A creature runs the creature rig instead, which skins with Blender's bone heat; `reuse`
+    (an earlier creature rig's work folder) and `draw` rig it again from one of its draws."""
     if creature:
+        again = ["--reuse", str(reuse), "--draw", str(draw)] if reuse is not None and draw is not None else []
         return [([sys.executable, str(CREATURE_RIG), str(source), str(result), "--draws", str(CREATURE_DRAWS),
-                  "--work", str(result.parent / "creature_rig")], REPO)]
+                  "--work", str(result.parent / "creature_rig"), *again], REPO)]
     return [
         ([str(venv_python()), "demo.py", "--input", str(source), "--output", str(result),
           "--use_transfer"], SKINTOKENS),
@@ -321,7 +329,14 @@ class AnimateJobManager:
         return job
 
     def create_rig(self, name: str, data: bytes, source: dict[str, Any] | None,
-                   origin: str, creature: bool = False) -> AnimateJob:
+                   origin: str, creature: bool = False, reuse: Path | None = None,
+                   draw: int | None = None) -> AnimateJob:
+        """`creature`: the creature rig, not SkinTokens. `reuse` + `draw`: rig again from an
+        earlier creature rig's draw N (its work folder), without drawing again."""
+        if (reuse is None) != (draw is None) or (reuse is not None and not creature):
+            raise ValueError("another draw needs the earlier creature rig and the draw's number")
+        if reuse is not None and not (reuse / "draws" / f"draw{draw}.json").is_file():
+            raise ValueError(f"that rig has no draw {draw}")
         with self.lock:
             if self.busy():
                 raise RuntimeError("an Animate job is already running")
@@ -337,7 +352,7 @@ class AnimateJobManager:
             source_glb.write_bytes(data)
             result = directory / f"{stem}_rigged.glb"
             job = AnimateJob(uuid.uuid4().hex, "rig", directory, result,
-                             rig_commands(source_glb, result, creature),
+                             rig_commands(source_glb, result, creature, reuse, draw),
                              CREATURE_RIG_SECONDS if creature else RIG_SECONDS,
                              rig_record(name, data, source, origin, creature))
             return self._claim(job)

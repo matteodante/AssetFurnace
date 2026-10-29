@@ -1193,3 +1193,26 @@ def test_a_front_and_back_choice_made_for_a_goal_survives_switching_goals():
     assert out == [True, False, False, True, False]
     create = (REPO / "viewer" / "studio" / "create.js").read_text(encoding="utf-8")
     assert "state.frontBackChoices[state.want] = e.target.checked" in create   # the box records the choice
+
+
+@needs_node
+def test_the_rigger_can_be_chosen_and_another_draw_used():
+    rigged = {**DRAGON, "rigged": "animate/d/d_rigged.glb", "fits_moves": False,
+              "rig_sheets": {"poses": "animate/d/creature_rig/poses-sheet.png", "draws": "animate/d/creature_rig/draws-sheet.png",
+                             "count": 4, "chosen": 3, "usable": [0, 1, 3]}}
+    out = _run("steps.js", f"""
+      const ctx = {{ presets: [], engines: [], url: (p) => '/output/' + p }};
+      const dragon = {json.dumps(rigged)}, knight = {json.dumps(KNIGHT)};
+      console.log(JSON.stringify({{
+        dragonRig: m.stepBody('rigged', {{ ...dragon, rigged: null, rig_sheets: null }}, ctx),
+        knightRig: m.stepBody('rigged', {{ ...knight, rigged: null }}, ctx),
+        redo: m.stepBody('rigged', dragon, ctx),
+        drawPlan: m.chainPlan('rigged', dragon, {{ rigSource: 'finished', draw: '1' }}),
+        riggerPlan: m.chainPlan('rigged', dragon, {{ rigSource: 'finished', rigger: 'skintokens' }}),
+      }}));""")
+    assert '<option value="unirig" selected>' in out["dragonRig"] and '<option value="skintokens" selected>' in out["knightRig"]
+    assert 'data-draw="0"' in out["redo"] and 'data-draw="1"' in out["redo"]
+    assert 'data-draw="3"' not in out["redo"] and 'data-draw="2"' not in out["redo"]   # the kept one, an unusable one
+    assert "/output/animate/d/creature_rig/draws-sheet.png" in out["redo"] and "poses-sheet.png" in out["redo"]
+    assert out["drawPlan"]["rigSettings"] == {"draw": 1, "from_rig": "animate/d/d_rigged.glb"}
+    assert out["riggerPlan"]["rigSettings"] == {"rigger": "skintokens"}

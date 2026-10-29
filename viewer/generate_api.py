@@ -60,6 +60,9 @@ from autorig_api import (
     cancel_job as cancel_animate_job,
 )
 from autorig_api import (
+    creature_work_of as animate_creature_work,
+)
+from autorig_api import (
     installed as autorig_installed,
 )
 from autorig_api import (
@@ -3592,8 +3595,21 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json(400, {"error": "request is missing or larger than 512 MiB"})
                 return
             form = parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length))
-            # a creature is rigged by the creature rig (scripts/creature_rig.py)
-            creature = str((form.get("creature") or {}).get("value", "")).strip().lower() in ("1", "true", "yes")
+            def field(name: str) -> str:
+                return str((form.get(name) or {}).get("value", "")).strip()
+            # which rigger: the creature rig (scripts/creature_rig.py) for a creature unless
+            # the Rig step's Advanced says SkinTokens; asked for by name, either one
+            rigger = field("rigger").lower()
+            creature = rigger == "unirig" or (rigger != "skintokens" and field("creature").lower() in ("1", "true", "yes"))
+            reuse = draw = None
+            if field("draw"):
+                try:
+                    draw = int(field("draw"))
+                    reuse = animate_creature_work(resolve_animate_model(field("from_rig"), OUTPUT_ROOT))
+                except ValueError as exc:
+                    self._send_json(422, {"error": f"another draw: {exc}"})
+                    return
+                creature = True
             blocked = self._animate_blocked(creature)
             if blocked:
                 self._send_json(409, {"error": blocked})
@@ -3614,9 +3630,12 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json(422, {"error": "send a .glb in 'asset' or a listed 'model'"})
                 return
             try:
-                job = ANIMATE_JOBS.create_rig(name, data, record, origin, creature=creature)
+                job = ANIMATE_JOBS.create_rig(name, data, record, origin, creature=creature, reuse=reuse, draw=draw)
             except RuntimeError as exc:
                 self._send_json(409, {"error": str(exc)})
+                return
+            except ValueError as exc:
+                self._send_json(422, {"error": str(exc)})
                 return
             self._start_animate(job)
         except Exception as exc:
