@@ -334,15 +334,21 @@ def viterbi_two_states(cost0: np.ndarray, cost1: np.ndarray, switch: float) -> n
     return path
 
 
-def paw_agreement(d, names, feet):
+def paw_agreement(d, names, feet, still_px: float = 0.5):
     """Correlation of each foot's height between the two views over the clip: +1 when both
-    halves show the same footfalls, near 0 or negative when they animate differently."""
+    halves show the same footfalls, near 0 or negative when they animate differently.
+
+    A foot that hardly moves in either view (its height wanders less than `still_px`) has
+    no footfalls to compare: its correlation would be the reader's noise, so it is left
+    out. AnyMove used 0.5 px; a dragon's planted hind feet scored -0.75 at that, while its
+    front feet agreed at 0.97, so `assess` scales it with the creature's height."""
     out: dict[str, float | None] = {}
     for k in feet:
         if k in names:
             j = names.index(k)
             a, b = d["front_uv"][:, j, 1], d["side_uv"][:, j, 1]
-            out[k] = float(np.corrcoef(a, b)[0, 1]) if a.std() > 0.5 and b.std() > 0.5 else None
+            moving = a.std() > still_px and b.std() > still_px
+            out[k] = float(np.corrcoef(a, b)[0, 1]) if moving else None
     vals = [v for v in out.values() if v is not None]
     out["score"] = float(np.mean(vals)) if vals else None
     return out
@@ -354,6 +360,7 @@ def sync_report(d, max_lag: int = 12):
     fv, sv = d["front_uv"][..., 1], d["side_uv"][..., 1]
     c = np.minimum(d["front_conf"], d["side_conf"]).clip(0, 1)
     err = (c * np.abs(fv - sv)).sum(1) / c.sum(1).clip(1e-6)
+    per_joint = (c * np.abs(fv - sv)).sum(0) / c.sum(0).clip(1e-6)
     T = len(fv)
     best = None
     for lag in range(-max_lag, max_lag + 1):
@@ -365,7 +372,8 @@ def sync_report(d, max_lag: int = 12):
         e = float((w * np.abs(fv[sl_f] - sv[sl_s])).sum() / max(w.sum(), 1e-6))
         if best is None or e < best[1]:
             best = (lag, e)
-    return {"mean_height_gap_px": float(err.mean()), "worst_frame_gap_px": float(err.max()),
+    return {"mean_height_gap_px": float(err.mean()), "median_joint_gap_px": float(np.median(per_joint)),
+            "worst_frame_gap_px": float(err.max()),
             "per_frame_gap_px": err.round(2).tolist(), "best_lag_frames": best[0], "gap_at_best_lag_px": best[1]}
 
 
@@ -377,12 +385,18 @@ def creature_height_px(info: Mapping[str, Any], layout: Layout) -> float:
 def verdict(sync: Mapping[str, Any], paws: Mapping[str, Any], height_px: float) -> dict[str, Any]:
     """Whether a clip is worth fitting. Two halves showing different motions cannot make
     one true motion: AnyMove's eight-legged walks (feet agreement 0.36-0.49) never fit,
-    its good captures scored 0.73 and up."""
-    gap = sync["mean_height_gap_px"] / max(height_px, 1e-6)
+    its good captures scored 0.73 and up.
+
+    The height gap is the typical joint's (the median over joints), not the mean: a leg
+    hidden behind another in one view is guessed there, and one such leg pulled a clip
+    that fitted well to 4.1% on the mean (MiniMax H3 run locally on AnyMove's dragon:
+    median 2.8%; the same roar from fal's H3 Max: median 1.2%, mean 1.6%)."""
+    gap_px = sync.get("median_joint_gap_px", sync["mean_height_gap_px"])
+    gap = gap_px / max(height_px, 1e-6)
     score = paws.get("score")
     reasons = []
     if gap > 0.04:
-        reasons.append(f"the views disagree by {gap:.1%} of the creature's height on average")
+        reasons.append(f"the views disagree by {gap:.1%} of the creature's height for a typical joint")
     if score is not None and score < 0.5:
         reasons.append(f"the feet move differently in the two views (agreement {score:.2f})")
     level = "bad" if reasons else "doubtful" if gap > 0.025 or (score is not None and score < 0.7) else "good"
@@ -579,7 +593,7 @@ def assess(d, info, *, feet: Sequence[str] | None = None, align: bool = True, sw
     height = creature_height_px(info, layout)
     say = log or (lambda _msg: None)
     before = sync_report(d)
-    paws_before = paw_agreement(d, names, feet)
+    paws_before = paw_agreement(d, names, feet, still_px=max(0.5, 0.015 * height))
     say(f"sync as generated: mean height gap {before['mean_height_gap_px']:.1f} px, "
         f"worst {before['worst_frame_gap_px']:.1f} px, best constant lag {before['best_lag_frames']} frames")
     shift = None
@@ -597,7 +611,7 @@ def assess(d, info, *, feet: Sequence[str] | None = None, align: bool = True, sw
     # painted limbs make the reader's left/right labels trustworthy, so swaps are only fixed on request
     swapped = fix_swaps(d, limb_pairs(info)) if swaps else {}
     sync = sync_report(d)
-    paws = paw_agreement(d, names, feet)
+    paws = paw_agreement(d, names, feet, still_px=max(0.5, 0.015 * height))
     before = {k: v for k, v in before.items() if k != "per_frame_gap_px"}
     sync.update(before=before, paw_agreement=paws, paw_agreement_before=paws_before,
                 front_shift_frames=None if shift is None else shift.round(2).tolist(), swaps=swapped,

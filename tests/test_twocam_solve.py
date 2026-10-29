@@ -238,3 +238,29 @@ def test_the_root_quaternion_keeps_one_sign_through_half_a_turn():
     motion = solve.capture(d, info, 24.0, iters=150)
     q = np.array(motion["root_quat"])
     assert (np.sum(q[1:] * q[:-1], axis=1) > 0).all()
+
+
+def test_one_leg_hidden_in_one_view_does_not_sink_a_clip():
+    """The far hind leg, guessed in the side view, pulled a clip that fitted well to 4.1% on
+    the mean; the typical joint is what says whether the two halves agree."""
+    info = toy_rig()
+    _, _, d = _clip(info, frames=40)
+    names = _names(info)
+    for joint in ("heel_L", "foot_L", "knee_L"):
+        d["side_uv"][:, names.index(joint), 1] += 120  # wildly misread in one view
+    sync = solve.sync_report(d)
+    assert sync["median_joint_gap_px"] < 1.0 < sync["mean_height_gap_px"]
+    height = solve.creature_height_px(info, Layout.from_rig_info(info))
+    assert solve.verdict(sync, {"score": 0.95}, height)["level"] == "good"
+
+
+def test_a_foot_that_stays_planted_is_not_scored():
+    info = toy_rig()
+    _, _, d = _clip(info, frames=40)
+    names = _names(info)
+    j = names.index("toe_L")
+    d["front_uv"][:, j, 1] = 600 + np.random.default_rng(0).normal(0, 1, 40)  # still, plus reader noise
+    d["side_uv"][:, j, 1] = 600 + np.random.default_rng(1).normal(0, 1, 40)
+    scores = solve.paw_agreement(d, names, ["toe_L"], still_px=3.0)
+    assert scores["toe_L"] is None and scores["score"] is None
+    assert solve.paw_agreement(d, names, ["toe_L"], still_px=0.5)["toe_L"] is not None
