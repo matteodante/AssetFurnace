@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -50,6 +51,28 @@ def test_keep_makes_one_version_from_many_spots_and_keeps_the_original(tmp_path)
     assert (runs[1] / "input" / "source.glb").read_bytes() == b"raw"
     assert (output / rel).read_bytes() == before
     assert not (output / again["preview"]).exists()
+
+
+def _keep_one(output, rel):
+    _s, body = fx.preview_response(output, {"from": rel, "spots": [SPOT]})
+    status, kept = fx.keep_response(output, {"from": rel, "preview": body["preview"]})
+    assert status == 200, kept
+    return json.loads((output / kept["file"]).with_suffix(".provenance.json").read_text())
+
+
+def test_a_kept_version_carries_the_original_s_licence(tmp_path):
+    """The rig made from a patched model reads the sidecar beside it: without one, none."""
+    output, rel = _finished(tmp_path)
+    licence = {"name": "MIT (code + flow weights); DINOv3 License (bundled encoder)"}
+    (output / rel).with_suffix(".provenance.json").write_text(json.dumps({"license": licence}))
+    record = _keep_one(output, rel)
+    assert record["license"] == licence and record["source_record"]["license"] == licence
+
+
+def test_a_version_of_a_model_with_no_licence_says_it_has_none(tmp_path):
+    output, rel = _finished(tmp_path)   # finished before Finish kept a licence, or an upload
+    record = _keep_one(output, rel)
+    assert record["license"] is None and record["source_record"] is None
 
 
 def test_discard_removes_the_preview(tmp_path):

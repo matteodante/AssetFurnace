@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   drop it, so their records said `license: null`. A finished model now gets a `.provenance.json`
   with the licence of the model it came from; an uploaded model with no record gets none, not a guess.
   Models finished before this fix still have no licence record: Finish them again to get one.
+- Fix a spot: a kept version now carries the licence of the model it was patched from, so a rig made
+  from it names that licence too.
 - Front + back: the back picture now keeps to what the front shows, the same parts and the same outline,
   whatever the subject: a full character, a bust, a head or an object.
 - Fix a spot works on rigged characters: click View on the Finished step and brush away. Before, the brush
