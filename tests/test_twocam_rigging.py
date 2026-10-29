@@ -204,3 +204,20 @@ def test_the_layout_leaves_room_to_rear_up_and_fits_the_frame():
 def test_a_skeleton_with_two_roots_is_refused():
     with pytest.raises(rigging.RiggingError, match="one root"):
         rigging.Skeleton(["a", "b"], [-1, -1], np.zeros((2, 3)), np.ones((2, 3)))
+
+
+def test_a_neck_can_lift_the_head_further_than_the_back_bends():
+    """A howling wolf pinned its head at the one limit every middle bone shared."""
+    sk = quadruped()
+    plan = rigging.plan_bones(sk, tolerance=0.03)
+    roles = rigging.middle_roles(sk, plan.sides)
+    assert roles == {1: "spine", 2: "neck", 3: "neck", 4: "tail", 5: "tail"}
+    assert plan.limits[2] == rigging.NECK_LIMITS and plan.limits[1] == rigging.SPINE_LIMITS
+    assert plan.limits[4] == rigging.TAIL_LIMITS
+
+
+def test_a_humanoid_neck_starts_above_the_shoulders():
+    sk = humanoid()
+    plan = rigging.plan_bones(sk, tolerance=0.03)
+    roles = rigging.middle_roles(sk, plan.sides)
+    assert roles[1] == "spine" and roles[2] == "neck" and roles[3] == "neck"

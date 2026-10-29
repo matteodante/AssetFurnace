@@ -28,7 +28,9 @@ PALETTE = [("pink", "#F53CD1"), ("blue", "#2F6BFF"), ("yellow", "#FFD21F"), ("cy
            ("orange", "#FF7A1A"), ("green", "#2BD94A"), ("purple", "#9B4DFF"), ("red", "#FF2B2B"),
            ("white", "#F2F2F2"), ("black", "#1A1A1A")]
 ROOT_LIMITS = [[-30, 30], [-20, 20], [-30, 30]]
-MIDDLE_LIMITS = [[-35, 35], [-15, 15], [-35, 35]]
+SPINE_LIMITS = [[-30, 30], [-15, 15], [-30, 30]]
+NECK_LIMITS = [[-60, 60], [-25, 25], [-50, 50]]
+TAIL_LIMITS = [[-60, 60], [-20, 20], [-60, 60]]
 LIMB_ROOT_LIMITS = [[-80, 80], [-20, 20], [-45, 45]]
 LIMB_MIDDLE_LIMITS = [[-110, 110], [-10, 10], [-20, 20]]
 LIMB_END_LIMITS = [[-50, 50], [-10, 10], [-20, 20]]
@@ -271,12 +273,13 @@ def plan_bones(skeleton: Skeleton, tolerance: float) -> Plan:
         if np.linalg.norm(skeleton.heads[main] - skeleton.heads[i]) > 1e-4:
             tails[i] = skeleton.heads[main]
 
+    role = middle_roles(skeleton, sides)
     limits = []
     for i in range(n):
         if skeleton.parents[i] < 0:
             limits.append(ROOT_LIMITS)
         elif not sides[i]:
-            limits.append(MIDDLE_LIMITS)
+            limits.append({"spine": SPINE_LIMITS, "neck": NECK_LIMITS, "tail": TAIL_LIMITS}[role[i]])
         elif not sides[skeleton.parents[i]]:
             limits.append(LIMB_ROOT_LIMITS)
         elif not skeleton.children[i]:
@@ -293,6 +296,36 @@ def plan_bones(skeleton: Skeleton, tolerance: float) -> Plan:
             paint[f"{k}{side}"] = {"color": colour, "colour_name": colour_name, "bones": bones,
                                    "label": limb_label(k, count, side, upright)}
     return Plan(names, sides, limbs, tails, [[list(map(float, a)) for a in lim] for lim in limits], paint)
+
+
+def middle_roles(skeleton: Skeleton, sides: Sequence[str]) -> dict[int, str]:
+    """"spine", "neck" or "tail" for each bone in the middle, so a neck can lift a head to
+    howl while the back stays a back.
+
+    The head is the middle chain's end farthest forward and highest. On the way to it from
+    the root, the bones up to the last one a limb hangs from are the spine; past it, and
+    whatever hangs off them (a jaw, ears), the neck and head. Any other middle chain (a
+    tail, a crest) bends freely. A howling wolf pinned its head at a single middle limit."""
+    middle = [i for i in range(len(skeleton.names)) if not sides[i]]
+    if not middle:
+        return {}
+    ends = [i for i in middle if not any(not sides[c] for c in skeleton.children[i])]
+    head = max(ends, key=lambda i: skeleton.tails[i, 2] - skeleton.tails[i, 1])
+    path = [head]
+    while skeleton.parents[path[-1]] >= 0:
+        path.append(skeleton.parents[path[-1]])
+    path.reverse()
+    hangs = [k for k, i in enumerate(path) if any(sides[c] for c in skeleton.children[i])]
+    split = hangs[-1] if hangs else 0
+    roles = {i: "spine" for i in path[1:split + 1]}
+    for i in path[split + 1:]:
+        for j in skeleton.subtree(i):
+            if not sides[j]:
+                roles.setdefault(j, "neck")
+    for i in middle:
+        if skeleton.parents[i] >= 0:
+            roles.setdefault(i, "tail")
+    return roles
 
 
 def limb_label(k: int, count: int, side: str, upright: bool = False) -> str:
