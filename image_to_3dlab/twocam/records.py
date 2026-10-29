@@ -16,6 +16,7 @@ from typing import Any
 
 from .reader import BACKBONE_ID, BACKBONE_LICENSE
 
+NO_LICENCE = "not recorded: no licence sidecar was found beside the model"
 METHOD = {
     "name": "two-camera motion capture",
     "method_by": "@CanItCode",
@@ -41,7 +42,7 @@ def now() -> str:
 
 
 def capture_record(video: Path, reader: Path, rig_info: Path, made_with: str | None = None,
-                   video_license: str | None = None) -> dict[str, Any]:
+                   video_license: str | None = None, reader_license: str | None = None) -> dict[str, Any]:
     """Written beside the detections, and copied into the motion the fit makes from them."""
     return {
         "schema_version": 1,
@@ -50,7 +51,8 @@ def capture_record(video: Path, reader: Path, rig_info: Path, made_with: str | N
         "method": METHOD,
         "video": {**_file(video), "made_with": made_with or "not declared",
                   "license": video_license or "not declared: check the video model's terms"},
-        "reader": {**_file(reader), "backbone": BACKBONE_ID, "backbone_license": BACKBONE_LICENSE},
+        "reader": {**_file(reader), "license": reader_license or "not declared",
+                   "backbone": BACKBONE_ID, "backbone_license": BACKBONE_LICENSE},
         "rig_info": _file(rig_info),
     }
 
@@ -75,7 +77,7 @@ def animation_record(blend: Path, capture: dict[str, Any] | None,
         "created_at": now(),
         "tool": "scripts/twocam_mocap.py apply: scripts/blender_twocam_apply.py",
         "input": _file(blend),
-        "license": (source or {}).get("license"),
+        "license": (source or {}).get("license") or NO_LICENCE,
         "classification": ((source or {}).get("output") or {}).get("classification")
         or (source or {}).get("classification"),
         "motion": {"made_with": METHOD["name"], "method": METHOD,

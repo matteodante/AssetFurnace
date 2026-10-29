@@ -14,7 +14,11 @@ Needs OpenCV and `transformers`, imported here only.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import os
+import shutil
+import tempfile
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -52,7 +56,10 @@ def _transformers():
     try:
         import transformers
     except ImportError as exc:
-        raise ReaderError("reading a video needs transformers: uv pip install transformers") from exc
+        raise ReaderError("reading a video needs transformers 4.48 or newer: uv pip install transformers") from exc
+    if not hasattr(transformers, "Dinov2WithRegistersModel"):  # added in 4.48
+        raise ReaderError(f"transformers {transformers.__version__} has no DINOv2 with registers: "
+                          "4.48 or newer is needed")
     return transformers
 
 
@@ -170,9 +177,35 @@ def run(model: JointReader, views: Sequence[np.ndarray], device: str, batch: int
     return np.array(uv_all), np.concatenate(conf_all)
 
 
+@contextmanager
+def plain_path(path: Path, *, write: bool = False) -> Iterator[str]:
+    """A path OpenCV can open. Its video calls take a narrow string on Windows, so a folder
+    with an accented name (a home folder such as Niccolò's) fails to open; such files go through a
+    temporary copy with a plain name, and written ones are moved into place after."""
+    path = Path(path)
+    if os.name != "nt" or str(path).isascii():
+        yield str(path)
+        return
+    folder = Path(tempfile.mkdtemp(prefix="twocam-"))
+    plain = folder / f"file{path.suffix}"
+    try:
+        if not write:
+            shutil.copyfile(path, plain)
+        yield str(plain)
+        if write and plain.exists():
+            shutil.move(str(plain), path)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 def read_frames(path: Path) -> tuple[np.ndarray, float]:
+    with plain_path(path) as plain:
+        return _read_frames(plain, path)
+
+
+def _read_frames(plain: str, path: Path) -> tuple[np.ndarray, float]:
     cv2 = _cv2()
-    cap = cv2.VideoCapture(str(path))
+    cap = cv2.VideoCapture(plain)
     if not cap.isOpened():
         raise ReaderError(f"cannot open video {path}")
     fps = float(cap.get(cv2.CAP_PROP_FPS))
@@ -189,9 +222,13 @@ def read_frames(path: Path) -> tuple[np.ndarray, float]:
 
 
 def read_image(path: Path) -> np.ndarray:
-    img = _cv2().imread(str(path))
+    cv2 = _cv2()
+    try:  # decoded from bytes: cv2.imread cannot open an accented path on Windows
+        img = cv2.imdecode(np.fromfile(str(path), np.uint8), cv2.IMREAD_COLOR)
+    except OSError as exc:
+        raise ReaderError(f"cannot read image {path}: {exc}") from exc
     if img is None:
-        raise ReaderError(f"cannot read image {path}")
+        raise ReaderError(f"cannot read image {path}: not a picture OpenCV knows")
     return img[..., ::-1]
 
 
@@ -250,15 +287,16 @@ def overlay(frames: np.ndarray, det: dict[str, Any], layout: Layout, path: Path,
     """The clip with every read joint drawn on (left pink, right blue, middle white)."""
     cv2 = _cv2()
     names = list(det["names"])
-    vw = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (layout.w, layout.h))
 
     def colour(n):  # BGR
         return (209, 60, 245) if n.endswith("_L") else (255, 107, 47) if n.endswith("_R") else (255, 255, 255)
 
-    for t, f in enumerate(frames):
-        img = np.ascontiguousarray(f[..., ::-1])
-        for j, n in enumerate(names):
-            for (u, v), x0 in ((det["front_uv"][t, j], 0), (det["side_uv"][t, j], layout.w_front)):
-                cv2.circle(img, (int(u + x0), int(v)), 4, colour(n), -1, cv2.LINE_AA)
-        vw.write(img)
-    vw.release()
+    with plain_path(path, write=True) as plain:
+        vw = cv2.VideoWriter(plain, cv2.VideoWriter_fourcc(*"mp4v"), fps, (layout.w, layout.h))
+        for t, f in enumerate(frames):
+            img = np.ascontiguousarray(f[..., ::-1])
+            for j, n in enumerate(names):
+                for (u, v), x0 in ((det["front_uv"][t, j], 0), (det["side_uv"][t, j], layout.w_front)):
+                    cv2.circle(img, (int(u + x0), int(v)), 4, colour(n), -1, cv2.LINE_AA)
+            vw.write(img)
+        vw.release()

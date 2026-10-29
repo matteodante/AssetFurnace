@@ -1,6 +1,8 @@
 """Tests for `image_to_3dlab/twocam/reader.py`: heatmap peaks, view geometry, and that
 reading never downloads weights or accepts another rig's reader."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 import torch
@@ -58,3 +60,39 @@ def test_a_clip_with_no_frame_rate_asks_for_one(monkeypatch, tmp_path):
     monkeypatch.setattr(reader, "read_frames", lambda _path: (np.zeros((3, 8, 8, 3), np.uint8), 0.0))
     with pytest.raises(reader.ReaderError, match="--fps"):
         reader.read_video(tmp_path / "v.mp4", tmp_path / "r.pt", None, Layout(), ["a"])
+
+
+def test_a_picture_in_a_folder_with_an_accented_name_is_read(tmp_path):
+    cv2 = pytest.importorskip("cv2")
+    folder = tmp_path / "Niccolò"
+    folder.mkdir()
+    path = folder / "ref.png"
+    picture = np.zeros((8, 12, 3), np.uint8)
+    picture[..., 0] = 200  # red, once flipped to RGB
+    _, png = cv2.imencode(".png", picture[..., ::-1])
+    path.write_bytes(png.tobytes())
+    np.testing.assert_array_equal(reader.read_image(path), picture)
+
+
+def test_accented_video_paths_go_through_a_plain_copy_on_windows(tmp_path, monkeypatch):
+    monkeypatch.setattr(reader.os, "name", "nt")
+    folder = tmp_path / "Niccolò"
+    folder.mkdir()
+    clip = folder / "clip.mp4"
+    clip.write_bytes(b"frames")
+    with reader.plain_path(clip) as plain:
+        assert plain.isascii() and Path(plain).read_bytes() == b"frames"
+    assert not Path(plain).exists()
+    out = folder / "overlay.mp4"
+    with reader.plain_path(out, write=True) as plain:
+        Path(plain).write_bytes(b"drawn")
+    assert out.read_bytes() == b"drawn"
+
+
+def test_an_old_transformers_is_named_not_a_traceback(monkeypatch):
+    import sys
+    import types
+
+    monkeypatch.setitem(sys.modules, "transformers", types.SimpleNamespace(__version__="4.40.0"))
+    with pytest.raises(reader.ReaderError, match="4.48 or newer"):
+        reader.build_backbone()

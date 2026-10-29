@@ -93,6 +93,8 @@ def cmd_read(args) -> dict:
     from image_to_3dlab.twocam import reader, records
 
     info = load_rig_info(args.rig_info)
+    if args.out.suffix != ".npz":
+        raise CaptureError(f"the detections file must end in .npz (numpy would write {args.out}.npz)")
     if args.ref is None and not args.no_calib:
         raise CaptureError("pass --ref REF.png (the frame the clip started from), or --no-calib for a "
                            "clip that is already a layout frame")
@@ -103,7 +105,7 @@ def cmd_read(args) -> dict:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     save_detections(args.out, det)
     records.write_sidecar(args.out, records.capture_record(
-        args.video, args.reader, args.rig_info, args.made_with, args.video_license))
+        args.video, args.reader, args.rig_info, args.made_with, args.video_license, args.reader_license))
     if args.overlay:
         reader.overlay(det["frames"], det, Layout.from_rig_info(info), args.overlay, det["fps"])
     summary = {"detections": str(args.out), "frames": int(len(det["front_uv"])), "fps": det["fps"],
@@ -114,27 +116,24 @@ def cmd_read(args) -> dict:
     return summary
 
 
-def clip_report(d: dict, info: dict, feet=None) -> dict:
-    layout = Layout.from_rig_info(info)
-    names = [k["name"] for k in info["keypoints"]]
-    feet = feet or solve.ground_joints(info)
-    sync = solve.sync_report(d)
-    paws = solve.paw_agreement(d, names, feet)
+def clip_report(d: dict, info: dict, feet=None, align: bool = True, swaps: bool = False) -> dict:
+    """The clip judged as it would be fitted (re-timed when that helps), and as generated."""
+    _, sync = solve.assess(d, info, feet=feet, align=align, swaps=swaps)
     sync.pop("per_frame_gap_px")
-    return {"sync": sync, "feet_agreement": paws,
-            "verdict": solve.verdict(sync, paws, solve.creature_height_px(info, layout))}
+    return {"verdict": sync.pop("verdict"), "verdict_as_generated": sync.pop("verdict_as_generated"),
+            "feet_agreement": sync.pop("paw_agreement"), "sync": sync}
 
 
 def cmd_check(args) -> dict:
     info = load_rig_info(args.rig_info)
     d, _ = load_detections(args.det, info)
-    return clip_report(d, info, args.feet)
+    return clip_report(d, info, args.feet, align=not args.no_align, swaps=args.fix_swaps)
 
 
 def cmd_fit(args) -> dict:
     info = load_rig_info(args.rig_info)
     d, fps = load_detections(args.det, info)
-    report = clip_report(d, info, args.feet)
+    report = clip_report(d, info, args.feet, align=not args.no_align, swaps=args.fix_swaps)
     if report["verdict"]["level"] == "bad" and not args.force:
         raise CaptureError("this clip is not worth fitting: " + "; ".join(report["verdict"]["reasons"])
                            + ". Generate it again, or pass --force")
@@ -194,9 +193,15 @@ def cmd_apply(args) -> dict:
     glb = Path(report["glb"])
     source = records.source_record_for(args.source_model or args.blend)
     records.write_sidecar(glb, records.animation_record(args.blend, motion.get("provenance"), source))
+    warnings = []
+    if source is None:
+        warnings.append("no licence record beside the model: the GLB's record says so. Pass --source-model "
+                        "with the model whose .provenance.json names its licence")
     if report.get("max_joint_error_mm") is not None and report["max_joint_error_mm"] > 1.0:
-        report["warning"] = ("Blender's joints land more than 1 mm from the solver's: the rig on disk "
-                             "is not the one rig_info.json describes")
+        warnings.append("Blender's joints land more than 1 mm from the solver's: the rig on disk is not the "
+                        "one rig_info.json describes")
+    if warnings:
+        report["warnings"] = warnings
     return report
 
 
@@ -218,7 +223,10 @@ def cmd_exam(args) -> dict:
     joints = exam_mod.motion_joints(info, truth)
     d = exam_mod.synthetic_detections(joints, layout, noise_px=args.noise, seed=args.seed + 1)
     if args.swap_frames:
-        pairs = next(iter(solve.limb_pairs(info).values()))
+        limbs = solve.limb_pairs(info)
+        if not limbs:
+            raise CaptureError("--swap-frames needs a rig with left/right limbs (bones named ..._L and ..._R)")
+        pairs = next(iter(limbs.values()))
         L, R = (np.array(x) for x in zip(*pairs))
         a, b = args.swap_frames
         d["side_uv"][a:b, L], d["side_uv"][a:b, R] = d["side_uv"][a:b, R].copy(), d["side_uv"][a:b, L].copy()
@@ -249,6 +257,7 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--fps", type=float, help="override the clip's frame rate")
         s.add_argument("--made-with", help="the video model that made the clip, for the provenance record")
         s.add_argument("--video-license", help="the terms the clip is under, for the provenance record")
+        s.add_argument("--reader-license", help="the terms the reader file is under, for the provenance record")
 
     def fitting(s):
         s.add_argument("--iters", type=int, default=1500)
@@ -279,6 +288,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("det", type=Path)
     s.add_argument("rig_info", type=Path)
     s.add_argument("--feet", type=_feet)
+    s.add_argument("--no-align", action="store_true", help="judge the clip without re-timing it")
+    s.add_argument("--fix-swaps", action="store_true", help="judge it after fixing side-view swaps")
 
     s = sub.add_parser("fit", help="fit the rig to a read clip")
     s.add_argument("det", type=Path)

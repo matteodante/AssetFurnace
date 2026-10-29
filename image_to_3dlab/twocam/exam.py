@@ -1,5 +1,7 @@
 """The exam: a made-up motion with known joints, read back through the fit and scored in centimetres.
 
+Ported from AnyMove's `mocap/exam.py` (Patch, Apache-2.0); changed as below.
+
 AnyMove's `mocap/exam.py` films the made-up motion in Blender and reads it with the trained
 reader, which tests everything at once. This keeps its motion maker and adds the pure half:
 project the true joints into both views, add reader-like noise, fit, and score. It needs no

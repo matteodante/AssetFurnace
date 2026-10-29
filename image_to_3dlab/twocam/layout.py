@@ -1,5 +1,8 @@
 """The two-camera frame: where each view sits, and how pixels map to metres and back.
 
+Ported from AnyMove's `mocap/layout.py` (Patch, Apache-2.0); changed to take its
+numbers from the rig instead of an environment variable.
+
 Front view (left, `w_front` px) looks along +Y at the creature's face: u grows with X.
 Side view (right, `w_side` px) looks along +X at its right flank: u grows with -Y, so the
 head (-Y) is on the right. In both, v grows downward with -Z, the ground (z = 0) is row

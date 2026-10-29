@@ -142,7 +142,7 @@ def test_apply_runs_blender_and_writes_the_glbs_licence_record(tmp_path, capsys,
 
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
     code, report, _ = _run(capsys, "apply", blend, rig, motion, out, "--blender", fake_blender)
-    assert code == 0 and "warning" not in report
+    assert code == 0 and "warnings" not in report
     record = json.loads((out / "animation.provenance.json").read_text(encoding="utf-8"))
     assert record["license"] == "CC-BY-4.0"
     assert record["motion"]["capture"]["video"]["made_with"] == "MiniMax H3"
@@ -164,7 +164,11 @@ def test_apply_warns_when_blenders_joints_do_not_match_the_solvers(tmp_path, cap
     monkeypatch.setattr(cli.subprocess, "run", fake_run)
     code, report, _ = _run(capsys, "apply", blend, write_rig(tmp_path, info), _motion_for(info, tmp_path), out,
                            "--blender", tmp_path / "blender.exe")
-    assert code == 0 and "not the one rig_info.json describes" in report["warning"]
+    assert code == 0
+    assert any("not the one rig_info.json describes" in w for w in report["warnings"])
+    assert any("no licence record" in w for w in report["warnings"])
+    record = json.loads((out / "animation.provenance.json").read_text(encoding="utf-8"))
+    assert record["license"].startswith("not recorded")
 
 
 def test_apply_reports_blenders_own_words_when_it_fails(tmp_path, capsys, monkeypatch):
@@ -205,3 +209,27 @@ def test_the_capture_record_names_every_input_and_its_terms(tmp_path):
 def test_the_models_licence_is_found_beside_it(tmp_path, sidecar):
     (tmp_path / sidecar).write_text(json.dumps({"license": "MIT"}), encoding="utf-8")
     assert records.source_record_for(tmp_path / "model.blend")["license"] == "MIT"
+
+
+def test_read_refuses_an_output_numpy_would_rename(tmp_path, capsys):
+    rig = write_rig(tmp_path)
+    code, _, err = _run(capsys, "read", tmp_path / "v.mp4", tmp_path / "r.pt", rig, tmp_path / "det.out",
+                        "--no-calib")
+    assert code == 1 and ".npz" in err
+
+
+def test_exam_swaps_on_a_rig_without_limbs_say_why_in_one_line(tmp_path, capsys):
+    info = toy_rig()
+    for b in info["bones"]:
+        b["name"] = b["name"].replace("_L", "_l").replace("_R", "_r")
+    code, _, err = _run(capsys, "exam", write_rig(tmp_path, info), "--swap-frames", 1, 3, "--iters", 5)
+    assert code == 1 and "left/right limbs" in err
+
+
+def test_check_judges_the_clip_as_it_would_be_fitted(tmp_path, capsys):
+    info = toy_rig()
+    rig = write_rig(tmp_path, info)
+    det, _ = _det(tmp_path, info, frames=60)
+    code, report, _ = _run(capsys, "check", det, rig)
+    assert code == 0
+    assert {"verdict", "verdict_as_generated", "feet_agreement", "sync"} <= set(report)
