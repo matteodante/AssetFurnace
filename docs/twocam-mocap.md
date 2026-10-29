@@ -123,7 +123,6 @@ down does not either; neither was retried here.
 - A LoRA that teaches the video model the two-camera layout (@Graalitoo's idea in
   AnyMove, trained there on fal per creature). The plan is to train one here, for every
   creature, from clips rendered in Blender.
-- The browser: the studio's Animate step still offers only the humanoid presets.
 
 ## Licences
 
