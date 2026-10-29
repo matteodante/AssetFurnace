@@ -72,13 +72,11 @@ export function stepBody(stepId, asset, ctx) {
       ${both ? '<label class="field">Rig which model<select data-k="rigsource"><option value="finished">The finished model</option><option value="model">The raw model (skips Finish)</option></select></label>' : ''}
       <p class="ask">Is this a humanoid: two arms, two legs, standing upright?</p>
       <div class="row"><button class="primary" data-run="rigged" data-humanoid="yes">Yes, rig it</button>
-      <button class="ghost" data-run="rigged" data-humanoid="no" data-tip="Four-legged and other creatures can be rigged but not animated with the preset moves, and the rig may be wonky.">No, rig it anyway</button></div>`;
+      <button class="ghost" data-run="rigged" data-humanoid="no" data-tip="Four-legged and other creatures are animated from a video instead of the preset moves, and the rig may be wonky.">No, rig it anyway</button></div>`;
     return asset.rigged ? redoBox('Re-rig', 'Makes a new rig from the model. It shows up as a new version; the current rig and its moves are kept.', body) : body;
   }
-  if (stepId === 'animated' && asset.fits_moves === false) {
-    return `<p class="hint">Rigged. Preset moves are for humanoids only for now: four-legged and other creatures can be rigged,
-      not animated, and the rig may be wonky. Download it to animate in Blender.</p>`;
-  }
+  // not a humanoid: it moves from a video instead (viewer/studio/twocam.js fills this in)
+  if (stepId === 'animated' && asset.fits_moves === false) return '<div class="twocam" data-twocam><p class="hint">Loading…</p></div>';
   if (stepId === 'animated') return movePicker(asset, ctx, asset.clips.length ? 'Add this move' : 'Animate');
   return '';
 }
@@ -183,7 +181,7 @@ export function wireStep(card, stepId, asset, ctx) {
       rigged: () => startRig(asset, settings.rigSource),
       animated: () => startAnimate(asset, settings.preset, settings.speed, settings.spread) }[stepId];
     const note = button.dataset.humanoid === 'no'
-      ? 'Rigging anyway. Preset moves only fit humanoids, so this one can be downloaded and animated in Blender. The rig may be wonky.' : '';
+      ? 'Rigging anyway. Preset moves only fit humanoids, so this one is animated from a video in the next step. The rig may be wonky.' : '';
     await runInCard(card, run, ctx, stepId, note);
   });
 }

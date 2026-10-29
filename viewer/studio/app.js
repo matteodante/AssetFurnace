@@ -9,6 +9,7 @@ import { openCreate, runChain } from './create.js';
 import { openActivity, openAbout, openGuide, openReport, closeSheet, usageNotice, openNews, refreshNews } from './pages.js';
 import { STEP_LABELS } from './plan.js';
 import { mountSkins } from './skins.js';
+import { mountTwocam } from './twocam.js';
 
 const $ = (id) => document.getElementById(id);
 const LOGO = './studio/mark.svg';
@@ -122,6 +123,8 @@ function renderSteps(asset) {
   }).join('');
   $('steps').querySelectorAll('.step').forEach((card) => {
     if (card.querySelector('.body [data-run]')) wireStep(card, card.dataset.step, asset, ctx);
+    const twocam = card.querySelector('.body [data-twocam]');
+    if (twocam) mountTwocam(twocam, asset, ctx);
     card.querySelector('[data-newpicture]')?.addEventListener('click', () => openCreateSheet({ text: asset.prompt, want: asset.kind === 'prop' ? 'prop' : 'character' }));
   });
   $('steps').querySelector('[data-pictures]')?.addEventListener('click', () => {

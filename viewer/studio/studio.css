@@ -379,6 +379,28 @@ img.glow { animation: doorglow 2.4s ease-in-out infinite; }
 
 /* Skins (viewer/studio/skins.js): the original and the new picture side by side */
 .step.skins .dot { background: rgb(255 140 60 / .14); color: var(--flame); }
+/* Animate from video (viewer/studio/twocam.js): four stages inside the Animate step */
+.tc-stages { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 14px; }
+.tc-stage { display: grid; gap: 8px; }
+.tc-stage.later > :not(.tc-head) { opacity: .6; }
+.tc-head { margin: 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.tc-head .dot { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 600 11px/1 var(--f-num); background: #2f241e; color: var(--ash); }
+.tc-stage.done .tc-head .dot { background: var(--ok); color: #10200f; }
+.tc-stage.now .tc-head .dot { background: var(--ember); color: #1b0b02; }
+.tc-preview { margin: 0; display: grid; gap: 4px; }
+.tc-preview img, .tc-take video { width: 100%; border-radius: 8px; background: #2a201b; }
+.tc-plan { border: 1px solid var(--line-hi); border-radius: 8px; padding: 10px; display: grid; gap: 8px; }
+.tc-plan p { margin: 0; font-size: 13px; }
+.tc-move { display: grid; gap: 8px; }
+.tc-action { margin: 0; font-size: 13px; }
+.tc-takes { display: grid; gap: 12px; }
+.tc-take { margin: 0; display: grid; gap: 4px; justify-items: start; }
+.tc-take figcaption { font-size: 12.5px; }
+.tc-verdict { margin: 0; font-size: 12.5px; font-weight: 600; }
+.tc-verdict.good { color: var(--ok); }
+.tc-verdict.doubtful { color: #f6dfa4; }
+.tc-verdict.bad { color: #f07067; }
+.tc-made { margin: 0; padding-left: 18px; font-size: 13px; }
 .skin-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .skin-pair figure { margin: 0; display: grid; gap: 4px; }
 .skin-pair img, .skin-wait { width: 100%; aspect-ratio: 1; object-fit: contain; border-radius: 8px; background: #2a201b; }

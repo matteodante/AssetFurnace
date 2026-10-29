@@ -68,6 +68,9 @@ STUDIO_ONLY = {
     "api/generate/*/cancel": "via cancel_run", "api/finish/*/cancel": "via cancel_run",
     "api/props/*/cancel": "via cancel_run", "api/image/*/cancel": "via cancel_run",
     "api/animate/*/cancel": "via cancel_run", "api/rig/rebind/*/cancel": "via cancel_run",
+    # Animate from video: the person checks the preparation, watches the takes and picks one
+    **dict.fromkeys(("api/twocam/prepare", "api/twocam/teach", "api/twocam/film", "api/twocam/capture",
+                     "api/twocam/*/cancel"), "browser flow; agents use scripts/twocam_mocap.py"),
 }
 # Server actions the tools below call.
 USED = {"api/chains", "api/chains/*/cancel", "api/setup/*/download", "api/reveal", "api/bug-report", "api/usage",

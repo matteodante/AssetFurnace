@@ -69,6 +69,10 @@ STARTS = {
     ("api", "animate", "rig"): "rig",
     ("api", "animate", "play"): "animation",
     ("api", "rig", "rebind"): "rig",
+    ("api", "twocam", "prepare"): "creature",
+    ("api", "twocam", "teach"): "reader",
+    ("api", "twocam", "film"): "video",
+    ("api", "twocam", "capture"): "animation",
 }
 KINDS = frozenset(STARTS.values())
 

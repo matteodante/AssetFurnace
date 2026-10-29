@@ -43,6 +43,7 @@ import preview_api
 import request_utils
 import skins_api
 import studio_auth
+import twocam_api
 import usage_api
 from activity_api import ChainRunner, chain_from_form, read_history
 from assets_api import assets_payload, list_assets
@@ -1329,6 +1330,9 @@ def _terminate_active_job() -> None:
     finish_job = FINISH_JOBS.get(FINISH_JOBS.active) if FINISH_JOBS.active else None
     if finish_job is not None and finish_job.process is not None and finish_job.process.poll() is None:
         _killpg_if_alive(finish_job.process.pid)
+    twocam_job = twocam_api.TWOCAM_JOBS.get(twocam_api.TWOCAM_JOBS.active or "")
+    if twocam_job is not None and twocam_job.process is not None and twocam_job.process.poll() is None:
+        _killpg_if_alive(twocam_job.process.pid)
 
 
 def _animate_running() -> bool:
@@ -1360,6 +1364,7 @@ HEAVY_JOBS: dict[str, Callable[[], bool]] = {
     "rebind": lambda: _running(RIG_JOBS),
     "animate": lambda: _animate_running(),
     "skin": lambda: skins_api.BUILDS.running(),
+    "twocam": lambda: twocam_api.TWOCAM_JOBS.busy(),
 }
 BUSY_WORDS = {
     "setup": "setup is running", "generate": "a generation is running",
@@ -1367,6 +1372,7 @@ BUSY_WORDS = {
     "props": "a prop sheet is baking", "rebind": "a rig rebind is running",
     "animate": "an auto-rig or animation is running",
     "skin": "a skin is being made",
+    "twocam": "a creature is being animated from video",
 }
 
 
@@ -2474,6 +2480,7 @@ class Handler(SimpleHTTPRequestHandler):
         ".glb": "model/gltf-binary",
         ".gltf": "model/gltf+json",
         ".js": "text/javascript",
+        ".webm": "video/webm",
     }
 
     def end_headers(self) -> None:
@@ -2689,6 +2696,21 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if len(parts) == 4 and parts[:2] == ["api", "props"] and parts[3] == "cancel":
             self._cancel_props_job(parts[2])
+            return
+        if parts == ["api", "twocam", "prepare"]:
+            self._twocam_start("prepare")
+            return
+        if parts == ["api", "twocam", "teach"]:
+            self._twocam_start("teach")
+            return
+        if parts == ["api", "twocam", "film"]:
+            self._twocam_start("film")
+            return
+        if parts == ["api", "twocam", "capture"]:
+            self._twocam_start("capture")
+            return
+        if len(parts) == 4 and parts[:2] == ["api", "twocam"] and parts[3] == "cancel":
+            self._twocam_cancel(parts[2])
             return
         if len(parts) == 5 and parts[:3] == ["api", "props", "runs"] and parts[4] == "turn":
             self._turn_prop(parts[3])
@@ -3313,6 +3335,16 @@ class Handler(SimpleHTTPRequestHandler):
             if parts[3] == "status":
                 self._send_json(200, animate_status_payload(job))
                 return
+        if parts == ["api", "twocam", "state"]:
+            self._twocam_state()
+            return
+        if len(parts) == 4 and parts[:2] == ["api", "twocam"] and parts[3] == "status":
+            job = twocam_api.TWOCAM_JOBS.get(parts[2])
+            if job is None:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            self._send_json(200, twocam_api.status_payload(job))
+            return
         if parts == ["api", "props", "tools"]:
             self._send_json(200, props_tools_payload())
             return
@@ -3613,6 +3645,62 @@ class Handler(SimpleHTTPRequestHandler):
             self._start_animate(job)
         except Exception as exc:
             self._send_json(500, {"error": str(exc)})
+
+    def _twocam_state(self) -> None:
+        """GET /api/twocam/state?rig=<rigged GLB under output/>: Animate from video, as it stands."""
+        rig = parse_qs(urlparse(self.path).query).get("rig", [""])[0]
+        try:
+            rigged = twocam_api.resolve_rig(rig, OUTPUT_ROOT)
+            state = twocam_api.creature_state(rigged)
+        except ValueError as exc:
+            self._send_json(422, {"error": str(exc)})
+            return
+        active = twocam_api.TWOCAM_JOBS.jobs.get(twocam_api.TWOCAM_JOBS.active or "")
+        elsewhere = (active is not None and active.status not in twocam_api.TERMINAL
+                     and active.creature.run != rigged.parent)
+        state["busy"] = busy_reason("twocam") or (
+            "another creature is being animated from video; wait for it to finish" if elsewhere else None)
+        state["blender"] = find_blender() is not None
+        self._send_json(200, state)
+
+    def _twocam_start(self, kind: str) -> None:
+        """POST /api/twocam/<stage> {rig, ...}: one stage of Animate from video. A browser flow;
+        agents run scripts/twocam_mocap.py."""
+        try:
+            body = self._small_json()
+        except (ValueError, json.JSONDecodeError) as exc:
+            self._send_json(400, {"error": f"could not read the request: {exc}"})
+            return
+        waiting = busy_reason("twocam")
+        if waiting:
+            self._send_json(409, {"error": waiting})
+            return
+        if kind != "film" and find_blender() is None:   # prepare, teach and capture run Blender
+            self._send_json(409, {"error": blender_missing_help(), "needs_blender": True})
+            return
+        try:
+            job = twocam_api.TWOCAM_JOBS.start(kind, body)
+        except ValueError as exc:
+            self._send_json(422, {"error": str(exc)})
+            return
+        except RuntimeError as exc:
+            self._send_json(409, {"error": str(exc)})
+            return
+        threading.Thread(target=twocam_api.run_job, args=(job,), daemon=True,
+                         name=f"twocam-{job.id[:8]}").start()
+        self._send_json(202, {"job_id": job.id, "kind": job.kind, "status_url": f"/api/twocam/{job.id}/status"})
+
+    def _twocam_cancel(self, job_id: str) -> None:
+        job = twocam_api.TWOCAM_JOBS.get(job_id)
+        if job is None:
+            self.send_error(HTTPStatus.NOT_FOUND)
+            return
+        try:
+            twocam_api.cancel_job(job)
+        except RuntimeError as exc:
+            self._send_json(409, {"error": str(exc)})
+            return
+        self._send_json(202, {"job_id": job.id, "status": job.status})
 
     def _create_finish_job(self) -> None:
         """Retopologise, repaint and compress a GLB the viewer already has.
