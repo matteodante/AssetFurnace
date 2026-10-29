@@ -119,12 +119,23 @@ def limb_pairs(info: Mapping[str, Any]) -> dict[str, list[tuple[int, int]]]:
 
 
 def ground_joints(info: Mapping[str, Any]) -> list[str]:
-    """The joints that stand on the floor at rest: within 5% of the creature's height
-    (at least 3 cm) of its lowest joint. What the sync score watches by default."""
-    rest = np.array([k["rest"] for k in info["keypoints"]], float)
-    z = rest[:, 2]
+    """The feet: in each limb that reaches the floor, its lowest left/right pair. A limb
+    reaches the floor when its lowest pair sits within 5% of the creature's height (at
+    least 3 cm) of the lowest joint. What the feet-agreement score watches by default.
+
+    Taking whole pairs keeps both sides even on a rig that is not quite symmetric at rest
+    (a height band alone took 5 of the spider's 8 feet). A rig with no `_L`/`_R` limbs
+    falls back to every joint in the band."""
+    keypoints = info["keypoints"]
+    z = np.array([k["rest"][2] for k in keypoints], float)
     band = max(0.03, 0.05 * float(z.max() - z.min()))
-    return [k["name"] for k, h in zip(info["keypoints"], z) if h <= z.min() + band]
+    floor = z.min() + band
+    feet: list[str] = []
+    for pairs in limb_pairs(info).values():
+        low = min(pairs, key=lambda pair: z[list(pair)].mean())
+        if z[list(low)].mean() <= floor:
+            feet += [keypoints[i]["name"] for i in low]
+    return feet or [k["name"] for k, h in zip(keypoints, z) if h <= floor]
 
 
 class Rig:
@@ -551,22 +562,24 @@ def fit(d, info, layout: Layout, iters: int = 1500, device: str = "cpu",
             "bones": rig.names, "joint_names": names, "loss": parts}
 
 
-def capture(d, info, fps: float, *, iters: int = 1500, device: str = "cpu", align: bool = True,
-            swaps: bool = False, feet: Sequence[str] | None = None,
-            log: Callable[[str], None] | None = None) -> dict[str, Any]:
-    """The whole fit stage: score the clip, re-time it if needed, fix swaps if asked, fit.
-    Returns the motion as `motion.json` holds it (see `motion.py`)."""
-    if not np.isfinite(fps) or fps <= 0:
-        raise DetectionError(f"the clip's frame rate must be positive, got {fps!r}")
+def assess(d, info, *, feet: Sequence[str] | None = None, align: bool = True, swaps: bool = False,
+           log: Callable[[str], None] | None = None) -> tuple[dict[str, np.ndarray], dict[str, Any]]:
+    """Get a read clip ready for the fit and say whether it is worth fitting: re-time the
+    front view when that closes the height gap, fix side-view swaps if asked, then judge
+    the clip as it will be fitted. Returns the prepared detections and the report.
+
+    The verdict is on the re-timed clip: judged as generated, two halves merely played out
+    of step looked hopeless, though re-timing is exactly what fixes them. Both are kept."""
     layout = Layout.from_rig_info(info)
     validate_rig_info(info)
     names = [k["name"] for k in info["keypoints"]]
     validate_detections(d, len(names))
     d = {k: np.array(d[k], np.float64) for k in DETECTION_KEYS}
     feet = list(feet) if feet else ground_joints(info)
+    height = creature_height_px(info, layout)
     say = log or (lambda _msg: None)
     before = sync_report(d)
-    paws = paw_agreement(d, names, feet)
+    paws_before = paw_agreement(d, names, feet)
     say(f"sync as generated: mean height gap {before['mean_height_gap_px']:.1f} px, "
         f"worst {before['worst_frame_gap_px']:.1f} px, best constant lag {before['best_lag_frames']} frames")
     shift = None
@@ -584,14 +597,31 @@ def capture(d, info, fps: float, *, iters: int = 1500, device: str = "cpu", alig
     # painted limbs make the reader's left/right labels trustworthy, so swaps are only fixed on request
     swapped = fix_swaps(d, limb_pairs(info)) if swaps else {}
     sync = sync_report(d)
-    sync["before"] = {k: v for k, v in before.items() if k != "per_frame_gap_px"}
-    sync["paw_agreement"] = paws
-    sync["front_shift_frames"] = None if shift is None else shift.round(2).tolist()
-    sync["verdict"] = verdict(sync["before"], paws, creature_height_px(info, layout))
+    paws = paw_agreement(d, names, feet)
+    before = {k: v for k, v in before.items() if k != "per_frame_gap_px"}
+    sync.update(before=before, paw_agreement=paws, paw_agreement_before=paws_before,
+                front_shift_frames=None if shift is None else shift.round(2).tolist(), swaps=swapped,
+                feet=feet, verdict=verdict(sync, paws, height),
+                verdict_as_generated=verdict(before, paws_before, height))
+    return d, sync
+
+
+def capture(d, info, fps: float, *, iters: int = 1500, device: str = "cpu", align: bool = True,
+            swaps: bool = False, feet: Sequence[str] | None = None,
+            log: Callable[[str], None] | None = None) -> dict[str, Any]:
+    """The whole fit stage: `assess` the clip, then fit the rig to it.
+    Returns the motion as `motion.json` holds it (see `motion.py`)."""
+    if not np.isfinite(fps) or fps <= 0:
+        raise DetectionError(f"the clip's frame rate must be positive, got {fps!r}")
+    d, sync = assess(d, info, feet=feet, align=align, swaps=swaps, log=log)
+    layout = Layout.from_rig_info(info)
     res = fit(d, info, layout, iters=iters, device=pick_device(device), log=log)
+    # one hemisphere from frame to frame: a sign flip at half a turn made Blender's
+    # interpolation swing through the rest pose between two keys
+    root_quat = continuous_quaternions(matrices_to_quaternions(res["root_rotmat"]))
     return {"fps": float(fps), "bones": res["bones"], "trans": res["trans"].round(5).tolist(),
-            "root_quat": matrices_to_quaternions(res["root_rotmat"]).round(6).tolist(),
+            "root_quat": root_quat.round(6).tolist(),
             "euler": res["euler"].round(5).tolist(), "joints": res["joints"].round(4).tolist(),
             "joint_names": res["joint_names"], "reproj_px": res["reproj_px"],
-            "reproj_px_per_joint": res["reproj_px_per_joint"], "sync": sync, "swaps": swapped,
-            "feet": feet, "layout": layout.to_dict()}
+            "reproj_px_per_joint": res["reproj_px_per_joint"], "sync": sync, "swaps": sync["swaps"],
+            "feet": sync["feet"], "layout": layout.to_dict()}

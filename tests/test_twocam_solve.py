@@ -40,9 +40,25 @@ def test_limbs_are_found_from_the_rig_not_from_the_wolfs_names():
         ("shoulder_L", "shoulder_R"), ("elbow_L", "elbow_R"), ("paw_L", "paw_R"), ("toe_L", "toe_R")]
 
 
-def test_the_feet_are_the_joints_standing_on_the_floor():
-    assert set(solve.ground_joints(toy_rig())) == {
-        f"{j}_{s}" for j in ("paw", "toe", "foot", "heel") for s in "LR"}
+def test_the_feet_are_each_limbs_lowest_left_right_pair():
+    assert solve.ground_joints(toy_rig()) == ["toe_L", "toe_R", "heel_L", "heel_R"]
+
+
+def test_a_rig_a_little_lopsided_at_rest_still_gets_both_feet_of_a_pair():
+    """A height band alone took 5 of the spider's 8 feet: one side stood a little higher."""
+    info = toy_rig()
+    names = _names(info)
+    info["keypoints"][names.index("heel_R")]["rest"][2] = 0.06  # 4 cm above its twin
+    assert {"heel_L", "heel_R"} <= set(solve.ground_joints(info))
+
+
+def test_a_rig_without_limbs_falls_back_to_the_joints_on_the_floor():
+    info = toy_rig()
+    for b in info["bones"]:
+        b["name"] = b["name"].replace("_L", "_l").replace("_R", "_r")
+    for k in info["keypoints"]:
+        k["name"] = k["name"].replace("_L", "_l").replace("_R", "_r")
+    assert set(solve.ground_joints(info)) >= {"toe_l", "toe_r", "heel_l", "heel_r"}
 
 
 @pytest.mark.parametrize("break_it, message", [
@@ -196,3 +212,29 @@ def test_the_verdict(gap, feet, level):
     v = solve.verdict({"mean_height_gap_px": gap}, {"score": feet}, height_px=250)
     assert v["level"] == level
     assert bool(v["reasons"]) == (level == "bad")
+
+
+def test_a_clip_played_out_of_step_is_judged_after_re_timing():
+    """Judged as generated, two halves merely out of step looked hopeless, and `fit`
+    refused the very clips re-timing fixes."""
+    info = toy_rig()
+    _, _, d = _clip(info, frames=60, seed=3)
+    lag = 4
+    d["front_uv"] = np.concatenate([d["front_uv"][lag:], np.repeat(d["front_uv"][-1:], lag, 0)])
+    _, report = solve.assess(d, info)
+    assert report["front_shift_frames"] is not None
+    assert report["mean_height_gap_px"] < report["before"]["mean_height_gap_px"]
+    order = ["good", "doubtful", "bad"]
+    assert order.index(report["verdict"]["level"]) <= order.index(report["verdict_as_generated"]["level"])
+
+
+def test_the_root_quaternion_keeps_one_sign_through_half_a_turn():
+    info = toy_rig()
+    truth = exam.make_motion(info, seed=0, frames=30)
+    yaw = np.radians(np.linspace(150, 210, 30))  # through half a turn about the pelvis' own Z
+    truth["root_quat"] = [[math.cos(a / 2), 0, 0, math.sin(a / 2)] for a in yaw]
+    joints = exam.motion_joints(info, truth)
+    d = exam.synthetic_detections(joints, Layout.from_rig_info(info))
+    motion = solve.capture(d, info, 24.0, iters=150)
+    q = np.array(motion["root_quat"])
+    assert (np.sum(q[1:] * q[:-1], axis=1) > 0).all()
