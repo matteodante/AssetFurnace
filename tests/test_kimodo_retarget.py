@@ -498,3 +498,14 @@ def test_straight_toeless_legs_fall_back_to_the_old_cue_without_crashing():
             heads[b] = np.array([heads[b][0], 0.02, 0.08])
     _, frame = kr.map_skintokens_to_soma(parents, heads)
     assert np.allclose(frame[:, 2], [0, +1, 0], atol=1e-6)
+
+
+def test_a_half_turn_about_a_slanted_axis_survives_the_quaternion_round_trip():
+    """The Kimodo copy took each sign from an off-diagonal difference, which is ~0 at half a
+    turn: a half turn about (1, -1, 0) came back as one about (1, 1, 0). It now shares
+    two-camera capture's conversion."""
+    k = np.array([1.0, -1.0, 0.0]) / np.sqrt(2)
+    K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+    half_turn = np.eye(3) + 2 * K @ K
+    np.testing.assert_allclose(kr.quaternions_to_matrices(kr.matrices_to_quaternions(half_turn)), half_turn,
+                               atol=1e-9)

@@ -24,9 +24,20 @@ The maths below is pure numpy; only `main()` needs `bpy` (Blender, or the `bpy` 
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
+
+REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+# shared with two-camera capture; numpy only, so Blender's Python imports it too
+from image_to_3dlab.twocam.motion import (  # noqa: F401
+    matrices_to_quaternions,
+    quaternions_to_matrices,
+)
 
 # SOMA 77-joint order as Kimodo writes it (kimodo.skeleton.definitions.SOMASkeleton77).
 SOMA77 = [
@@ -499,32 +510,6 @@ def key_frame(t: int, speed: float) -> float:
     if speed <= 0:
         raise ValueError("speed must be positive")
     return 1 + (t - 1) / speed
-
-
-def matrices_to_quaternions(m: np.ndarray) -> np.ndarray:
-    """[..., 3, 3] rotation matrices -> [..., 4] unit quaternions (w, x, y, z), w >= 0."""
-    m = np.asarray(m, dtype=np.float64)
-    w = np.sqrt(np.clip(1 + m[..., 0, 0] + m[..., 1, 1] + m[..., 2, 2], 0, None)) / 2
-    x = np.sqrt(np.clip(1 + m[..., 0, 0] - m[..., 1, 1] - m[..., 2, 2], 0, None)) / 2
-    y = np.sqrt(np.clip(1 - m[..., 0, 0] + m[..., 1, 1] - m[..., 2, 2], 0, None)) / 2
-    z = np.sqrt(np.clip(1 - m[..., 0, 0] - m[..., 1, 1] + m[..., 2, 2], 0, None)) / 2
-    x = np.copysign(x, m[..., 2, 1] - m[..., 1, 2])
-    y = np.copysign(y, m[..., 0, 2] - m[..., 2, 0])
-    z = np.copysign(z, m[..., 1, 0] - m[..., 0, 1])
-    q = np.stack([w, x, y, z], axis=-1)
-    return q / np.linalg.norm(q, axis=-1, keepdims=True)
-
-
-def quaternions_to_matrices(q: np.ndarray) -> np.ndarray:
-    """[..., 4] quaternions (w, x, y, z), not necessarily unit -> [..., 3, 3]."""
-    q = np.asarray(q, dtype=np.float64)
-    q = q / np.linalg.norm(q, axis=-1, keepdims=True)
-    w, x, y, z = (q[..., i] for i in range(4))
-    return np.stack([
-        np.stack([1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)], -1),
-        np.stack([2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)], -1),
-        np.stack([2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)], -1),
-    ], -2)
 
 
 def load_motion(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default licence.
 
 ### Fixed
+- Preset moves: a bone turned about half a turn on a slanted axis could be keyed turned the wrong
+  way, from a sign picked off a near-zero difference. The retarget now shares two-camera capture's
+  conversion, which is right there.
 - Rigged and animated models made from a finished model name the 3D generator's licence. Finish used to
   drop it, so their records said `license: null`. A finished model now gets a `.provenance.json`
   with the licence of the model it came from; an uploaded model with no record gets none, not a guess.
