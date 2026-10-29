@@ -16,6 +16,17 @@
         "More in the <a href=\"https://github.com/Bingeljell/image-to-3dlab/blob/main/docs/prompt-guide.md\" target=\"_blank\" rel=\"noopener\">picture guide</a>."
       ]
     },
+    "creature": {
+      "label": "A moving creature",
+      "wording": "one creature alone, full body, three-quarter front view, standing still on all of its legs in a calm neutral pose, symmetrical body, legs straight and planted flat on the ground with clear gaps between them, head straight and looking forward, stylised 3D game creature, plain light grey background, soft even studio lighting",
+      "tips": [
+        "One creature, whole body, <b>standing still on all its legs</b>. The pose words are added for you: the move comes later, from a video.",
+        "Say what it has: <b>\"four legs, two bat wings and a long tail\"</b>. Its body is copied as drawn, so the 3D model and its rig follow these words.",
+        "Wings: say how it holds them, the same way on both sides, such as <b>\"wings folded at its sides\"</b> or <b>\"wings half open and level\"</b>.",
+        "A creature drawn flying, rearing or turning its head comes out lopsided in 3D. The studio measures it and offers another picture.",
+        "Plain light background, soft even light, no dust, fire or glow."
+      ]
+    },
     "prop": {
       "label": "A prop",
       "wording": "single object, whole object in view, centred, plain light grey background, soft even studio lighting",
@@ -62,9 +73,12 @@
      "message": "A pose other than an A-pose makes rigging harder. The A-pose wording is added for you."},
     {"words": ["long hair", "flowing hair", "tentacles", "tail", "wings"], "goals": ["character"],
      "message": "Long hair, tails and wings may not rig well yet."},
-    {"words": ["glowing", "smoke", "fire", "motion blur", "sparkles", "magic aura"], "goals": ["character", "prop", "set"],
+    {"words": ["flying", "in flight", "running", "leaping", "jumping", "rearing", "attacking", "pouncing", "charging", "roaring",
+               "action pose", "dynamic pose", "sitting", "lying down", "curled up", "crouching"], "goals": ["creature"],
+     "message": "A creature drawn in motion comes out lopsided in 3D and rigs badly. It is drawn standing still (added for you); the move comes later, from a video."},
+    {"words": ["glowing", "smoke", "fire", "motion blur", "sparkles", "magic aura"], "goals": ["character", "creature", "prop", "set"],
      "message": "Effects like glow, smoke or fire don't turn into clean 3D. Describe the object, not the effect."},
-    {"words": ["scene", "background of", "landscape", "room", "in a forest", "in a city"], "goals": ["character", "prop", "set"],
+    {"words": ["scene", "background of", "landscape", "room", "in a forest", "in a city"], "goals": ["character", "creature", "prop", "set"],
      "message": "A scene behind the subject confuses the 3D step. Ask for a plain background (added for you)."}
   ]
 }

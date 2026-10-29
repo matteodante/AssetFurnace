@@ -66,11 +66,24 @@ own licence (`prepare` copies it next to `rigged.blend`).
 
 ## In the studio
 
-A rigged model that is not a humanoid gets **Animate from video** in its Animate step, in
-place of the preset moves. Four stages, each one run of `scripts/twocam_mocap.py`:
+**Make a creature** in Create draws it the way capture needs it: one creature, standing still
+on all its legs, straight, at three-quarters. The pose words are added for you; say what it
+has ("four legs, two bat wings and a long tail") and how it holds its wings, the same on both
+sides. Asked "a dragon on four legs" without them, the picture model drew a wyvern rearing with
+one wing up, and its 3D model was 3.1% off its own mirror image; with them, three dragons came
+out 0.7% to 1.0% off (a knight in an A-pose: 0.7%). The studio measures every creature's 3D
+model as it is built (`image_to_3dlab/twocam/symmetry.py`, written beside it as
+`<model>.symmetry.json`); over 2.5% the run stops there and offers another picture. The
+creature is then finished and rigged, and its Animate step is the one below.
 
-1. **Prepare** (about 10 s): how long it is nose to tail, and what it is. The card shows the
-   reference frame with its joints, left pink and right blue: check the sides and the facing.
+A rigged model that is not a humanoid gets **Animate from video** in its Animate step, in
+place of the preset moves. A humanoid keeps its preset moves first, with **Or animate from a
+video** folded under them, for a move the presets lack ("swings a sword", "lifts a log"). Four
+stages, each one run of `scripts/twocam_mocap.py`:
+
+1. **Prepare** (about 10 s): its size in metres, as its height (a person, `--axis z`) or its
+   length nose to tail (a creature), and what it is. The card shows the reference frame with
+   its joints, left pink and right blue: check the sides and the facing.
 2. **Teach the reader** (about an hour, once per creature). The button names DINOv2 (346 MB,
    Apache-2.0) when it still has to download it. It keeps going with the tab closed and can
    be cancelled; the practice poses already rendered are kept.

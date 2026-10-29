@@ -30,6 +30,13 @@ from typing import Any
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))  # rig_check, for whether a rig fits the moves
+REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+
+from image_to_3dlab.twocam.symmetry import (
+    read_report as shape_report,
+)
 
 FINISH_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__finish__\d{8}-\d{6}(?:-\d+)?$")
 RIG_RUN = re.compile(r"^[A-Za-z0-9_-]{1,80}__rig__\d{8}-\d{6}(?:-\d+)?$")
@@ -54,9 +61,9 @@ def _history(output: Path) -> list[dict[str, Any]]:
     return read_history(output, limit=100_000)
 
 
-def _asked_for_props(history: list[dict[str, Any]]) -> set[str]:
-    """Files (relative to output/) of chains that were asked to make one prop."""
-    return {str(r["made"]) for r in history if r.get("want") == "prop" and r.get("made")}
+def _asked_for(history: list[dict[str, Any]], want: str) -> set[str]:
+    """Files (relative to output/) of chains that were asked to make `want` (one prop, a creature)."""
+    return {str(r["made"]) for r in history if r.get("want") == want and r.get("made")}
 
 
 def _step_times(history: list[dict[str, Any]]) -> dict[str, tuple[str, float]]:
@@ -70,23 +77,17 @@ def _step_times(history: list[dict[str, Any]]) -> dict[str, tuple[str, float]]:
     return times
 
 
-def _prop_wording() -> str | None:
+def _wording(goal: str) -> str | None:
     try:
-        return json.loads(RECIPES.read_text(encoding="utf-8"))["goals"]["prop"]["wording"] or None
+        return json.loads(RECIPES.read_text(encoding="utf-8"))["goals"][goal]["wording"] or None
     except (OSError, ValueError, KeyError):
         return None
 
 
-def _prompted_as_prop(picture: Path, wording: str | None) -> bool:
-    """Before the history said what a chain wanted: Create added the prop wording to the
+def _prompted_as(prompt: str | None, wording: str | None) -> bool:
+    """Before the history said what a chain wanted: Create added the goal's wording to the
     prompt, and the picture's provenance record kept the prompt."""
-    if not wording:
-        return False
-    try:
-        record = json.loads(picture.with_suffix(".provenance.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    return wording in str(record.get("prompt", ""))
+    return bool(wording and prompt and wording in prompt)
 
 
 def _picture_prompt(picture: Path | None) -> str | None:
@@ -232,8 +233,26 @@ def _rigs(output: Path) -> list[dict[str, Any]]:
                 if clip == rigged or name == "rigged" or TAKE_SUFFIX.search(name):
                     continue
                 clips.append({"name": name, "file": clip})
-            found.append({"stem": base, "file": rigged, "input_sha": input_sha, "clips": clips})
+            found.append({"stem": base, "file": rigged, "input_sha": input_sha, "clips": clips,
+                          "sheets": _rig_sheets(rigged)})
     return found
+
+
+def _rig_sheets(rigged: Path) -> dict[str, Any] | None:
+    """What the creature rig left to look at: its test poses and every draw it chose from
+    (None for a SkinTokens rig)."""
+    work = rigged.parent / "creature_rig"
+    if not (work / "poses-sheet.png").is_file():
+        return None
+    try:
+        joints = json.loads(rigged.with_suffix(".joints.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        joints = {}
+    draws = joints.get("draws") or []
+    return {"poses": work / "poses-sheet.png",
+            "draws": work / "draws-sheet.png" if (work / "draws-sheet.png").is_file() else None,
+            "count": len(draws), "chosen": joints.get("chosen"),
+            "usable": [k for k, d in enumerate(draws) if isinstance(d, dict) and d.get("score") is not None]}
 
 
 def _prop_sets(output: Path) -> list[dict[str, Any]]:
@@ -259,7 +278,9 @@ def list_assets(output: Path, with_runs: bool = False) -> list[dict[str, Any]]:
         return []
     hashes = _Hashes(output)
     history = _history(output)
-    asked_props, step_times, prop_wording = _asked_for_props(history), _step_times(history), _prop_wording()
+    asked_props, asked_creatures, step_times = _asked_for(history, "prop"), _asked_for(history, "creature"), _step_times(history)
+    prop_wording, creature_wording = _wording("prop"), _wording("creature")
+    mentioned = {str(r["made"]) for r in history if r.get("made")}   # files some run says what it wanted
     pictures, models, finishes = _pictures(output), _models(output), _finishes(output)
     rigs, sets = _rigs(output), _prop_sets(output)
 
@@ -367,15 +388,24 @@ def list_assets(output: Path, with_runs: bool = False) -> list[dict[str, Any]]:
             files += [p["file"] for p in prop_set["props"]]
         clips = rig["clips"] if rig else []
 
+        prompt = _picture_prompt(picture["file"] if picture else None)
+        # a creature (Create's "A moving creature") moves from a video, not from the preset moves;
+        # the wording in its prompt only tells assets older than the history (a creature's
+        # picture drawn again as a character carries the wording but asked for a character)
+        known = any(rel(f) in mentioned for f in files)
+        creature = (any(rel(f) in asked_creatures for f in files)
+                    or (not known and _prompted_as(prompt, creature_wording)))
         if prop_set is not None:
             kind, stage = "prop set", "finished" if prop_set["props"] else "model"
         elif rig is not None:
-            kind, stage = "character", "animated" if clips else "rigged"
+            kind, stage = "creature" if creature else "character", "animated" if clips else "rigged"
         else:
             kind = "picture" if model is None and fin is None else "model"
             stage = "finished" if fin else "model" if model else "picture"
-            if kind == "model" and (any(rel(f) in asked_props for f in files)
-                                    or (picture and _prompted_as_prop(picture["file"], prop_wording))):
+            if creature:
+                kind = "creature"
+            elif kind == "model" and (any(rel(f) in asked_props for f in files)
+                                      or _prompted_as(prompt, prop_wording)):
                 kind = "prop"
         root_node = nodes[chain[0]][1]
         first = picture or model or (prop_set if prop_set and prop_set.get("file") else None) or fin or rig
@@ -401,14 +431,20 @@ def list_assets(output: Path, with_runs: bool = False) -> list[dict[str, Any]]:
             "kind": kind,
             "stage": stage,
             "picture": rel(picture["file"]) if picture else None,
-            "prompt": _picture_prompt(picture["file"] if picture else None),
+            "prompt": prompt,
             # Front + back: the drawn back sits beside its front as <front>__back.png.
             "back": rel(back) if picture and (back := picture["file"].with_name(
                 f"{picture['file'].stem}__back.png")).is_file() else None,
             "model": rel(model["file"]) if model else None,
+            # how far a creature's model is from mirroring itself, measured when it was built
+            "shape": shape_report(model["file"]) if model else None,
             "finished": rel(fin["file"]) if fin else None,
             "pixel_match": fin["pixel_match"] if fin else None,
             "rigged": rel(rig["file"]) if rig else None,
+            # the creature rig's test poses and draws, for a person to look at and pick another
+            "rig_sheets": ({**rig["sheets"], "poses": rel(rig["sheets"]["poses"]),
+                            "draws": rel(rig["sheets"]["draws"]) if rig["sheets"]["draws"] else None}
+                           if rig and rig.get("sheets") else None),
             **(hashes.rig_facts(rig["file"]) if rig else {"fits_moves": None, "facing": None}),
             "clips": [{"name": c["name"], "file": rel(c["file"])} for c in clips],
             "props": [{"name": p["name"], "file": rel(p["file"])} for p in (prop_set["props"] if prop_set else [])],

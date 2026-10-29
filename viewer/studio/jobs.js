@@ -51,7 +51,7 @@ export function plainError(message = '') {
     [/memory|MemoryError|out of memory|Killed/i, 'This Mac ran out of memory. Close other big apps and try again, or pick a lower detail or texture size.'],
     [/not installed|is not installed\/ready|needs_setup/i, 'This engine is not installed yet. Install it from Setup, then try again.'],
     [/is running; wait|wait for it to finish/i, 'Another job is running. This one can start when it finishes.'],
-    [/humanoid|map.*SOMA|could not map/i, "This doesn't look like a humanoid, so the preset moves can't fit it. You can still download the rig and animate it in Blender."],
+    [/humanoid|map.*SOMA|could not map/i, "This doesn't look like a humanoid, so the preset moves can't fit it. It can move from a video instead: Animate from video, in its Animate step."],
     [/Blender/i, 'Blender stopped with an error. The full log is below; "Copy details" makes it easy to report.'],
   ];
   for (const [pattern, words] of rules) if (pattern.test(text)) return words;

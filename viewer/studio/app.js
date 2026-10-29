@@ -4,7 +4,7 @@
 import { STEPS, stepCount, stepDone, stepState, statusText, displayModel, stepFile, canViewStep, canFixShown, fixBlockedNote, servedUrl, visibleFamilies, madeVersion, engineOf, engineChoices, openingView, isModelFile, duration, canViewPictures, sizeText, deletionWords, linkedAssetId, statsRows, canReveal } from './library.js';
 import { createStudioViewer } from './viewer.js';
 import { readyEngines, readableLog, copyDetails } from './jobs.js';
-import { stepBody, wireStep } from './steps.js';
+import { stepBody, wireStep, wantOf } from './steps.js';
 import { openCreate, runChain } from './create.js';
 import { openActivity, openAbout, openGuide, openReport, closeSheet, usageNotice, openNews, refreshNews } from './pages.js';
 import { STEP_LABELS } from './plan.js';
@@ -107,7 +107,7 @@ function summaries(asset) {
 }
 
 function renderSteps(asset) {
-  $('sideKind').textContent = { 'prop set': 'Prop set', prop: 'Prop', character: 'Character', model: '3D model', picture: 'Picture' }[asset.kind] || '';
+  $('sideKind').textContent = { 'prop set': 'Prop set', prop: 'Prop', character: 'Character', creature: 'Creature', model: '3D model', picture: 'Picture' }[asset.kind] || '';
   const total = stepCount(asset), sum = summaries(asset);
   $('steps').innerHTML = STEPS.map((step, i) => {
     if (i >= total) return `<li class="step na"><header><span class="dot">–</span><span><h3>${step.label}</h3><div class="sum">Not needed for props</div></span></header></li>`;
@@ -125,7 +125,7 @@ function renderSteps(asset) {
     if (card.querySelector('.body [data-run]')) wireStep(card, card.dataset.step, asset, ctx);
     const twocam = card.querySelector('.body [data-twocam]');
     if (twocam) mountTwocam(twocam, asset, ctx);
-    card.querySelector('[data-newpicture]')?.addEventListener('click', () => openCreateSheet({ text: asset.prompt, want: asset.kind === 'prop' ? 'prop' : 'character' }));
+    card.querySelector('[data-newpicture]')?.addEventListener('click', () => openCreateSheet({ text: asset.prompt, want: wantOf(asset) }));
   });
   $('steps').querySelector('[data-pictures]')?.addEventListener('click', () => {
     if (viewingPictures) { show(asset); return; }
@@ -304,7 +304,7 @@ function show(asset) {
   renderHideButton();
   // only rigged files are turned: the skeleton is what says which way the feet point
   viewer.setFacing(asset.rigged && (asset.clips.length || displayModel(asset) === asset.rigged) ? asset.facing : null);
-  if (asset.kind === 'character' && asset.clips.length) {
+  if (['character', 'creature'].includes(asset.kind) && asset.clips.length) {
     // open on the move just made, else a calm one (idle, then walk), never alphabetically first ("death")
     const prefer = [playNext, 'idle', 'walk'].map((name) => asset.clips.findIndex((c) => c.name === name)).find((i) => i >= 0);
     const index = prefer ?? 0;
@@ -486,7 +486,7 @@ function showMaking() {
   $('hideBtn').hidden = true;
   viewer.setFacing(null);  // a run in progress shows its files as they come
   setDownload(null);
-  $('sideKind').textContent = { character: 'Character', prop: 'Prop', set: 'Prop set', picture: 'Picture' }[making.plan.want] || '';
+  $('sideKind').textContent = { character: 'Character', creature: 'Creature', prop: 'Prop', set: 'Prop set', picture: 'Picture' }[making.plan.want] || '';
   $('steps').innerHTML = making.plan.steps.map((step, i) => {
     const state = making.done.includes(step) ? 'done' : step === making.current ? 'now' : 'later';
     const dot = state === 'done' ? '✓' : making.cancelled && step === making.current ? '–' : making.failed && step === making.current ? '■' : i + 1;

@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   teach a joint reader that creature, `film` makes the clip with MiniMax H3 through stable-diffusion.cpp,
   and `capture` reads, fits and exports an animated GLB with a licence record. Ported from Patch's AnyMove
   (Apache-2.0), with its wrong-scale, wolf-only-limbs and locked-axis bugs fixed. See `docs/twocam-mocap.md`.
+- "A moving creature" in Create: the picture is drawn with the creature standing still, straight and alone
+  (wording tested on a dragon, a wolf, a spider, a griffin and a troll), then built, finished and rigged;
+  it moves from a video in its Animate step. Its 3D model is measured as soon as it is built: one that
+  came out lopsided (a creature drawn rearing with one wing up) stops the run with a "draw another
+  picture" button, since a body without a mirror plane cannot be captured. "Front + back" starts off
+  for a creature: a back drawn on its own gave a dragon a second neck (4.25% off its mirror image,
+  1.13% from the front alone). Agents ask for `want="creature"`.
+- A humanoid can be animated from a video too: "Or animate from a video" sits folded under its preset
+  moves, for a move they lack. Prepare asks for a person's height and a creature's length nose to tail
+  (measured along the wrong axis, a 1.9 m knight would have come out as deep as that).
 - Animate from video in the studio: a rigged creature that is not a humanoid gets four stages in its
   Animate step (prepare, teach the reader, film, capture) instead of "preset moves are for humanoids
   only". Each runs `scripts/twocam_mocap.py`; every download is named with its size and licence
@@ -32,6 +42,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default licence.
 
 ### Fixed
+- A rigged creature was told it "can be rigged, not animated" and to animate it in Blender; it now
+  points to Animate from video, in its Animate step.
+- Setup installs UniRig (VAST-AI, MIT) like SkinTokens, and fetches what Animate from video needs
+  (MiniMax H3 to film, DINOv2 to read the joints) in one entry.
+- An experimental creature rig, chosen in the Rig step's Advanced (`rigger: unirig` for agents):
+  four UniRig draws scored on the mesh, the best repaired, named by body plan and skinned by
+  Blender's bone heat; bone names set which way knees and elbows fold in capture. Its test poses
+  and every draw show in the Rig step, with a button to rig again from another draw in seconds.
+  It is not the default: on the bench it read five of seven creatures wrong (a wolf as a biped,
+  a wyvern as four-legged, a spider as winged), so SkinTokens still rigs everything unless asked.
 - Preset moves: a bone turned about half a turn on a slanted axis could be keyed turned the wrong
   way, from a sign picked off a near-zero difference. The retarget now shares two-camera capture's
   conversion, which is right there.

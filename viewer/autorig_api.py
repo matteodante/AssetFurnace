@@ -47,6 +47,12 @@ OUTPUT_ROOT = REPO / "output" / "animate"
 SKINTOKENS = REPO / "vendor" / "SkinTokens"
 RETARGET = REPO / "scripts" / "kimodo_retarget.py"
 CLEAN_WEIGHTS = REPO / "scripts" / "clean_skin_weights.py"
+# A creature (Create's "A moving creature", or a Rig step that says so) is rigged by the
+# creature rig instead: UniRig draws its skeleton four times, the draw that fits the body
+# best is kept and repaired, the bones are named after what they are, and Blender's bone
+# heat skins it (scripts/creature_rig.py). Without UniRig it traces a skeleton from the mesh.
+CREATURE_RIG = REPO / "scripts" / "creature_rig.py"
+CREATURE_DRAWS = 4
 MOTIONS = REPO / "image_to_3dlab" / "motions"
 JOB_ID = re.compile(r"^[0-9a-f]{32}$")
 RUN_DIRECTORY = re.compile(r"^[A-Za-z0-9_-]{1,80}__rig__\d{8}-\d{6}(?:-\d+)?$")
@@ -55,10 +61,16 @@ TERMINAL = {"done", "error", "cancelled"}
 # Measured on an M-series Mac (2026-10-05): 64 s for a 200k-face knight. Only drives the
 # progress bar's estimate, which says "about" for that reason.
 RIG_SECONDS = 70.0
+CREATURE_RIG_SECONDS = 180.0
 ANIMATE_SECONDS = 12.0
 MAX_ARM_SPREAD = 30.0
 SPEED_RANGE = (0.5, 2.0)
 
+UNIRIG_LICENSE = {
+    "name": "MIT",
+    "url": "https://github.com/VAST-AI-Research/UniRig/blob/main/LICENSE",
+    "model": "VAST-AI/UniRig",
+}
 SKINTOKENS_LICENSE = {
     "name": "MIT",
     "url": "https://github.com/VAST-AI-Research/SkinTokens/blob/main/LICENSE",
@@ -147,6 +159,11 @@ def resolve_model(relative: str, output: Path = REPO / "output") -> Path:
     raise ValueError(f"not a model this tab offers: {relative!r}")
 
 
+def creature_work_of(rigged: Path) -> Path:
+    """The creature rig's work folder beside a rigged GLB (its prepared model, shell and draws)."""
+    return rigged.parent / "creature_rig"
+
+
 def rig_run_of(glb: Path) -> Path | None:
     """The rig folder a `_rigged.glb` lives in, or None for anything else."""
     run = glb.parent
@@ -163,7 +180,7 @@ source_record_for = provenance.licence_record_beside
 
 
 def rig_record(name: str, data: bytes, source: dict[str, Any] | None,
-               origin: str) -> dict[str, Any]:
+               origin: str, creature: bool = False) -> dict[str, Any]:
     """Provenance for a rigged model: the source's licence carries over, and the rigger's
     is listed beside it rather than mixed in."""
     return {
@@ -175,7 +192,9 @@ def rig_record(name: str, data: bytes, source: dict[str, Any] | None,
         "license": (source or {}).get("license"),
         "classification": ((source or {}).get("output") or {}).get("classification")
         or (source or {}).get("classification"),
-        "rig": {"tool": "SkinTokens", "license": SKINTOKENS_LICENSE},
+        "rig": ({"tool": "creature rig: UniRig skeleton draws, repaired and named; Blender bone heat skin",
+                 "license": UNIRIG_LICENSE, "draws": CREATURE_DRAWS} if creature
+                else {"tool": "SkinTokens", "license": SKINTOKENS_LICENSE}),
         "source_record": source,
     }
 
@@ -196,9 +215,16 @@ def animation_record(rig: dict[str, Any] | None, preset: dict[str, Any],
 # ----------------------------------------------------------------------------- jobs
 
 
-def rig_commands(source: Path, result: Path) -> list[tuple[list[str], Path]]:
+def rig_commands(source: Path, result: Path, creature: bool = False, reuse: Path | None = None,
+                 draw: int | None = None) -> list[tuple[list[str], Path]]:
     """SkinTokens, then a skin-weight clean-up: it sometimes weights fingertips to a toe,
-    which stretches them into spikes once the hand moves (scripts/clean_skin_weights.py)."""
+    which stretches them into spikes once the hand moves (scripts/clean_skin_weights.py).
+    A creature runs the creature rig instead, which skins with Blender's bone heat; `reuse`
+    (an earlier creature rig's work folder) and `draw` rig it again from one of its draws."""
+    if creature:
+        again = ["--reuse", str(reuse), "--draw", str(draw)] if reuse is not None and draw is not None else []
+        return [([sys.executable, str(CREATURE_RIG), str(source), str(result), "--draws", str(CREATURE_DRAWS),
+                  "--work", str(result.parent / "creature_rig"), *again], REPO)]
     return [
         ([str(venv_python()), "demo.py", "--input", str(source), "--output", str(result),
           "--use_transfer"], SKINTOKENS),
@@ -303,7 +329,14 @@ class AnimateJobManager:
         return job
 
     def create_rig(self, name: str, data: bytes, source: dict[str, Any] | None,
-                   origin: str) -> AnimateJob:
+                   origin: str, creature: bool = False, reuse: Path | None = None,
+                   draw: int | None = None) -> AnimateJob:
+        """`creature`: the creature rig, not SkinTokens. `reuse` + `draw`: rig again from an
+        earlier creature rig's draw N (its work folder), without drawing again."""
+        if (reuse is None) != (draw is None) or (reuse is not None and not creature):
+            raise ValueError("another draw needs the earlier creature rig and the draw's number")
+        if reuse is not None and not (reuse / "draws" / f"draw{draw}.json").is_file():
+            raise ValueError(f"that rig has no draw {draw}")
         with self.lock:
             if self.busy():
                 raise RuntimeError("an Animate job is already running")
@@ -319,8 +352,9 @@ class AnimateJobManager:
             source_glb.write_bytes(data)
             result = directory / f"{stem}_rigged.glb"
             job = AnimateJob(uuid.uuid4().hex, "rig", directory, result,
-                             rig_commands(source_glb, result), RIG_SECONDS,
-                             rig_record(name, data, source, origin))
+                             rig_commands(source_glb, result, creature, reuse, draw),
+                             CREATURE_RIG_SECONDS if creature else RIG_SECONDS,
+                             rig_record(name, data, source, origin, creature))
             return self._claim(job)
 
     def create_animation(self, rigged: Path, preset_id: str, arm_spread: Any,
@@ -411,6 +445,10 @@ def run_job(job: AnimateJob, manager: AnimateJobManager = ANIMATE_JOBS) -> None:
                       if code else f"{job.kind} step wrote no GLB",
                       "log_tail": "\n".join(job.log_lines)[-6000:]})
         else:
+            joints = _read_json(job.result.with_suffix(".joints.json")) if job.kind == "rig" else None
+            if joints:   # the creature rig: what it found the body to be and which draw it kept
+                job.record.setdefault("rig", {}).update(
+                    {k: joints[k] for k in ("body", "chosen", "draws", "notes") if k in joints})
             job.result.with_suffix(".provenance.json").write_text(
                 json.dumps(job.record, indent=2), encoding="utf-8")
             # The done event (with the file's path) goes out BEFORE the status flips: a plan polls

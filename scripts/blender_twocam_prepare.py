@@ -63,6 +63,7 @@ def main() -> None:
     sys.path.insert(0, str(REPO / "scripts"))
     import blender_twocam_studio as studio
 
+    from image_to_3dlab.creature_rig import limits
     from image_to_3dlab.twocam import rigging
 
     opts = parse_args(sys.argv)
@@ -130,6 +131,9 @@ def main() -> None:
     width = float(np.ptp(verts[:, 0]))
     sk = skeleton()
     plan = rigging.plan_bones(sk, tolerance=max(0.01, 0.05 * width))
+    # a creature rig names its bones (Shin.L, Forearm.R...): those names say how each joint
+    # bends; a rig with bare names (SkinTokens' bone_0..) keeps the limits by role
+    plan.limits = limits.named_limits(sk.names, sk.parents, sk.heads, plan.tails, plan.limits)
 
     # Joined-up tails and AnyMove's roll, in edit mode; names after, so vertex groups follow.
     bpy.context.view_layer.objects.active = rig

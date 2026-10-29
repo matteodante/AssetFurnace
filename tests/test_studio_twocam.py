@@ -1,7 +1,8 @@
 """The studio's Animate from video card (viewer/studio/twocam.js), run under Node against the shipped
 file, and the Animate step that hands a non-humanoid to it (viewer/studio/steps.js).
 
-What matters: a humanoid keeps its preset moves; anything else gets the four stages; every
+What matters: a humanoid keeps its preset moves first, with the video folded under them for moves
+the presets lack; anything else gets the four stages; every
 download is named with its size and licence before the click that starts it; a take shows its
 verdict, and a bad one is fitted only through "Fit anyway"; nothing typed reaches the page unescaped.
 """
@@ -53,7 +54,7 @@ def html(s, extra=""):
       console.log(JSON.stringify(m.twocamHtml({json.dumps(s)}, asset, url{extra})));""")
 
 
-def test_a_humanoid_keeps_its_presets_and_anything_else_moves_from_a_video():
+def test_a_humanoid_keeps_its_presets_first_and_anything_else_moves_from_a_video():
     out = _run("steps.js", f"""
       const ctx = {{ presets: [{{ id: 'walk', label: 'Walk' }}], engines: [] }};
       const wolf = {json.dumps(WOLF)};
@@ -65,7 +66,10 @@ def test_a_humanoid_keeps_its_presets_and_anything_else_moves_from_a_video():
       }}));""")
     assert "data-twocam" in out["wolf"] and "data-preset" not in out["wolf"]
     assert "humanoids only" not in out["wolf"] and "animate in Blender" not in out["wolf"]
-    assert "data-preset" in out["knight"] and "data-twocam" not in out["knight"]
+    # a humanoid: the presets first, and a video for a move they lack, folded away under them
+    assert "data-preset" in out["knight"] and "data-twocam" in out["knight"]
+    assert out["knight"].index("data-preset") < out["knight"].index("Or animate from a video") < out["knight"].index("data-twocam")
+    assert "<details" in out["knight"][out["knight"].index("data-preset"):out["knight"].index("data-twocam")]
     assert "data-preset" in out["unknown"]          # not judged yet: the presets, as before
     assert "from a video" in out["rig"]
 
@@ -75,7 +79,7 @@ def test_a_new_creature_starts_at_prepare_named_after_itself():
     assert out.index('data-stage="prepare"') < out.index('data-stage="teach"') < out.index('data-stage="film"') \
         < out.index('data-stage="capture"')
     assert 'value="grey wolf"' in out                      # the title, without its version
-    assert "nose to tail, in metres" in out and 'data-tc-act="prepare"' in out
+    assert "Length, nose to tail" in out and "In metres" in out and 'data-tc-act="prepare"' in out
     assert 'data-tc-act="teach"' not in out and 'data-tc-act="film"' not in out
     assert 'class="tc-stage later" data-stage="teach"' in out
 
@@ -181,3 +185,30 @@ def test_a_prepared_creature_can_be_turned_round_from_the_page():
     out = html(state())
     assert "It faces the wrong way: turn it round" in out and "data-turn" in out
     assert "data-turn" not in html(FRESH), "nothing to turn before it is prepared"
+
+
+def test_a_humanoid_hears_why_it_would_film_a_move_and_a_creature_why_it_must():
+    out = _run("twocam.js", f"""
+      const s = {json.dumps(PREPARED)};
+      console.log(JSON.stringify({{
+        knight: m.twocamHtml(s, {{ ...{json.dumps(WOLF)}, fits_moves: true }}, url),
+        wolf: m.twocamHtml(s, {json.dumps(WOLF)}, url),
+        dragon: m.twocamHtml(s, {{ ...{json.dumps(WOLF)}, fits_moves: true, kind: 'creature' }}, url),
+      }}));""")
+    assert "the presets lack" in out["knight"] and "Preset moves are for humanoids" not in out["knight"]
+    assert "Preset moves are for humanoids" in out["wolf"]
+    # a creature whose rig would fit the presets is not told it is no humanoid
+    assert "A creature moves from a video" in out["dragon"] and "Preset moves are for humanoids" not in out["dragon"]
+
+
+def test_a_person_is_measured_by_height_and_a_creature_nose_to_tail():
+    out = _run("twocam.js", f"""
+      const s = {json.dumps(FRESH)};
+      const pick = (html) => html.match(/<option value="([yz])" selected>/)[1];
+      console.log(JSON.stringify({{
+        knight: pick(m.twocamHtml(s, {{ ...{json.dumps(WOLF)}, fits_moves: true }}, url)),
+        wolf: pick(m.twocamHtml(s, {json.dumps(WOLF)}, url)),
+        troll: pick(m.twocamHtml(s, {{ ...{json.dumps(WOLF)}, fits_moves: true, kind: 'creature' }}, url)),
+        again: pick(m.twocamHtml({{ ...s, prepared: {{ ...{json.dumps(PREPARED["prepared"])}, axis: 'z' }} }}, {json.dumps(WOLF)}, url, {{}})),
+      }}));""")
+    assert out == {"knight": "z", "wolf": "y", "troll": "y", "again": "z"}

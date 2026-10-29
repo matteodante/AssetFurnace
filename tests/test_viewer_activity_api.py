@@ -49,9 +49,19 @@ class FakeJobs:
                      "model": made["model"] if kind == "model" else None}
 
 
-def _runner(tmp_path, **fake):
+def _runner(tmp_path, shape_check=None, **fake):
     jobs = FakeJobs(tmp_path, **fake)
-    return aa.ChainRunner(tmp_path, jobs, poll=0, sleep=lambda s: None), jobs
+    extra = {"shape_check": shape_check} if shape_check else {}
+    return aa.ChainRunner(tmp_path, jobs, poll=0, sleep=lambda s: None, **extra), jobs
+
+
+def _shape(gap):
+    measured = []
+
+    def check(model):
+        measured.append(model)
+        return {"mirror_gap_pct": gap, "limit_pct": 2.5, "lopsided": gap > 2.5}
+    return check, measured
 
 
 def test_a_whole_character_runs_and_each_step_gets_the_last_ones_file(tmp_path):
@@ -382,3 +392,97 @@ def test_every_finish_detail_agents_can_ask_for_reaches_finish():
         form = {"title": {"value": "k"}, "steps": {"value": json.dumps(["finished"])},
                 "finish_settings": {"value": json.dumps(settings)}}
         assert aa.chain_from_form(form).finish_settings == settings, detail
+
+
+def test_a_lopsided_creature_stops_after_its_3d_model_and_says_to_draw_another(tmp_path):
+    check, measured = _shape(3.1)
+    runner, jobs = _runner(tmp_path, shape_check=check)
+    chain = aa.Chain(title="wyvern", want="creature", prompt="a wyvern", steps=["picture", "model", "finished", "rigged"])
+    runner.submit(chain, background=False)
+    assert measured == [tmp_path / "pixal3d/m/model.glb"]
+    assert chain.status == "done" and chain.done == ["picture", "model"]       # a calm stop, not a failure
+    out = chain.to_dict()
+    assert "lopsided" in out["note"] and "3.1%" in out["note"] and "another picture" in out["note"]
+    assert out["shape"] == {"mirror_gap_pct": 3.1, "limit_pct": 2.5, "lopsided": True}
+    assert not any(p in ("/api/finish", "/api/animate/rig") for _, p, _ in jobs.calls)
+
+
+def test_a_straight_creature_goes_on_to_its_rig_and_plays_no_preset(tmp_path):
+    check, measured = _shape(0.8)
+    runner, jobs = _runner(tmp_path, shape_check=check, four_legged=True)
+    chain = aa.Chain(title="dragon", want="creature", prompt="a dragon", steps=["picture", "model", "finished", "rigged"])
+    runner.submit(chain, background=False)
+    assert chain.status == "done" and chain.done == chain.steps and len(measured) == 1
+    assert chain.to_dict()["shape"]["lopsided"] is False
+    assert not any(p == "/api/animate/play" for _, p, _ in jobs.calls)
+
+
+def test_a_model_that_cannot_be_measured_is_not_held_back(tmp_path):
+    def broken(model):
+        raise ValueError("model.glb has no surface to measure")
+    runner, _ = _runner(tmp_path, shape_check=broken)
+    chain = aa.Chain(title="dragon", want="creature", steps=["model", "finished"], made={"picture": "images/p/pic.png"})
+    (tmp_path / "images/p").mkdir(parents=True)
+    (tmp_path / "images/p/pic.png").write_bytes(b"png")
+    runner.submit(chain, background=False)
+    assert chain.status == "done" and chain.done == ["model", "finished"] and chain.to_dict()["shape"] is None
+
+
+def test_only_creatures_are_measured(tmp_path):
+    check, measured = _shape(9.0)
+    runner, _ = _runner(tmp_path, shape_check=check)
+    chain = aa.Chain(title="knight", want="character", prompt="k", steps=["picture", "model", "finished"])
+    runner.submit(chain, background=False)
+    assert measured == [] and chain.done == chain.steps
+
+
+def test_the_studio_measures_a_real_model_and_keeps_the_report_beside_it(tmp_path):
+    trimesh = pytest.importorskip("trimesh")
+    model = tmp_path / "beast.glb"
+    parts = [trimesh.creation.box([0.1, 0.6, 0.1], trimesh.transformations.translation_matrix([x, 0.3, 0])) for x in (-0.3, 0.3)]
+    trimesh.util.concatenate(parts).export(model)
+    report = aa.measure_shape(model)
+    assert report["lopsided"] is False
+    assert json.loads((tmp_path / "beast.symmetry.json").read_text(encoding="utf-8")) == report
+
+
+
+def test_an_uploaded_creature_is_recorded_as_one_even_when_its_3d_step_fails(tmp_path):
+    """The Library knows a creature by its history; an uploaded picture has no prompt to tell by."""
+    runner, _ = _runner(tmp_path, fail="model")
+    chain = aa.Chain(title="wolf", want="creature", steps=["model", "finished", "rigged"], upload=("wolf.png", b"png"))
+    runner.submit(chain, background=False)
+    assert chain.status == "error"
+    picture = [h for h in aa.read_history(tmp_path) if h["step"] == "picture"]
+    assert picture and picture[0]["want"] == "creature" and picture[0]["made"].startswith("images/uploads/wolf__")
+
+
+def test_a_lopsided_upload_is_told_to_try_another_picture_and_the_reason_is_kept(tmp_path):
+    check, _ = _shape(4.2)
+    runner, _ = _runner(tmp_path, shape_check=check)
+    chain = aa.Chain(title="wolf", want="creature", steps=["model", "finished"], upload=("wolf.png", b"png"))
+    runner.submit(chain, background=False)
+    assert "Try another picture" in chain.note and "Draw another" not in chain.note
+    model = [h for h in aa.read_history(tmp_path) if h["step"] == "model"][0]
+    assert "lopsided" in model["note"]           # after a restart, Activity still says why it stopped
+
+
+def test_a_creature_asks_for_the_creature_rig_and_a_character_does_not(tmp_path):
+    runner, jobs = _runner(tmp_path)
+    runner.submit(aa.Chain(title="dragon", want="creature", steps=["rigged"], made={"finished": "finish/f/finished.glb"}),
+                  background=False)
+    runner.submit(aa.Chain(title="knight", want="character", steps=["rigged"], made={"finished": "finish/f/finished.glb"}),
+                  background=False)
+    rigs = [b for m, p, b in jobs.calls if m == "POST" and p == "/api/animate/rig"]
+    assert b'name="creature"\r\n\r\n1' in rigs[0] and b'name="creature"' not in rigs[1]
+
+
+def test_a_plans_rig_choices_reach_the_rig_job(tmp_path):
+    runner, jobs = _runner(tmp_path)
+    chain = aa.chain_from_form({"title": {"value": "dragon"}, "steps": {"value": '["rigged"]'}, "want": {"value": "creature"},
+                                "rig_settings": {"value": '{"draw": 2, "from_rig": "animate/d/d_rigged.glb", "evil": 1}'},
+                                "made": {"value": '{"finished": "finish/f/finished.glb"}'}})
+    assert chain.rig_settings == {"draw": 2, "from_rig": "animate/d/d_rigged.glb"}
+    runner.submit(chain, background=False)
+    body = [b for m, p, b in jobs.calls if m == "POST" and p == "/api/animate/rig"][0]
+    assert b'name="draw"\r\n\r\n2' in body and b'name="from_rig"\r\n\r\nanimate/d/d_rigged.glb' in body

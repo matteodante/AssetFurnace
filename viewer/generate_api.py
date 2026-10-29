@@ -60,6 +60,9 @@ from autorig_api import (
     cancel_job as cancel_animate_job,
 )
 from autorig_api import (
+    creature_work_of as animate_creature_work,
+)
+from autorig_api import (
     installed as autorig_installed,
 )
 from autorig_api import (
@@ -3563,12 +3566,15 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception as exc:
             self._send_json(500, {"error": str(exc)})
 
-    def _animate_blocked(self) -> str | None:
+    def _animate_blocked(self, creature: bool = False) -> str | None:
         """Why an Animate job cannot start now. The auto-rig loads an ~8 GB model, so it
-        waits for anything else that holds the GPU or unified memory."""
+        waits for anything else that holds the GPU or unified memory. A creature's rig needs
+        Blender rather than SkinTokens (UniRig helps, and is not required)."""
         waiting = busy_reason("animate")
         if waiting:
             return waiting
+        if creature:
+            return None if find_blender() is not None else blender_missing_help()
         if not autorig_installed():
             return "Auto-rig is not installed. Set it up on the Setup & Status page."
         return None
@@ -3584,15 +3590,32 @@ class Handler(SimpleHTTPRequestHandler):
         """Rig a model: a GLB uploaded in field 'asset', or one the lab made, named in
         field 'model' by the path /api/animate/models listed it under."""
         try:
-            blocked = self._animate_blocked()
-            if blocked:
-                self._send_json(409, {"error": blocked})
-                return
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0 or length > 512 * 1024 * 1024:
                 self._send_json(400, {"error": "request is missing or larger than 512 MiB"})
                 return
             form = parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length))
+            def field(name: str) -> str:
+                return str((form.get(name) or {}).get("value", "")).strip()
+            # which rigger: SkinTokens unless the creature rig (scripts/creature_rig.py) is asked
+            # for by name. The creature rig is experimental: on the 2026-10-29 bench it read five
+            # of seven creatures wrong (a wolf as a biped, a spider as winged), so being a
+            # creature does not pick it.
+            rigger = field("rigger").lower()
+            creature = rigger == "unirig"
+            reuse = draw = None
+            if field("draw"):
+                try:
+                    draw = int(field("draw"))
+                    reuse = animate_creature_work(resolve_animate_model(field("from_rig"), OUTPUT_ROOT))
+                except ValueError as exc:
+                    self._send_json(422, {"error": f"another draw: {exc}"})
+                    return
+                creature = True
+            blocked = self._animate_blocked(creature)
+            if blocked:
+                self._send_json(409, {"error": blocked})
+                return
             asset = form.get("asset")
             chosen = str((form.get("model") or {}).get("value", "")).strip()
             if asset and str(asset.get("filename", "")).lower().endswith(".glb"):
@@ -3609,9 +3632,12 @@ class Handler(SimpleHTTPRequestHandler):
                 self._send_json(422, {"error": "send a .glb in 'asset' or a listed 'model'"})
                 return
             try:
-                job = ANIMATE_JOBS.create_rig(name, data, record, origin)
+                job = ANIMATE_JOBS.create_rig(name, data, record, origin, creature=creature, reuse=reuse, draw=draw)
             except RuntimeError as exc:
                 self._send_json(409, {"error": str(exc)})
+                return
+            except ValueError as exc:
+                self._send_json(422, {"error": str(exc)})
                 return
             self._start_animate(job)
         except Exception as exc:

@@ -31,6 +31,8 @@ KIND = {"picture": "image", "back": "image", "model": "generate", "finished": "f
         "rigged": "animate", "animated": "animate"}
 # The Finish choices a plan may carry (the same ones the Steps panel's Finish sends).
 MOVE_KEYS = ("speed", "arm_spread")
+# The Rig choices a plan may carry: which rigger, and another draw of an earlier creature rig.
+RIG_KEYS = ("rigger", "draw", "from_rig")
 # Every Detail choice the studio and agents offer must be able to pass (mcp_server.FINISH_DETAILS):
 # "high" and "hero" were dropped here, so an agent asking for them got a plain Finish.
 FINISH_KEYS = ("faces", "keep_mesh", "skip_photo", "skip_edge_fade", "skip_nudge", "texture_size",
@@ -44,6 +46,25 @@ NOISE = re.compile(r"\[(VERBOSE|DEBUG)\]|ggml_|kernel_|compile_pipeline|th_max|^
 
 # request(method, path, body, content_type, headers=None) -> (http status, parsed JSON)
 Request = Callable[..., tuple[int, dict[str, Any]]]
+
+
+def measure_shape(model: Path) -> dict[str, Any]:
+    """How far a creature's 3D model is from mirroring itself, kept beside it as
+    `<model>.symmetry.json` so its Steps can say so later (image_to_3dlab/twocam/symmetry.py)."""
+    from image_to_3dlab.twocam import symmetry
+
+    report = symmetry.check(model)
+    symmetry.write_report(model, report)
+    return report
+
+
+def lopsided_note(report: dict[str, Any], drawn: bool = True) -> str:
+    """`drawn`: the picture came from a description, so it can be drawn again; an upload cannot."""
+    again = "Draw another picture" if drawn else "Try another picture"
+    return (f"This creature came out lopsided: its two sides are {report['mirror_gap_pct']:g}% apart "
+            f"(a straight one is under {report['limit_pct']:g}%). Animating it from a video needs a body whose "
+            f"sides mirror each other, so the run stopped here. {again}, or carry on with Finish and "
+            "Rig from its Steps.")
 
 
 def readable_log(text: str, count: int = 4) -> str:
@@ -63,7 +84,7 @@ def plain_error(message: str) -> str:
         (r"memory|MemoryError|out of memory|Killed", "This Mac ran out of memory. Close other big apps and try again, or pick a lower detail or texture size."),
         (r"not installed|is not installed/ready|needs_setup", "This engine is not installed yet. Install it from Setup, then try again."),
         (r"is running; wait|wait for it to finish|already being", "Another job is running. This one can start when it finishes."),
-        (r"humanoid|map.*SOMA|could not map", "This doesn't look like a humanoid, so the preset moves can't fit it. You can still download the rig and animate it in Blender."),
+        (r"humanoid|map.*SOMA|could not map", "This doesn't look like a humanoid, so the preset moves can't fit it. It can move from a video instead: Animate from video, in its Animate step."),
         (r"Blender", 'Blender stopped with an error. The log has the details; "Copy details" makes it easy to report.'),
     ]
     for pattern, words in rules:
@@ -101,6 +122,7 @@ class Chain:
     keep_everything: bool = False                                    # the 3D step keeps its textures, meshes, caches
     finish_settings: dict[str, Any] = field(default_factory=dict)    # detail and Pixel Match (the finish job checks them)
     move_settings: dict[str, Any] = field(default_factory=dict)      # speed, arm_spread (the animate job checks them)
+    rig_settings: dict[str, Any] = field(default_factory=dict)       # rigger, draw, from_rig (the rig job checks them)
     made: dict[str, str | None] = field(default_factory=dict)       # picture/model/finished/rigged paths
     upload: tuple[str, bytes] | None = None                          # (file name, bytes) when the user gave a file
     client: str | None = None                                        # "agent" when the MCP server asked for it
@@ -119,6 +141,7 @@ class Chain:
     cancel_requested: bool = False
     job: tuple[str, str] | None = None                               # (kind, job id) of the running step
     note: str = ""                                                   # why a run ended early, calmly
+    shape: dict[str, Any] | None = None                              # a creature's mirror gap, once measured
     step_seconds: dict[str, float] = field(default_factory=dict)      # how long each finished step took
 
     def to_dict(self, now: float | None = None) -> dict[str, Any]:
@@ -128,6 +151,7 @@ class Chain:
             "current": self.current, "done": self.done, "percent": self.percent, "message": self.message,
             "log": self.log, "full_log": self.full_log[-4000:], "error": self.error,
             "made": {k: v for k, v in self.made.items() if v}, "first_move": self.first_move, "note": self.note,
+            "shape": self.shape,
             "step_seconds": dict(self.step_seconds),
             "elapsed": round(now - self.started, 1), "step_elapsed": round(now - self.step_started, 1),
             "stalled": self.status == "running" and now - self.last_change > STALL_SECONDS,
@@ -138,10 +162,12 @@ class ChainRunner:
     """One plan at a time (the jobs underneath refuse to overlap anyway)."""
 
     def __init__(self, output: Path, request: Request | None = None, *, poll: float = 1.2,
-                 now: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep):
+                 now: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
+                 shape_check: Callable[[Path], dict[str, Any]] = measure_shape):
         self.output = output
         self.request = request
         self.poll, self.now, self.sleep = poll, now, sleep
+        self.shape_check = shape_check
         self.chains: dict[str, Chain] = {}
         self.lock = threading.Lock()
 
@@ -184,14 +210,17 @@ class ChainRunner:
         if self._picture_upload(chain) and not chain.made.get("picture"):
             try:
                 self._kept_upload(chain)   # kept from the start, so the Library shows it even on a front-only run
+                # and recorded, so it is filed as what it was asked to become (a creature) even if
+                # the next step fails: an upload has no prompt to tell by
+                self._history(chain, "picture", "done", self.now(), "the uploaded picture, kept", "")
             except OSError:
                 pass                       # the run still has the bytes; only the Library loses the picture
         for step in chain.steps:
             if chain.cancel_requested:
                 chain.status = "cancelled"
                 break
-            if step == "animated" and chain.note:
-                chain.status, chain.current = "done", None  # the rig does not fit the moves: a calm stop
+            if chain.note:  # the rig does not fit the moves, or a creature came out lopsided: a calm stop
+                chain.status, chain.current = "done", None
                 break
             chain.current, chain.percent, chain.message, chain.log = step, None, "Starting…", ""
             chain.step_started = chain.last_change = self.now()
@@ -239,7 +268,7 @@ class ChainRunner:
             return self._fail(chain, step, why, payload.get("log_tail") or "", started, status)
         self._record(chain, step, payload)
         chain.step_seconds[step] = round(self.now() - started, 1)
-        self._history(chain, step, "done", started, chain.message, chain.full_log)
+        self._history(chain, step, "done", started, chain.note or chain.message, chain.full_log)
         return True
 
     def _fail(self, chain: Chain, step: str, why: str, log: str, started: float, status: str = "error") -> bool:
@@ -256,6 +285,8 @@ class ChainRunner:
             chain.made["back"] = final.get("picture")
         elif step == "model":
             chain.made["model"] = final.get("model")
+            if chain.want == "creature" and chain.made["model"]:
+                self._measure(chain)
         elif step == "finished":
             chain.made["finished"] = event.get("path")
         elif step == "rigged":
@@ -264,6 +295,17 @@ class ChainRunner:
                 chain.note = event.get("message") or "This rig does not fit the preset moves."
         elif step == "animated":
             chain.made["animated"] = event.get("path")  # the move's own GLB, so an agent can hand it over
+
+    def _measure(self, chain: Chain) -> None:
+        """A creature's model is measured as soon as it is built, before Finish and the rig spend
+        minutes on it. A model that cannot be measured is not held back."""
+        try:
+            chain.shape = self.shape_check(self.output / chain.made["model"])
+        except Exception as exc:  # a broken measure must never stop a run the user asked for
+            chain.full_log += f"\nthe model's symmetry could not be measured: {exc}"
+            return
+        if chain.shape.get("lopsided"):
+            chain.note = lopsided_note(chain.shape, drawn=bool(chain.prompt))
 
     # ------------------------------------------------------------------ starting each step
     def _file(self, relative: str) -> tuple[str, bytes]:
@@ -327,10 +369,12 @@ class ChainRunner:
             return kind, self._post("/api/finish", body, ctype)
         if step == "rigged":
             source = chain.made.get("finished") or chain.made.get("model")
+            creature = {"creature": "1"} if chain.want == "creature" else {}   # the creature rig
+            creature |= {k: str(chain.rig_settings[k]) for k in RIG_KEYS if chain.rig_settings.get(k) is not None}
             if source:
-                body, ctype = multipart({"model": source}, {})
+                body, ctype = multipart({"model": source, **creature}, {})
             elif chain.upload:
-                body, ctype = multipart({}, {"asset": chain.upload})
+                body, ctype = multipart(creature, {"asset": chain.upload})
             else:
                 raise ValueError("Rig needs a 3D model, and there is none yet")
             return kind, self._post("/api/animate/rig", body, ctype)
@@ -438,6 +482,7 @@ def chain_from_form(form: dict[str, dict[str, Any]]) -> Chain:
         picture = json.loads(text("picture_settings") or "{}")
         finish = json.loads(text("finish_settings") or "{}")
         move = json.loads(text("move_settings") or "{}")
+        rig = json.loads(text("rig_settings") or "{}")
     except ValueError as exc:
         raise ValueError(f"the plan is not readable: {exc}") from exc
     upload = form.get("file")
@@ -450,6 +495,7 @@ def chain_from_form(form: dict[str, dict[str, Any]]) -> Chain:
         keep_everything=text("keep_everything") in ("1", "true"),
         finish_settings={k: finish[k] for k in FINISH_KEYS if k in finish} if isinstance(finish, dict) else {},
         move_settings={k: move[k] for k in MOVE_KEYS if k in move} if isinstance(move, dict) else {},
+        rig_settings={k: rig[k] for k in RIG_KEYS if k in rig} if isinstance(rig, dict) else {},
         made={k: str(v) for k, v in made.items() if k in ("picture", "back", "model", "finished", "rigged") and v},
         upload=(upload.get("filename") or "upload", upload["data"]) if upload and upload.get("filename") and upload.get("data") else None,
     )

@@ -475,8 +475,8 @@ def test_list_assets_rows_say_their_family_and_version(studio):
 # --------------------------------------------------------------------------- advanced knobs
 def test_options_lists_the_main_and_every_advanced_knob():
     out = ms.options()
-    assert set(out["advanced"]) == {"edge_fade", "nudge", "texture_size", "rig_from", "speed", "arms_away",
-                                    "keep_everything"}
+    assert set(out["advanced"]) == {"edge_fade", "nudge", "texture_size", "rig_from", "rigger", "speed",
+                                    "arms_away", "keep_everything"}
     assert all("what" in spec and "default" in spec and "step" in spec for spec in out["advanced"].values())
     assert {"finish_detail", "pixel_match", "move"} <= set(out["main"])
 
@@ -488,7 +488,7 @@ def test_every_studio_control_has_an_mcp_twin():
     twin = {"faces": "finish_detail", "customFaces": "finish_detail", "photo": "pixel_match", "engine": "engine",
             "frontback": "front_and_back", "recipe": "add_wording", "move": "move", "text": "description",
             "edgefade": "edge_fade", "nudge": "nudge", "texture": "texture_size", "rigsource": "rig_from",
-            "speed": "speed", "spread": "arms_away", "keep": "keep_everything"}
+            "speed": "speed", "spread": "arms_away", "keep": "keep_everything", "rigger": "rigger"}
     missing = sorted(controls - set(twin))
     assert not missing, f"Studio controls with no MCP twin: {missing}. Add them to ADVANCED (or main) and here."
     known = set(ms.ADVANCED) | set(ms.options()["main"]) | {"description"}
@@ -708,3 +708,24 @@ def test_status_says_where_models_go_and_survives_an_older_studio():
     assert ms.models_folder(Answers({"in_use": "/Volumes/Big/models"})) == "/Volumes/Big/models"
     assert ms.models_folder(Answers({"in_use": None})) is None
     assert ms.models_folder(Answers(RuntimeError("404: no such route"))) is None
+
+
+@pytest.mark.skipif(__import__("shutil").which("node") is None, reason="Node runs the studio's steps.js")
+def test_continuing_an_asset_asks_for_what_the_studio_would_ask():
+    """A creature carried on by an agent is asked for as a creature (whose 3D step the studio measures)."""
+    import subprocess
+    kinds = ["character", "creature", "prop", "prop set", "model", "picture"]
+    url = (Path(__file__).resolve().parents[1] / "viewer" / "studio" / "steps.js").as_uri()
+    program = f"import * as m from {json.dumps(url)};\nconsole.log(JSON.stringify({json.dumps(kinds)}.map(k => m.wantOf({{ kind: k }}))));"
+    studio = json.loads(subprocess.run(["node", "--input-type=module", "--eval", program], check=True,
+                                       capture_output=True, text=True, encoding="utf-8").stdout)
+    assert [ms.want_for({"kind": k}) for k in kinds] == studio
+    assert ms.want_for({"kind": "creature"}) == "creature"
+
+
+
+def test_a_rigged_creature_is_not_sent_a_preset_move():
+    dragon = {"kind": "creature", "picture": "p.png", "model": "m.glb", "finished": "f.glb", "rigged": "r.glb", "clips": []}
+    knight = {**dragon, "kind": "character"}
+    assert ms.continue_steps(dragon, "creature", "animated", False) == []
+    assert ms.continue_steps(knight, "character", "animated", False) == ["animated"]

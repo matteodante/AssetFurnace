@@ -26,8 +26,8 @@ from kimodo_retarget import map_skintokens_to_soma
 
 Y_UP = np.array([0.0, 1.0, 0.0])  # glTF is Y-up
 
-NOT_HUMANOID = ("Rigged. Preset moves are for humanoids only for now: four-legged and other creatures can be "
-                "rigged, not animated, and the rig may be wonky. Download it to animate in Blender.")
+NOT_HUMANOID = ("Rigged. Preset moves are for humanoids only: a creature with four legs, wings or a tail moves "
+                "from a video instead, in its Animate step (Animate from video).")
 
 
 def _gltf_json(path: Path) -> dict:

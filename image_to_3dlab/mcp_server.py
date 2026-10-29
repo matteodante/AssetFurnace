@@ -27,7 +27,13 @@ from pathlib import Path
 from typing import Any
 
 from image_to_3dlab import __version__
-from image_to_3dlab.agent_plan import compose_prompt, plan_for, refusal, stop_after
+from image_to_3dlab.agent_plan import (
+    compose_prompt,
+    front_back_by_default,
+    plan_for,
+    refusal,
+    stop_after,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_URL = "http://127.0.0.1:8777"
@@ -269,7 +275,7 @@ def continue_steps(asset: dict[str, Any], want: str, up_to: str | None, front_ba
     full = plan_for("idea", want, front_back=front_back and not made.get("model"))
     have = set(made) | ({"animated"} if asset.get("clips") else set()) | ({"split"} if asset.get("props") else set())
     todo = [s for s in stop_after(full, up_to) if s not in have]
-    if not todo and up_to == "animated" and made.get("rigged"):
+    if not todo and up_to == "animated" and made.get("rigged") and want != "creature":
         return ["animated"]
     return todo
 
@@ -286,7 +292,7 @@ def again_steps(asset: dict[str, Any], step: str | None) -> list[str]:
 
 
 def want_for(asset: dict[str, Any]) -> str:
-    return {"prop": "prop", "prop set": "set"}.get(asset.get("kind", ""), "character")
+    return {"prop": "prop", "prop set": "set", "creature": "creature"}.get(asset.get("kind", ""), "character")
 
 
 # Finish's Detail choices, as the Steps panel offers them (tests check the two lists agree).
@@ -350,6 +356,11 @@ ADVANCED: dict[str, dict[str, Any]] = {
     "rig_from": {
         "step": "rigged", "type": "str", "choices": ["finished", "model"], "default": "finished",
         "what": "Which model gets the skeleton: the finished one, or the raw 3D model (skips Finish)."},
+    "rigger": {
+        "step": "rigged", "type": "str", "choices": ["auto", "unirig", "skintokens"], "default": "auto",
+        "what": "Which rigger draws the skeleton: auto (SkinTokens), skintokens (one try; the preset moves "
+                "need its skeletons) or unirig (the experimental creature rig: four tries, the best kept and "
+                "named; it still reads some bodies wrong, so look at its test poses)."},
     "speed": {
         "step": "animated", "type": "float", "min": 0.5, "max": 2.0, "default": "the move's own pace",
         "what": "Playback speed of the move."},
@@ -407,9 +418,10 @@ def options() -> dict[str, Any]:
     """Every knob, as the studio shows them: main ones on create/continue_asset, the rest in `advanced`."""
     return {
         "main": {
-            "want": "picture | prop | set | character (create only).",
+            "want": "picture | prop | set | character | creature (create only).",
             "engine": "A ready 3D engine id (list_engines). Default: the best ready one.",
-            "front_and_back": "Also draw a back picture so the 3D model is fuller. Default: on when installed.",
+            "front_and_back": "Also draw a back picture so the 3D model is fuller. Default: on when installed, "
+                              "off for a creature (a back that did not match gave a dragon a second neck).",
             "add_wording": "Append the studio's proven prompt wording (pose, background). Default: on.",
             "finish_detail": "light (10k triangles) | game (20k, default) | more (40k) | high (50k with the surface calmed where the picture paints: cleaner faces from the side, best for realistic humans) | hero (32k body plus a sharper head built again from a close crop of the picture: characters whose face matters; takes much longer than other details; needs a Pixal3D model made from a picture) | a count 1000-200000 | "
                              "full (every triangle, for stills; not for rigging).",
@@ -589,7 +601,7 @@ def create(studio: Studio, *, want: str, description: str = "", image_path: str 
     if engine and engine not in {e["id"] for e in engines}:
         raise StudioError(f"Engine {engine!r} isn't ready. Ready: {', '.join(e['id'] for e in engines) or 'none'}.")
     fb_ready = bool((catalog.get("front_back") or {}).get("ready"))
-    front_back = fb_ready if front_and_back is None else front_and_back
+    front_back = front_back_by_default(want, fb_ready) if front_and_back is None else front_and_back
     if front_back and not fb_ready:
         raise StudioError("Front and back isn't installed. The studio's Setup page adds it.")
     steps = stop_after(plan_for(have, want, finish_upload=finish_upload, front_back=front_back), stop_after_step)
@@ -630,6 +642,8 @@ def create(studio: Studio, *, want: str, description: str = "", image_path: str 
         form["finish_settings"] = json.dumps(choices)
     if move_settings and "animated" in steps:
         form["move_settings"] = json.dumps(move_settings)
+    if adv["rigger"] != "auto" and "rigged" in steps:
+        form["rig_settings"] = json.dumps({"rigger": adv["rigger"]})
     upload = _upload(image_path, (".png", ".jpg", ".jpeg", ".webp")) or _upload(model_path, (".glb",))
     run = studio.post("api/chains", data=form, files={"file": upload} if upload else None)
     return {"run_id": run["id"], "steps": steps, "engine": form.get("engine"), "move": form.get("first_move"),
@@ -652,7 +666,7 @@ def continue_asset(studio: Studio, *, asset_id: str, up_to: str | None = None, w
     if again:
         steps = again_steps(asset, up_to)
     else:
-        steps = continue_steps(asset, want, up_to, fb_ready)
+        steps = continue_steps(asset, want, up_to, front_back_by_default(want, fb_ready))
     if not steps:
         return {"nothing_to_do": f"{asset['name']} has already reached {up_to or 'its last step'}. "
                                  "Pass again=True to make that step again as a new version."}
@@ -677,6 +691,8 @@ def continue_asset(studio: Studio, *, asset_id: str, up_to: str | None = None, w
         form["finish_settings"] = json.dumps(choices)
     if move_settings and "animated" in steps:
         form["move_settings"] = json.dumps(move_settings)
+    if adv["rigger"] != "auto" and "rigged" in steps:
+        form["rig_settings"] = json.dumps({"rigger": adv["rigger"]})
     if "picture" in steps and asset.get("prompt"):
         form["prompt"] = asset["prompt"]
     if "model" in steps:
@@ -1010,11 +1026,13 @@ def build_server(studio: Studio | None = None):
         """Make something new, as the studio's Create does. Returns a run_id at once; the run takes minutes.
 
         want: "picture" | "prop" (one game-ready object) | "set" (a 3x3 sheet cut into nine props) |
-              "character" (rigged and animated; humanoids).
+              "character" (rigged and animated; humanoids) | "creature" (four legs, wings or a tail: drawn
+              standing still, rigged, then animated from a video with scripts/twocam_mocap.py; a run stops
+              after the 3D model, with a note, when the model comes out lopsided).
         Start from ONE of: description (an idea), image_path (a PNG/JPG on this machine) or model_path (a GLB).
         stop_after: end early after a step: picture, back, model, finished, split, rigged or animated.
         engine: a ready 3D engine id (default: the best ready one). front_and_back: also draw a back
-        picture for a fuller model (default: on when installed). move: first animation (see list_moves).
+        picture for a fuller model (default: on when installed; off for a creature). move: first animation (see list_moves).
         add_wording: append the studio's proven prompt wording (pose, background, ...) to a description.
         finish_upload: also run Finish on an uploaded GLB.
         finish_detail: "light" (10k triangles), "game" (20k, the default), "more" (40k), "high" (50k,
@@ -1060,7 +1078,7 @@ def build_server(studio: Studio | None = None):
     @server.tool(name="list_assets", structured_output=False)
     def tool_list_assets(search: str = "", kind: str | None = None, limit: int = 20):
         """The Library, newest first: ids, names, how far each got, file paths, moves.
-        kind: picture | character | prop | "prop set" | model. search: words in the name or prompt."""
+        kind: picture | character | creature | prop | "prop set" | model. search: words in the name or prompt."""
         return safe(lambda: list_assets(studio, search=search, kind=kind, limit=limit))
 
     @server.tool(name="list_versions", structured_output=False)

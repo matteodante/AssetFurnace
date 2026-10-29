@@ -557,3 +557,23 @@ def test_every_prepare_warning_reaches_the_page(manager, output):
     c = prepare(output)
     tc.write_json(c.file("prepared.json"), {"noun": "wolf", "warnings": ["no limbs", "bone_9 has no mirror"]})
     assert tc.creature_state(rig(output), manager)["prepared"]["warning"] == "no limbs; bone_9 has no mirror"
+
+
+def test_a_person_is_sized_by_height_and_turning_round_keeps_the_measure(manager, output):
+    """Sized by length nose to tail, a 1.9 m knight would come out as deep as that, a giant."""
+    command, = manager.start("prepare", {"rig": f"animate/{RUN}/wolf_rigged.glb", "length_m": 1.9,
+                                         "noun": "knight", "axis": "z"}).commands
+    assert "--axis=z" in command
+    tc.cancel_job(manager.jobs[manager.active])
+    manager.active = None
+    plain, = manager.start("prepare", {"rig": f"animate/{RUN}/wolf_rigged.glb", "length_m": 1.6,
+                                       "noun": "wolf", "axis": "sideways"}).commands
+    assert not any(a.startswith("--axis") for a in plain)          # anything else: nose to tail, as before
+    manager.active = None
+    c = prepare(output)
+    tc.write_json(c.file("creature.json"), {"noun": "knight", "prep": {"length_m": 1.9, "axis": "z"}})
+    tc.write_json(c.file("prepared.json"), {"turned_deg": 0.0})
+    turned, = manager.start("prepare", {"rig": f"animate/{RUN}/wolf_rigged.glb", "length_m": 1.9,
+                                        "noun": "knight", "turn": True}).commands
+    assert "--axis=z" in turned and "--yaw-deg=180" in turned
+    assert tc.creature_state(rig(output), manager)["prepared"]["axis"] == "z"

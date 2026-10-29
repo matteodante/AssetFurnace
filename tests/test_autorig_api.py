@@ -257,3 +257,44 @@ def test_the_shipped_preset_moves_are_all_in_the_repo():
     shipped = aa.presets()
     assert len(shipped) >= 42, len(shipped)  # 21 moves, takes A and B
     assert {"idle", "walk", "run", "dance"} <= {p["id"] for p in shipped}
+
+
+def test_a_creature_is_rigged_by_the_creature_rig_not_skintokens(tmp_path):
+    manager = aa.AnimateJobManager(tmp_path / "animate", tmp_path)
+    job = manager.create_rig("Dragon.glb", b"glTF-data", None, "generated", creature=True)
+    (command, cwd), = job.commands                      # one step: it skins with Blender's bone heat itself
+    assert command[0] == sys.executable and command[1].endswith("creature_rig.py") and cwd == aa.REPO
+    assert command[2:4] == [str(job.directory / "input" / "source.glb"), str(job.result)]
+    assert command[command.index("--draws") + 1] == "4"
+    assert job.record["rig"]["license"]["model"] == "VAST-AI/UniRig" and job.expected_seconds == aa.CREATURE_RIG_SECONDS
+    knight = aa.AnimateJobManager(tmp_path / "other", tmp_path).create_rig("Knight.glb", b"x", None, "uploaded")
+    assert knight.commands[0][0][1] == "demo.py" and knight.record["rig"]["tool"] == "SkinTokens"
+
+
+def test_a_creature_rigs_record_keeps_what_the_body_was_found_to_be(tmp_path):
+    manager = aa.AnimateJobManager(tmp_path / "animate", tmp_path)
+    job = manager.create_rig("Dragon.glb", b"glTF-data", None, "generated", creature=True)
+    job.commands = [([sys.executable, "-c", "pass"], tmp_path)]
+    _glb(job.result)
+    joints = {"body": "quadruped", "chosen": 2, "draws": [{"score": 3.1}], "notes": ["added a leg"], "bones": []}
+    job.result.with_suffix(".joints.json").write_text(json.dumps(joints), encoding="utf-8")
+    aa.run_job(job, manager)
+    rig = json.loads(job.result.with_suffix(".provenance.json").read_text(encoding="utf-8"))["rig"]
+    assert rig["body"] == "quadruped" and rig["chosen"] == 2 and rig["notes"] == ["added a leg"]
+    assert "bones" not in rig
+
+
+def test_another_draw_reuses_the_earlier_creature_rig(tmp_path):
+    manager = aa.AnimateJobManager(tmp_path / "animate", tmp_path)
+    earlier = tmp_path / "earlier" / "creature_rig"
+    (earlier / "draws").mkdir(parents=True)
+    (earlier / "draws" / "draw2.json").write_text("{}")
+    job = manager.create_rig("Dragon.glb", b"glTF", None, "generated", creature=True, reuse=earlier, draw=2)
+    (command, _), = job.commands
+    assert command[command.index("--reuse") + 1] == str(earlier) and command[command.index("--draw") + 1] == "2"
+    with pytest.raises(ValueError, match="no draw 5"):
+        aa.AnimateJobManager(tmp_path / "a2", tmp_path).create_rig("D.glb", b"x", None, "generated", creature=True,
+                                                                     reuse=earlier, draw=5)
+    with pytest.raises(ValueError, match="earlier creature rig"):
+        aa.AnimateJobManager(tmp_path / "a3", tmp_path).create_rig("D.glb", b"x", None, "generated", creature=True, draw=1)
+    assert aa.creature_work_of(tmp_path / "run" / "d_rigged.glb") == tmp_path / "run" / "creature_rig"

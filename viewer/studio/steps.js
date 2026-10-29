@@ -23,6 +23,22 @@ export async function postStart(url, body) {
 
 /** The body for the step the asset can take next. `ctx` has engines, presets, url(). */
 export function stepBody(stepId, asset, ctx) {
+  return shapeWarning(asset, stepId) + baseBody(stepId, asset, ctx);
+}
+
+/** A creature whose 3D model came out lopsided (measured when it was built: Create's chain stops
+ *  there) says so on the step it would take next, with a way to draw another picture. */
+export function shapeWarning(asset, stepId) {
+  const shape = asset.kind === 'creature' ? asset.shape : null;
+  if (!shape?.lopsided) return '';
+  // a rig made from the raw model skips Finish: past the rig, the warning is on Animate
+  const next = asset.rigged ? 'animated' : !asset.finished ? 'finished' : 'rigged';
+  if (stepId !== next) return '';
+  return `<div class="warning"><p>This creature came out lopsided: its two sides are ${esc(shape.mirror_gap_pct)}% apart (a straight one is under ${esc(shape.limit_pct)}%). Animating it from a video needs a body whose sides mirror each other, and its rig will be wonky.</p>
+    ${asset.prompt ? '<button class="ghost" data-newpicture>Draw another picture</button>' : ''}</div>`;
+}
+
+function baseBody(stepId, asset, ctx) {
   if (stepId === 'picture') {
     return asset.prompt
       ? `<details class="adv redo"><summary>Draw another picture</summary><p class="hint">Opens Create with the same description. A new picture starts a new item in the Library.</p>
@@ -68,17 +84,53 @@ export function stepBody(stepId, asset, ctx) {
   }
   if (stepId === 'rigged') {
     const both = asset.finished && asset.model;
+    const which = both ? '<label class="field">Rig which model<select data-k="rigsource"><option value="finished">The finished model</option><option value="model">The raw model (skips Finish)</option></select></label>' : '';
+    const rigger = riggerChoice('skintokens');
+    if (asset.kind === 'creature') {
+      const creature = `<p class="hint">Adds a skeleton so it can move from a video. About three minutes: its skeleton is drawn four times and the one that fits its body best is kept, named and skinned.</p>${which}
+        <button class="primary" data-run="rigged" data-humanoid="no">Rig it</button>${rigger}`;
+      return rigSheets(asset, ctx) + (asset.rigged ? redoBox('Re-rig', 'Makes a new rig from the model. It shows up as a new version; the current rig and its moves are kept.', creature) : creature);
+    }
     const body = `<p class="hint">Adds a skeleton so it can move. About a minute. Works best on a character standing in an A-pose (a T-pose works too) with empty hands.</p>
-      ${both ? '<label class="field">Rig which model<select data-k="rigsource"><option value="finished">The finished model</option><option value="model">The raw model (skips Finish)</option></select></label>' : ''}
+      ${which}${rigger}
       <p class="ask">Is this a humanoid: two arms, two legs, standing upright?</p>
       <div class="row"><button class="primary" data-run="rigged" data-humanoid="yes">Yes, rig it</button>
       <button class="ghost" data-run="rigged" data-humanoid="no" data-tip="Four-legged and other creatures are animated from a video instead of the preset moves, and the rig may be wonky.">No, rig it anyway</button></div>`;
     return asset.rigged ? redoBox('Re-rig', 'Makes a new rig from the model. It shows up as a new version; the current rig and its moves are kept.', body) : body;
   }
   // not a humanoid: it moves from a video instead (viewer/studio/twocam.js fills this in)
-  if (stepId === 'animated' && asset.fits_moves === false) return '<div class="twocam" data-twocam><p class="hint">Loading…</p></div>';
-  if (stepId === 'animated') return movePicker(asset, ctx, asset.clips.length ? 'Add this move' : 'Animate');
+  if (stepId === 'animated' && (asset.fits_moves === false || asset.kind === 'creature')) return '<div class="twocam" data-twocam><p class="hint">Loading…</p></div>';
+  if (stepId === 'animated') {
+    // a humanoid: the presets first; a move they lack ("swings a sword") can be filmed instead
+    const video = asset.rigged ? '<details class="adv"><summary>Or animate from a video</summary><div class="twocam" data-twocam><p class="hint">Loading…</p></div></details>' : '';
+    return movePicker(asset, ctx, asset.clips.length ? 'Add this move' : 'Animate') + video;
+  }
   return '';
+}
+
+/** Which rigger draws the skeleton, under Advanced: SkinTokens by default (the preset moves fit
+ *  its skeletons only), or the experimental creature rig. */
+export function riggerChoice(preferred) {
+  const option = (value, label) => `<option value="${value}"${value === preferred ? ' selected' : ''}>${label}</option>`;
+  return `<details class="adv"><summary>Advanced: rigger</summary><label class="field">Rigger<select data-k="rigger">
+    ${option('unirig', 'Creature rig (experimental): UniRig, four tries, the best kept and named')}
+    ${option('skintokens', 'SkinTokens: one try, its own skin; the preset moves need it')}</select></label></details>`;
+}
+
+/** The creature rig's sheets: the kept skeleton in four test poses, and every draw it chose
+ *  from, each with a button to rig again from it (a new version, in seconds). */
+export function rigSheets(asset, ctx) {
+  const sheets = asset.rig_sheets;
+  if (!sheets || !asset.rigged) return '';
+  const others = (sheets.usable || []).filter((k) => k !== sheets.chosen);
+  const img = (path, alt) => (path ? `<a href="${esc(ctx.url(path))}" target="_blank" rel="noopener"><img class="rigsheet" src="${esc(ctx.url(path))}" alt="${alt}"></a>` : '');
+  return `<details class="adv"><summary>Look at the rig</summary>
+    <p class="hint">The skeleton in four test poses: tearing, or a leg dragging the body, means bad skin weights.</p>
+    ${img(sheets.poses, 'The rig in four test poses, from the side, the front and three-quarters')}
+    ${sheets.draws ? `<p class="hint">Every skeleton the rigger drew, the kept one green. Another one may fit better: a wing on a leg, a crooked neck.</p>
+    ${img(sheets.draws, 'Every drawn skeleton from the side and the front')}
+    ${others.length ? `<div class="row">${others.map((k) => `<button class="ghost" data-run="rigged" data-draw="${k}">Use draw ${k}</button>`).join('')}</div>` : ''}` : ''}
+  </details>`;
 }
 
 /** A step that is already done, offered again: folded away, and its result is a new version. */
@@ -170,6 +222,7 @@ export function wireStep(card, stepId, asset, ctx) {
       preset: card.querySelector('[data-preset][aria-pressed="true"]')?.dataset.preset,
       speed: Number(speed?.value || 1), spread: Number(spread?.value || 0),
       rigSource: k('rigsource')?.value || 'finished',
+      rigger: k('rigger')?.value, draw: button.dataset.draw,
     };
     if (button.dataset.hero !== undefined) settings.detail = finishDetailSettings('hero');
     card.dataset.lastPreset = settings.preset || '';
@@ -178,12 +231,17 @@ export function wireStep(card, stepId, asset, ctx) {
     const run = { model: () => startModel(asset, ctx, settings.backend),
       finished: () => (asset.kind === 'prop set' ? startSplit(asset)
         : startFinish(asset, ctx, { ...settings.detail, skip_photo: !settings.photo, skip_edge_fade: !settings.edgeFade, skip_nudge: !settings.nudge, texture_size: settings.texture })),
-      rigged: () => startRig(asset, settings.rigSource),
+      rigged: () => startRig(asset, settings.rigSource, settings),
       animated: () => startAnimate(asset, settings.preset, settings.speed, settings.spread) }[stepId];
-    const note = button.dataset.humanoid === 'no'
+    const note = button.dataset.humanoid === 'no' && asset.kind !== 'creature'
       ? 'Rigging anyway. Preset moves only fit humanoids, so this one is animated from a video in the next step. The rig may be wonky.' : '';
     await runInCard(card, run, ctx, stepId, note);
   });
+}
+
+/** What Create would have been asked for to make this asset. */
+export function wantOf(asset) {
+  return { 'prop set': 'set', prop: 'prop', creature: 'creature' }[asset.kind] || 'character';
 }
 
 /** The step as a one-step chain from the asset's own files, or null when it cannot be one.
@@ -191,7 +249,7 @@ export function wireStep(card, stepId, asset, ctx) {
 export function chainPlan(stepId, asset, settings) {
   const made = Object.fromEntries(['picture', 'back', 'model', 'finished', 'rigged']
     .filter((k) => asset[k]).map((k) => [k, asset[k]]));
-  const base = { description: asset.name || 'Asset', want: asset.kind === 'prop set' ? 'set' : asset.kind === 'prop' ? 'prop' : 'character' };
+  const base = { description: asset.name || 'Asset', want: wantOf(asset) };
   if (stepId === 'model') {
     if (!asset.picture) return null;
     return { ...base, steps: ['model'], made: { picture: asset.picture, ...(asset.back ? { back: asset.back } : {}) },
@@ -208,7 +266,10 @@ export function chainPlan(stepId, asset, settings) {
     const source = (settings.rigSource === 'model' ? asset.model : null) || asset.finished || asset.model;
     if (!source) return null;
     const key = source === asset.finished ? 'finished' : 'model';
-    return { ...base, steps: ['rigged'], made: { ...(asset.picture ? { picture: asset.picture } : {}), [key]: source } };
+    const rigSettings = settings.draw !== undefined ? { draw: Number(settings.draw), from_rig: asset.rigged }
+      : settings.rigger ? { rigger: settings.rigger } : null;
+    return { ...base, steps: ['rigged'], made: { ...(asset.picture ? { picture: asset.picture } : {}), [key]: source },
+      ...(rigSettings ? { rigSettings } : {}) };
   }
   if (stepId === 'animated') {
     if (!asset.rigged || !settings.preset) return null;
@@ -242,9 +303,12 @@ async function startSplit(asset) {
   return { kind: 'props', start: await postStart('/api/props', form) };
 }
 
-async function startRig(asset, source = 'finished') {
+async function startRig(asset, source = 'finished', settings = {}) {
   const form = new FormData();
   form.append('model', (source === 'model' ? asset.model : null) || asset.finished || asset.model);
+  if (asset.kind === 'creature') form.append('creature', '1');   // the creature rig
+  if (settings.rigger) form.append('rigger', settings.rigger);
+  if (settings.draw !== undefined) { form.append('draw', String(settings.draw)); form.append('from_rig', asset.rigged); }
   return { kind: 'animate', start: await postStart('/api/animate/rig', form) };
 }
 
