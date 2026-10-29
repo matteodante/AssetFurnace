@@ -132,7 +132,7 @@ def test_resume_is_opt_in_on_the_real_parser():
 def test_the_bake_command_bakes_the_original_onto_the_current_mesh():
     command = rr.bake_command(Path("gen.glb"), Path("painted.glb"), Path("baked.glb"), 2048,
                               blender=Path("/bl"))
-    assert command[:6] == ["/bl", "--background", "--python-exit-code", "1", "--python",
+    assert command[:6] == [str(Path("/bl")), "--background", "--python-exit-code", "1", "--python",
                            command[5]]
     assert command[5].endswith("blender_bake_detail.py")
     after = command[command.index("--") + 1:]
@@ -152,15 +152,16 @@ def test_a_crash_in_a_blender_stage_fails_the_stage(build):
     assert flag < command.index("--python")
 
 
-def test_a_stage_line_still_names_the_script_it_runs(capsys, tmp_path):
+def test_a_stage_line_still_names_the_script_it_runs(capsys, tmp_path, fake_program):
     """The progress line printed the first four words, which were the script path until
     --python-exit-code 1 took two of them."""
+    blender = fake_program("true")   # a Blender that does nothing and succeeds
     command = rr.bake_command(Path("gen.glb"), Path("painted.glb"), Path("baked.glb"), 2048,
-                              blender=Path("/usr/bin/true"))
+                              blender=blender)
     assert rr.shown(command).endswith("blender_bake_detail.py")
     rr._run(command, tmp_path / "bake.log", "bake")
     line = capsys.readouterr().out
-    assert line.startswith("[bake] /usr/bin/true --background --python-exit-code 1 --python ")
+    assert line.startswith(f"[bake] {blender} --background --python-exit-code 1 --python ")
     assert "blender_bake_detail.py ..." in line
     assert rr.shown(["gltfpack", "-i", "a.glb", "-o", "b.glb", "-cc"]) == "gltfpack -i a.glb -o"
 

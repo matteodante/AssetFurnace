@@ -129,9 +129,16 @@ def test_a_malformed_pid_record_is_rejected(text):
         processes.parse_pid_record(text)
 
 
+@pytest.mark.skipif(not POSIX, reason="os.kill(pid, 0) checks a pid on POSIX; on Windows it sends Ctrl+C")
 def test_this_process_is_alive_and_a_free_pid_is_not():
     assert processes.process_alive(os.getpid(), windows=False)
     assert not processes.process_alive(2**22 + 12345, windows=False)
+
+
+@pytest.mark.skipif(POSIX, reason="the real kernel32 is on Windows only")
+def test_on_windows_this_process_is_alive_and_a_free_pid_is_not():
+    assert processes.process_alive(os.getpid(), windows=True)
+    assert not processes.process_alive(2**22 + 12345, windows=True)
 
 
 # ---- Windows: the server's children die with it ----------------------------------------

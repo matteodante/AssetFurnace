@@ -17,6 +17,8 @@ from pathlib import Path
 import download_api as dl
 import pytest
 
+from image_to_3dlab.host import executable
+
 
 def test_progress_bars_are_stripped_to_their_last_frame():
     # tqdm redraws with \r, so everything before the last frame is a stale repaint that
@@ -383,7 +385,8 @@ def test_nothing_installed_or_a_prebuilt_is_never_offered_a_rebuild(tmp_path):
     """No binary is Set up's job; no source means a prebuilt, which cannot be patched."""
     source, cli = _pixal3d_tree(tmp_path, patched=False, cli_newer=True)
     assert dl.rebuild_reason("pixal3d", source, tmp_path / "missing") is None
-    (tmp_path / "post-replay").write_text("binary")   # our own prebuilt: nothing to patch
+    # our own prebuilt (post-replay.exe on Windows): nothing to patch
+    executable(tmp_path, "post-replay").write_text("binary")
     assert dl.rebuild_reason("pixal3d", tmp_path / "missing", cli) is None
 
 
@@ -395,7 +398,7 @@ def test_upstreams_old_nvidia_download_is_offered_ours(tmp_path):
     missing = tmp_path / "missing.cpp"
     assert "new Finish" in dl.rebuild_reason("pixal3d", missing, cli)
     assert dl.rebuild_download("pixal3d", missing, cli) == dl.NEW_BUILD_SIZE
-    (tmp_path / "post-replay").write_text("binary")
+    executable(tmp_path, "post-replay").write_text("binary")
     assert dl.rebuild_reason("pixal3d", missing, cli) is None
     assert dl.rebuild_download("pixal3d", missing, cli) is None
 

@@ -599,7 +599,7 @@ def test_a_lost_build_names_the_file_that_is_missing(tmp_path):
     python.unlink()          # the venv is what has gone
     hint = backend.build_hint(bc.AMD)
     assert "was installed here" in hint
-    assert "venv/bin/python" in hint
+    assert str(Path("venv", "bin", "python")) in hint
     assert backend.missing_build_probes(bc.AMD) == [python]
 
 
@@ -637,9 +637,9 @@ def test_every_declared_probe_is_a_path():
 
 def test_the_setup_page_renders_the_hint():
     """Pinned in the page's own source: the payload alone proves nothing about the screen."""
-    source = (REPO / "viewer" / "studio" / "setup.js").read_text()
+    source = (REPO / "viewer" / "studio" / "setup.js").read_text(encoding="utf-8")
     assert "build_hint" in source
-    assert "setup-build-hint" in (REPO / "viewer" / "studio" / "setup.css").read_text()
+    assert "setup-build-hint" in (REPO / "viewer" / "studio" / "setup.css").read_text(encoding="utf-8")
 
 
 def test_trellis_shows_no_amd_note_because_it_runs_there():

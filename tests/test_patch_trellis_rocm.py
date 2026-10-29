@@ -559,7 +559,7 @@ def test_device_lib_prefers_the_rocm10_path_when_both_exist(tmp_path: Path, monk
     (root / "lib" / "llvm" / "amdgcn" / "bitcode").mkdir(parents=True)
     monkeypatch.delenv("HIP_DEVICE_LIB_PATH", raising=False)
     got = eval(device_lib_expression(), {"os": os, "_rocm": str(root)})
-    assert "lib/llvm/amdgcn/bitcode" in got
+    assert got == f"--rocm-device-lib-path={root / 'lib' / 'llvm' / 'amdgcn' / 'bitcode'}"
 
 
 def test_device_lib_honours_hip_device_lib_path(tmp_path: Path, monkeypatch):
