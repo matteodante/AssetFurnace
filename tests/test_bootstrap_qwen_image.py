@@ -282,7 +282,8 @@ def test_finish_install_flattens_and_marks_executable(tmp_path, monkeypatch):
     assert (tmp_path / "libstable-diffusion.so").exists()
     # The flatten must carry real links as links, not turn them into text files.
     assert (tmp_path / "libsd.so").is_symlink()
-    assert binary.stat().st_mode & 0o111
+    if sys.platform != "win32":   # Windows keeps no execute bit to check
+        assert binary.stat().st_mode & 0o111
     assert not (tmp_path / "build").exists()
 
 

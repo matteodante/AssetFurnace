@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import sys
 import tarfile
 import types
 import zipfile
@@ -163,7 +164,8 @@ def test_unpacking_a_linux_prebuilt_keeps_library_symlinks_and_runs(tmp_path, mo
     build = tmp_path / "build"
     cli = boot.unpack_prebuilt(archive, build)
     assert cli == build / "trellis-cli"
-    assert cli.stat().st_mode & 0o111
+    if sys.platform != "win32":   # Windows keeps no execute bit to check
+        assert cli.stat().st_mode & 0o111
     assert (build / "libcudart.so.12").is_symlink()
 
 

@@ -288,7 +288,12 @@ def test_it_prints_the_line_that_connects_an_agent(tmp_path, upstream, fake_bin)
 
 def test_the_real_launcher_is_executable_and_uses_auto():
     lab = SCRIPT.parent / "lab"
-    assert lab.is_file() and lab.stat().st_mode & 0o111
+    assert lab.is_file()
+    if sys.platform == "win32":
+        # Windows keeps no execute bit; git's record of it is what a Mac or Linux clone gets.
+        assert _git(REPO, "ls-files", "--stage", "lab").startswith("100755 ")
+    else:
+        assert lab.stat().st_mode & 0o111
     assert "serve.py --auto" in lab.read_text()
 
 
