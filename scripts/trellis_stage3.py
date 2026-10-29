@@ -32,6 +32,8 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 DEFAULT_VENDOR = REPO / "vendor" / "trellis-mac"
+# trellis-mac runs on Apple's GPU. A name, not a literal, so the tests can use the CPU.
+DEVICE = "mps"
 
 from image_to_3dlab import matte
 
@@ -252,7 +254,7 @@ def main() -> int:
         "microsoft/TRELLIS.2-4B",
         load_rembg=False,
     )
-    pipeline.to(torch.device("mps"))
+    pipeline.to(torch.device(DEVICE))
     load_seconds = time.time() - started
     print(f"Pipeline loaded in {load_seconds:.1f}s", flush=True)
 
@@ -265,7 +267,7 @@ def main() -> int:
     cond_seconds = time.time() - cond_started
     print(f"Image conditioning encoded in {cond_seconds:.1f}s", flush=True)
 
-    device = torch.device("mps")
+    device = torch.device(DEVICE)
     shape_slat = SparseTensor(
         feats=bundle["shape_slat_feats"].to(device),
         coords=bundle["coords"].to(device),

@@ -126,6 +126,8 @@ def _run_main(monkeypatch, tmp_path: Path, *, preprocessed: bool = False, transp
     _install_fake_trellis(monkeypatch)
     fake_matte = _FakeMatte(is_matted=transparent)
     monkeypatch.setattr(stage3, "matte", fake_matte, raising=False)
+    # The pipeline is a fake, so Apple's GPU adds nothing; the CPU runs on every OS.
+    monkeypatch.setattr(stage3, "DEVICE", "cpu")
 
     latent_path = tmp_path / "latents.pt"
     _write_latents(latent_path)
