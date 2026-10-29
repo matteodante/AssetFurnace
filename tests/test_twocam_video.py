@@ -75,6 +75,7 @@ def test_the_prompt_fixes_everything_but_the_action():
     assert "In both views it ends" not in b
     assert a.split("Action:")[0] == b.split("Action:")[0]
     assert "no motion blur, dust, smoke, sparks" in a
+    assert "never stretch or grow longer" in a
 
 
 def test_a_prompt_needs_an_action_and_a_prepared_creature():

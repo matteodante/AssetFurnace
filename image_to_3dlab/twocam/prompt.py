@@ -6,7 +6,9 @@ as rendered, every limb keeping its colour, a fixed body count, the creature cen
 only the action changes from move to move. Two rules come from video2rig's notes on
 Seedance (the ideas only; that project is AGPL): say how the move ends in both views, or
 models roll the creature back; and ask for clean frames, since a dust cloud or a light
-trail hides the limbs from the reader while it still reads them with confidence.
+trail hides the limbs from the reader while it still reads them with confidence. One rule
+is ours: MiniMax H3 stretched a rearing wolf's hips-to-head length 1.7 to 1.9 times in each of
+three takes, which no skeleton can follow, so the prompt says the proportions hold.
 """
 
 from __future__ import annotations
@@ -18,7 +20,9 @@ TEMPLATE = (
     "Animate the exact {noun} game model shown twice in this split-screen image. Left: a front camera, the "
     "{noun} faces the viewer. Right: a side camera on its right side, the {noun} faces right. Both are "
     "locked-off cameras filming the same {noun} at the same moment, so every movement happens in both views at "
-    "exactly the same time, frame for frame. Keep the model exactly as it is{describe}. Its limbs are "
+    "exactly the same time, frame for frame. Keep the model exactly as it is{describe}. Its body keeps its "
+    "exact proportions the whole time: the neck, the back and the limbs never stretch or grow longer, even "
+    "when it rears up or reaches. Its limbs are "
     "colour-coded and the colours never change or swap: {colour_code}. {count}Action: {action}{end} It stays on "
     "the same spot, centred in both views, and its whole body stays inside each view. One continuous "
     "{seconds}-second shot at natural speed, no slow motion. The cameras never move, cut, pan or zoom; the plain "
