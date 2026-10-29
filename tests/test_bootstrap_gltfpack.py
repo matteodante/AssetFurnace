@@ -62,7 +62,8 @@ def test_announcement_names_the_tool_size_licence_and_destination():
 def test_installs_where_the_props_tab_already_looks(tmp_path, monkeypatch):
     archive = _zip("gltfpack")
     binary = boot.install(archive, _asset(archive), boot.target_dir(tmp_path))
-    assert binary.stat().st_mode & 0o111
+    if sys.platform != "win32":   # Windows keeps no execute bit to check
+        assert binary.stat().st_mode & 0o111
     monkeypatch.setattr(finish_props, "REPO", tmp_path)
     assert finish_props.find_gltfpack(which=lambda _name: None) == binary
 

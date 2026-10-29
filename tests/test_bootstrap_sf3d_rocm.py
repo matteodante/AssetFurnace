@@ -81,15 +81,18 @@ def test_the_extensions_build_against_the_torch_just_installed():
     assert "--no-build-isolation" in commands[-1]
 
 
-def test_the_build_is_told_to_include_the_gpu_kernels():
+def test_the_build_is_told_to_include_the_gpu_kernels(tmp_path):
     """USE_CUDA=1 is what keeps baker_kernel.cu in the build. Without it the extension
     builds and has no GPU kernels in it, with nothing to say so."""
-    env = boot.build_env(GFX, HIPCC, base={"PATH": "/usr/bin"})
+    # A real absolute folder: ROCM_HOME comes from hipcc's resolved path, and Windows
+    # resolves /opt/rocm onto a drive.
+    hipcc = tmp_path / "rocm" / "bin" / "hipcc"
+    env = boot.build_env(GFX, str(hipcc), base={"PATH": "/usr/bin"})
     assert env["USE_CUDA"] == "1"
     assert env["USE_METAL"] == "0"
     assert env["PYTORCH_ROCM_ARCH"] == "gfx1100"
-    assert env["ROCM_HOME"] == "/opt/rocm"
-    assert "/opt/rocm/bin" in env["PATH"]
+    assert env["ROCM_HOME"] == str(tmp_path / "rocm")
+    assert str(hipcc.parent) in env["PATH"]
 
 
 def test_a_machine_with_no_card_still_gets_a_readable_environment():

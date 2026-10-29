@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import http.server
 import json
-import os
 import signal
 import subprocess
 import threading
@@ -140,12 +139,17 @@ def test_a_network_blip_while_waiting_is_not_a_failed_step():
 
 def test_closing_the_terminal_still_deletes_the_pod():
     # SIGHUP/SIGTERM skip `finally` unless turned into KeyboardInterrupt.
-    previous = {sig: signal.getsignal(sig) for sig in (signal.SIGHUP, signal.SIGTERM)}
+    assert signal.SIGTERM in smoke.HANGUP_SIGNALS
+    assert not hasattr(signal, "SIGHUP") or signal.SIGHUP in smoke.HANGUP_SIGNALS
+    previous = {sig: signal.getsignal(sig) for sig in smoke.HANGUP_SIGNALS}
     try:
         smoke.interrupt_on_hangup()
-        with pytest.raises(KeyboardInterrupt):
-            os.kill(os.getpid(), signal.SIGHUP)
-            time.sleep(1)
+        for sig in smoke.HANGUP_SIGNALS:
+            # raise_signal, not os.kill: on Windows os.kill(pid, SIGTERM) ends the process
+            # outright, handler or not.
+            with pytest.raises(KeyboardInterrupt):
+                signal.raise_signal(sig)
+                time.sleep(1)
     finally:
         for sig, handler in previous.items():
             signal.signal(sig, handler)

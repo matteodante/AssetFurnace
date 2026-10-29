@@ -10,6 +10,7 @@ asset rather than an error — exactly the kind of failure a comparison would hi
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -132,7 +133,7 @@ def test_resume_is_opt_in_on_the_real_parser():
 def test_the_bake_command_bakes_the_original_onto_the_current_mesh():
     command = rr.bake_command(Path("gen.glb"), Path("painted.glb"), Path("baked.glb"), 2048,
                               blender=Path("/bl"))
-    assert command[:6] == ["/bl", "--background", "--python-exit-code", "1", "--python",
+    assert command[:6] == [str(Path("/bl")), "--background", "--python-exit-code", "1", "--python",
                            command[5]]
     assert command[5].endswith("blender_bake_detail.py")
     after = command[command.index("--") + 1:]
@@ -152,15 +153,16 @@ def test_a_crash_in_a_blender_stage_fails_the_stage(build):
     assert flag < command.index("--python")
 
 
-def test_a_stage_line_still_names_the_script_it_runs(capsys, tmp_path):
+def test_a_stage_line_still_names_the_script_it_runs(capsys, tmp_path, fake_program):
     """The progress line printed the first four words, which were the script path until
     --python-exit-code 1 took two of them."""
+    blender = fake_program("true")   # a Blender that does nothing and succeeds
     command = rr.bake_command(Path("gen.glb"), Path("painted.glb"), Path("baked.glb"), 2048,
-                              blender=Path("/usr/bin/true"))
+                              blender=blender)
     assert rr.shown(command).endswith("blender_bake_detail.py")
     rr._run(command, tmp_path / "bake.log", "bake")
     line = capsys.readouterr().out
-    assert line.startswith("[bake] /usr/bin/true --background --python-exit-code 1 --python ")
+    assert line.startswith(f"[bake] {blender} --background --python-exit-code 1 --python ")
     assert "blender_bake_detail.py ..." in line
     assert rr.shown(["gltfpack", "-i", "a.glb", "-o", "b.glb", "-cc"]) == "gltfpack -i a.glb -o"
 
@@ -393,3 +395,54 @@ def test_keeping_the_full_mesh_never_calms_it():
 def test_the_calmed_mesh_has_its_own_step_file(tmp_path):
     assert rr.step_paths(tmp_path / "out.glb")["calm"] == tmp_path / "out_calm.glb"
     assert rr.step_paths(tmp_path / "o.glb", tmp_path / "s")["calm"].name == "1_calm.glb"
+
+
+# --- The finished model's licence sidecar --------------------------------------------------
+
+def _source_and_result(folder: Path) -> tuple[Path, Path]:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "source.glb").write_bytes(b"raw")
+    (folder / "wolf_20k.glb").write_bytes(b"finished")
+    return folder / "source.glb", folder / "wolf_20k.glb"
+
+
+def test_the_finished_model_names_the_licence_of_the_model_it_came_from(tmp_path):
+    """The studio copies the generator's record in as input/source.json; the result's sidecar
+    must carry its licence on, or the rig and the moves made from it name none."""
+    source, result = _source_and_result(tmp_path)
+    generator = {"backend": "pixal3d", "license": {"name": "MIT (code + flow weights); DINOv3 License"},
+                 "output": {"sha256": "abc", "classification": "commercial-conditional"}}
+    source.with_suffix(".json").write_text(json.dumps(generator))
+    sidecar = rr.write_provenance(source, result)
+    assert sidecar == tmp_path / "wolf_20k.provenance.json"
+    record = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert record["license"] == generator["license"]
+    assert record["classification"] == "commercial-conditional"
+    assert record["source_record"] == generator
+
+
+def test_an_uploaded_model_is_finished_with_no_licence_rather_than_an_invented_one(tmp_path):
+    source, result = _source_and_result(tmp_path)
+    record = json.loads(rr.write_provenance(source, result).read_text(encoding="utf-8"))
+    assert record["license"] is None and record["source_record"] is None
+
+
+def test_a_repainted_model_names_hunyuans_licence_and_takes_its_stricter_class(tmp_path):
+    """The repaint textures the model with Hunyuan 2.1's paint model, not licensed in the EU,
+    the UK or South Korea: carrying only the source's licence on would say the opposite."""
+    source, result = _source_and_result(tmp_path)
+    generator = {"backend": "pixal3d", "license": {"name": "MIT (code + flow weights); DINOv3 License"},
+                 "output": {"sha256": "abc", "classification": "commercial-conditional"}}
+    source.with_suffix(".json").write_text(json.dumps(generator))
+    record = json.loads(rr.write_provenance(source, result, repainted=True).read_text(encoding="utf-8"))
+    assert record["license"].startswith("MIT (code + flow weights); DINOv3 License; Tencent Hunyuan")
+    assert record["classification"] == "territory-restricted"
+    assert record["components"][0]["models"] == ["tencent/Hunyuan3D-2.1"]
+    assert any("EU" in c for c in record["components"][0]["conditions"])
+
+
+def test_a_repainted_upload_still_names_the_repaints_licence(tmp_path):
+    source, result = _source_and_result(tmp_path)
+    record = json.loads(rr.write_provenance(source, result, repainted=True).read_text(encoding="utf-8"))
+    assert record["license"].startswith("source: not recorded; Tencent Hunyuan")
+    assert record["classification"] == "territory-restricted" and record["source_record"] is None
