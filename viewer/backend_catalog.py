@@ -831,7 +831,8 @@ CATALOG: tuple[Backend, ...] = (
         kind="tool",
         best_for=("Gives a humanoid model a skeleton and skin weights, so the Rig tab can "
                   "play preset animations on it."),
-        tradeoff="Humanoids in an A-pose or T-pose only for now. Four-legged creatures are coming.",
+        tradeoff=("Best on humanoids in an A-pose or T-pose; a creature is rigged with the "
+                  "creature rig (UniRig) when it is installed."),
         overrides_by_host={
             AMD: {"tradeoff": "Humanoids in an A-pose or T-pose only for now, and attention comes "
                               "from PyTorch rather than flash-attn, which has no ROCm "
@@ -851,6 +852,57 @@ CATALOG: tuple[Backend, ...] = (
                       HF_HUB_DIR / "models--VAST-AI--SkinTokens",
                       note="Pinned to the revision we tested. Setup also fetches "
                            "Qwen3-0.6B's config and tokenizer (~16 MB, no weights)."),
+        ),
+    ),
+    Backend(
+        id="creature-rig",
+        label="Creature rig (UniRig)",
+        kind="tool",
+        best_for=("Draws the skeleton of a creature (four legs, wings, a tail, many legs) "
+                  "several times and keeps the one that best fits its body, so it can be "
+                  "animated from a video."),
+        tradeoff=("NVIDIA only. Without it a creature still gets a skeleton traced from its "
+                  "shape, which knows fewer joints."),
+        license_name="MIT",
+        license_url="https://github.com/VAST-AI-Research/UniRig/blob/main/LICENSE",
+        install="scripts/bootstrap_unirig.py",
+        runs_on=(NVIDIA,),
+        setup_minutes=15,
+        build_probes=(venv_python(REPO / "vendor" / "UniRig"), REPO / "vendor" / "UniRig" / "run.py"),
+        upstream=("VAST-AI UniRig", "https://github.com/VAST-AI-Research/UniRig"),
+        weights=(
+            WeightSet("UniRig skeleton model", "VAST-AI/UniRig", 1_439_617_174,
+                      HF_HUB_DIR / "models--VAST-AI--UniRig",
+                      note="Pinned to the revision we tested; the skin model is not used. "
+                           "Setup also fetches OPT-350m's config (a few KB, no weights)."),
+        ),
+    ),
+    Backend(
+        id="video-capture",
+        label="Animate from video (MiniMax H3 + DINOv2)",
+        kind="tool",
+        best_for=("Films a creature from two cameras with MiniMax H3 on this machine and reads "
+                  "every joint with a reader taught on that creature, so any rig can move."),
+        tradeoff=("NVIDIA with 16 GB: about 6.5 minutes per 3-second take, and an hour to teach the "
+                  "reader once per creature. MiniMax asks users in the USA, the EU, the UK and "
+                  "South Korea to apply with the form on its model page first."),
+        license_name="MiniMax H3 Community License; DINOv2 Apache-2.0",
+        license_url="https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/LICENSE",
+        install="scripts/bootstrap_video_capture.py",
+        runs_on=(NVIDIA,),
+        setup_minutes=40,
+        build_probes=(_host.executable(REPO / "vendor" / "sdcpp", "sd-cli"),),
+        weights=(
+            WeightSet("MiniMax H3 video model (pruned, Q4_K_M) and its text encoder (Q2_K_M)",
+                      "leejet/MiniMax-H3-GGUF", int((11.42 + 13.10) * GB),
+                      HF_HUB_DIR / "models--leejet--MiniMax-H3-GGUF",
+                      note="Runs through the stable-diffusion.cpp the picture step installs."),
+            WeightSet("MiniMax H3 video VAE", "Comfy-Org/MiniMax-H3", int(5.21 * GB),
+                      HF_HUB_DIR / "models--Comfy-Org--MiniMax-H3"),
+            WeightSet("DINOv2 with registers (the joint reader's backbone)",
+                      "facebook/dinov2-with-registers-base", 346 * 1024 ** 2,
+                      HF_HUB_DIR / "models--facebook--dinov2-with-registers-base",
+                      note="Meta, Apache-2.0. Each creature's reader is taught on top of it."),
         ),
     ),
     Backend(

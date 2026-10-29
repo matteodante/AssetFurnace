@@ -66,6 +66,9 @@ COMMANDS: dict[str, list[str]] = {
     "matte": [sys.executable, str(REPO / "scripts" / "bootstrap_matte.py"), "--yes"],
     "upscaler": [sys.executable, str(REPO / "scripts" / "bootstrap_upscaler.py"), "--yes"],
     "autorig": [sys.executable, str(REPO / "scripts" / "bootstrap_autorig.py"), "--yes"],
+    # NVIDIA-only, like hunyuan-cuda: the catalogue marks it unsupported elsewhere.
+    "creature-rig": [sys.executable, str(REPO / "scripts" / "bootstrap_unirig.py"), "--yes"],
+    "video-capture": [sys.executable, str(REPO / "scripts" / "bootstrap_video_capture.py"), "--yes"],
     "front-back": [sys.executable, str(REPO / "scripts" / "bootstrap_front_back.py"), "--yes"],
     # NVIDIA-only: Tencent's own Hunyuan3D-2.1, built for CUDA. The catalogue marks it
     # unsupported everywhere else, so start() refuses before this runs on a Mac.
