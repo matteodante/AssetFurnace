@@ -381,3 +381,17 @@ def test_resume_refuses_lods_baked_before_the_atlas_halved(sheet):
     record_path.write_text(json.dumps(record))
     with pytest.raises(SystemExit, match="lod_atlas"):
         run("--resume")
+
+
+def test_a_record_names_files_with_forward_slashes():
+    out = Path("out")
+    assert finish.recorded_name(out / "chest" / "chest_LOD0.glb", out) == "chest/chest_LOD0.glb"
+
+
+def test_a_file_on_another_drive_is_named_in_full(monkeypatch):
+    def other_drive(path, start):
+        raise ValueError("path is on mount 'D:', start on mount 'C:'")
+
+    monkeypatch.setattr(finish.os.path, "relpath", other_drive)
+    named = finish.recorded_name(Path("chest.glb"), Path("out"))
+    assert named.endswith("/chest.glb") and "\\" not in named

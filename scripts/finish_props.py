@@ -129,8 +129,12 @@ def lod_path(out_dir: Path, name: str, index: int, web: bool = False) -> Path:
 
 def recorded_name(path: Path, out_dir: Path) -> str:
     """How the record names `path`: relative to `out_dir`, with forward slashes on every OS,
-    so a record written on Windows reads the same on a Mac or Linux."""
-    return Path(os.path.relpath(path, out_dir)).as_posix()
+    so a record written on Windows reads the same on a Mac or Linux. A file on another
+    Windows drive has no relative path, so it is named in full."""
+    try:
+        return Path(os.path.relpath(path, out_dir)).as_posix()
+    except ValueError:
+        return Path(path).resolve().as_posix()
 
 
 def find_gltfpack(explicit: Path | None = None, which=shutil.which) -> Path | None:
