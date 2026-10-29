@@ -366,10 +366,11 @@ class ChainRunner:
             return kind, self._post("/api/finish", body, ctype)
         if step == "rigged":
             source = chain.made.get("finished") or chain.made.get("model")
+            creature = {"creature": "1"} if chain.want == "creature" else {}   # the creature rig
             if source:
-                body, ctype = multipart({"model": source}, {})
+                body, ctype = multipart({"model": source, **creature}, {})
             elif chain.upload:
-                body, ctype = multipart({}, {"asset": chain.upload})
+                body, ctype = multipart(creature, {"asset": chain.upload})
             else:
                 raise ValueError("Rig needs a 3D model, and there is none yet")
             return kind, self._post("/api/animate/rig", body, ctype)

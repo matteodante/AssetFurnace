@@ -1141,6 +1141,7 @@ def test_a_creature_is_rigged_without_the_humanoid_question_and_carries_on_as_a_
         model: m.chainPlan('model', dragon, {{ backend: 'pixal3d' }}).want,
       }}));""")
     assert "Is this a humanoid" not in out["rig"] and 'data-run="rigged"' in out["rig"] and "from a video" in out["rig"]
+    assert "drawn four times" in out["rig"]                  # the creature rig: several draws, the best kept
     assert "Is this a humanoid" in out["knightRig"]
     assert out["plan"]["want"] == "creature" and out["model"] == "creature"   # a new 3D try is measured again
 

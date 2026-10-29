@@ -86,7 +86,7 @@ function baseBody(stepId, asset, ctx) {
     const both = asset.finished && asset.model;
     const which = both ? '<label class="field">Rig which model<select data-k="rigsource"><option value="finished">The finished model</option><option value="model">The raw model (skips Finish)</option></select></label>' : '';
     if (asset.kind === 'creature') {
-      const creature = `<p class="hint">Adds a skeleton so it can move from a video. About a minute.</p>${which}
+      const creature = `<p class="hint">Adds a skeleton so it can move from a video. About three minutes: its skeleton is drawn four times and the one that fits its body best is kept, named and skinned.</p>${which}
         <button class="primary" data-run="rigged" data-humanoid="no">Rig it</button>`;
       return asset.rigged ? redoBox('Re-rig', 'Makes a new rig from the model. It shows up as a new version; the current rig and its moves are kept.', creature) : creature;
     }
@@ -276,6 +276,7 @@ async function startSplit(asset) {
 async function startRig(asset, source = 'finished') {
   const form = new FormData();
   form.append('model', (source === 'model' ? asset.model : null) || asset.finished || asset.model);
+  if (asset.kind === 'creature') form.append('creature', '1');   // the creature rig
   return { kind: 'animate', start: await postStart('/api/animate/rig', form) };
 }
 

@@ -465,3 +465,13 @@ def test_a_lopsided_upload_is_told_to_try_another_picture_and_the_reason_is_kept
     assert "Try another picture" in chain.note and "Draw another" not in chain.note
     model = [h for h in aa.read_history(tmp_path) if h["step"] == "model"][0]
     assert "lopsided" in model["note"]           # after a restart, Activity still says why it stopped
+
+
+def test_a_creature_asks_for_the_creature_rig_and_a_character_does_not(tmp_path):
+    runner, jobs = _runner(tmp_path)
+    runner.submit(aa.Chain(title="dragon", want="creature", steps=["rigged"], made={"finished": "finish/f/finished.glb"}),
+                  background=False)
+    runner.submit(aa.Chain(title="knight", want="character", steps=["rigged"], made={"finished": "finish/f/finished.glb"}),
+                  background=False)
+    rigs = [b for m, p, b in jobs.calls if m == "POST" and p == "/api/animate/rig"]
+    assert b'name="creature"\r\n\r\n1' in rigs[0] and b'name="creature"' not in rigs[1]

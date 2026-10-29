@@ -257,3 +257,28 @@ def test_the_shipped_preset_moves_are_all_in_the_repo():
     shipped = aa.presets()
     assert len(shipped) >= 42, len(shipped)  # 21 moves, takes A and B
     assert {"idle", "walk", "run", "dance"} <= {p["id"] for p in shipped}
+
+
+def test_a_creature_is_rigged_by_the_creature_rig_not_skintokens(tmp_path):
+    manager = aa.AnimateJobManager(tmp_path / "animate", tmp_path)
+    job = manager.create_rig("Dragon.glb", b"glTF-data", None, "generated", creature=True)
+    (command, cwd), = job.commands                      # one step: it skins with Blender's bone heat itself
+    assert command[0] == sys.executable and command[1].endswith("creature_rig.py") and cwd == aa.REPO
+    assert command[2:4] == [str(job.directory / "input" / "source.glb"), str(job.result)]
+    assert command[command.index("--draws") + 1] == "4"
+    assert job.record["rig"]["license"]["model"] == "VAST-AI/UniRig" and job.expected_seconds == aa.CREATURE_RIG_SECONDS
+    knight = aa.AnimateJobManager(tmp_path / "other", tmp_path).create_rig("Knight.glb", b"x", None, "uploaded")
+    assert knight.commands[0][0][1] == "demo.py" and knight.record["rig"]["tool"] == "SkinTokens"
+
+
+def test_a_creature_rigs_record_keeps_what_the_body_was_found_to_be(tmp_path):
+    manager = aa.AnimateJobManager(tmp_path / "animate", tmp_path)
+    job = manager.create_rig("Dragon.glb", b"glTF-data", None, "generated", creature=True)
+    job.commands = [([sys.executable, "-c", "pass"], tmp_path)]
+    _glb(job.result)
+    joints = {"body": "quadruped", "chosen": 2, "draws": [{"score": 3.1}], "notes": ["added a leg"], "bones": []}
+    job.result.with_suffix(".joints.json").write_text(json.dumps(joints), encoding="utf-8")
+    aa.run_job(job, manager)
+    rig = json.loads(job.result.with_suffix(".provenance.json").read_text(encoding="utf-8"))["rig"]
+    assert rig["body"] == "quadruped" and rig["chosen"] == 2 and rig["notes"] == ["added a leg"]
+    assert "bones" not in rig
