@@ -1,6 +1,6 @@
 # Two-camera motion capture
 
-Animate any rigged creature (four legs, wings, eight legs) from one AI video. The
+Animate a rigged creature (four legs, wings, a tail) from one AI video. The
 humanoid moves in the studio come from Kimodo; this is for everything else.
 
 **How it works.** A video model films the creature from two cameras in one frame: front
@@ -16,11 +16,11 @@ port of [Patch's AnyMove](https://github.com/Patch-gg/anymove) (Apache-2.0).
 | | Where it comes from |
 |---|---|
 | `rigged.blend` + `rig_info.json` | AnyMove's rig builder (`tools/prep.sh`, `tools/rig.sh`) |
-| `reader.pt`, the trained joint reader | AnyMove's trainer (about 45 min on one GPU), or its release |
+| `reader.pt`, the trained joint reader | AnyMove's renders and trainer (about 45 min on one RTX 4090, per AnyMove), or its release |
 | a two-camera clip + its first frame `ref.png` | a video model (AnyMove used MiniMax H3 on fal) |
 | Blender 4.2+ | found the same way Finish finds it |
 
-Reading needs `transformers` (`uv pip install transformers`). A reader file holds its
+Reading needs `transformers` 4.48 or newer (`uv pip install transformers`). A reader file holds its
 whole network, so reading downloads nothing.
 
 ## Run it
@@ -66,6 +66,12 @@ solver's to 0.1 mm.
 - **A reader or detections for another rig are refused**, instead of putting every joint
   on the wrong bone.
 - The fit runs on the CPU by default: faster than the GPU here, and the same on every machine.
+
+## What works best
+
+Big single gestures: rearing, roaring, slamming, taking off, pouncing. AnyMove found that
+eight-legged walks do not fit (the two views disagree on which legs are up) and that lying
+down does not either; neither was retried here.
 
 ## Not ported (yet)
 
