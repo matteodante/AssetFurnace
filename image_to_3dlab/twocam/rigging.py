@@ -259,9 +259,11 @@ def plan_bones(skeleton: Skeleton, tolerance: float) -> Plan:
 
     limb_roots = [i for i in pair_roots if reach(i) >= 0.2 * size]
     part_roots = [i for i in pair_roots if i not in limb_roots]
+    # clearly to one side, like a lone arm: a tail curling a little off the middle (the
+    # studio's wolf) is not worth a warning
     lone = {i for i in range(n)
             if skeleton.parents[i] >= 0 and not sides[skeleton.parents[i]] and i not in mirrors
-            and abs(skeleton.heads[skeleton.subtree(i), 0].mean()) > tolerance}
+            and abs(skeleton.heads[skeleton.subtree(i), 0].mean()) > 3 * tolerance}
     unpaired = [skeleton.names[i] for i in sorted(lone) if skeleton.parents[i] not in lone]  # where each starts
     at = skeleton.heads[limb_roots] if limb_roots else np.zeros((0, 3))
     # limbs that sit above one another (arms over legs) count from the top, others from the front

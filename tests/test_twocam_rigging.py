@@ -289,3 +289,10 @@ def test_a_branch_off_the_middle_with_no_mirror_is_reported():
     b.chain(root, [(0.2, 0, 1), (0.6, 0, 0.6), (0.8, 0, 0.1)])  # one arm, nothing on the other side
     plan = rigging.plan_bones(b.skeleton(), tolerance=0.03)
     assert plan.unpaired == ["bone_1"]
+
+
+def test_a_tail_a_little_off_the_middle_is_not_reported():
+    b = Builder()
+    root = b.bone(-1, (0, 0, 1), (0, -0.3, 1))
+    b.chain(root, [(0.04, 0.1, 1), (0.07, 0.5, 0.9)])  # a tail curling slightly to one side
+    assert rigging.plan_bones(b.skeleton(), tolerance=0.03).unpaired == []
