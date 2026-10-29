@@ -21,6 +21,13 @@ GIT = shutil.which("git")
 
 pytestmark = pytest.mark.skipif(not (BASH and GIT), reason="needs bash and git")
 
+# install.sh is the Mac and Linux installer; Windows has install.ps1, checked further down.
+# A test that lets it run the tools in `fake_bin` cannot run on Windows: a symlink to a Git
+# Bash tool does not start there (bash reports 127), so nothing in that PATH runs.
+runs_its_tools = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="install.sh is the Mac and Linux installer; Windows cannot start its fake PATH's symlinked tools")
+
 
 def _git(cwd: Path, *args: str) -> str:
     env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
@@ -82,6 +89,7 @@ def test_script_parses():
     subprocess.run([BASH, "-n", str(SCRIPT)], check=True)
 
 
+@runs_its_tools
 def test_fresh_install_picks_the_newest_release_not_a_backup_tag(tmp_path, upstream,
                                                                  fake_bin):
     target = tmp_path / "lab"
@@ -94,6 +102,7 @@ def test_fresh_install_picks_the_newest_release_not_a_backup_tag(tmp_path, upstr
     assert f"-r {target}/requirements.txt" in uv_calls
 
 
+@runs_its_tools
 def test_rerunning_updates_to_a_new_release(tmp_path, upstream, fake_bin):
     target = tmp_path / "lab"
     run(tmp_path, fake_bin, "--repo", str(upstream), "--dir", str(target))
@@ -106,6 +115,7 @@ def test_rerunning_updates_to_a_new_release(tmp_path, upstream, fake_bin):
     assert (target / "VERSION").read_text() == "0.3.0\n"
 
 
+@runs_its_tools
 def test_update_refuses_to_overwrite_local_edits(tmp_path, upstream, fake_bin):
     target = tmp_path / "lab"
     run(tmp_path, fake_bin, "--repo", str(upstream), "--dir", str(target))
@@ -116,6 +126,7 @@ def test_update_refuses_to_overwrite_local_edits(tmp_path, upstream, fake_bin):
     assert (target / "VERSION").read_text() == "my own edit\n"
 
 
+@runs_its_tools
 def test_a_branch_can_be_installed_for_testing(tmp_path, upstream, fake_bin):
     _git(upstream, "checkout", "-q", "-b", "feat/x")
     (upstream / "VERSION").write_text("branch\n")
@@ -127,6 +138,7 @@ def test_a_branch_can_be_installed_for_testing(tmp_path, upstream, fake_bin):
     assert (target / "VERSION").read_text() == "branch\n"
 
 
+@runs_its_tools
 def test_an_unrelated_folder_is_never_touched(tmp_path, upstream, fake_bin):
     target = tmp_path / "lab"
     target.mkdir()
@@ -167,6 +179,7 @@ def test_unsupported_machines_are_refused_by_name(tmp_path, upstream, fake_bin,
     assert done.returncode != 0 and message in done.stderr
 
 
+@runs_its_tools
 def test_linux_without_a_gpu_installs_but_says_so(tmp_path, upstream, fake_bin):
     done = run(tmp_path, fake_bin, "--repo", str(upstream), "--dir", str(tmp_path / "lab"),
                machine=("Linux", "x86_64"), env={"I3D_KFD_NODES": str(tmp_path / "none")})
@@ -174,6 +187,7 @@ def test_linux_without_a_gpu_installs_but_says_so(tmp_path, upstream, fake_bin):
     assert "No NVIDIA or AMD GPU found" in done.stdout
 
 
+@runs_its_tools
 def test_linux_with_an_amd_card_is_named_as_one(tmp_path, upstream, fake_bin):
     """The installer has to recognise the machine, or it warns a user who has a perfectly
     good card that no route will run."""
@@ -230,6 +244,7 @@ def test_both_installers_look_for_blender_with_finishs_own_finder_and_never_inst
         assert "apt install blender" not in text and "winget install" not in text
 
 
+@runs_its_tools
 def test_update_moves_learned_timings_aside_instead_of_refusing(tmp_path, upstream, fake_bin):
     # Seen on a real pod: viewer releases up to 0.3.6 rewrote the tracked
     # viewer/generate_baseline.json after every generation, so every user who had generated
@@ -262,6 +277,7 @@ def _with_lab(upstream):
     _git(upstream, "tag", "v0.2.2")
 
 
+@runs_its_tools
 def test_start_opens_the_lab_when_asked(tmp_path, upstream, fake_bin):
     # The goal: run the curl command, end up in the viewer. Nothing to type in between.
     _with_lab(upstream)
@@ -271,6 +287,7 @@ def test_start_opens_the_lab_when_asked(tmp_path, upstream, fake_bin):
     assert "LAB STARTED" in done.stdout
 
 
+@runs_its_tools
 def test_without_a_terminal_it_says_how_to_start_instead(tmp_path, upstream, fake_bin):
     # Scripts and agents (no terminal, or --yes) must not be left holding a running server.
     _with_lab(upstream)
@@ -279,6 +296,7 @@ def test_without_a_terminal_it_says_how_to_start_instead(tmp_path, upstream, fak
     assert "LAB STARTED" not in done.stdout and "./lab" in done.stdout
 
 
+@runs_its_tools
 def test_it_prints_the_line_that_connects_an_agent(tmp_path, upstream, fake_bin):
     _with_lab(upstream)
     done = run(tmp_path, fake_bin, "--repo", str(upstream), "--dir", str(tmp_path / "lab"))
@@ -297,6 +315,7 @@ def test_the_real_launcher_is_executable_and_uses_auto():
     assert "serve.py --auto" in lab.read_text()
 
 
+@runs_its_tools
 def test_installs_from_the_lock_file_when_there_is_one(tmp_path, upstream, fake_bin):
     # Unpinned requirements meant every fresh install got whatever PyPI had that day: on
     # 2026-10-01 huggingface-hub jumped to 2.x between two installs.
@@ -384,6 +403,7 @@ def _amd_run(tmp_path, fake_bin, upstream, amd_venv, rocm_already=False,
                machine=("Linux", "x86_64"), env={"I3D_KFD_NODES": str(nodes)})
 
 
+@runs_its_tools
 def test_an_amd_install_never_puts_cuda_wheels_on_the_card(tmp_path, upstream, fake_bin,
                                                            amd_venv):
     """PyPI's Linux torch is a CUDA build, so the shared lock installs one on an AMD box:
@@ -407,6 +427,7 @@ def test_an_amd_install_never_puts_cuda_wheels_on_the_card(tmp_path, upstream, f
     assert "nvidia-cudnn-cu13" not in filtered and "cuda-toolkit" not in filtered
 
 
+@runs_its_tools
 def test_an_amd_install_gets_the_rocm_build_of_torch(tmp_path, upstream, fake_bin, amd_venv):
     (upstream / "requirements.lock").write_text(LOCK_WITH_CUDA)
     _git(upstream, "add", ".")
@@ -422,6 +443,7 @@ def test_an_amd_install_gets_the_rocm_build_of_torch(tmp_path, upstream, fake_bi
     assert "--reinstall-package torch" in uv_calls
 
 
+@runs_its_tools
 def test_an_amd_that_already_has_rocm_torch_is_left_alone(tmp_path, upstream, fake_bin,
                                                           amd_venv):
     """An update must not re-download a few GB of PyTorch every time."""
@@ -435,6 +457,7 @@ def test_an_amd_that_already_has_rocm_torch_is_left_alone(tmp_path, upstream, fa
     assert "--reinstall-package torch" not in (tmp_path / "uv.log").read_text()
 
 
+@runs_its_tools
 def test_an_amd_with_too_old_a_rocm_is_told_to_update_and_gets_cpu_torch(
         tmp_path, upstream, fake_bin, amd_venv):
     (upstream / "requirements.lock").write_text(LOCK_WITH_CUDA)
@@ -451,6 +474,7 @@ def test_an_amd_with_too_old_a_rocm_is_told_to_update_and_gets_cpu_torch(
     assert "https://download.pytorch.org/whl/cpu torch torchvision" in uv_calls
 
 
+@runs_its_tools
 def test_an_amd_install_leaves_no_stray_file_in_the_checkout(tmp_path, upstream, fake_bin,
                                                              amd_venv):
     (upstream / "requirements.lock").write_text(LOCK_WITH_CUDA)
@@ -463,6 +487,7 @@ def test_an_amd_install_leaves_no_stray_file_in_the_checkout(tmp_path, upstream,
     assert not (tmp_path / "lab" / "requirements.rocm.lock").exists()
 
 
+@runs_its_tools
 def test_an_nvidia_install_is_left_alone(tmp_path, upstream, fake_bin, amd_venv):
     """The ROCm branch is AMD's. An NVIDIA card's lock is already right, and the plain
     install must not have its pins stripped out from under it."""
