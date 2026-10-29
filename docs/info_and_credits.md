@@ -24,6 +24,10 @@ This lab builds on other people's models and ports. Thank you.
   is a port of its capture half, for [@CanItCode](https://www.youtube.com/watch?v=AS92HYsEBqo)'s
   two-camera method. Its joint reader stands on Meta's
   [DINOv2 with registers](https://huggingface.co/facebook/dinov2-with-registers-base) (Apache-2.0).
+- [MiniMax H3](https://huggingface.co/MiniMaxAI/MiniMax-H3) films those clips on this machine, run
+  by stable-diffusion.cpp from [leejet's GGUF files](https://huggingface.co/leejet/MiniMax-H3-GGUF);
+  the weights are under the MiniMax H3 Community License, and MiniMax asks users in the USA, the
+  EU, the UK and South Korea to apply with its form first.
 - [Apple MLX](https://github.com/ml-explore/mlx), [rembg](https://github.com/danielgatis/rembg),
   [TinyCLIP](https://huggingface.co/wkcn/TinyCLIP-ViT-8M-16-Text-3M-YFCC15M) and
   [three.js](https://threejs.org), all MIT.

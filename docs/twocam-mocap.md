@@ -17,7 +17,7 @@ port of [Patch's AnyMove](https://github.com/Patch-gg/anymove) (Apache-2.0).
 |---|---|
 | a rigged model | the studio's Animate step (SkinTokens), or any GLB with one armature |
 | Blender 4.2+ | found the same way Finish finds it |
-| an NVIDIA card with 16 GB for filming | MiniMax H3 runs here through stable-diffusion.cpp |
+| an NVIDIA card with 16 GB | everything was measured on one (an RTX 5070 Ti). Filming needs it; on a Mac or without a card the reader trains on Apple's GPU or the CPU, untimed and far slower |
 
 Downloads, each only with `--yes` (or a y typed at a terminal):
 
@@ -108,10 +108,13 @@ What went wrong, so you know what to look for:
 - MiniMax H3 stretched the rearing wolf: hips to head 1.7 to 1.9 times its length in
   every take, which no skeleton can follow (the torso twisted to try). The prompt now
   says the proportions hold; one new take peaked at 1.66 and fitted twice as closely.
-  The take verdict includes how closely the rig follows, so such a take is not picked.
+  A take's verdict now includes how closely the rig follows it (the stretched wolf: 3.9%,
+  doubtful), and the best take is picked on both. If every take stretches, the best of
+  them is still picked and `fit` does not refuse it: film more takes, or reword the move.
 - A two-legged dragon whose generated mesh was lopsided, with SkinTokens joints outside
   its body, could not be prepared: `prepare` found no left/right limbs and said so.
-  Generate it again, or turn it by hand with `--yaw-deg`.
+  Generate it again, or turn it by hand with `--yaw-deg` (in the studio: "It faces the
+  wrong way: turn it round"). It also warns when a part on one side has no mirror.
 
 ## What changed from AnyMove
 
