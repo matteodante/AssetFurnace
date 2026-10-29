@@ -279,6 +279,9 @@ def read_video(video: Path, reader_path: Path, ref_path: Path | None, layout: La
     frames = np.array([cv2.warpAffine(f, A, (layout.w, layout.h), flags=cv2.INTER_AREA) for f in frames])
     fuv, fconf = run(model, [f[:, :layout.w_front] for f in frames], device)
     suv, sconf = run(model, [f[:, layout.w_front:] for f in frames], device)
+    del model
+    if device == "cuda":  # hand the video memory back: a video model may run next in this process
+        torch.cuda.empty_cache()
     return {"front_uv": fuv, "side_uv": suv, "front_conf": fconf, "side_conf": sconf, "fps": fps,
             "names": np.array(names), "calib": A, "calib_converged": converged, "frames": frames}
 

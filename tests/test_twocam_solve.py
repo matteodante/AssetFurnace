@@ -264,3 +264,17 @@ def test_a_foot_that_stays_planted_is_not_scored():
     scores = solve.paw_agreement(d, names, ["toe_L"], still_px=3.0)
     assert scores["toe_L"] is None and scores["score"] is None
     assert solve.paw_agreement(d, names, ["toe_L"], still_px=0.5)["toe_L"] is not None
+
+
+@pytest.mark.parametrize("typical_px, level", [(3.6, "good"), (6.2, "good"), (11.8, "doubtful"), (20.0, "bad")])
+def test_how_closely_the_rig_follows_is_judged_on_the_typical_joint(typical_px, level):
+    per_joint = {f"j{i}": typical_px for i in range(9)}
+    per_joint["far"] = 200.0  # one joint the rig cannot reach does not decide
+    assert solve.follow_report(per_joint, height_px=268)["level"] == level
+
+
+def test_a_capture_says_how_closely_the_rig_follows():
+    info = toy_rig()
+    truth, _, d = _clip(info)
+    follow = solve.capture(d, info, truth["fps"], iters=200)["follow"]
+    assert follow["level"] == "good" and follow["typical"] < 0.02

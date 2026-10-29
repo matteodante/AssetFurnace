@@ -403,6 +403,23 @@ def verdict(sync: Mapping[str, Any], paws: Mapping[str, Any], height_px: float) 
     return {"level": level, "height_gap_fraction": round(gap, 4), "feet_agreement": score, "reasons": reasons}
 
 
+def follow_report(per_joint_px: Mapping[str, float], height_px: float) -> dict[str, Any]:
+    """How closely the fitted rig follows the clip: each joint's distance from its readings,
+    as a share of the creature's height, for the typical joint and the worst tenth.
+
+    The two views can agree and still show a body no skeleton can make: MiniMax H3 drew a
+    rearing wolf's hips-to-head 1.7 to 1.9 times its length in every take. Measured on the
+    typical joint: AnyMove's dragon roar from fal 1.3%, the same roar filmed here 2.3%, the
+    stretched wolf 3.9%."""
+    v = np.array(list(per_joint_px.values()), float)
+    if not len(v):
+        return {"level": "good", "typical": 0.0, "worst_tenth": 0.0}
+    typical = float(np.median(v)) / max(height_px, 1e-6)
+    worst = float(np.percentile(v, 90)) / max(height_px, 1e-6)
+    level = "good" if typical <= 0.025 else "doubtful" if typical <= 0.045 else "bad"
+    return {"level": level, "typical": round(typical, 4), "worst_tenth": round(worst, 4)}
+
+
 # --- the fit ------------------------------------------------------------------------------
 
 
@@ -638,4 +655,5 @@ def capture(d, info, fps: float, *, iters: int = 1500, device: str = "cpu", alig
             "euler": res["euler"].round(5).tolist(), "joints": res["joints"].round(4).tolist(),
             "joint_names": res["joint_names"], "reproj_px": res["reproj_px"],
             "reproj_px_per_joint": res["reproj_px_per_joint"], "sync": sync, "swaps": sync["swaps"],
+            "follow": follow_report(res["reproj_px_per_joint"], creature_height_px(info, layout)),
             "feet": sync["feet"], "layout": layout.to_dict()}

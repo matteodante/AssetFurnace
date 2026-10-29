@@ -152,7 +152,7 @@ def cmd_fit(args) -> dict:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     write_motion(motion, args.out)
     return {"motion": str(args.out), "frames": len(motion["euler"]), "reproj_px": motion["reproj_px"],
-            "verdict": motion["sync"]["verdict"], "swaps": motion["swaps"]}
+            "verdict": motion["sync"]["verdict"], "follow": motion["follow"], "swaps": motion["swaps"]}
 
 
 def apply_command(blender: Path, blend: Path, rig_info: Path, motion: Path, out: Path,
@@ -411,31 +411,44 @@ def cmd_film(args) -> dict:
     log = None if args.quiet else (lambda msg: print(msg, file=sys.stderr, flush=True))
     rig_info = creature_dir / "rig_info.json"
     reader_path = args.reader
+    # Film every take first, then judge them: the reader holds video memory in this process,
+    # and with it loaded the next take's text encoder ran out ("workspace capacity check").
     takes = []
     for k in range(args.takes):
         seed = args.seed + k
         clip = args.out / f"take{k + 1}_s{seed}.webm"
-        video.film(binary, text, start, clip, width=args.width, height=args.height, seconds=args.seconds,
-                   seed=seed, steps=args.steps, log=log)
+        try:
+            video.film(binary, text, start, clip, width=args.width, height=args.height, seconds=args.seconds,
+                       seed=seed, steps=args.steps, log=log)
+        except video.VideoError as exc:  # one failed take keeps the others
+            takes.append({"clip": str(clip), "seed": seed, "error": str(exc)})
+            continue
         record = {"schema_version": 1, "created_at": records.now(), "tool": "scripts/twocam_mocap.py film",
                   "made_with": plan["engine"], "license": plan["license"], "license_url": plan["license_url"],
                   "license_note": plan["license_note"], "prompt": text, "seed": seed,
                   "start_frame": records.sha256_file(start), "settings": {
                       "width": args.width, "height": args.height, "seconds": args.seconds, "steps": args.steps}}
         records.write_sidecar(clip, record)
-        take = {"clip": str(clip), "seed": seed}
-        if reader_path:
+        takes.append({"clip": str(clip), "seed": seed})
+    filmed = [t for t in takes if "error" not in t]
+    if not filmed:
+        raise CaptureError("no take was filmed: " + takes[0]["error"])
+    if reader_path:
+        info = load_rig_info(rig_info)
+        for take in filmed:
+            clip = Path(take["clip"])
             det = clip.with_suffix(".npz")
             cmd_read(argparse.Namespace(video=clip, reader=reader_path, rig_info=rig_info, out=det, ref=start,
                                         no_calib=False, overlay=None, fps=None, made_with=plan["engine"],
                                         video_license=plan["license"], reader_license=None, device=args.device))
-            info = load_rig_info(rig_info)
-            d, _ = load_detections(det, info)
+            d, fps = load_detections(det, info)
             take["check"] = clip_report(d, info)["verdict"]
-        takes.append(take)
+            # a quick fit says whether a skeleton can make what the two views agree on
+            take["follow"] = solve.capture(d, info, fps, iters=400)["follow"]
     rank = {"good": 0, "doubtful": 1, "bad": 2}
-    checked = [t for t in takes if "check" in t]
-    best = min(checked, key=lambda t: (rank[t["check"]["level"]], t["check"]["height_gap_fraction"])) if checked else None
+    checked = [t for t in filmed if "check" in t]
+    best = min(checked, key=lambda t: (max(rank[t["check"]["level"]], rank[t["follow"]["level"]]),
+                                       t["follow"]["typical"])) if checked else None
     return {"prompt": text, "takes": takes, "best": best["clip"] if best else None}
 
 

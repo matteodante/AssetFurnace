@@ -294,3 +294,26 @@ def test_train_asks_before_fetching_dinov2(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(cli.sys, "stdin", None)
     code, _, err = _run(capsys, "train", tmp_path, rig, tmp_path / "reader.pt")
     assert code == 1 and "346 MB" in err and "--yes" in err
+
+
+def test_a_failed_take_keeps_the_others(tmp_path, capsys, monkeypatch):
+    from image_to_3dlab.twocam import video
+
+    (tmp_path / "creature.json").write_text(json.dumps({"noun": "wolf", "colour_code": "x"}), encoding="utf-8")
+    (tmp_path / "ref.png").write_bytes(b"png")
+    monkeypatch.setattr(video, "weights_plan", lambda root=None: {
+        "ready": True, "engine": "H3", "license": "L", "license_url": "u", "license_note": "n", "files": {}})
+    filmed = []
+
+    def fake_film(binary, prompt, start, out, **settings):
+        filmed.append(settings["seed"])
+        if settings["seed"] == 2:
+            raise video.VideoError("sd-cli failed (exit 1): out of memory")
+        Path(out).write_bytes(b"webm")
+        return Path(out)
+
+    monkeypatch.setattr(video, "film", fake_film)
+    code, out, _ = _run(capsys, "film", tmp_path, "it howls", tmp_path / "clips", "--takes", 3, "--quiet")
+    assert code == 0 and filmed == [1, 2, 3]
+    assert [("error" in t) for t in out["takes"]] == [False, True, False]
+    assert (tmp_path / "clips" / "take3_s3.provenance.json").is_file()
