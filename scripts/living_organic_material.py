@@ -21,8 +21,8 @@ projected to UV space.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -30,13 +30,11 @@ import trimesh
 from PIL import Image, ImageDraw, ImageFilter
 from skimage import color
 
+REPO = Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+from image_to_3dlab.provenance import sha256_file
 
 
 def parse_colour(value: str) -> np.ndarray:
@@ -295,13 +293,13 @@ def main() -> int:
     recipe = {
         "schema_version": 1,
         "operation": "living_organic_material",
-        "input": {"path": str(args.asset), "sha256": _sha256(args.asset)},
-        "eye_mask": {"path": str(args.eye_mask), "sha256": _sha256(args.eye_mask)},
+        "input": {"path": str(args.asset), "sha256": sha256_file(args.asset)},
+        "eye_mask": {"path": str(args.eye_mask), "sha256": sha256_file(args.eye_mask)},
         "parameters": {
             key: value for key, value in vars(args).items()
             if key not in {"asset", "output", "eye_mask", "dump_dir", "recipe"}
         },
-        "output": {"path": str(args.output), "sha256": _sha256(args.output)},
+        "output": {"path": str(args.output), "sha256": sha256_file(args.output)},
     }
     recipe["parameters"] = {
         key: str(value) if isinstance(value, Path) else value

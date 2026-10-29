@@ -41,7 +41,7 @@ if str(REPO) not in sys.path:
 
 import usage_api
 
-from image_to_3dlab import host, processes
+from image_to_3dlab import host, processes, provenance
 
 OUTPUT_ROOT = REPO / "output" / "animate"
 SKINTOKENS = REPO / "vendor" / "SkinTokens"
@@ -158,15 +158,8 @@ def rig_run_of(glb: Path) -> Path | None:
 # ------------------------------------------------------------------------- provenance
 
 
-def source_record_for(glb: Path) -> dict[str, Any] | None:
-    """A licence record kept beside a model: a provenance sidecar, a run manifest, or a
-    finish record. The first that names a licence wins."""
-    for sidecar in (glb.with_suffix(".provenance.json"), glb.with_suffix(".json"),
-                    glb.with_suffix(".retopo-repaint.json")):
-        record = _read_json(sidecar)
-        if isinstance(record, dict) and record.get("license"):
-            return record
-    return None
+# The licence record beside a model: the one lookup the studio shares.
+source_record_for = provenance.licence_record_beside
 
 
 def rig_record(name: str, data: bytes, source: dict[str, Any] | None,

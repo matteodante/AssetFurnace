@@ -40,7 +40,7 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 import usage_api
 
-from image_to_3dlab import processes
+from image_to_3dlab import processes, provenance
 from image_to_3dlab.blender import missing_help
 
 OUTPUT_ROOT = REPO / "output" / "props"
@@ -850,17 +850,9 @@ def licence_of(record: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def source_record_for(glb: Path) -> dict[str, Any] | None:
-    """The licence record kept beside a generated GLB, or None.
-
-    `<name>.provenance.json` is the sidecar that travels with the file; `<name>.json` is
-    the run manifest some backends write, which the viewer deletes with Debug off.
-    """
-    for sidecar in (glb.with_suffix(".provenance.json"), glb.with_suffix(".json")):
-        record = _read_json(sidecar)
-        if isinstance(record, dict) and "license" in record:
-            return record
-    return None
+# The licence record kept beside a generated GLB: the shared lookup (the sidecar that
+# travels with the file wins over the run manifest the viewer deletes with Debug off).
+source_record_for = provenance.licence_record_beside
 
 
 def generated_models(root: Path, limit: int = 25) -> list[dict[str, Any]]:

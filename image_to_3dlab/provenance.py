@@ -174,9 +174,10 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-# Where a model's licence record sits beside it: the sidecar that travels with the file, or
-# the run record a generator writes (`<name>.json`, Pixal3D's and the viewer's).
-LICENCE_SIDECARS = (".provenance.json", ".json")
+# Where a model's licence record sits beside it: the sidecar that travels with the file, the
+# run record a generator writes (`<name>.json`, Pixal3D's and the viewer's), or a Finish
+# record (`.retopo-repaint.json`), which the rig step has always read too.
+LICENCE_SIDECARS = (".provenance.json", ".json", ".retopo-repaint.json")
 
 
 def licence_record_beside(model: Path) -> dict[str, Any] | None:

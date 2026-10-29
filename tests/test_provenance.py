@@ -228,3 +228,19 @@ def test_a_model_made_with_several_takes_the_most_restricted_class(classes, stri
     from image_to_3dlab import provenance
 
     assert provenance.stricter_class(*classes) == strictest
+
+
+def test_the_studio_has_one_licence_lookup_and_one_file_hash():
+    """Four copies of "find the licence beside a model" had drifted apart (which files they
+    read, whether a null licence counted); every step now asks the same function."""
+    import autorig_api
+    import living_organic_material
+    import props_api
+
+    from image_to_3dlab import provenance
+    from image_to_3dlab.twocam import records
+
+    for lookup in (autorig_api.source_record_for, props_api.source_record_for, records.source_record_for):
+        assert lookup is provenance.licence_record_beside
+    assert records.sha256_file is provenance.sha256_file
+    assert living_organic_material.sha256_file is provenance.sha256_file

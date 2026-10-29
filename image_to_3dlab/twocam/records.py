@@ -8,11 +8,12 @@ MiniMax H3 on fal), whose terms are not ours to guess, so they are recorded as d
 
 from __future__ import annotations
 
-import hashlib
 import json
 import time
 from pathlib import Path
 from typing import Any
+
+from image_to_3dlab.provenance import licence_record_beside, sha256_file
 
 from .reader import BACKBONE_ID, BACKBONE_LICENSE
 
@@ -23,14 +24,6 @@ METHOD = {
     "code": "image_to_3dlab/twocam, ported from Patch-gg/anymove",
     "code_license": "Apache-2.0",
 }
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _file(path: Path) -> dict[str, str]:
@@ -86,16 +79,7 @@ def reader_record(dataset: Path, rig_info: Path, result: dict[str, Any]) -> dict
     }
 
 
-def source_record_for(model: Path) -> dict[str, Any] | None:
-    """The licence record kept beside a model file, if it names a licence."""
-    for sidecar in (model.with_suffix(".provenance.json"), model.with_suffix(".json")):
-        try:
-            record = json.loads(sidecar.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(record, dict) and record.get("license"):
-            return record
-    return None
+source_record_for = licence_record_beside  # the licence record beside a model, shared
 
 
 def animation_record(blend: Path, capture: dict[str, Any] | None,
