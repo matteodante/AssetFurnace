@@ -561,6 +561,7 @@ def fit(d, info, layout: Layout, iters: int = 1500, device: str = "cpu",
     # side view and the front view mainly supplies left-right position.
     f_axis = torch.tensor([1.0, front_height_weight], **dt)
     px2 = layout.m_per_px ** 2
+    floor = torch.clamp(rig.rest_kp[:, 2], max=0.0)
 
     def loss_fn():
         eul = rig.lo + span * torch.sigmoid(phi)
@@ -572,8 +573,10 @@ def fit(d, info, layout: Layout, iters: int = 1500, device: str = "cpu",
         acc = ((J[2:] - 2 * J[1:-1] + J[:-2]) ** 2).sum() / px2 * 0.02
         vel = ((eul[1:] - eul[:-1]) ** 2).sum() * 2.0 + ((root[1:] - root[:-1]) ** 2).sum() * 2.0
         prior = (eul ** 2).sum() * 0.05
-        # nothing goes under the floor (AnyMove applied this to the wolf's paw names only)
-        ground = (torch.relu(-J[..., 2]) ** 2).sum() / px2 * 0.5
+        # nothing goes under the floor (AnyMove applied this to the wolf's paw names only); a
+        # joint that is already under it at rest (a SkinTokens toe tip pokes out of the boot)
+        # keeps its own depth as its floor, or the fit would bend the foot to lift it
+        ground = (torch.relu(floor - J[..., 2]) ** 2).sum() / px2 * 0.5
         total = data + acc + vel + prior + ground
         parts = {"data": data.item(), "acc": acc.item(), "vel": vel.item(), "prior": prior.item(), "ground": ground.item()}
         return total, parts, J, pf, ps, eul

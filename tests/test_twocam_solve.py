@@ -286,3 +286,22 @@ def test_a_take_is_judged_on_the_worse_of_agreement_and_follow():
     verdict = solve.combined_verdict(check, loose)
     assert verdict["level"] == "doubtful" and "follows it loosely" in verdict["reasons"][0]
     assert solve.combined_verdict(check, solve.follow_report({"j": 3.0}, 300))["level"] == "good"
+
+
+def test_a_joint_under_the_floor_at_rest_is_not_lifted(monkeypatch):
+    """SkinTokens toe tips can poke below the boot and the floor at rest; lifting them to the
+    floor bent the foot."""
+    import twocam_toy
+
+    monkeypatch.setitem(twocam_toy.JOINTS, "toe_L", (0.16, -0.44, -0.06))
+    info = toy_rig()
+    toe = _names(info).index("toe_L")
+    assert info["keypoints"][toe]["rest"][2] == pytest.approx(-0.06)
+    truth = exam.make_motion(info, seed=0, frames=12, amplitude=0.0)
+    truth["trans"] = [[0, 0, 0]] * 12
+    truth["root_quat"] = [[1, 0, 0, 0]] * 12
+    truth["euler"] = np.zeros((12, len(info["bones"]), 3)).tolist()  # the rest pose: toe at -6 cm
+    joints = exam.motion_joints(info, truth)
+    d = exam.synthetic_detections(joints, Layout.from_rig_info(info))
+    motion = solve.capture(d, info, truth["fps"], iters=200)
+    np.testing.assert_allclose(np.array(motion["joints"])[:, toe, 2], joints[:, toe, 2], atol=0.01)
