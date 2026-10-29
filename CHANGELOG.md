@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   picture" button, since a body without a mirror plane cannot be captured. "Front + back" starts off
   for a creature: a back drawn on its own gave a dragon a second neck (4.25% off its mirror image,
   1.13% from the front alone). Agents ask for `want="creature"`.
+- A humanoid can be animated from a video too: "Or animate from a video" sits folded under its preset
+  moves, for a move they lack. Prepare asks for a person's height and a creature's length nose to tail
+  (measured along the wrong axis, a 1.9 m knight would have come out as deep as that).
 - Animate from video in the studio: a rigged creature that is not a humanoid gets four stages in its
   Animate step (prepare, teach the reader, film, capture) instead of "preset moves are for humanoids
   only". Each runs `scripts/twocam_mocap.py`; every download is named with its size and licence

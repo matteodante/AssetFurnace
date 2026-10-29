@@ -98,7 +98,11 @@ function baseBody(stepId, asset, ctx) {
   }
   // not a humanoid: it moves from a video instead (viewer/studio/twocam.js fills this in)
   if (stepId === 'animated' && (asset.fits_moves === false || asset.kind === 'creature')) return '<div class="twocam" data-twocam><p class="hint">Loading…</p></div>';
-  if (stepId === 'animated') return movePicker(asset, ctx, asset.clips.length ? 'Add this move' : 'Animate');
+  if (stepId === 'animated') {
+    // a humanoid: the presets first; a move they lack ("swings a sword") can be filmed instead
+    const video = asset.rigged ? '<details class="adv"><summary>Or animate from a video</summary><div class="twocam" data-twocam><p class="hint">Loading…</p></div></details>' : '';
+    return movePicker(asset, ctx, asset.clips.length ? 'Add this move' : 'Animate') + video;
+  }
   return '';
 }
 

@@ -58,10 +58,17 @@ function failBox(job) {
     <div class="row end">${fitAnyway}<button class="ghost" data-tc-copy>Copy details</button><button class="ghost" data-tc-dismiss>OK</button></div></div>`;
 }
 
+/** A humanoid the preset moves fit: sized by its height; anything else nose to tail. */
+function upright(asset) {
+  return !(asset.fits_moves === false || asset.kind === 'creature');
+}
+
 function prepareForm(state, asset, again) {
   const p = state.prepared || {};
   const startsOver = again && (state.reader !== 'none' || state.moves.length || state.poses?.done);
-  return `<label class="field">How long is it, nose to tail, in metres?<input type="number" data-tc="length" min="0.05" max="100" step="0.05" value="${esc(p.length_m ?? '')}" placeholder="1.6"></label>
+  const tall = (p.axis || (upright(asset) ? 'z' : 'y')) === 'z';
+  return `<label class="field">Its size<select data-tc="axis"><option value="z"${tall ? ' selected' : ''}>Height, feet to the top of its head</option><option value="y"${tall ? '' : ' selected'}>Length, nose to tail</option></select></label>
+    <label class="field">In metres<input type="number" data-tc="length" min="0.05" max="100" step="0.05" value="${esc(p.length_m ?? '')}" placeholder="${tall ? '1.8' : '1.6'}"></label>
     <label class="field">What is it?<input type="text" data-tc="noun" maxlength="60" value="${esc(p.noun || defaultNoun(asset))}" placeholder="grey wolf"></label>
     <p class="hint">Turns it side-on, sizes it, names and paints its left and right limbs, and draws the picture every video starts from. About 10 seconds.</p>
     ${startsOver ? '<p class="hint">This starts the creature over: what the reader learned and the takes move to a folder called "earlier".</p>' : ''}
@@ -176,7 +183,10 @@ export function twocamHtml(state, asset, url, { dismissed = new Set() } = {}) {
     return `<li class="tc-stage ${st}" data-stage="${stage.id}"><p class="tc-head"><span class="dot">${st === 'done' ? '✓' : i + 1}</span><b>${stage.label}</b>${sum ? `<span class="hint">${esc(sum)}</span>` : ''}</p>
       ${extra}${mine && live && stage.id !== 'film' ? '' : bodies[stage.id](st)}</li>`;
   }).join('');
-  return `<p class="hint">Preset moves are for humanoids. This one moves from a video instead: an AI film of it from two cameras, read joint by joint and fitted to its rig.</p>
+  const why = asset.fits_moves === false || asset.kind === 'creature'
+    ? 'Preset moves are for humanoids. This one moves from a video instead'
+    : 'For a move the presets lack ("swings a sword", "lifts a log"), film it instead';
+  return `<p class="hint">${why}: an AI film of it from two cameras, read joint by joint and fitted to its rig.</p>
     ${top}<ol class="tc-stages">${stages}</ol>`;
 }
 
@@ -265,10 +275,10 @@ export async function mountTwocam(box, asset, ctx) {
       const kind = button.dataset.tcAct;
       if (kind === 'prepare') {
         const length = Number(value('length'));
-        if (!(length > 0)) { note('Say how long it is, nose to tail, in metres: 1.6 for a wolf.'); return; }
+        if (!(length > 0)) { note('Say how big it is, in metres: 1.6 for a wolf nose to tail, 1.8 for a person standing.'); return; }
         if (!value('noun')) { note('Say what it is, like "grey wolf": the video model is told.'); return; }
         if (button.dataset.startsOver !== undefined && !confirm('Prepare it again? What the reader learned and the takes move to the "earlier" folder, and the reader has to be taught again (about an hour).')) return;
-        start(button, 'prepare', { length_m: length, noun: value('noun'), ...(button.dataset.turn !== undefined ? { turn: true } : {}) });
+        start(button, 'prepare', { length_m: length, axis: value('axis') || 'y', noun: value('noun'), ...(button.dataset.turn !== undefined ? { turn: true } : {}) });
       } else if (kind === 'teach') {
         start(button, 'teach', {});
       } else if (kind === 'film') {

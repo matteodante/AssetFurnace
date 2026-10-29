@@ -77,10 +77,13 @@ model as it is built (`image_to_3dlab/twocam/symmetry.py`, written beside it as
 creature is then finished and rigged, and its Animate step is the one below.
 
 A rigged model that is not a humanoid gets **Animate from video** in its Animate step, in
-place of the preset moves. Four stages, each one run of `scripts/twocam_mocap.py`:
+place of the preset moves. A humanoid keeps its preset moves first, with **Or animate from a
+video** folded under them, for a move the presets lack ("swings a sword", "lifts a log"). Four
+stages, each one run of `scripts/twocam_mocap.py`:
 
-1. **Prepare** (about 10 s): how long it is nose to tail, and what it is. The card shows the
-   reference frame with its joints, left pink and right blue: check the sides and the facing.
+1. **Prepare** (about 10 s): its size in metres, as its height (a person, `--axis z`) or its
+   length nose to tail (a creature), and what it is. The card shows the reference frame with
+   its joints, left pink and right blue: check the sides and the facing.
 2. **Teach the reader** (about an hour, once per creature). The button names DINOv2 (346 MB,
    Apache-2.0) when it still has to download it. It keeps going with the tab closed and can
    be cancelled; the practice poses already rendered are kept.

@@ -214,11 +214,15 @@ def script(*args: Any) -> list[str]:
     return [sys.executable, str(SCRIPT), *map(str, args)]
 
 
-def prepare_command(c: Creature, length_m: float, noun: str, yaw_deg: float | None = None) -> list[str]:
+def prepare_command(c: Creature, length_m: float, noun: str, yaw_deg: float | None = None,
+                    axis: str = "y") -> list[str]:
+    """`axis`: what `length_m` measures, "y" nose to tail or "z" feet to head (a person)."""
     cmd = script("prepare", c.rigged, c.folder, "--length-m", f"{length_m:g}", f"--noun={noun}",
                  "--source-model", c.rigged)
     if yaw_deg is not None:
         cmd.append(f"--yaw-deg={yaw_deg:g}")
+    if axis == "z":
+        cmd.append("--axis=z")
     return cmd
 
 
@@ -509,7 +513,8 @@ class TwocamJobManager:
             raise ValueError(f"no such stage: {kind!r}")
         rigged = resolve_rig(str(body.get("rig", "")), self.output)
         if kind == "prepare":
-            return self.create_prepare(rigged, body.get("length_m"), body.get("noun"), turn=body.get("turn") is True)
+            return self.create_prepare(rigged, body.get("length_m"), body.get("noun"), turn=body.get("turn") is True,
+                                       axis=body.get("axis"))
         if kind == "teach":
             return self.create_teach(rigged)
         if kind == "film":
@@ -527,7 +532,9 @@ class TwocamJobManager:
         self.newest[job.creature.run] = job.id
         return job
 
-    def create_prepare(self, rigged: Path, length_m: Any, noun: Any, turn: bool = False) -> TwocamJob:
+    def create_prepare(self, rigged: Path, length_m: Any, noun: Any, turn: bool = False,
+                       axis: Any = None) -> TwocamJob:
+        """`axis` "z": `length_m` is its height (a person); anything else: its length nose to tail."""
         length, words = length_of(length_m), words_of(noun, "what it is", 60)
         c = Creature(rigged)
         yaw = None
@@ -536,11 +543,13 @@ class TwocamJobManager:
             if not isinstance(done.get("turned_deg"), (int, float)):
                 raise ValueError("prepare the creature first")
             yaw = (float(done["turned_deg"]) + 180.0) % 360.0
+            if axis is None:  # measured the same way as before
+                axis = ((read_json(c.file("creature.json")) or {}).get("prep") or {}).get("axis")
         with self.lock:
             self._check_free()
             set_aside(c)
             c.folder.mkdir(parents=True, exist_ok=True)
-            job = TwocamJob(uuid.uuid4().hex, "prepare", c, [prepare_command(c, length, words, yaw)],
+            job = TwocamJob(uuid.uuid4().hex, "prepare", c, [prepare_command(c, length, words, yaw, "z" if axis == "z" else "y")],
                             Progress(PREPARE_SECONDS, "Turning, sizing and painting the rig"))
             return self._claim(job)
 
@@ -780,6 +789,7 @@ def creature_state(rigged: Path, manager: TwocamJobManager | None = None) -> dic
         summary = read_json(c.file("prepared.json")) or {}
         preview = c.file("preview.png")
         prepared = {"noun": creature.get("noun"), "length_m": (creature.get("prep") or {}).get("length_m"),
+                    "axis": (creature.get("prep") or {}).get("axis") or "y",
                     "preview": rel(preview, output) if preview.is_file() else None,
                     "updated": int(preview.stat().st_mtime) if preview.is_file() else 0,
                     "limbs": summary.get("limbs"),
