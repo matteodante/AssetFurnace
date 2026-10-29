@@ -370,8 +370,8 @@ def test_an_edit_carries_the_reference_and_the_vision_file():
     command = api.build_command("the back", settings, Path("/out/x.png"), WEIGHTS,
                                 binary=Path("/bin/sd-cli"), reference=Path("/in/front.png"),
                                 vision=Path("/w/mmproj.gguf"))
-    assert command[command.index("-r") + 1] == "/in/front.png"
-    assert command[command.index("--llm_vision") + 1] == "/w/mmproj.gguf"
+    assert command[command.index("-r") + 1] == str(Path("/in/front.png"))
+    assert command[command.index("--llm_vision") + 1] == str(Path("/w/mmproj.gguf"))
 
 
 def test_a_plain_picture_has_no_reference():

@@ -129,7 +129,7 @@ def test_the_plan_is_torch_then_the_extensions_then_o_voxel():
 def test_every_extension_is_installed_no_build_isolation():
     commands = [" ".join(c) for c in boot.pip_commands("source", "uv", PYTHON, (7, 2))]
     for name, *_ in boot.SOURCE_EXTENSIONS:
-        matching = [c for c in commands if f"extensions/{name}" in c]
+        matching = [c for c in commands if str(Path("extensions", name)) in c]
         assert len(matching) == 1, f"{name} is installed {len(matching)} times"
         assert "--no-build-isolation" in matching[0], (
             f"{name}: without it pip builds against a throwaway torch, not the installed one")

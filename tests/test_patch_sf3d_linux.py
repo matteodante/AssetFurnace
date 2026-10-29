@@ -8,6 +8,7 @@ false and `baker_kernel.cu` is dropped from the source list with nothing to say 
 from __future__ import annotations
 
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -114,7 +115,7 @@ def test_an_anchor_that_moved_fails_loudly(checkout: Path):
 
 def test_each_patch_names_itself_when_it_fails(checkout: Path):
     (checkout / gen.BAKER_FILE).unlink()
-    with pytest.raises(SystemExit, match=gen.BAKER_FILE):
+    with pytest.raises(SystemExit, match=re.escape(str(Path(gen.BAKER_FILE)))):
         gen.patch(checkout)
 
 

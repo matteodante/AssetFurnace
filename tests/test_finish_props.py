@@ -84,7 +84,7 @@ def test_each_lod_has_a_plain_and_a_web_file_per_prop():
 
 def test_gltfpack_only_compresses(tmp_path):
     command = finish.gltfpack_command(Path("/bin/gltfpack"), Path("a.glb"), Path("b.glb"))
-    assert command[:5] == ["/bin/gltfpack", "-i", "a.glb", "-o", "b.glb"]
+    assert command[:5] == [str(Path("/bin/gltfpack")), "-i", "a.glb", "-o", "b.glb"]
     assert "-cc" in command and "-tw" in command
     assert not any(flag.startswith("-s") for flag in command)
 
