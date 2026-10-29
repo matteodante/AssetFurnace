@@ -96,3 +96,27 @@ def test_an_old_transformers_is_named_not_a_traceback(monkeypatch):
     monkeypatch.setitem(sys.modules, "transformers", types.SimpleNamespace(__version__="4.40.0"))
     with pytest.raises(reader.ReaderError, match="4.48 or newer"):
         reader.build_backbone()
+
+
+def test_the_reader_runs_on_cuda_then_apples_gpu_then_the_cpu(monkeypatch):
+    monkeypatch.setattr(reader.torch.cuda, "is_available", lambda: False)
+    monkeypatch.setattr(reader.torch.backends.mps, "is_available", lambda: True)
+    assert reader.pick_device("auto") == "mps"
+    monkeypatch.setattr(reader.torch.backends.mps, "is_available", lambda: False)
+    assert reader.pick_device("auto") == "cpu"
+    with pytest.raises(ValueError):
+        reader.pick_device("tpu")
+
+
+def test_the_plain_copy_goes_to_a_plain_folder_when_temp_is_accented(tmp_path, monkeypatch):
+    monkeypatch.setattr(reader.os, "name", "nt")
+    accented = tmp_path / "Niccolò"
+    accented.mkdir()
+    plain = tmp_path / "Public"
+    plain.mkdir()
+    monkeypatch.setattr(reader.tempfile, "gettempdir", lambda: str(accented))
+    monkeypatch.setenv("PUBLIC", str(plain))
+    clip = accented / "clip.mp4"
+    clip.write_bytes(b"frames")
+    with reader.plain_path(clip) as copy:
+        assert Path(copy).parent.parent == plain

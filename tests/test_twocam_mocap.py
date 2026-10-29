@@ -317,3 +317,67 @@ def test_a_failed_take_keeps_the_others(tmp_path, capsys, monkeypatch):
     assert code == 0 and filmed == [1, 2, 3]
     assert [("error" in t) for t in out["takes"]] == [False, True, False]
     assert (tmp_path / "clips" / "take3_s3.provenance.json").is_file()
+
+
+def test_the_glb_record_carries_the_takes_own_record_and_the_readers(tmp_path):
+    """The take's record names MiniMax's licence, its URL and who must apply; read once kept
+    only what was passed by hand, so a capture without flags said "not declared"."""
+    clip, reader_pt, rig = tmp_path / "take1_s1.webm", tmp_path / "reader.pt", tmp_path / "rig_info.json"
+    for f in (clip, reader_pt, rig):
+        f.write_bytes(b"x")
+    records.write_sidecar(clip, {"made_with": "MiniMax H3", "license": "MiniMax H3 Community License",
+                                 "license_note": "apply first in the EU"})
+    records.write_sidecar(reader_pt, records.reader_record(tmp_path / "dataset", rig, {"front": 8.7}))
+    record = records.capture_record(clip, reader_pt, rig)
+    assert record["video"]["license"] == "MiniMax H3 Community License"
+    assert record["video"]["record"]["license_note"] == "apply first in the EU"
+    assert "trained here" in record["reader"]["license"] and "Apache-2.0" in record["reader"]["license"]
+
+
+def test_prepare_says_which_side_part_found_no_mirror(tmp_path, capsys, monkeypatch):
+    info = toy_rig()
+    out = tmp_path / "wolf"
+    out.mkdir()
+    glb = tmp_path / "wolf_rigged.glb"
+    glb.write_bytes(b"glTF")
+    (tmp_path / "blender.exe").write_bytes(b"")
+
+    def fake_run(cmd, **_kwargs):
+        write_rig(out, info)
+        plan = {"paint": {}, "limbs": 2, "bones": 15, "keypoints": 22, "yaw_deg": 0.0, "size_m": [1, 1, 1],
+                "unpaired": ["bone_9"]}
+        return subprocess.CompletedProcess(cmd, 0, "I2L_TWOCAM_PREPARE::" + json.dumps(plan), "")
+
+    monkeypatch.setattr(cli.subprocess, "run", fake_run)
+    code, out_json, _ = _run(capsys, "prepare", glb, out, "--length-m", 1.6, "--noun", "wolf", "--no-render",
+                             "--blender", tmp_path / "blender.exe")
+    assert code == 0 and any("bone_9" in w for w in out_json["warnings"])
+
+
+def test_a_take_that_cannot_be_read_is_judged_bad_and_the_others_still_judged(tmp_path, capsys, monkeypatch):
+    from image_to_3dlab.twocam import video
+
+    info = toy_rig()
+    write_rig(tmp_path, info)
+    (tmp_path / "creature.json").write_text(json.dumps({"noun": "wolf", "colour_code": "x"}), encoding="utf-8")
+    (tmp_path / "ref.png").write_bytes(b"png")
+    reader_pt = tmp_path / "reader.pt"
+    reader_pt.write_bytes(b"pt")
+    monkeypatch.setattr(video, "weights_plan", lambda root=None: {
+        "ready": True, "engine": "H3", "license": "L", "license_url": "u", "license_note": "n", "files": {}})
+    monkeypatch.setattr(video, "film", lambda b, p, s, out, **k: Path(out).write_bytes(b"webm") or Path(out))
+    det, _ = _det(tmp_path, info)
+
+    def fake_read(args):
+        if "take1" in str(args.video):
+            raise cli.CaptureError("the fit diverged")
+        Path(args.out).write_bytes(det.read_bytes())
+        return {}
+
+    monkeypatch.setattr(cli, "cmd_read", fake_read)
+    code, out, _ = _run(capsys, "film", tmp_path, "it howls", tmp_path / "clips", "--takes", 2,
+                        "--reader", reader_pt, "--quiet")
+    assert code == 0
+    first, second = out["takes"]
+    assert first["check"]["level"] == "bad" and "diverged" in first["check"]["reasons"][0]
+    assert second["check"]["level"] in ("good", "doubtful") and out["best"] == second["clip"]

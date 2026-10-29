@@ -41,19 +41,48 @@ def now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
 
+def read_record(path: Path) -> dict[str, Any] | None:
+    """The provenance record beside a file (`take1_s1.provenance.json` for `take1_s1.webm`)."""
+    try:
+        record = json.loads(sidecar_path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
 def capture_record(video: Path, reader: Path, rig_info: Path, made_with: str | None = None,
                    video_license: str | None = None, reader_license: str | None = None) -> dict[str, Any]:
-    """Written beside the detections, and copied into the motion the fit makes from them."""
+    """Written beside the detections, and copied into the motion the fit makes from them.
+
+    A clip `film` made has its own record (video model, licence and its URL, MiniMax's
+    note on who must apply, prompt, seed); a reader `train` made has one too. Both are
+    carried whole, so the GLB's record says what the take's did; the flags are for clips
+    and readers made elsewhere."""
+    take = read_record(video) or {}
+    taught = read_record(reader) or {}
     return {
         "schema_version": 1,
         "created_at": now(),
         "tool": "scripts/twocam_mocap.py read",
         "method": METHOD,
-        "video": {**_file(video), "made_with": made_with or "not declared",
-                  "license": video_license or "not declared: check the video model's terms"},
-        "reader": {**_file(reader), "license": reader_license or "not declared",
-                   "backbone": BACKBONE_ID, "backbone_license": BACKBONE_LICENSE},
+        "video": {**_file(video), "made_with": made_with or take.get("made_with") or "not declared",
+                  "license": video_license or take.get("license") or "not declared: check the video model's terms",
+                  "record": take or None},
+        "reader": {**_file(reader), "license": reader_license or taught.get("license") or "not declared",
+                   "backbone": BACKBONE_ID, "backbone_license": BACKBONE_LICENSE, "record": taught or None},
         "rig_info": _file(rig_info),
+    }
+
+
+def reader_record(dataset: Path, rig_info: Path, result: dict[str, Any]) -> dict[str, Any]:
+    """Written beside a reader `train` made: what it learned from and under which terms."""
+    return {
+        "schema_version": 1,
+        "created_at": now(),
+        "tool": "scripts/twocam_mocap.py train",
+        "license": f"trained here on renders of the creature, from {BACKBONE_ID} ({BACKBONE_LICENSE})",
+        "backbone": BACKBONE_ID, "backbone_license": BACKBONE_LICENSE,
+        "dataset": str(dataset), "rig_info": _file(rig_info), "held_out_error_px": result,
     }
 
 

@@ -106,7 +106,7 @@ def cmd_read(args) -> dict:
     if args.ref is None and not args.no_calib:
         raise CaptureError("pass --ref REF.png (the frame the clip started from), or --no-calib for a "
                            "clip that is already a layout frame")
-    device = solve.pick_device(args.device)
+    device = reader.pick_device(args.device)
     det = reader.read_video(args.video, args.reader, None if args.no_calib else args.ref,
                             Layout.from_rig_info(info), [k["name"] for k in info["keypoints"]],
                             device=device, fps=args.fps)
@@ -308,9 +308,15 @@ def cmd_prepare(args) -> dict:
         write_rgb(out / "preview.png", joints_preview(ref, info))
         summary.update(ref=str(out / "ref.png"), preview=str(out / "preview.png"),
                        render_device=plan.get("render_device"))
+    warnings = []
     if not plan["limbs"]:
-        summary["warning"] = ("no left/right limbs were found: check the turn in preview.png, or pass --yaw-deg; "
-                              "without painted limbs a video model easily swaps left and right")
+        warnings.append("no left/right limbs were found: check the turn in preview.png, or pass --yaw-deg; "
+                        "without painted limbs a video model easily swaps left and right")
+    if plan.get("unpaired"):
+        warnings.append(f"no mirror image was found for {', '.join(plan['unpaired'])}: that part is treated as "
+                        "the middle of the body, unpainted (check preview.png; a lopsided rig may need redoing)")
+    if warnings:
+        summary["warnings"] = warnings
     return summary
 
 
@@ -376,10 +382,15 @@ def cmd_train(args) -> dict:
     samples = train.check_dataset(args.dataset, info)
     if not train.backbone_cached():
         ask_yes(DINO_DOWNLOAD, args.yes)
-    device = solve.pick_device(args.device)
+    from image_to_3dlab.twocam import reader
+
+    device = reader.pick_device(args.device)
     log = None if args.quiet else (lambda msg: print(msg, file=sys.stderr, flush=True))
     result = train.train(args.dataset, info, args.out, epochs=args.epochs, batch=args.batch, device=device,
                          workers=args.workers, log=log)
+    from image_to_3dlab.twocam import records
+
+    records.write_sidecar(args.out, records.reader_record(args.dataset, args.rig_info, result))
     return {"reader": str(args.out), "samples": samples, "device": device,
             "held_out_error_px": {k: round(v, 2) for k, v in result.items()}}
 
@@ -438,16 +449,22 @@ def cmd_film(args) -> dict:
         for take in filmed:
             clip = Path(take["clip"])
             det = clip.with_suffix(".npz")
-            cmd_read(argparse.Namespace(video=clip, reader=reader_path, rig_info=rig_info, out=det, ref=start,
-                                        no_calib=False, overlay=None, fps=None, made_with=plan["engine"],
-                                        video_license=plan["license"], reader_license=None, device=args.device))
-            d, fps = load_detections(det, info)
-            # a quick fit says whether a skeleton can make what the two views agree on
-            take["follow"] = solve.capture(d, info, fps, iters=400)["follow"]
-            take["check"] = solve.combined_verdict(clip_report(d, info)["verdict"], take["follow"])
+            try:
+                cmd_read(argparse.Namespace(video=clip, reader=reader_path, rig_info=rig_info, out=det, ref=start,
+                                            no_calib=False, overlay=None, fps=None, made_with=None,
+                                            video_license=None, reader_license=None, device=args.device))
+                d, fps = load_detections(det, info)
+                # a quick fit says whether a skeleton can make what the two views agree on
+                take["follow"] = solve.capture(d, info, fps, iters=400)["follow"]
+                take["check"] = solve.combined_verdict(clip_report(d, info)["verdict"], take["follow"])
+            except (RuntimeError, ValueError, ArithmeticError, OSError) as exc:  # judge the others anyway
+                take["check"] = {"level": "bad", "reasons": [f"could not be read or fitted: {exc}"],
+                                 "height_gap_fraction": None, "feet_agreement": None}
+                take["follow"] = {"level": "bad", "typical": None, "worst_tenth": None, "reasons": []}
     rank = {"good": 0, "doubtful": 1, "bad": 2}
     checked = [t for t in filmed if "check" in t]
-    best = min(checked, key=lambda t: (rank[t["check"]["level"]], t["follow"]["typical"])) if checked else None
+    readable = [t for t in checked if t["follow"]["typical"] is not None]
+    best = min(readable, key=lambda t: (rank[t["check"]["level"]], t["follow"]["typical"])) if readable else None
     return {"prompt": text, "takes": takes, "best": best["clip"] if best else None}
 
 

@@ -52,6 +52,21 @@ class ReaderError(RuntimeError):
     pass
 
 
+def pick_device(name: str = "auto") -> str:
+    """Where the reader runs: NVIDIA's CUDA, Apple's MPS, else the CPU (`auto` picks in that
+    order). Measured on CUDA only; MPS should train well within a day but was not timed."""
+    if name == "auto":
+        if torch.cuda.is_available():
+            return "cuda"
+        mps = getattr(torch.backends, "mps", None)
+        return "mps" if mps is not None and mps.is_available() else "cpu"
+    if name not in ("cpu", "cuda", "mps"):
+        raise ValueError(f"device must be auto, cpu, cuda or mps, got {name!r}")
+    if name == "cuda" and not torch.cuda.is_available():
+        raise ValueError("CUDA was asked for but torch sees no CUDA device")
+    return name
+
+
 def _transformers():
     try:
         import transformers
@@ -186,7 +201,10 @@ def plain_path(path: Path, *, write: bool = False) -> Iterator[str]:
     if os.name != "nt" or str(path).isascii():
         yield str(path)
         return
-    folder = Path(tempfile.mkdtemp(prefix="twocam-"))
+    # the temp folder sits under the same accented user folder, so look for a plain one
+    plain_roots = [tempfile.gettempdir(), os.environ.get("PUBLIC"), os.environ.get("ProgramData")]
+    root = next((r for r in plain_roots if r and r.isascii() and os.access(r, os.W_OK)), None)
+    folder = Path(tempfile.mkdtemp(prefix="twocam-", dir=root))
     plain = folder / f"file{path.suffix}"
     try:
         if not write:
