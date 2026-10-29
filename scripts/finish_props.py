@@ -127,6 +127,12 @@ def lod_path(out_dir: Path, name: str, index: int, web: bool = False) -> Path:
     return out_dir / name / f"{name}_LOD{index}{suffix}"
 
 
+def recorded_name(path: Path, out_dir: Path) -> str:
+    """How the record names `path`: relative to `out_dir`, with forward slashes on every OS,
+    so a record written on Windows reads the same on a Mac or Linux."""
+    return Path(os.path.relpath(path, out_dir)).as_posix()
+
+
 def find_gltfpack(explicit: Path | None = None, which=shutil.which) -> Path | None:
     """``--gltfpack`` if given, else ``gltfpack`` on PATH, else ``vendor/gltfpack/``."""
     if explicit is not None:
@@ -297,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
         name = source.stem
         logs = out_dir / name / "logs"
         logs.mkdir(parents=True, exist_ok=True)
-        entry = {"name": name, "source": os.path.relpath(source, out_dir), "lods": []}
+        entry = {"name": name, "source": recorded_name(source, out_dir), "lods": []}
         for index, faces in enumerate(lods):
             step = time.time()
             atlas = lod_atlas(args.atlas, index)
@@ -319,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
                 retopo.unlink()
                 write_lod(detailed, baked, f"{name}_LOD{index}")
             lod = {"faces": faces, "atlas": atlas, "triangles": glb_triangles(baked.read_bytes()),
-                   "glb": os.path.relpath(baked, out_dir), "bytes": baked.stat().st_size}
+                   "glb": recorded_name(baked, out_dir), "bytes": baked.stat().st_size}
             if detail_log.is_file():
                 lod["detail"] = detail_record(detail_log.read_text())
             if gltfpack is not None:
@@ -330,7 +336,7 @@ def main(argv: list[str] | None = None) -> int:
                     _run(gltfpack_command(gltfpack, baked, unpacked),
                          logs / f"LOD{index}.gltfpack.log", f"{name} LOD{index} gltfpack")
                     unpacked.replace(packed)
-                lod.update(web_glb=os.path.relpath(packed, out_dir),
+                lod.update(web_glb=recorded_name(packed, out_dir),
                            web_bytes=packed.stat().st_size)
             lod["seconds"] = round(time.time() - step, 1)
             entry["lods"].append(lod)

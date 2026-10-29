@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default licence.
 
 ### Fixed
+- Props finished on Windows: `finish_props.json` names its files with forward slashes, as on a Mac or Linux,
+  so the record reads the same on any machine.
 - Front + back: the back picture now keeps to what the front shows, the same parts and the same outline,
   whatever the subject: a full character, a bust, a head or an object.
 - Fix a spot works on rigged characters: click View on the Finished step and brush away. Before, the brush
