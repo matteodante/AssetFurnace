@@ -95,8 +95,23 @@ Windows 11, an RTX 5070 Ti (16 GB), Blender 5.2:
   match the solver's to 0.1 mm.
 - The same dragon filmed here by MiniMax H3 (pruned, Q4): 1024 x 576, 3 s, in 6.5 min;
   judged doubtful (typical joint 2.8% apart against fal's 1.2%), fitted at 13-22 px.
-- A wolf the studio made from a sentence (picture, Pixal3D, Finish, SkinTokens rig):
-  prepared, filmed here, reader trained and captured. See the pull request for numbers.
+- A wolf the studio made from a sentence (picture, Pixal3D, Finish and SkinTokens rig in
+  about 3 min): prepared in 7 s, three takes filmed here in 20 min, 2,200 poses rendered
+  in 12 min, the reader taught in 27 min (held-out error 8.7 px front, 5.9 px side), two
+  takes judged good and one doubtful, the best captured in 18 s. The studio's own
+  Animate step ran prepare, film and capture on it too, and the Library listed the move.
+- A knight from the studio's character recipe: prepared (arms over legs, five-fingered
+  hands) and filmed.
+
+What went wrong, so you know what to look for:
+
+- MiniMax H3 stretched the rearing wolf: hips to head 1.7 to 1.9 times its length in
+  every take, which no skeleton can follow (the torso twisted to try). The prompt now
+  says the proportions hold; one new take peaked at 1.66 and fitted twice as closely.
+  The take verdict includes how closely the rig follows, so such a take is not picked.
+- A two-legged dragon whose generated mesh was lopsided, with SkinTokens joints outside
+  its body, could not be prepared: `prepare` found no left/right limbs and said so.
+  Generate it again, or turn it by hand with `--yaw-deg`.
 
 ## What changed from AnyMove
 
