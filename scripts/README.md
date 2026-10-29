@@ -200,6 +200,8 @@ The `*_pose.py` files are pure curve maths with no `bpy`, which is why they have
 | `clean_skin_weights.py` | Drop skin weights that come from bones far away in the skeleton, then rebalance. |
 | `kimodo_retarget.py` | Play a Kimodo text-to-motion clip on a SkinTokens-rigged humanoid and export an animated GLB. |
 | `rig_check.py` | Say whether a rigged GLB fits the preset moves (a humanoid), read without Blender. |
+| `twocam_mocap.py` | Animate a rigged creature from a two-camera AI video: read the joints, fit the rig, export a GLB. |
+| `blender_twocam_apply.py` | Key a two-camera capture's motion onto its rig in Blender and export an animated GLB, headless. |
 | `attack_pose.py` | Pose curves for a quadruped slam attack, as pure functions. |
 | `rigify_walk_pose.py` | Pose curves for a quadruped trot on a Rigify-generated rig, as pure functions. |
 | `blender_walk_cycle.py` | Author a looping quadruped gait cycle on the rigged fox in the live Blender scene. |
