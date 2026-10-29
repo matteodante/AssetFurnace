@@ -142,6 +142,6 @@ def test_a_neck_and_head_bend_up_and_down_even_when_they_meet_a_little_to_one_si
     the head could nod only 35 degrees and swing 60 to the side."""
     names, parents, heads, tails = _quadruped()
     i = names.index("Head")
-    tails[i] = heads[i] + np.array([0.06, -0.2, 0.05])
+    tails[i] = heads[i] + np.array([0.1, -0.15, 0.1])     # leaning 35 degrees to one side
     lim = dict(zip(names, lm.named_limits(names, parents, heads, tails, [DEFAULT] * len(names))))
     assert lim["Head"][0] == [-60.0, 60.0] and lim["Head"][2] == [-35.0, 35.0]
