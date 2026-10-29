@@ -85,7 +85,7 @@ function baseBody(stepId, asset, ctx) {
   if (stepId === 'rigged') {
     const both = asset.finished && asset.model;
     const which = both ? '<label class="field">Rig which model<select data-k="rigsource"><option value="finished">The finished model</option><option value="model">The raw model (skips Finish)</option></select></label>' : '';
-    const rigger = riggerChoice(asset.kind === 'creature' ? 'unirig' : 'skintokens');
+    const rigger = riggerChoice('skintokens');
     if (asset.kind === 'creature') {
       const creature = `<p class="hint">Adds a skeleton so it can move from a video. About three minutes: its skeleton is drawn four times and the one that fits its body best is kept, named and skinned.</p>${which}
         <button class="primary" data-run="rigged" data-humanoid="no">Rig it</button>${rigger}`;
@@ -108,12 +108,12 @@ function baseBody(stepId, asset, ctx) {
   return '';
 }
 
-/** Which rigger draws the skeleton, under Advanced: the creature rig for a creature, SkinTokens
- *  otherwise (the preset moves fit SkinTokens' skeletons only). */
+/** Which rigger draws the skeleton, under Advanced: SkinTokens by default (the preset moves fit
+ *  its skeletons only), or the experimental creature rig. */
 export function riggerChoice(preferred) {
   const option = (value, label) => `<option value="${value}"${value === preferred ? ' selected' : ''}>${label}</option>`;
   return `<details class="adv"><summary>Advanced: rigger</summary><label class="field">Rigger<select data-k="rigger">
-    ${option('unirig', 'Creature rig: UniRig, four tries, the best kept and named')}
+    ${option('unirig', 'Creature rig (experimental): UniRig, four tries, the best kept and named')}
     ${option('skintokens', 'SkinTokens: one try, its own skin; the preset moves need it')}</select></label></details>`;
 }
 

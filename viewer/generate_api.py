@@ -3597,10 +3597,12 @@ class Handler(SimpleHTTPRequestHandler):
             form = parse_multipart(self.headers.get("Content-Type", ""), self.rfile.read(length))
             def field(name: str) -> str:
                 return str((form.get(name) or {}).get("value", "")).strip()
-            # which rigger: the creature rig (scripts/creature_rig.py) for a creature unless
-            # the Rig step's Advanced says SkinTokens; asked for by name, either one
+            # which rigger: SkinTokens unless the creature rig (scripts/creature_rig.py) is asked
+            # for by name. The creature rig is experimental: on the 2026-10-29 bench it read five
+            # of seven creatures wrong (a wolf as a biped, a spider as winged), so being a
+            # creature does not pick it.
             rigger = field("rigger").lower()
-            creature = rigger == "unirig" or (rigger != "skintokens" and field("creature").lower() in ("1", "true", "yes"))
+            creature = rigger == "unirig"
             reuse = draw = None
             if field("draw"):
                 try:

@@ -1210,7 +1210,9 @@ def test_the_rigger_can_be_chosen_and_another_draw_used():
         drawPlan: m.chainPlan('rigged', dragon, {{ rigSource: 'finished', draw: '1' }}),
         riggerPlan: m.chainPlan('rigged', dragon, {{ rigSource: 'finished', rigger: 'skintokens' }}),
       }}));""")
-    assert '<option value="unirig" selected>' in out["dragonRig"] and '<option value="skintokens" selected>' in out["knightRig"]
+    # SkinTokens by default for both: the creature rig is experimental, asked for by name
+    assert '<option value="skintokens" selected>' in out["dragonRig"] and '<option value="skintokens" selected>' in out["knightRig"]
+    assert 'Creature rig (experimental)' in out["dragonRig"]
     assert 'data-draw="0"' in out["redo"] and 'data-draw="1"' in out["redo"]
     assert 'data-draw="3"' not in out["redo"] and 'data-draw="2"' not in out["redo"]   # the kept one, an unusable one
     assert "/output/animate/d/creature_rig/draws-sheet.png" in out["redo"] and "poses-sheet.png" in out["redo"]

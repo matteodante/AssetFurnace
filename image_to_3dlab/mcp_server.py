@@ -358,9 +358,9 @@ ADVANCED: dict[str, dict[str, Any]] = {
         "what": "Which model gets the skeleton: the finished one, or the raw 3D model (skips Finish)."},
     "rigger": {
         "step": "rigged", "type": "str", "choices": ["auto", "unirig", "skintokens"], "default": "auto",
-        "what": "Which rigger draws the skeleton: auto (the creature rig for a creature, SkinTokens otherwise), "
-                "unirig (the creature rig: four tries, the best kept and named) or skintokens (one try; the "
-                "preset moves need its skeletons)."},
+        "what": "Which rigger draws the skeleton: auto (SkinTokens), skintokens (one try; the preset moves "
+                "need its skeletons) or unirig (the experimental creature rig: four tries, the best kept and "
+                "named; it still reads some bodies wrong, so look at its test poses)."},
     "speed": {
         "step": "animated", "type": "float", "min": 0.5, "max": 2.0, "default": "the move's own pace",
         "what": "Playback speed of the move."},

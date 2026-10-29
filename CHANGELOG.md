@@ -44,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - A rigged creature was told it "can be rigged, not animated" and to animate it in Blender; it now
   points to Animate from video, in its Animate step.
+- Setup installs UniRig (VAST-AI, MIT) like SkinTokens, and fetches what Animate from video needs
+  (MiniMax H3 to film, DINOv2 to read the joints) in one entry.
+- An experimental creature rig, chosen in the Rig step's Advanced (`rigger: unirig` for agents):
+  four UniRig draws scored on the mesh, the best repaired, named by body plan and skinned by
+  Blender's bone heat; bone names set which way knees and elbows fold in capture. Its test poses
+  and every draw show in the Rig step, with a button to rig again from another draw in seconds.
+  It is not the default: on the bench it read five of seven creatures wrong (a wolf as a biped,
+  a wyvern as four-legged, a spider as winged), so SkinTokens still rigs everything unless asked.
 - Preset moves: a bone turned about half a turn on a slanted axis could be keyed turned the wrong
   way, from a sign picked off a near-zero difference. The retarget now shares two-camera capture's
   conversion, which is right there.
