@@ -1064,6 +1064,22 @@ def test_reconcile_kills_and_annotates_a_live_orphan(tmp_path, monkeypatch):
     assert not (job_dir / "pid").exists()
 
 
+def test_reconcile_finds_an_animate_from_video_stage_and_notes_it_in_its_log(tmp_path, monkeypatch):
+    """Teaching the reader runs for an hour: a server that dies meanwhile must not leave it running."""
+    rigged = tmp_path / "animate" / "wolf__rig__20261029-120000" / "wolf_rigged.glb"
+    creature = api.twocam_api.Creature(rigged)
+    creature.log.parent.mkdir(parents=True)
+    creature.log.write_text("epoch 3 step 650 loss 1.2\n")
+    creature.pid.write_text("4242")
+    killed = []
+    monkeypatch.setattr(api, "_process_group_alive", lambda pid: True)
+    monkeypatch.setattr(api, "_killpg_if_alive", killed.append)
+
+    assert api._reconcile_orphaned_jobs(tmp_path) == ["twocam"]
+    assert killed == [4242] and not creature.pid.exists()
+    assert "terminated on restart" in creature.log.read_text()
+
+
 def test_reconcile_survives_a_missing_run_log(tmp_path, monkeypatch):
     job_dir = tmp_path / "no-log-job"
     job_dir.mkdir()
@@ -1916,7 +1932,7 @@ def test_front_back_is_ready_only_with_both_downloads():
 
 
 # --- One heavy job at a time (2026-10-19): every start waits for every other kind -----------
-HEAVY = ("setup", "generate", "image", "finish", "props", "rebind", "animate")
+HEAVY = ("setup", "generate", "image", "finish", "props", "rebind", "animate", "twocam")
 
 
 @pytest.mark.parametrize("running", HEAVY)
@@ -1962,6 +1978,78 @@ def test_a_running_rebind_is_seen_by_the_shared_check(tmp_path, monkeypatch):
     assert api.busy_reason("animate") == "a rig rebind is running; wait for it to finish"
     job.status = "done"
     assert api.busy_reason("animate") is None
+
+
+def test_animate_from_video_holds_the_graphics_card_like_every_other_job(tmp_path, monkeypatch):
+    manager = api.twocam_api.TwocamJobManager(tmp_path)
+    monkeypatch.setattr(api.twocam_api, "TWOCAM_JOBS", manager)
+    assert api.busy_reason("generate") is None
+    job = types.SimpleNamespace(status="running")
+    manager.jobs["x"], manager.active = job, "x"
+    assert api.busy_reason("generate") == "a creature is being animated from video; wait for it to finish"
+    assert api.busy_reason("twocam") is None     # a second stage is the manager's own refusal
+    job.status = "done"
+    assert api.busy_reason("generate") is None
+
+
+def test_animate_from_video_routes(tmp_path, monkeypatch):
+    """The page's calls, through the real handler: the state, a start, its status, a cancel, and
+    the refusals (wrong input 422, busy or no Blender 409, unknown job 404)."""
+    import http.server
+    import threading
+    import urllib.error
+    import urllib.request
+    from urllib.parse import quote
+
+    output = tmp_path / "output"
+    rig = "animate/wolf__rig__20261029-120000/wolf_rigged.glb"
+    (output / rig).parent.mkdir(parents=True)
+    (output / rig).write_bytes(b"glTF")
+    manager = api.twocam_api.TwocamJobManager(output)
+    started = []
+    monkeypatch.setattr(api, "OUTPUT_ROOT", output)
+    monkeypatch.setattr(api.twocam_api, "TWOCAM_JOBS", manager)
+    monkeypatch.setattr(api.twocam_api, "video_plan", lambda: {"ready": False, "download_gb": 29.7})
+    monkeypatch.setattr(api.twocam_api, "run_job", started.append)
+    monkeypatch.setattr(api, "find_blender", lambda: Path("blender"))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), api.Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    def call(method, path, body=None):
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_port}{path}", method=method,
+            data=None if body is None else json.dumps(body).encode(),
+            headers={"Content-Type": "application/json", "X-AssetFurnace-Request": "studio"})
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return response.status, json.loads(response.read())
+        except urllib.error.HTTPError as error:
+            text = error.read()
+            return error.code, json.loads(text) if text.startswith(b"{") else {}
+
+    try:
+        status, state = call("GET", f"/api/twocam/state?rig={quote(rig)}")
+        assert status == 200 and state["prepared"] is None and state["blender"] is True and state["busy"] is None
+        assert state["video_model"]["download_gb"] == 29.7
+        assert call("GET", "/api/twocam/state?rig=finish%2Fx.glb")[0] == 422
+        assert call("POST", "/api/twocam/prepare", {"rig": rig, "length_m": 0, "noun": "wolf"})[0] == 422
+        assert call("POST", "/api/twocam/teach", {"rig": rig})[0] == 422          # not prepared yet
+        status, start = call("POST", "/api/twocam/prepare", {"rig": rig, "length_m": 1.6, "noun": "grey wolf"})
+        assert status == 202 and start["kind"] == "prepare" and [j.id for j in started] == [start["job_id"]]
+        assert call("POST", "/api/twocam/prepare", {"rig": rig, "length_m": 1.6, "noun": "wolf"})[0] == 409
+        status, payload = call("GET", start["status_url"])
+        assert status == 200 and payload["status"] == "queued" and payload["kind"] == "prepare"
+        assert call("GET", f"/api/twocam/state?rig={quote(rig)}")[1]["job"]["job_id"] == start["job_id"]
+        assert call("POST", f"/api/twocam/{start['job_id']}/cancel")[1]["status"] == "cancelling"
+        assert call("POST", f"/api/twocam/{'0' * 32}/cancel")[0] == 404
+        assert call("GET", f"/api/twocam/{'0' * 32}/status")[0] == 404
+        manager.active = None
+        monkeypatch.setattr(api, "find_blender", lambda: None)
+        status, refused = call("POST", "/api/twocam/prepare", {"rig": rig, "length_m": 1.6, "noun": "wolf"})
+        assert status == 409 and refused["needs_blender"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def test_a_backend_is_found_by_its_catalogue_id_too():
