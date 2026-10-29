@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   default licence.
 
 ### Fixed
+- Rigged and animated models made from a finished model name the 3D generator's licence. Finish used to
+  drop it, so their records said `license: null`. A finished model now gets a `.provenance.json`
+  with the licence of the model it came from; an uploaded model with no record gets none, not a guess.
+  Models finished before this fix still have no licence record: Finish them again to get one.
+  A repainted model (Mac) also names Hunyuan 2.1's paint licence, not valid in the EU, the UK or
+  South Korea, and takes its stricter class.
+- Fix a spot: a kept version now carries the licence of the model it was patched from, so a rig made
+  from it names that licence too.
 - The RunPod smoke test (`scripts/pod_smoke_test.py`) starts on Windows. It asked for a hang-up signal
   Windows does not have, and stopped before doing anything.
 - Props finished on Windows: `finish_props.json` names its files with forward slashes, as on a Mac or Linux,

@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from assets_api import FINISH_RUN
 
-from image_to_3dlab import spot_fix
+from image_to_3dlab import provenance, spot_fix
 
 # The studio's brush slider range, a share of the model's height (viewer/studio/viewer.js).
 BRUSH_MIN, BRUSH_MAX = 0.005, 0.08
@@ -152,6 +152,11 @@ def keep_response(output: Path, payload: Any) -> tuple[int, dict[str, Any]]:
     shutil.move(str(preview), result)
     (run / "fix-spot.json").write_text(json.dumps(
         {"from": origin.relative_to(output).as_posix(), "spots": payload.get("spots")}, indent=2), encoding="utf-8")
+    # The patched copy is the same model, so its licence is the original's: without this
+    # sidecar the rig made from it would name none.
+    result.with_suffix(".provenance.json").write_text(json.dumps(provenance.derived_record(
+        "viewer Fix a spot", origin, result, provenance.licence_record_beside(origin)), indent=2),
+        encoding="utf-8")
     return 200, {"file": result.relative_to(output).as_posix()}
 
 

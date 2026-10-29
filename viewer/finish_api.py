@@ -242,7 +242,7 @@ def build_command(
 def hero_command(job: FinishJob, settings: dict[str, Any]) -> list[str]:
     """The hero route on this run's model: its body is the asset's own Pixal3D model, its head
     is built again from a close crop. Everything it makes stays under steps/hero."""
-    record = job.input_dir / "source.json"
+    record = job.source_record_path
     return [
         sys.executable, "-u", str(HERO_WORKER), str(job.image_path),
         "--out", str((job.steps_dir or job.directory) / "hero"),
@@ -333,24 +333,41 @@ def find_source_dump(asset: bytes, root: Path = GENERATED_ROOT) -> Path | None:
 
 
 def find_source_record(asset: bytes, root: Path = GENERATED_ROOT) -> Path | None:
-    """The run record (`<output>.json`) of the Pixal3D run that produced `asset`, or None."""
-    for record_path, _ in _matching_runs(asset, root):
-        return record_path
-    return None
+    """The record of the run that made `asset`, or None: any generator's `<output>.json` or
+    `.provenance.json`, or an earlier Finish's. Matched by content, like the camera; one
+    that names a licence wins, since the licence is what it is kept for."""
+    unlicensed = None
+    for record_path, record in _matching_runs(asset, root, backend=None):
+        if record.get("license"):
+            return record_path
+        unlicensed = unlicensed or record_path
+    return unlicensed
 
 
-def _matching_runs(asset: bytes, root: Path):
-    """(record path, record) for each Pixal3D run whose output has `asset`'s sha256."""
+def _records_under(root: Path):
+    """Every .json under `root`, skipping two-camera capture folders: a creature's practice
+    poses are 2,200 small .json files each, and none is a model's record."""
+    for folder, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d != "twocam"]
+        for name in files:
+            if name.endswith(".json"):
+                yield Path(folder) / name
+
+
+def _matching_runs(asset: bytes, root: Path, backend: str | None = "pixal3d"):
+    """(record path, record) for each run whose output has `asset`'s sha256: Pixal3D's
+    runs, or with `backend=None` any record that names its output's sha256."""
     digest = hashlib.sha256(asset).hexdigest()
     if not root.is_dir():
         return
-    for record_path in root.rglob("*.json"):
+    for record_path in _records_under(root):
         if record_path.stat().st_size > 20000:
             continue
         record = _read_json(record_path)
-        if not isinstance(record, dict) or record.get("backend") != "pixal3d":
+        if not isinstance(record, dict) or (backend and record.get("backend") != backend):
             continue
-        if (record.get("output") or {}).get("sha256") == digest:
+        output = record.get("output")   # a Finish record's is a bare path
+        if isinstance(output, dict) and output.get("sha256") == digest:
             yield record_path, record
 
 
@@ -492,7 +509,9 @@ class FinishJob:
 
         vanguard_5k.glb                  the result
         vanguard_5k.retopo-repaint.json  what made it
-        input/   source.glb, source.png, source.views/, settings.json
+        vanguard_5k.provenance.json      its licence, carried over from the source model
+        input/   source.glb, source.json (the source's record), source.png, source.views/,
+                 settings.json
         steps/   1_retopo.glb, 2_painted.glb, 3_photo.glb, 4_baked.glb, logs, run.log
 
     Runs from before 0.3.5 kept everything flat (`result.glb` among `result_*.glb` and a
@@ -512,6 +531,8 @@ class FinishJob:
         self.views_dir = self.input_dir / "source.views"
         # Pixal3D's own clean-up input, linked in from the run for the Pixal3D route.
         self.dump_path = self.input_dir / "source.post.bin"
+        # The record of the run that made the model, its licence above all (find_source_record).
+        self.source_record_path = self.asset_path.with_suffix(".json")
         self.settings_path = self.input_dir / "settings.json"
         self.log_path = (self.steps_dir or directory) / "run.log"
         self.settings: dict[str, Any] = dict(DEFAULT_SETTINGS)
@@ -601,9 +622,11 @@ class FinishJobManager:
                 dump = find_source_dump(asset, self.generated_root)
                 if dump is not None:
                     link_or_copy(dump, job.dump_path)
-                record = find_source_record(asset, self.generated_root) if hero else None
+                # Beside the copy, where the worker reads the licence it carries over: an upload
+                # has no record, and the finished model then says so instead of losing it here.
+                record = find_source_record(asset, self.generated_root)
                 if record is not None:
-                    shutil.copy(record, job.input_dir / "source.json")   # its licences, for provenance
+                    shutil.copy(record, job.source_record_path)
                 # Written up front, not with the record at the end: a run that dies
                 # halfway is exactly the one worth resuming, and resuming it means
                 # knowing the settings the surviving intermediates were made with.
