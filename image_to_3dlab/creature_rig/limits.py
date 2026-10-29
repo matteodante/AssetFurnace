@@ -39,6 +39,9 @@ PAW = re.compile(r"(paw|hoof)", re.IGNORECASE)
 FOOT = re.compile(r"(foot|ankle)", re.IGNORECASE)
 UPPER_ARM = re.compile(r"(^|[^a-z]|left|right|upper)arm([._]|$)", re.IGNORECASE)
 JAW = re.compile(r"^jaw", re.IGNORECASE)
+# the middle of the body bends up and down: a neck meeting the head a little to one side must
+# not turn that small sideways angle into its bend axis
+MIDDLE = re.compile(r"^(root|hips|spine|chest|neck|head|tail|jaw)", re.IGNORECASE)
 # bend, twist about the bone, sideways: degrees either way from the rest pose
 RANGES = [
     (FOOT, (45, 20, 25)),
@@ -187,7 +190,7 @@ def named_limits(names: Sequence[str], parents: Sequence[int], heads: np.ndarray
             continue
         frame = _frame(heads[i], tails[i])
         parent = _unit(tails[p] - heads[p]) if p >= 0 and np.linalg.norm(tails[p] - heads[p]) > 1e-9 else None
-        axis = bend_axis(frame, _unit(own), parent)
+        axis = 0 if MIDDLE.search(name) else bend_axis(frame, _unit(own), parent)
         bend, twist, side = _channels(axis)
         lim = [[-160.0, 160.0], [-69.0, 69.0], [-160.0, 160.0]]
         if i in kind and parent is not None:

@@ -135,3 +135,13 @@ def test_a_jaw_only_opens():
     assert sorted([abs(low), abs(high)]) == [3.0, 40.0] and low * high > 0       # one way, not through rest
     sign = 1.0 if high > 0 else -1.0
     assert lm._tip_shift(frame, own, axis, 0.3 * sign)[2] < 0                   # the chin goes down
+
+
+def test_a_neck_and_head_bend_up_and_down_even_when_they_meet_a_little_to_one_side():
+    """A drawn head that leans to one side of the neck made its sideways axis the bend axis:
+    the head could nod only 35 degrees and swing 60 to the side."""
+    names, parents, heads, tails = _quadruped()
+    i = names.index("Head")
+    tails[i] = heads[i] + np.array([0.06, -0.2, 0.05])
+    lim = dict(zip(names, lm.named_limits(names, parents, heads, tails, [DEFAULT] * len(names))))
+    assert lim["Head"][0] == [-60.0, 60.0] and lim["Head"][2] == [-35.0, 35.0]
