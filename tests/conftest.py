@@ -27,6 +27,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[1]
 
 for directory in ("viewer", "scripts"):
@@ -36,3 +38,23 @@ for directory in ("viewer", "scripts"):
 
 # The suite never counts or sends usage from a real install (tests of it pass their own env).
 os.environ["I3D_NO_USAGE"] = "1"
+
+
+@pytest.fixture
+def fake_program(tmp_path):
+    """Make a program in tmp_path that prints `lines` and exits with `code`, whatever it is
+    given. A `#!/bin/sh` script on Mac and Linux; Windows cannot start a `#!` file, so there
+    it is a batch file (`name.cmd`), which Windows runs through cmd.exe. Keep cmd's special
+    characters (`<>|&^%`) out of `lines`."""
+    def make(name: str, lines: tuple[str, ...] = (), code: int = 0) -> Path:
+        if os.name == "nt":
+            program = tmp_path / f"{name}.cmd"
+            body = ["@echo off", *(f"echo {line}" for line in lines), f"exit /b {code}"]
+            program.write_text("\n".join(body) + "\n")   # text mode writes \r\n on Windows
+        else:
+            program = tmp_path / name
+            body = ["#!/bin/sh", *(f"echo '{line}'" for line in lines), f"exit {code}"]
+            program.write_text("\n".join(body) + "\n")
+            program.chmod(0o755)
+        return program
+    return make

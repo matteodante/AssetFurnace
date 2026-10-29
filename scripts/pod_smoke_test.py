@@ -372,12 +372,20 @@ class Viewer:
         raise RuntimeError(f"{path} still running after {limit / 60:.0f} min")
 
 
+# Windows has no SIGHUP, and asking for it stopped the script there before it began. Its
+# Ctrl+Break is SIGBREAK, which only Windows has.
+HANGUP_SIGNALS = tuple(getattr(signal, name) for name in ("SIGHUP", "SIGTERM", "SIGBREAK")
+                       if hasattr(signal, name))
+
+
 def interrupt_on_hangup() -> None:
-    """Closing the terminal (SIGHUP) or a kill (SIGTERM) would skip `finally` and leave
-    the pod billing until RunPod's own deadline. As Ctrl-C, they still delete it."""
+    """Closing the terminal (SIGHUP), Ctrl+Break (SIGBREAK, Windows) or a kill (SIGTERM)
+    would skip `finally` and leave the pod billing until RunPod's own deadline. As Ctrl-C,
+    they still delete it. Not covered on Windows: closing the console window, and a
+    SIGTERM sent from another process, which ends the script outright."""
     def handler(signum, frame):
         raise KeyboardInterrupt
-    for sig in (signal.SIGHUP, signal.SIGTERM):
+    for sig in HANGUP_SIGNALS:
         signal.signal(sig, handler)
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import sys
 import tarfile
 import types
 import zipfile
@@ -163,7 +164,8 @@ def test_unpacking_a_linux_prebuilt_keeps_library_symlinks_and_runs(tmp_path, mo
     build = tmp_path / "build"
     cli = boot.unpack_prebuilt(archive, build)
     assert cli == build / "trellis-cli"
-    assert cli.stat().st_mode & 0o111
+    if sys.platform != "win32":   # Windows keeps no execute bit to check
+        assert cli.stat().st_mode & 0o111
     assert (build / "libcudart.so.12").is_symlink()
 
 
@@ -330,13 +332,18 @@ def test_the_hip_build_is_given_rocms_clang_not_the_hipcc_wrapper(monkeypatch, t
     """CMake refuses hipcc outright ("CMAKE_HIP_COMPILER is set to the hipcc wrapper ... This
     is not supported"), so naming it makes configure fail on every AMD machine. It is the
     Clang beside it that goes in the flag."""
-    monkeypatch.setattr(boot, "find_hipcc", lambda: HIPCC)
-    monkeypatch.setattr(boot.Path, "exists",
-                        lambda self: str(self).endswith(("llvm/bin/clang++",)))
-    assert boot.hip_compiler(HIPCC) == "/opt/rocm/llvm/bin/clang++"
-    flags = boot.cmake_flags("hip-source", hipcc=HIPCC, gfx=["gfx1100"])
+    # A real ROCm layout with only clang++ in llvm/bin, not /opt/rocm: the root comes from
+    # hipcc's resolved path, and Windows resolves /opt/rocm onto a drive.
+    hipcc = tmp_path / "rocm" / "bin" / "hipcc"
+    clang = tmp_path / "rocm" / "llvm" / "bin" / "clang++"
+    for program in (hipcc, clang):
+        program.parent.mkdir(parents=True)
+        program.write_text("")
+    monkeypatch.setattr(boot, "find_hipcc", lambda: str(hipcc))
+    assert boot.hip_compiler(str(hipcc)) == str(clang)
+    flags = boot.cmake_flags("hip-source", hipcc=str(hipcc), gfx=["gfx1100"])
     compiler = next(f for f in flags if f.startswith("-DCMAKE_HIP_COMPILER="))
-    assert compiler == "-DCMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++"
+    assert compiler == f"-DCMAKE_HIP_COMPILER={clang}"
 
 
 def test_no_rocm_clang_means_no_compiler_flag_at_all(monkeypatch, tmp_path):

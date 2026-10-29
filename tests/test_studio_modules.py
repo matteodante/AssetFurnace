@@ -19,7 +19,7 @@ def _run(module: str, body: str):
     url = (REPO / "viewer" / "studio" / module).as_uri()
     program = f"import * as m from {json.dumps(url)};\n{body}"
     result = subprocess.run([NODE, "--input-type=module", "--eval", program],
-                            check=True, capture_output=True, text=True)
+                            check=True, capture_output=True, text=True, encoding="utf-8")
     return json.loads(result.stdout)
 
 
@@ -482,7 +482,8 @@ def test_the_starting_camera_looks_at_the_middle_of_a_model_on_the_floor():
       const m = await import({json.dumps(url)});
       const h = m.homeView(2);
       console.log(JSON.stringify(h));"""
-    result = subprocess.run([NODE, "--input-type=module", "--eval", program], check=True, capture_output=True, text=True)
+    result = subprocess.run([NODE, "--input-type=module", "--eval", program], check=True,
+                            capture_output=True, text=True, encoding="utf-8")
     out = json.loads(result.stdout)
     assert out["target"] == [0, 1, 0]
     assert out["position"] == [1.45, 1.35, 2.45]
@@ -550,7 +551,7 @@ def test_a_character_is_turned_to_face_the_camera_whichever_way_its_feet_point()
       }});
       console.log(JSON.stringify({{ turned, none: m.facingAngle(null) }}));"""
     out = json.loads(subprocess.run([NODE, "--input-type=module", "--eval", program], check=True,
-                                    capture_output=True, text=True).stdout)
+                                    capture_output=True, text=True, encoding="utf-8").stdout)
     assert out["none"] == 0
     for x, z in out["turned"]:
         assert abs(x) < 0.01 and z > 0.99  # everyone ends up facing +Z, the camera

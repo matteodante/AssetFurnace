@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
-from pathlib import Path
+from pathlib import PurePosixPath
 
 import update_api
 
@@ -27,8 +27,9 @@ class Fetch:
 
 
 def check(tmp_path, fetch, now=1_000_000.0, current="0.2.0", **kw):
+    # Spelled the Mac way (the default family) whatever OS runs the suite.
     return update_api.check(current=current, now=now, cache=tmp_path / "check.json",
-                            fetch=fetch, env=kw.get("env", {}), repo=Path("/lab"),
+                            fetch=fetch, env=kw.get("env", {}), repo=PurePosixPath("/lab"),
                             family=kw.get("family", "macos"))
 
 
