@@ -171,7 +171,9 @@ def move_slug(action: str) -> str:
         if len(name) + len(word) + 1 > 40:
             break
         name = f"{name}_{word}" if name else word
-    return name or (words[0][:40] if words else "move")
+    name = name or (words[0][:40] if words else "move")
+    # a move called "rigged" would be saved over the rig itself (<stem>_rigged.glb)
+    return f"move_{name}" if name == "rigged" or name.startswith("rigged_") else name
 
 
 def move_folder(clips: Path, action: str, end: str) -> Path:
@@ -193,9 +195,8 @@ def next_seed(folder: Path) -> int:
 
 
 def dino_cached(root: Path | None = None) -> bool:
-    """Whether DINOv2's weights are here already: `train`'s own check, without loading torch."""
-    folder = (root or video.hub_root()) / ("models--" + DINO["id"].replace("/", "--")) / "snapshots"
-    return any(folder.glob("*/model.safetensors")) or any(folder.glob("*/pytorch_model.bin"))
+    """Whether DINOv2's weights are here already: the same check `train` makes."""
+    return video.dino_cached(root)
 
 
 def video_plan() -> dict[str, Any]:
@@ -213,17 +214,22 @@ def script(*args: Any) -> list[str]:
     return [sys.executable, str(SCRIPT), *map(str, args)]
 
 
-def prepare_command(c: Creature, length_m: float, noun: str) -> list[str]:
-    return script("prepare", c.rigged, c.folder, "--length-m", f"{length_m:g}", f"--noun={noun}",
-                  "--source-model", c.rigged)
+def prepare_command(c: Creature, length_m: float, noun: str, yaw_deg: float | None = None) -> list[str]:
+    cmd = script("prepare", c.rigged, c.folder, "--length-m", f"{length_m:g}", f"--noun={noun}",
+                 "--source-model", c.rigged)
+    if yaw_deg is not None:
+        cmd.append(f"--yaw-deg={yaw_deg:g}")
+    return cmd
 
 
-def teach_commands(c: Creature) -> list[list[str]]:
-    """Render the practice poses, then teach. `--yes` because the button that starts this names
-    DINOv2's download: that click is the person's yes."""
+def teach_commands(c: Creature, fetch: bool = False) -> list[list[str]]:
+    """Render the practice poses, then teach. `--yes` only when the button that started this
+    named DINOv2's download (`fetch`): that click is the person's yes, and nothing else is."""
     rig_info, dataset = c.file("rig_info.json"), c.file("dataset")
-    return [script("dataset", c.file("rigged.blend"), rig_info, dataset),
-            script("train", dataset, rig_info, c.file("reader.pt"), "--yes")]
+    train = script("train", dataset, rig_info, c.file("reader.pt"))
+    if fetch is True:
+        train.append("--yes")
+    return [script("dataset", c.file("rigged.blend"), rig_info, dataset), train]
 
 
 def film_command(c: Creature, folder: Path, action: str, end: str, takes: int, seed: int,
@@ -503,7 +509,7 @@ class TwocamJobManager:
             raise ValueError(f"no such stage: {kind!r}")
         rigged = resolve_rig(str(body.get("rig", "")), self.output)
         if kind == "prepare":
-            return self.create_prepare(rigged, body.get("length_m"), body.get("noun"))
+            return self.create_prepare(rigged, body.get("length_m"), body.get("noun"), turn=body.get("turn") is True)
         if kind == "teach":
             return self.create_teach(rigged)
         if kind == "film":
@@ -521,14 +527,20 @@ class TwocamJobManager:
         self.newest[job.creature.run] = job.id
         return job
 
-    def create_prepare(self, rigged: Path, length_m: Any, noun: Any) -> TwocamJob:
+    def create_prepare(self, rigged: Path, length_m: Any, noun: Any, turn: bool = False) -> TwocamJob:
         length, words = length_of(length_m), words_of(noun, "what it is", 60)
         c = Creature(rigged)
+        yaw = None
+        if turn is True:  # "It faces the wrong way": the turn it was given, plus half a turn
+            done = read_json(c.file("prepared.json")) or {}
+            if not isinstance(done.get("turned_deg"), (int, float)):
+                raise ValueError("prepare the creature first")
+            yaw = (float(done["turned_deg"]) + 180.0) % 360.0
         with self.lock:
             self._check_free()
             set_aside(c)
             c.folder.mkdir(parents=True, exist_ok=True)
-            job = TwocamJob(uuid.uuid4().hex, "prepare", c, [prepare_command(c, length, words)],
+            job = TwocamJob(uuid.uuid4().hex, "prepare", c, [prepare_command(c, length, words, yaw)],
                             Progress(PREPARE_SECONDS, "Turning, sizing and painting the rig"))
             return self._claim(job)
 
@@ -539,8 +551,9 @@ class TwocamJobManager:
         with self.lock:
             self._check_free()
             c.file("reader.json").unlink(missing_ok=True)   # taught again: not done until it is
-            return self._claim(TwocamJob(uuid.uuid4().hex, "teach", c, teach_commands(c),
-                                         TeachProgress(fetches_dino=not dino_cached())))
+            fetch = not dino_cached()                         # what the button said, checked the same way
+            return self._claim(TwocamJob(uuid.uuid4().hex, "teach", c, teach_commands(c, fetch),
+                                         TeachProgress(fetches_dino=fetch)))
 
     def create_film(self, rigged: Path, action: Any, end: Any, takes: Any, download: bool = False) -> TwocamJob:
         c = Creature(rigged)
@@ -548,8 +561,9 @@ class TwocamJobManager:
             raise ValueError("prepare the creature first")
         said, ending, count = words_of(action, "what it does", 300), words_of(end, "how it ends", 200, False), takes_of(takes)
         if not engine_ready():
-            raise ValueError("filming runs on stable-diffusion.cpp, which is not installed: install "
-                             "Qwen-Image 2.1 on the Setup page")
+            raise ValueError("filming runs on stable-diffusion.cpp, which is not installed: run "
+                             "python scripts/bootstrap_qwen_image.py --build-only (the engine, no weights), or "
+                             "install Qwen-Image 2.1 on the Setup page")
         plan = video_plan()
         if not plan["ready"] and download is not True:
             raise ValueError(f"the video model is not downloaded yet ({plan['download_gb']} GB): "
@@ -659,13 +673,16 @@ def run_job(job: TwocamJob, manager: TwocamJobManager | None = None) -> None:
     stop = threading.Event()
     c = job.creature
     try:
-        job.status = "running"
+        if not job.cancel_requested:  # a cancel can land before this thread starts
+            job.status = "running"
         job.emit({"phase": "queued", "overall_pct": 0, "message": STARTING[job.kind]})
         job.append_log(f"--- {job.kind}, {now()} ---")
         if job.progress.ticks:
             threading.Thread(target=_tick, args=(job, stop), daemon=True).start()
         code = 0
         for index, command in enumerate(job.commands):
+            if job.cancel_requested:  # before each process: Teach's 12-minute dataset, or its training
+                break
             if event := job.progress.begin(index):
                 job.emit(event)
             summary = c.root / "steps" / f"{job.kind}-{index + 1}.json"
@@ -765,7 +782,9 @@ def creature_state(rigged: Path, manager: TwocamJobManager | None = None) -> dic
         prepared = {"noun": creature.get("noun"), "length_m": (creature.get("prep") or {}).get("length_m"),
                     "preview": rel(preview, output) if preview.is_file() else None,
                     "updated": int(preview.stat().st_mtime) if preview.is_file() else 0,
-                    "limbs": summary.get("limbs"), "warning": summary.get("warning"), "licence": summary.get("licence")}
+                    "limbs": summary.get("limbs"),
+                    "warning": "; ".join(summary.get("warnings") or ([summary["warning"]] if summary.get("warning") else []))
+                    or None, "licence": summary.get("licence")}
     taught = read_json(c.file("reader.json"))
     reader = ("taught" if taught and c.file("reader.pt").is_file()
               else "unfinished" if c.file("reader.pt").is_file() else "none")

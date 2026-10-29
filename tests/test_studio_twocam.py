@@ -127,7 +127,7 @@ def test_each_take_plays_with_its_verdict_and_a_bad_one_fits_only_anyway():
                         {"clip": "animate/w/twocam/clips/wolf_rears/take2_s2.webm", "seed": 2, "number": 2, "check": BAD}]}]
     out = html(state(reader="taught", moves=moves))
     assert '<video src="/output/animate/w/twocam/clips/wolf_rears/take1_s1.webm" controls' in out
-    assert "Good: both views agree" in out and "Bad: the two views disagree" in out and "9.0%" in out
+    assert "Good: the views agree and the rig can follow" in out and "Bad: the move will likely look wrong" in out and "9.0%" in out
     assert 'data-tc-capture="animate/w/twocam/clips/wolf_rears/take1_s1.webm">Use this take' in out
     assert 'data-tc-capture="animate/w/twocam/clips/wolf_rears/take2_s2.webm" data-force>Fit anyway' in out
     assert 'class="tc-stage now" data-stage="capture"' in out
@@ -175,3 +175,9 @@ def test_stage_states_and_the_default_noun():
     assert out["filmed"] == {"prepare": "done", "teach": "now", "film": "done", "capture": "now"}
     assert out["nouns"] == ["grey wolf", "dragon", ""]
     assert out["running"] == ["running", None]
+
+
+def test_a_prepared_creature_can_be_turned_round_from_the_page():
+    out = html(state())
+    assert "It faces the wrong way: turn it round" in out and "data-turn" in out
+    assert "data-turn" not in html(FRESH), "nothing to turn before it is prepared"

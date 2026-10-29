@@ -26,7 +26,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
 from .layout import BACKDROP, FLOOR, Layout
-from .reader import BACKBONE_ID, HM, SIZE, JointReader, _cv2, decode, square_geometry
+from .reader import HM, SIZE, JointReader, _cv2, decode, square_geometry
 
 
 class TrainError(RuntimeError):
@@ -34,13 +34,11 @@ class TrainError(RuntimeError):
 
 
 def backbone_cached() -> bool:
-    """Whether DINOv2's pretrained weights are already on this machine."""
-    try:
-        from huggingface_hub import try_to_load_from_cache
-    except ImportError:
-        return False
-    return any(isinstance(try_to_load_from_cache(BACKBONE_ID, name), str)
-               for name in ("model.safetensors", "pytorch_model.bin"))
+    """Whether DINOv2's pretrained weights are already on this machine (`video.dino_cached`,
+    the one check the studio's Teach button uses too)."""
+    from .video import dino_cached
+
+    return dino_cached()
 
 
 def backdrop(h: int, w: int, ground: int, rng) -> np.ndarray:

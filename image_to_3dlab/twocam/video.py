@@ -57,6 +57,19 @@ def hub_root(env: dict[str, str] | None = None) -> Path:
     return Path(env.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
 
 
+DINO_ID = "facebook/dinov2-with-registers-base"  # the joint reader's backbone (reader.BACKBONE_ID)
+
+
+def dino_cached(root: Path | None = None) -> bool:
+    """Whether the reader's pretrained backbone is cached: its weights file (safetensors, or
+    the older .bin) resolves to a real file. Here rather than in train.py so the studio can
+    ask without loading torch; train and the Teach button share it, so the button never
+    says "cached" while training would download."""
+    folder = (root or hub_root()) / ("models--" + DINO_ID.replace("/", "--")) / "snapshots"
+    return any(Path(m).resolve().is_file() for name in ("model.safetensors", "pytorch_model.bin")
+               for m in glob.glob(str(folder / "*" / name)))
+
+
 def find_weight(weight: Weight, root: Path | None = None) -> Path | None:
     """The cached file, resolved to the real file: the hub cache links snapshots to blobs,
     and sd-cli on Windows cannot open such a link ("cannot inspect model source")."""

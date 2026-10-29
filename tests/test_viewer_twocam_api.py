@@ -505,3 +505,55 @@ def test_every_stage_is_counted_under_a_kind_the_usage_counts_know():
     # count_done refuses an unknown kind, and it runs as a stage finishes
     assert set(tc.USAGE) == set(tc.KINDS) and set(tc.USAGE.values()) <= tc.usage_api.KINDS
     assert {tc.usage_api.STARTS[("api", "twocam", kind)] for kind in tc.KINDS} == set(tc.USAGE.values())
+
+
+# ------------------------------------------------------------------- after the second review
+
+
+def test_teach_passes_no_yes_when_dinov2_is_already_here(manager, output, monkeypatch):
+    """--yes only when the button named the download, checked the way train checks."""
+    prepare(output)
+    monkeypatch.setattr(tc, "dino_cached", lambda root=None: True)
+    _, train = manager.start("teach", {"rig": f"animate/{RUN}/wolf_rigged.glb"}).commands
+    assert "--yes" not in train
+
+
+def test_the_page_and_train_ask_the_same_question_about_dinov2(tmp_path):
+    from image_to_3dlab.twocam import video
+
+    snap = tmp_path / ("models--" + video.DINO_ID.replace("/", "--")) / "snapshots" / "abc"
+    snap.mkdir(parents=True)
+    assert tc.dino_cached(tmp_path) is False
+    (snap / "pytorch_model.bin").write_bytes(b"w")  # the older file name counts too
+    assert tc.dino_cached(tmp_path) is True and video.dino_cached(tmp_path) is True
+
+
+def test_a_move_called_rigged_is_not_saved_over_the_rig():
+    assert tc.move_slug("Rigged.") == "move_rigged"
+    assert tc.move_slug("rigged and ready") == "move_rigged_ready"
+    assert tc.move_slug("the wolf howls") == "wolf_howls"
+
+
+def test_a_cancel_before_the_first_process_starts_runs_nothing(manager, output):
+    prepare(output, reader=True, taught=True)
+    job = manager.start("teach", {"rig": f"animate/{RUN}/wolf_rigged.glb"})
+    tc.cancel_job(job)
+    tc.run_job(job, manager)
+    assert job.status == "cancelled" and job.process is None
+
+
+def test_a_creature_facing_the_wrong_way_is_prepared_again_half_a_turn_round(manager, output):
+    c = prepare(output)
+    with pytest.raises(ValueError, match="prepare the creature first"):
+        manager.start("prepare", {"rig": f"animate/{RUN}/wolf_rigged.glb", "length_m": 1.6, "noun": "wolf",
+                                  "turn": True})
+    tc.write_json(c.file("prepared.json"), {"turned_deg": 270.0})
+    command, = manager.start("prepare", {"rig": f"animate/{RUN}/wolf_rigged.glb", "length_m": 1.6,
+                                         "noun": "wolf", "turn": True}).commands
+    assert "--yaw-deg=90" in command
+
+
+def test_every_prepare_warning_reaches_the_page(manager, output):
+    c = prepare(output)
+    tc.write_json(c.file("prepared.json"), {"noun": "wolf", "warnings": ["no limbs", "bone_9 has no mirror"]})
+    assert tc.creature_state(rig(output), manager)["prepared"]["warning"] == "no limbs; bone_9 has no mirror"

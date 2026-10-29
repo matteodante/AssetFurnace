@@ -13,7 +13,7 @@ export const STAGES = [
   { id: 'film', label: 'Film' },
   { id: 'capture', label: 'Capture' },
 ];
-const VERDICT = { good: 'Good: both views agree', doubtful: 'Doubtful: the fit may be a little off', bad: 'Bad: the two views disagree' };
+const VERDICT = { good: 'Good: the views agree and the rig can follow', doubtful: 'Doubtful: the move may come out a little off', bad: 'Bad: the move will likely look wrong' };
 const TAKE_MINUTES = 6.5;   // one 3 s take at 1024 x 576 on an RTX 5070 Ti
 
 /** "What is it?" starts as the asset's own title, without its version. */
@@ -65,7 +65,8 @@ function prepareForm(state, asset, again) {
     <label class="field">What is it?<input type="text" data-tc="noun" maxlength="60" value="${esc(p.noun || defaultNoun(asset))}" placeholder="grey wolf"></label>
     <p class="hint">Turns it side-on, sizes it, names and paints its left and right limbs, and draws the picture every video starts from. About 10 seconds.</p>
     ${startsOver ? '<p class="hint">This starts the creature over: what the reader learned and the takes move to a folder called "earlier".</p>' : ''}
-    <button class="primary" data-tc-act="prepare"${startsOver ? ' data-starts-over' : ''}>${again ? 'Prepare again' : 'Prepare'}</button>`;
+    <button class="primary" data-tc-act="prepare"${startsOver ? ' data-starts-over' : ''}>${again ? 'Prepare again' : 'Prepare'}</button>
+    ${again ? `<button class="ghost" data-tc-act="prepare" data-turn${startsOver ? ' data-starts-over' : ''}>It faces the wrong way: turn it round</button>` : ''}`;
 }
 
 function prepareBody(state, asset, url) {
@@ -85,7 +86,7 @@ function teachBody(state, st) {
   const count = Number(state.poses?.count || 0).toLocaleString('en');
   const resume = state.reader === 'unfinished' || state.poses?.done
     ? `<p class="hint">A teaching stopped before the end. The ${Number(state.poses.done).toLocaleString('en')} practice poses already rendered are kept.</p>` : '';
-  return `<p class="hint">Once per creature, about an hour. Renders ${count} practice poses, then teaches the reader to find this creature's joints in a video.${download}</p>
+  return `<p class="hint">Once per creature, about an hour on a 16 GB NVIDIA card (measured there; far longer on a Mac or without a card). Renders ${count} practice poses, then teaches the reader to find this creature's joints in a video.${download}</p>
     ${resume}
     <button class="primary" data-tc-act="teach">${dino.cached ? 'Teach the reader' : `Download ${esc(dino.name)} (${esc(dino.megabytes)} MB) and teach the reader`}</button>`;
 }
@@ -93,7 +94,7 @@ function teachBody(state, st) {
 /** What filming needs before it can run: the engine, then the video model (its own Download button). */
 function filmGate(state) {
   if (!state.engine_ready) {
-    return { ok: false, html: '<p class="hint">Filming runs on stable-diffusion.cpp, which is not installed. Install Qwen-Image 2.1 on the <a href="./setup.html">Setup</a> page first.</p>' };
+    return { ok: false, html: '<p class="hint">Filming runs on stable-diffusion.cpp, which is not installed. Install Qwen-Image 2.1 on the <a href="./setup.html">Setup</a> page, or just the engine with <code>python scripts/bootstrap_qwen_image.py --build-only</code>.</p>' };
   }
   const plan = state.video_model || {};
   if (plan.ready) return { ok: true, html: '' };
@@ -267,7 +268,7 @@ export async function mountTwocam(box, asset, ctx) {
         if (!(length > 0)) { note('Say how long it is, nose to tail, in metres: 1.6 for a wolf.'); return; }
         if (!value('noun')) { note('Say what it is, like "grey wolf": the video model is told.'); return; }
         if (button.dataset.startsOver !== undefined && !confirm('Prepare it again? What the reader learned and the takes move to the "earlier" folder, and the reader has to be taught again (about an hour).')) return;
-        start(button, 'prepare', { length_m: length, noun: value('noun') });
+        start(button, 'prepare', { length_m: length, noun: value('noun'), ...(button.dataset.turn !== undefined ? { turn: true } : {}) });
       } else if (kind === 'teach') {
         start(button, 'teach', {});
       } else if (kind === 'film') {
@@ -278,7 +279,7 @@ export async function mountTwocam(box, asset, ctx) {
     }));
     box.querySelectorAll('[data-tc-capture]').forEach((button) => button.addEventListener('click', () => {
       const force = button.dataset.force !== undefined;
-      if (force && !confirm("This take's two views disagree, so the move will likely look wrong. Fit it anyway?")) return;
+      if (force && !confirm('This take was judged bad (the reasons are above it), so the move will likely look wrong. Fit it anyway?')) return;
       start(button, 'capture', { take: button.dataset.tcCapture, ...(force ? { force: true } : {}) });
     }));
     box.querySelector('[data-tc-cancel]')?.addEventListener('click', async (event) => {
