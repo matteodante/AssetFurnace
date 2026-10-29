@@ -637,9 +637,9 @@ def test_every_declared_probe_is_a_path():
 
 def test_the_setup_page_renders_the_hint():
     """Pinned in the page's own source: the payload alone proves nothing about the screen."""
-    source = (REPO / "viewer" / "studio" / "setup.js").read_text()
+    source = (REPO / "viewer" / "studio" / "setup.js").read_text(encoding="utf-8")
     assert "build_hint" in source
-    assert "setup-build-hint" in (REPO / "viewer" / "studio" / "setup.css").read_text()
+    assert "setup-build-hint" in (REPO / "viewer" / "studio" / "setup.css").read_text(encoding="utf-8")
 
 
 def test_trellis_shows_no_amd_note_because_it_runs_there():

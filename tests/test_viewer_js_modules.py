@@ -48,7 +48,7 @@ def test_rig_inspection_deduplicates_bones_and_resets_each_skeleton():
         [NODE, "--input-type=module", "--eval", program],
         check=True,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
     )
 
     assert json.loads(result.stdout) == {
@@ -121,7 +121,7 @@ def test_animation_player_owns_transport_without_owning_threejs():
         [NODE, "--input-type=module", "--eval", program],
         check=True,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
     )
 
     assert json.loads(result.stdout) == {
@@ -160,7 +160,7 @@ def test_camera_view_controls_snap_and_reset_without_touching_model_state():
         [NODE, "--input-type=module", "--eval", program],
         check=True,
         capture_output=True,
-        text=True,
+        text=True, encoding="utf-8",
     )
 
     assert json.loads(result.stdout) == {
@@ -223,7 +223,7 @@ def _run_panel(script: str) -> object:
     """
     result = subprocess.run(
         [NODE, "--input-type=module", "--eval", program],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, encoding="utf-8",
     )
     return json.loads(result.stdout)
 
@@ -232,7 +232,7 @@ def _run_welcome(expr: str):
     module_url = (REPO / "viewer" / "components" / "welcome-content.js").as_uri()
     program = f"import * as w from {json.dumps(module_url)}; console.log(JSON.stringify({expr}));"
     result = subprocess.run([NODE, "--input-type=module", "--eval", program],
-                            check=True, capture_output=True, text=True)
+                            check=True, capture_output=True, text=True, encoding="utf-8")
     return json.loads(result.stdout)
 
 
@@ -249,7 +249,7 @@ def _run_banner(expr: str):
     module_url = (REPO / "viewer" / "components" / "update-banner.js").as_uri()
     program = f"import * as b from {json.dumps(module_url)}; console.log(JSON.stringify({expr}));"
     result = subprocess.run([NODE, "--input-type=module", "--eval", program],
-                            check=True, capture_output=True, text=True)
+                            check=True, capture_output=True, text=True, encoding="utf-8")
     return json.loads(result.stdout)
 
 
@@ -274,7 +274,7 @@ def test_a_gated_warning_goes_once_access_is_confirmed_and_no_sooner():
       ]));
     """
     result = subprocess.run([NODE, "--input-type=module", "--eval", program],
-                            check=True, capture_output=True, text=True)
+                            check=True, capture_output=True, text=True, encoding="utf-8")
     assert json.loads(result.stdout) == [False, True, True, True, True, False]
 
 
@@ -305,7 +305,7 @@ def test_the_setup_panel_says_a_run_finished_and_looks_like_it():
       }}));
     """
     result = subprocess.run([NODE, "--input-type=module", "--eval", program],
-                            check=True, capture_output=True, text=True)
+                            check=True, capture_output=True, text=True, encoding="utf-8")
     out = json.loads(result.stdout)
 
     assert out["verbs"] == ["Setting up", "Downloading", "Building", "Rebuilding"]
@@ -337,7 +337,7 @@ def test_the_finished_marks_are_the_studios_own():
       }}));
     """
     result = subprocess.run([NODE, "--input-type=module", "--eval", program],
-                            check=True, capture_output=True, text=True)
+                            check=True, capture_output=True, text=True, encoding="utf-8")
     out = json.loads(result.stdout)
 
     assert (out["done"], out["error"], out["cancelled"]) == ("✓", "!", "■")
@@ -416,7 +416,7 @@ def test_model_load_error_is_rendered_as_text_not_markup():
     """
     result = subprocess.run(
         [NODE, "--input-type=module", "--eval", program],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, encoding="utf-8",
     )
     out = json.loads(result.stdout)
 
