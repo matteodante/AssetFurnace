@@ -126,7 +126,11 @@ def forward_sign(skeleton: Skeleton) -> float:
     that is also the highest. A creature facing neither way keeps -Y (+1)."""
     z = skeleton.heads[:, 2]
     leaves = [i for i, c in enumerate(skeleton.children) if not c]
-    low = [i for i in leaves if z[i] <= z.min() + 0.1 * (skeleton.heads[:, 2].max() - z.min() + 1e-9)]
+    # feet stand off the middle line: a tail tip resting on the floor (a lizard, a T. rex)
+    # points backwards and once turned such creatures round
+    width = float(np.ptp(np.concatenate([skeleton.heads[:, 0], skeleton.tails[:, 0]]))) + 1e-9
+    off_middle = [i for i in leaves if abs(skeleton.heads[i, 0]) > 0.05 * width]
+    low = [i for i in off_middle if z[i] <= z.min() + 0.1 * (skeleton.heads[:, 2].max() - z.min() + 1e-9)]
     toes = sum(float(skeleton.tails[i, 1] - skeleton.heads[i, 1]) for i in low)
     span = float(np.ptp(skeleton.heads[:, 1])) + 1e-9
     if abs(toes) > 0.05 * span:
@@ -180,10 +184,11 @@ def find_mirrors(skeleton: Skeleton, tolerance: float) -> dict[int, int]:
 
     Off a middle bone, a child is a limb when its whole subtree sits more than `tolerance`
     to one side (judged on the subtree, not the first joint: SkinTokens may start both legs
-    at the middle of the hips); its mirror is the sibling subtree of the same size whose
-    mirrored centre lands nearest. Below a mirrored pair, children pair up by structure:
-    each with the child of the mirror whose head lands nearest its own, mirrored. Bones
-    with no good mirror stay in the middle."""
+    at the middle of the hips); its mirror is the sibling subtree, of the same size or one
+    bone more or less (SkinTokens sometimes gives one leg an extra bone), whose mirrored
+    centre lands nearest. Below a mirrored pair, children pair up by structure: each with
+    the child of the mirror whose head lands nearest its own, mirrored, the same size
+    preferred. A bone left over in one limb keeps its limb's side in `plan_bones`."""
     mirrors: dict[int, int] = {}
     heads = skeleton.heads
     size = {i: len(skeleton.subtree(i)) for i in range(len(heads))}
@@ -193,7 +198,8 @@ def find_mirrors(skeleton: Skeleton, tolerance: float) -> dict[int, int]:
         if i in mirrors or p < 0:
             continue
         if p in mirrors:
-            pool = [c for c in skeleton.children[mirrors[p]] if c not in mirrors and size[c] == size[i]]
+            free = [c for c in skeleton.children[mirrors[p]] if c not in mirrors]
+            pool = [c for c in free if size[c] == size[i]] or [c for c in free if abs(size[c] - size[i]) <= 1]
             if pool:
                 target = heads[i] * [-1, 1, 1]
                 j = min(pool, key=lambda c: np.linalg.norm(heads[c] - target))
@@ -201,7 +207,7 @@ def find_mirrors(skeleton: Skeleton, tolerance: float) -> dict[int, int]:
             continue
         if abs(centre[i][0]) <= tolerance:
             continue
-        pool = [c for c in skeleton.children[p] if c != i and c not in mirrors and size[c] == size[i]
+        pool = [c for c in skeleton.children[p] if c != i and c not in mirrors and abs(size[c] - size[i]) <= 1
                 and centre[c][0] * centre[i][0] < 0 and abs(centre[c][0]) > tolerance]
         if not pool:
             continue
@@ -222,6 +228,7 @@ class Plan:
     tails: np.ndarray                # new tail per bone (child joints joined up)
     limits: list[list[list[float]]]  # Euler limits per bone, degrees
     paint: dict[str, dict]           # group -> {"color", "colour_name", "bones", "label"}
+    unpaired: list[str] = field(default_factory=list)  # bones off the middle with no mirror
 
 
 def plan_bones(skeleton: Skeleton, tolerance: float) -> Plan:
@@ -234,35 +241,66 @@ def plan_bones(skeleton: Skeleton, tolerance: float) -> Plan:
         xi = skeleton.heads[skeleton.subtree(i), 0].mean()
         xj = skeleton.heads[skeleton.subtree(j), 0].mean()
         sides[i] = "L" if (xi, skeleton.heads[i, 0]) > (xj, skeleton.heads[j, 0]) else "R"
-    limb_roots = [i for i in range(n) if sides[i] == "L" and sides[skeleton.parents[i]] == ""]
+    # A bone left over inside a limb (one leg a bone longer) keeps its limb's side.
+    for i in skeleton.order():
+        p = skeleton.parents[i]
+        if not sides[i] and p >= 0 and sides[p]:
+            sides[i] = sides[p]
+    pair_roots = [i for i in range(n) if sides[i] == "L" and i in mirrors and sides[skeleton.parents[i]] == ""]
+    # A limb reaches: an ear or a horn pair is named left and right but not painted or counted,
+    # or a wolf with ears became "six limbs" and its legs lost their colours.
+    points = np.concatenate([skeleton.heads, skeleton.tails])
+    size = float(np.ptp(points, 0).max()) + 1e-9
+
+    def reach(root: int) -> float:
+        sub = skeleton.subtree(root)
+        ends = np.concatenate([skeleton.heads[sub], skeleton.tails[sub]])
+        return float(np.linalg.norm(ends - skeleton.heads[root], axis=1).max())
+
+    limb_roots = [i for i in pair_roots if reach(i) >= 0.2 * size]
+    part_roots = [i for i in pair_roots if i not in limb_roots]
+    lone = {i for i in range(n)
+            if skeleton.parents[i] >= 0 and not sides[skeleton.parents[i]] and i not in mirrors
+            and abs(skeleton.heads[skeleton.subtree(i), 0].mean()) > tolerance}
+    unpaired = [skeleton.names[i] for i in sorted(lone) if skeleton.parents[i] not in lone]  # where each starts
     at = skeleton.heads[limb_roots] if limb_roots else np.zeros((0, 3))
     # limbs that sit above one another (arms over legs) count from the top, others from the front
     upright = len(limb_roots) > 1 and np.ptp(at[:, 2]) > np.ptp(at[:, 1])
     limb_roots.sort(key=lambda i: (-skeleton.heads[i, 2], skeleton.heads[i, 1]) if upright
                     else (skeleton.heads[i, 1], -skeleton.heads[i, 2]))
     limbs = [0] * n
+    group = [0] * n  # limbs 1.., then the other pairs (ears, horns) as negative numbers
     names = list(skeleton.names)
     for k, root in enumerate(limb_roots, 1):
-        for i in skeleton.subtree(root):
-            if i in mirrors:
-                limbs[i] = limbs[mirrors[i]] = k
+        for start in (root, mirrors[root]):
+            for i in skeleton.subtree(start):
+                limbs[i] = group[i] = k
+    for k, root in enumerate(part_roots, 1):
+        for start in (root, mirrors[root]):
+            for i in skeleton.subtree(start):
+                group[i] = -k
     branches: dict[int, str] = {}  # the letters of every fork on the way down a limb (fingers)
     for i in skeleton.order():
-        if sides[i] != "L" or not limbs[i]:
+        if sides[i] != "L" or not group[i] or i not in mirrors:
             continue
-        k = limbs[i]
+        k = group[i]
         depth = 1
         p = skeleton.parents[i]
         while p >= 0 and sides[p]:
             depth += 1
             p = skeleton.parents[p]
         parent = skeleton.parents[i]
-        siblings = [c for c in skeleton.children[parent] if sides[c] == "L" and limbs[c] == k]
+        siblings = [c for c in skeleton.children[parent] if sides[c] == "L" and group[c] == k and c in mirrors]
         letter = "" if len(siblings) <= 1 or depth == 1 else "abcdefghijklmnopqrstuvwxyz"[siblings.index(i) % 26]
         branches[i] = (branches.get(parent, "") if depth > 1 else "") + letter
-        stem = f"limb{k}_{depth}{branches[i]}"
+        stem = f"{'limb' if k > 0 else 'part'}{abs(k)}_{depth}{branches[i]}"
         names[i] = f"{stem}_L"
         names[mirrors[i]] = f"{stem}_R"
+    for i in skeleton.order():  # a leftover bone in one limb: its parent's name, marked x
+        if sides[i] and i not in mirrors:
+            parent_name = names[skeleton.parents[i]]
+            names[i] = f"{parent_name[:-2]}x{parent_name[-2:]}" if parent_name.endswith(("_L", "_R")) \
+                else f"{skeleton.names[i]}_{sides[i]}"
     if len(set(names)) != n:
         raise RiggingError("two bones would share a name after naming sides")
 
@@ -276,13 +314,15 @@ def plan_bones(skeleton: Skeleton, tolerance: float) -> Plan:
         if np.linalg.norm(skeleton.heads[main] - skeleton.heads[i]) > 1e-4:
             tails[i] = skeleton.heads[main]
 
-    role = middle_roles(skeleton, sides)
+    role = middle_roles(skeleton, sides, limbs)
     limits = []
     for i in range(n):
         if skeleton.parents[i] < 0:
             limits.append(ROOT_LIMITS)
         elif not sides[i]:
             limits.append({"spine": SPINE_LIMITS, "neck": NECK_LIMITS, "tail": TAIL_LIMITS}[role[i]])
+        elif not limbs[i]:  # an ear, a horn: it swings like a neck
+            limits.append(NECK_LIMITS)
         elif not sides[skeleton.parents[i]]:
             limits.append(LIMB_ROOT_LIMITS)
         elif not skeleton.children[i]:
@@ -298,10 +338,11 @@ def plan_bones(skeleton: Skeleton, tolerance: float) -> Plan:
             colour_name, colour = PALETTE[(2 * (k - 1) + (side == "R")) % len(PALETTE)]
             paint[f"{k}{side}"] = {"color": colour, "colour_name": colour_name, "bones": bones,
                                    "label": limb_label(k, count, side, upright)}
-    return Plan(names, sides, limbs, tails, [[list(map(float, a)) for a in lim] for lim in limits], paint)
+    return Plan(names, sides, limbs, tails, [[list(map(float, a)) for a in lim] for lim in limits], paint,
+                unpaired)
 
 
-def middle_roles(skeleton: Skeleton, sides: Sequence[str]) -> dict[int, str]:
+def middle_roles(skeleton: Skeleton, sides: Sequence[str], limbs: Sequence[int] | None = None) -> dict[int, str]:
     """"spine", "neck" or "tail" for each bone in the middle, so a neck can lift a head to
     howl while the back stays a back.
 
@@ -318,7 +359,8 @@ def middle_roles(skeleton: Skeleton, sides: Sequence[str]) -> dict[int, str]:
     while skeleton.parents[path[-1]] >= 0:
         path.append(skeleton.parents[path[-1]])
     path.reverse()
-    hangs = [k for k, i in enumerate(path) if any(sides[c] for c in skeleton.children[i])]
+    limbs = limbs if limbs is not None else [1 if x else 0 for x in sides]
+    hangs = [k for k, i in enumerate(path) if any(limbs[c] for c in skeleton.children[i])]
     split = hangs[-1] if hangs else 0
     roles = {i: "spine" for i in path[1:split + 1]}
     for i in path[split + 1:]:

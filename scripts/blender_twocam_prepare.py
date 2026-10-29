@@ -176,7 +176,8 @@ def main() -> None:
     record = {"source": str(opts["glb"]), "length_m": opts["length_m"], "axis": opts["axis"],
               "yaw_deg": round(math.degrees(yaw), 2), "yaw_given": opts["yaw"] is not None,
               "renames": renames, "paint": plan.paint, "painted_vertices": painted,
-              "limbs": len({k for k in plan.limbs if k}), "size_m": np.ptp(verts, 0).round(3).tolist(),
+              "limbs": len({k for k in plan.limbs if k}), "unpaired": plan.unpaired,
+              "size_m": np.ptp(verts, 0).round(3).tolist(),
               "bones": len(final), "keypoints": len(kps), "layout": info["layout"]}
     (out / "plan.json").write_text(json.dumps(record, indent=1), encoding="utf-8")
     bpy.ops.wm.save_as_mainfile(filepath=str(out / "rigged.blend"))

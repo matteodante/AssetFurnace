@@ -235,3 +235,57 @@ def test_fingers_keep_their_own_names_all_the_way_down():
     plan = rigging.plan_bones(b.skeleton(), tolerance=0.03)
     assert len(set(plan.names)) == len(plan.names)
     assert {"limb1_3a_L", "limb1_4a_L", "limb1_4c_R"} <= set(plan.names)
+
+
+def quadruped_with(ears=False, tail_to_floor=False, long_left_leg=False):
+    """The toy quadruped plus the parts real rigs have: ears, a tail resting on the floor,
+    or one front leg a bone longer than the other (SkinTokens does that)."""
+    b = Builder()
+    root = b.bone(-1, (0, 0.3, 0.8), (0, 0.0, 0.85))
+    chest = b.bone(root, (0, 0.0, 0.85), (0, -0.3, 0.85))
+    head = b.chain(chest, [(0, -0.3, 0.85), (0, -0.5, 1.05), (0, -0.7, 1.1)])
+    if ears:
+        for sx in (1, -1):
+            b.chain(head, [(0.05 * sx, -0.68, 1.15), (0.08 * sx, -0.66, 1.25)])
+    tail_end = (0, 1.1, 0.0) if tail_to_floor else (0, 0.85, 0.7)
+    b.chain(root, [(0, 0.35, 0.8), (0, 0.6, 0.6), tail_end])
+    for sx in (1, -1):
+        leg = [(0.15 * sx, -0.3, 0.75), (0.16 * sx, -0.32, 0.42), (0.16 * sx, -0.34, 0.05), (0.16 * sx, -0.46, 0.0)]
+        if long_left_leg and sx == 1:
+            leg.insert(2, (0.16 * sx, -0.33, 0.25))
+        b.chain(chest, leg)
+        b.chain(root, [(0.14 * sx, 0.3, 0.75), (0.15 * sx, 0.22, 0.42), (0.15 * sx, 0.32, 0.05), (0.15 * sx, 0.2, 0.0)])
+    return b.skeleton()
+
+
+def test_ears_are_named_left_and_right_but_are_not_limbs():
+    """Counted as limbs, a wolf's ears made the prompt say "six limbs", took the legs'
+    colours, and moved the neck's start back to the shoulders."""
+    sk = quadruped_with(ears=True)
+    plan = rigging.plan_bones(sk, tolerance=0.03)
+    assert [g["label"] for g in plan.paint.values()] == [
+        "front-left leg", "front-right leg", "hind-left leg", "hind-right leg"]
+    assert {"part1_1_L", "part1_1_R"} <= set(plan.names)
+    roles = rigging.middle_roles(sk, plan.sides, plan.limbs)
+    assert roles[2] == "neck" and roles[3] == "neck"
+
+
+def test_a_tail_on_the_floor_does_not_turn_the_creature_round():
+    sk = quadruped_with(tail_to_floor=True)
+    assert rigging.forward_sign(sk) == 1.0
+
+
+def test_legs_a_bone_apart_are_still_a_pair():
+    plan = rigging.plan_bones(quadruped_with(long_left_leg=True), tolerance=0.03)
+    labels = [g["label"] for g in plan.paint.values()]
+    assert labels[:2] == ["front-left leg", "front-right leg"]
+    assert any(n.endswith("x_L") for n in plan.names), "the extra bone keeps its leg's side"
+    assert not plan.unpaired
+
+
+def test_a_branch_off_the_middle_with_no_mirror_is_reported():
+    b = Builder()
+    root = b.bone(-1, (0, 0, 1), (0, -0.3, 1))
+    b.chain(root, [(0.2, 0, 1), (0.6, 0, 0.6), (0.8, 0, 0.1)])  # one arm, nothing on the other side
+    plan = rigging.plan_bones(b.skeleton(), tolerance=0.03)
+    assert plan.unpaired == ["bone_1"]
