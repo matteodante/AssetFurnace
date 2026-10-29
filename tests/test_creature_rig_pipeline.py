@@ -121,3 +121,24 @@ def test_a_robe_on_the_floor_gets_no_legs(tmp_path):
     assert result["draws"][0]["contacts"] == 0
     assert not any("floor contact" in n for n in result["notes"])
     assert not any(b["kind"] in ("hind", "front", "biped") for b in result["bones"])
+
+
+def test_a_draw_picked_by_hand_is_kept_over_the_best_score(quad_work):
+    lopsided = quadruped_draw(move={"knee.L": (0.1, 0.3, 0.36), "hock.L": (0.1, 0.45, 0.16)})
+    paths = write_draws(quad_work, [lopsided, quadruped_draw()])
+    picked = pipeline.joints_from_draws(quad_work, paths, prefer=0)
+    assert picked["chosen"] == 0 and any("picked by hand" in n for n in picked["notes"])
+    assert picked["draws"][0]["score"] > picked["draws"][1]["score"]       # the scores still say which was better
+    assert pipeline.joints_from_draws(quad_work, paths, prefer=7)["chosen"] == 1   # no such draw: the best
+
+
+def test_every_draw_is_drawn_from_the_side_and_the_front_for_a_person_to_pick(quad_work):
+    import cv2
+
+    from image_to_3dlab.creature_rig import sheet
+    paths = write_draws(quad_work, [quadruped_draw(), quadruped_draw(), quadruped_draw()])
+    pipeline.joints_from_draws(quad_work, paths)
+    out = sheet.draws_sheet(quad_work)
+    img = cv2.imread(str(out))
+    assert out == quad_work / "draws-sheet.png" and img.shape[0] == 3 * sheet.TILE and img.shape[1] == 2 * sheet.TILE
+    assert sheet.draws_sheet(quad_work.parent / "nothing-here") is None

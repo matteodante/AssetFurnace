@@ -69,6 +69,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--unirig", type=Path, default=None, help=f"UniRig's folder (default: ${UNIRIG_ENV}, "
                     "then vendor/UniRig)")
     ap.add_argument("--blender", type=Path, default=None)
+    ap.add_argument("--reuse", type=Path, default=None, help="an earlier run's work folder: its prepared model, "
+                    "shell and UniRig draws are reused, so only the skeleton and the skin are made again")
+    ap.add_argument("--draw", type=int, default=None, help="keep this draw (0..) rather than the best scored "
+                    "one; the studio's \"Use draw N\"")
     args = ap.parse_args(argv)
     if args.draws < 1:
         ap.error("--draws must be 1 or more")
@@ -266,9 +270,30 @@ def pipeline_module():
     return pipeline
 
 
-def joints_step(pipeline, work: Path, draws: list[Path]) -> dict:
-    """The skeleton: the best UniRig draw, cleaned, repaired and named; or the centre line."""
-    return pipeline.joints_from_draws(work, draws) if draws else pipeline.joints_without_unirig(work)
+def joints_step(pipeline, work: Path, draws: list[Path], prefer: int | None = None) -> dict:
+    """The skeleton: the best UniRig draw (or the one asked for), cleaned, repaired and
+    named; or the centre line."""
+    if not draws:
+        return pipeline.joints_without_unirig(work)
+    return pipeline.joints_from_draws(work, draws, prefer) if prefer is not None else pipeline.joints_from_draws(work, draws)
+
+
+REUSED = ("model.blend", "unirig_input.glb", "shell.npz")
+
+
+def reuse_work(earlier: Path, work: Path) -> list[Path]:
+    """Copy an earlier run's prepared model, shell and draws into `work`; returns the draws."""
+    missing = [name for name in REUSED if not (earlier / name).is_file()]
+    if missing:
+        raise RigError(f"{earlier} has no {', '.join(missing)}: rig the model again instead")
+    work.mkdir(parents=True, exist_ok=True)
+    for name in REUSED:
+        shutil.copy2(earlier / name, work / name)
+    if (work / "draws").exists():
+        shutil.rmtree(work / "draws")
+    if (earlier / "draws").is_dir():
+        shutil.copytree(earlier / "draws", work / "draws")
+    return sorted((work / "draws").glob("draw*.json"), key=lambda p: int(p.stem[4:] or 0))
 
 
 def find_blender_or_fail(explicit: Path | None) -> Path:
@@ -288,7 +313,7 @@ def main(argv: list[str] | None = None, log: Callable = print) -> dict:
     blender = find_blender_or_fail(args.blender)
     pipeline = pipeline_module()
 
-    unirig = args.unirig.resolve() if args.unirig else find_unirig()
+    unirig = None if args.reuse is not None else (args.unirig.resolve() if args.unirig else find_unirig())
     work.mkdir(parents=True, exist_ok=True)
     times: dict[str, float] = {}
 
@@ -296,29 +321,38 @@ def main(argv: list[str] | None = None, log: Callable = print) -> dict:
         log(f"creature-rig: {n}/{STEPS} {name}: {what}")
         return time.time()
 
-    t = step(1, "prepare", f"{model.name} turned, placed and sealed")
-    prep_args = [model, work] + (["--turn-deg", args.turn_deg] if args.turn_deg is not None else [])
-    prepared = run_script(blender, PREPARE_SCRIPT, prep_args, "I2L_CREATURE_PREPARE", log)
-    times["prepare"] = time.time() - t
-
-    skeletons: list[Path] = []
-    if unirig is None:
-        log(f"creature-rig: 2/{STEPS} draw: UniRig is not installed, the skeleton comes from the centre line")
-    else:
-        t = step(2, "draw", f"{args.draws} UniRig skeleton(s), seed {args.seed}")
-        skeletons = unirig_draws(work / "unirig_input.glb", work, args.draws, args.seed, unirig, log=log)
-        times["draw"] = time.time() - t
-        log(f"creature-rig: 2/{STEPS} draw: {len(skeletons)} skeleton(s) in {times['draw']:.0f} s")
-
     draws: list[Path] = []
+    skeletons: list[Path] = []
+    prepared: dict = {}
+    if args.reuse is not None:
+        log(f"creature-rig: 1-3/{STEPS} reuse: the prepared model and the draws of {args.reuse}")
+        draws = reuse_work(args.reuse.resolve(), work)
+    else:
+        t = step(1, "prepare", f"{model.name} turned, placed and sealed")
+        prep_args = [model, work] + (["--turn-deg", args.turn_deg] if args.turn_deg is not None else [])
+        prepared = run_script(blender, PREPARE_SCRIPT, prep_args, "I2L_CREATURE_PREPARE", log)
+        times["prepare"] = time.time() - t
+        if unirig is None:
+            log(f"creature-rig: 2/{STEPS} draw: UniRig is not installed, the skeleton comes from the centre line")
+        else:
+            t = step(2, "draw", f"{args.draws} UniRig skeleton(s), seed {args.seed}")
+            skeletons = unirig_draws(work / "unirig_input.glb", work, args.draws, args.seed, unirig, log=log)
+            times["draw"] = time.time() - t
+            log(f"creature-rig: 2/{STEPS} draw: {len(skeletons)} skeleton(s) in {times['draw']:.0f} s")
+
     if skeletons:
         t = step(3, "read", f"{len(skeletons)} skeleton file(s) into the model's frame")
         draws = read_draws(blender, work, skeletons, unirig_python(unirig), log)
         times["read"] = time.time() - t
 
     t = step(4, "joints", f"choosing from {len(draws)} draw(s)" if draws else "the centre-line skeleton")
-    spec = joints_step(pipeline, work, draws)
+    spec = joints_step(pipeline, work, draws, args.draw)
     times["joints"] = time.time() - t
+    try:   # every draw from the side and the front, for a person to pick another
+        from image_to_3dlab.creature_rig import sheet
+        sheet.draws_sheet(work)
+    except Exception as exc:
+        log(f"creature-rig: the draws sheet could not be drawn ({exc})")
     log(f"creature-rig: 4/{STEPS} joints: {spec.get('body')} with {len(spec.get('bones', []))} bones"
         + (f", draw {spec['chosen']} chosen" if spec.get("chosen") is not None else ""))
     for note in spec.get("notes", []):
@@ -336,6 +370,7 @@ def main(argv: list[str] | None = None, log: Callable = print) -> dict:
                "draws": len(draws), "turn_deg": prepared.get("turn_deg"), "front_cue": prepared.get("front_cue"),
                "empty_bones": built.get("empty_bones", []), "voxel_copy": built.get("voxel_copy"),
                "sheet": str(work / "poses-sheet.png") if (work / "poses-sheet.png").is_file() else None,
+               "draws_sheet": str(work / "draws-sheet.png") if (work / "draws-sheet.png").is_file() else None,
                "seconds": {k: round(v, 1) for k, v in times.items()}}
     log("I2L_CREATURE_RIG::" + json.dumps(summary))
     return summary

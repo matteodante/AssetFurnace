@@ -69,9 +69,10 @@ def joints_without_unirig(work: Path) -> dict:
     return _write(work, result)
 
 
-def joints_from_draws(work: Path, draws: list[Path]) -> dict:
+def joints_from_draws(work: Path, draws: list[Path], prefer: int | None = None) -> dict:
     """`W/joints.json` from the learned rigger's draws: each cleaned and scored, the best
-    kept, repaired and named. `chosen` is the index of the kept draw in `draws`."""
+    kept, repaired and named. `chosen` is the index of the kept draw in `draws`. `prefer`:
+    a draw a person picked over the score (the studio's "Use draw N"), tried first."""
     shell = Shell.load(work)
     result = _many_legs(shell)
     if result is not None:
@@ -92,6 +93,9 @@ def joints_from_draws(work: Path, draws: list[Path]) -> dict:
         scores.append(s)
     notes: list[str] = []
     ranked = sorted((s["score"], k) for k, s in enumerate(scores) if s is not None)
+    if prefer is not None and 0 <= prefer < len(scores) and scores[prefer] is not None:
+        ranked = [(scores[prefer]["score"], prefer)] + [r for r in ranked if r[1] != prefer]
+        notes.append(f"draw {prefer} picked by hand over the score")
     centre = None
     for _, k in ranked:
         tree, added = trees[k], []

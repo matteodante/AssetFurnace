@@ -241,3 +241,34 @@ def test_the_command_line_help_runs():
     done = subprocess.run([sys.executable, str(cli.SCRIPTS / "creature_rig.py"), "--help"], capture_output=True,
                           text=True, check=False)
     assert done.returncode == 0 and "--draws" in done.stdout
+
+
+def test_another_draw_reuses_the_earlier_runs_model_and_draws(tmp_path, monkeypatch):
+    """The studio's "Use draw N": no prepare, no UniRig, only the skeleton and the skin again."""
+    blender, ran = fake_blender(monkeypatch, tmp_path)
+    picked = []
+
+    class Picky(StandIn):
+        def joints_from_draws(self, work, draws, prefer=None):
+            picked.append((len(draws), prefer))
+            return self._write(work, "quadruped", prefer)
+    monkeypatch.setattr(cli, "pipeline_module", lambda: Picky())
+    monkeypatch.setattr(cli, "find_unirig", lambda: (_ for _ in ()).throw(AssertionError("UniRig must not run")))
+    earlier = tmp_path / "earlier"
+    (earlier / "draws").mkdir(parents=True)
+    for name in cli.REUSED:
+        (earlier / name).write_bytes(b"x")
+    for k in range(4):
+        (earlier / "draws" / f"draw{k}.json").write_text("{}")
+    model = tmp_path / "dragon.glb"
+    model.write_bytes(b"model")
+    summary = cli.main([str(model), str(tmp_path / "out" / "dragon_rigged.glb"), "--blender", str(blender),
+                        "--reuse", str(earlier), "--draw", "2", "--work", str(tmp_path / "W")], log=lambda m: None)
+    assert picked == [(4, 2)] and summary["chosen"] == 2
+    assert [name for name, _ in ran] == [cli.BUILD_SCRIPT.name]                 # no prepare, no read
+    assert (tmp_path / "W" / "shell.npz").is_file() and (tmp_path / "W" / "draws" / "draw3.json").is_file()
+
+
+def test_reusing_a_run_without_its_prepared_files_is_refused(tmp_path):
+    with pytest.raises(cli.RigError, match="rig the model again"):
+        cli.reuse_work(tmp_path / "empty", tmp_path / "W")
