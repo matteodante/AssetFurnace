@@ -273,14 +273,17 @@ def step_paths(output: Path, steps_dir: Path | None = None) -> dict[str, Path]:
     }
 
 
-def write_provenance(source: Path, output: Path) -> Path:
+def write_provenance(source: Path, output: Path, repainted: bool = False) -> Path:
     """The finished model's licence sidecar, `<output>.provenance.json`: the licence of the
     model it was made from carries over, read from the record beside `source` (the studio
     copies the generator's record in as `input/source.json`). A source with no record, an
-    upload, gets `license: null` rather than a guess."""
+    upload, gets `license: null` rather than a guess. A repaint textures the model with
+    Hunyuan 2.1's paint model, whose licence (not valid in the EU, the UK or South Korea)
+    is named beside the source's."""
     sidecar = output.with_suffix(".provenance.json")
+    components = [provenance.profile_component("hunyuan-comfyui", "texture repaint")] if repainted else []
     record = provenance.derived_record("scripts/retopo_repaint.py (Finish)", source, output,
-                                       provenance.licence_record_beside(source))
+                                       provenance.licence_record_beside(source), components)
     sidecar.write_text(json.dumps(record, indent=2), encoding="utf-8")
     return sidecar
 
@@ -596,7 +599,7 @@ def main() -> int:
     }
     record_path = Path(f"{stem}.retopo-repaint.json")
     record_path.write_text(json.dumps(record, indent=2))
-    write_provenance(args.source, args.output)
+    write_provenance(args.source, args.output, repainted=not args.skip_paint)
 
     emit_stage("done", f"Finished at {record['size_bytes'] / 1048576:.1f} MB")
     print(f"[retopo-repaint] done in {record['total_seconds']:.0f}s -> {args.output} "

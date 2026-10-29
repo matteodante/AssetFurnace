@@ -424,3 +424,24 @@ def test_an_uploaded_model_is_finished_with_no_licence_rather_than_an_invented_o
     source, result = _source_and_result(tmp_path)
     record = json.loads(rr.write_provenance(source, result).read_text(encoding="utf-8"))
     assert record["license"] is None and record["source_record"] is None
+
+
+def test_a_repainted_model_names_hunyuans_licence_and_takes_its_stricter_class(tmp_path):
+    """The repaint textures the model with Hunyuan 2.1's paint model, not licensed in the EU,
+    the UK or South Korea: carrying only the source's licence on would say the opposite."""
+    source, result = _source_and_result(tmp_path)
+    generator = {"backend": "pixal3d", "license": {"name": "MIT (code + flow weights); DINOv3 License"},
+                 "output": {"sha256": "abc", "classification": "commercial-conditional"}}
+    source.with_suffix(".json").write_text(json.dumps(generator))
+    record = json.loads(rr.write_provenance(source, result, repainted=True).read_text(encoding="utf-8"))
+    assert record["license"].startswith("MIT (code + flow weights); DINOv3 License; Tencent Hunyuan")
+    assert record["classification"] == "territory-restricted"
+    assert record["components"][0]["models"] == ["tencent/Hunyuan3D-2.1"]
+    assert any("EU" in c for c in record["components"][0]["conditions"])
+
+
+def test_a_repainted_upload_still_names_the_repaints_licence(tmp_path):
+    source, result = _source_and_result(tmp_path)
+    record = json.loads(rr.write_provenance(source, result, repainted=True).read_text(encoding="utf-8"))
+    assert record["license"].startswith("source: not recorded; Tencent Hunyuan")
+    assert record["classification"] == "territory-restricted" and record["source_record"] is None

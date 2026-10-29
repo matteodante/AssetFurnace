@@ -216,3 +216,15 @@ def test_an_upload_with_no_record_is_said_to_have_none_not_given_one(tmp_path):
     record = derived_record("Finish", source, made, None)
     assert record["license"] is None and record["classification"] is None
     assert record["source_record"] is None
+
+
+@pytest.mark.parametrize("classes, strictest", [
+    (("commercial-conditional", "territory-restricted"), "territory-restricted"),
+    (("commercial-clear", None), "commercial-clear"),
+    ((None, None), None),
+    (("commercial-conditional", "something-new"), "something-new"),
+])
+def test_a_model_made_with_several_takes_the_most_restricted_class(classes, strictest):
+    from image_to_3dlab import provenance
+
+    assert provenance.stricter_class(*classes) == strictest

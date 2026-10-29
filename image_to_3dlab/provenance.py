@@ -192,16 +192,46 @@ def licence_record_beside(model: Path) -> dict[str, Any] | None:
     return None
 
 
+# From least to most restricted; a model made with several takes the most restricted class.
+CLASS_ORDER = ("commercial-clear", "commercial-conditional", "unverified", "territory-restricted",
+               "research-only")
+
+
+def stricter_class(*classes: str | None) -> str | None:
+    known = [c for c in classes if c]
+    if not known:
+        return None
+    return max(known, key=lambda c: CLASS_ORDER.index(c) if c in CLASS_ORDER else len(CLASS_ORDER))
+
+
+def profile_component(name: str, role: str) -> dict[str, Any]:
+    """A licence profile as a record of a model a step used (Finish's repaint, say)."""
+    profile = LICENSES[name]
+    return {"role": role, "models": list(profile.models), "license": profile.license_name,
+            "license_url": profile.license_url, "classification": profile.classification,
+            "conditions": list(profile.conditions)}
+
+
 def derived_record(tool: str, source: Path, output: Path,
-                   source_record: dict[str, Any] | None) -> dict[str, Any]:
+                   source_record: dict[str, Any] | None,
+                   components: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     """Provenance for a model made from another one (finished, patched): the source's
     licence carries over and its whole record is kept as `source_record`, so a chain of
     steps still leads back to the generator. A source with no record gets `license: None`,
-    never a guessed one."""
+    never a guessed one. A model this step itself used (`components`: Finish's Hunyuan
+    repaint) is listed, its licence named beside the source's, and the most restricted
+    class wins: a repainted Pixal3D model is not "commercial-conditional" in the EU."""
     record = source_record if isinstance(source_record, dict) else {}
     made = record.get("output")
     classification = ((made.get("classification") if isinstance(made, dict) else None)
                       or record.get("classification"))
+    components = components or []
+    licence = record.get("license")
+    if components:
+        named = licence.get("name") if isinstance(licence, dict) else licence  # generators write {"name", "url"}
+        licence = "; ".join([named or "source: not recorded",
+                             *(f"{c['license']} ({c['role']})" for c in components)])
+        classification = stricter_class(classification, *(c["classification"] for c in components))
     return {
         "schema_version": 1,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -209,8 +239,9 @@ def derived_record(tool: str, source: Path, output: Path,
         "input": {"path": str(source), "sha256": sha256_file(source)},
         "output": {"path": str(output), "sha256": sha256_file(output),
                    "classification": classification},
-        "license": record.get("license"),
+        "license": licence,
         "classification": classification,
+        "components": components,
         "source_record": record or None,
     }
 
