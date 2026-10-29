@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Two-camera motion capture (`scripts/twocam_mocap.py`): animate any rigged creature, wings and eight
+  legs included, from one AI video filmed front-on and side-on at once. Reads the joints, fits the rig and
+  exports an animated GLB with a licence record. Ported from Patch's AnyMove (Apache-2.0), with its
+  wrong-scale, wolf-only-limbs and locked-axis bugs fixed. See `docs/twocam-mocap.md`.
 - Models folder: on Setup & Status, pick a folder on any drive for downloaded models, handy when the
   system drive is small. Restart the studio to use it; models you already have stay where they are.
 - Finish says whether Pixel Match ran: "on (front)", "on (front + back)", "off" or "skipped" with the reason,

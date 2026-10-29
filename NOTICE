@@ -17,6 +17,9 @@ This project builds on other people's work, each under its own licence:
   licensed by NVIDIA Corporation under the NVIDIA Open Model License; NVIDIA claims
   no ownership of its outputs.
 - The auto-rig uses VAST-AI SkinTokens (MIT), cloned at setup, not shipped here.
+- image_to_3dlab/twocam/ and scripts/blender_twocam_apply.py are ported from Patch's
+  AnyMove (https://github.com/Patch-gg/anymove), Copyright Patch, Apache-2.0, and changed
+  here (see the package docstring). The two-camera method is @CanItCode's.
 - Model weights are never shipped here. Each backend's weights keep their own
   licence (Tencent Hunyuan Community, Stability AI Community, DINOv3, Qwen
   Research and others), and those terms apply no matter what this licence says.
