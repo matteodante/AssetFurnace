@@ -141,11 +141,12 @@ CHILD = """
 import subprocess, sys, time
 sys.path.insert(0, {repo!r})
 from image_to_3dlab import processes
+before = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])   # as the browser
 print(processes.kill_children_with_this_process(), flush=True)
 held = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
 kept = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], **processes.outlive_kwargs())
 job = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"], **processes.group_popen_kwargs())
-print(held.pid, kept.pid, job.pid, flush=True)
+print(held.pid, kept.pid, job.pid, before.pid, flush=True)
 time.sleep(120)
 """
 
@@ -155,13 +156,14 @@ def test_a_killed_server_takes_its_children_with_it_but_not_what_must_outlive_it
     """TerminateProcess (Task Manager, Stop-Process) runs no handler, so sd-cli kept running
     after the server died; a job object that kills on close ends it. A program that breaks
     away stays, and so does a group job, which outlives the server by design and is
-    reconciled at the next start."""
+    reconciled at the next start. So does what the server started before joining the job,
+    such as the browser it opens."""
     server = subprocess.Popen([sys.executable, "-c", CHILD.format(repo=str(REPO))],
                               stdout=subprocess.PIPE, text=True)
-    held = kept = job = None
+    held = kept = job = before = None
     try:
         assert server.stdout.readline().strip() == "True"
-        held, kept, job = (int(x) for x in server.stdout.readline().split())
+        held, kept, job, before = (int(x) for x in server.stdout.readline().split())
         assert processes.process_alive(held) and processes.process_alive(kept)
         server.kill()                              # TerminateProcess, as Task Manager does
         server.wait(10)
@@ -170,9 +172,10 @@ def test_a_killed_server_takes_its_children_with_it_but_not_what_must_outlive_it
             time.sleep(0.1)
         assert not processes.process_alive(held)
         assert processes.process_alive(kept) and processes.process_alive(job)
+        assert processes.process_alive(before)
     finally:
         server.kill()
-        for pid in (held, kept, job):
+        for pid in (held, kept, job, before):
             if pid:
                 processes.terminate_group(pid)
 

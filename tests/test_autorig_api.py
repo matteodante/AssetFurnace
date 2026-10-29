@@ -120,6 +120,30 @@ def test_a_finished_job_writes_its_provenance(tmp_path):
     assert "hello" in job.log_path.read_text()
 
 
+def test_done_is_said_only_after_the_done_event_names_the_file(tmp_path, monkeypatch):
+    """A plan polls the status and reads the last event: if "done" came first (the fit check takes
+    seconds), the plan saw no file and skipped the move. Lost a robot's rig on 2026-10-25."""
+    job = _fake_job(tmp_path, "open(r'{out}', 'wb').write(b'glb')")
+    seen = []
+
+    def slow_fit(path):
+        seen.append(job.status)          # what a poll would see while the fit check runs
+        return {}
+
+    monkeypatch.setattr(aa, "rig_fit", slow_fit)
+    real_emit = job.emit
+
+    def emit(event):
+        if event.get("phase") == "done":
+            seen.append(job.status)      # what a poll would see as the path arrives
+        real_emit(event)
+
+    job.emit = emit
+    aa.run_job(job, aa.AnimateJobManager(tmp_path, tmp_path))
+    assert seen and "done" not in seen
+    assert job.status == "done" and job.events[-1]["phase"] == "done"
+
+
 def test_a_job_that_writes_nothing_is_an_error_with_its_log(tmp_path):
     job = _fake_job(tmp_path, "import sys; print('boom'); sys.exit(3)")
     aa.run_job(job, aa.AnimateJobManager(tmp_path, tmp_path))
@@ -132,6 +156,61 @@ def test_progress_estimate_never_claims_done():
     assert aa.estimated_pct(0, 70) == 0
     assert aa.estimated_pct(35, 70) == 50
     assert aa.estimated_pct(500, 70) == 95
+
+
+def test_a_post_launch_error_terminates_the_worker_before_releasing_the_slot(tmp_path, monkeypatch):
+    """If the worker process is alive when an exception fires, it must be stopped and reaped
+    before the active slot is freed."""
+    result = tmp_path / "out.glb"
+    command = [sys.executable, "-c", "print('working')"]
+    job = aa.AnimateJob("2" * 32, "rig", tmp_path, result, [(command, tmp_path)], 1.0,
+                        {"license": {"name": "MIT"}})
+    manager = aa.AnimateJobManager(tmp_path, tmp_path)
+    manager.active = job.id
+
+    calls = []
+
+    class RaisingStdout:
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            raise OSError("broken pipe")
+
+    class Worker:
+        pid = 4242
+        returncode = 0
+        stdout = RaisingStdout()
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def wait(self, timeout=None):
+            calls.append(("wait", timeout, manager.active))
+            return 0
+
+        def poll(self):
+            return None
+
+    def fake_terminate_group(pid):
+        calls.append(("terminate_group", pid, manager.active))
+
+    original_write_text = Path.write_text
+
+    def fake_write_text(self, *args, **kwargs):
+        if self.name == "pid":
+            raise OSError("No space left on device")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(aa.subprocess, "Popen", Worker)
+    monkeypatch.setattr(aa.processes, "terminate_group", fake_terminate_group)
+    monkeypatch.setattr(Path, "write_text", fake_write_text)
+
+    aa.run_job(job, manager)
+
+    assert job.status == "error"
+    assert calls == [("terminate_group", 4242, job.id), ("wait", pytest.approx(30, rel=0.1), job.id)]
+    assert manager.active is None
 
 
 def test_source_record_prefers_a_sidecar_that_names_a_licence(tmp_path):

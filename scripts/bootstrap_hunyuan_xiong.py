@@ -16,12 +16,15 @@ has not chosen. The Hunyuan weights are not licensed in the EU, the UK or South 
 from __future__ import annotations
 
 import argparse
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+
+from image_to_3dlab import host
+
 HALVES = ("shape", "paint")
 WEIGHTS_GB = 13.7  # Hunyuan3D-2 shape (5.0) + Xiong's paint-large (8.7), the catalogue's figures
 
@@ -37,7 +40,8 @@ def plan(repo: Path, uv: str) -> list[tuple[list[str], Path]]:
     # Explicitly the default route: without --model this fetches all three shape
     # checkpoints, 23 GB where the default route needs 5.
     steps.append(([str(venv_python(repo / "hunyuan_mlx" / "shape")),
-                   str(repo / "hunyuan_mlx" / "download_weights.py"), "--model", "2.0"], repo))
+                   str(repo / "hunyuan_mlx" / "download_weights.py"), "--model", "2.0",
+                   "--yes"], repo))  # this script already asked
     return steps
 
 
@@ -55,7 +59,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--yes", action="store_true", help="do not ask (the caller already did)")
     args = parser.parse_args()
-    uv = shutil.which("uv")
+    uv = host.find_uv()
     if uv is None:
         raise SystemExit("uv is required: https://docs.astral.sh/uv/")
     steps = plan(REPO, uv)

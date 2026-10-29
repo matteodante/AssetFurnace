@@ -7,7 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Models folder: on Setup & Status, pick a folder on any drive for downloaded models, handy when the
+  system drive is small. Restart the studio to use it; models you already have stay where they are.
+- Finish says whether Pixel Match ran: "on (front)", "on (front + back)", "off" or "skipped" with the reason,
+  when the step finishes and in the Library.
+
+### Changed
+- Finish's "Full detail" now says what it is: Pixel Match on the raw model, its own mesh untouched.
+- The usage-counts notice is now a small card in the corner instead of a big block of text.
+- Runs with a non-default model (e.g. a custom `--sf3d-repo` or a ComfyUI workflow loading a foreign
+  checkpoint) must now declare it in a run manifest with `license_policy.allow_unverified: true`; the
+  provenance sidecar records such models as unverified instead of labelling them with the backend's
+  default licence.
+
 ### Fixed
+- Front + back: the back picture now keeps to what the front shows, the same parts and the same outline,
+  whatever the subject: a full character, a bust, a head or an object.
+- Fix a spot works on rigged characters: click View on the Finished step and brush away. Before, the brush
+  only said "open the finished model", with no way to do it.
+- Hero face no longer stops when its head clean-up fails (seen on Windows): the head takes the classic
+  clean-up instead and the run carries on.
+- Hero face shows why it cannot run on a model (no saved picture, or not made with Pixal3D) instead of
+  vanishing, and choosing a Detail level no longer hides the "Finish as a Hero" button.
+- Direct Xiong generation (`scripts/hunyuan_mlx_xiong_generate.py`) now writes a `.provenance.json`
+  licence sidecar beside the GLB, recording the MIT in-repo port and the Tencent weights licence with
+  its EU/UK/Korea territory restriction.
+- Weight downloads now require an explicit choice: `hunyuan_mlx/download_weights.py` needs `--yes` or an
+  interactive `y`/`yes`; `image_to_3dlab/matte.new_session` and `matte.cut_out` default to
+  `allow_download=False` and raise fetch instructions instead of silently downloading rembg weights;
+  `hunyuan_mlx/paint/scripts/convert_realesrgan.py` needs `--fetch` to download its default `.pth`.
+- The Library keeps the picture you uploaded, on front-only runs too, so "Redo from picture" works. Pictures
+  uploaded before this fix, and their back views, now show up as well, named after the file instead of a run code.
+- Model-load errors in the studio are shown as plain text, not as HTML markup.
+- Provenance records the actual model identity for every generated file and refuses to write a record when
+  the model's licence cannot be verified.
+- The direct Space stage-3 route never loads the BRIA background-removal model.
+- `scripts/audit_model_weights.py` proves a safetensors conversion is readable before it deletes the source
+  checkpoint during cleanup.
+- The Hunyuan v2-1 converter honours its input and output paths and stops instead of silently retrying an
+  unsafe pickle load.
+- Finish, Rig, Auto-rig and Props workers are terminated and reaped if their job errors after the worker
+  process has started, so the active slot is not released while expensive work keeps running.
+
+## [0.5.3] - 2026-10-26
+
+### Added
+- **News in the studio.** A News button shows short notes from us: new versions, AssetFurnace Cloud,
+  known problems and fixes. It never pops up, and agents hear about unread news too.
+
+### Security
+- A studio reachable from a network (a RunPod pod, `--host`, or a tunnel set up with `I3D_ALLOWED_HOSTS`)
+  now needs its key: it prints a private link, and only that link gets in. On your own machine nothing
+  changes. Tools on the same machine read the key from `output/.studio-token`. Hidden files such as `.env`
+  are never served.
+- **Re-rigging does not run the uploaded .blend's startup scripts, drivers or Rigify
+  finalize script,** whatever Blender's Auto Run preference says, and your add-ons are left
+  out.
+- **A web page can no longer drive the studio behind your back.** Every write (setup and
+  weight removal, the Hugging Face sign-in, jobs, Library changes) now needs the studio's own
+  origin and a request header, which a form on another site cannot send. The studio's pages,
+  the plan runner, the MCP server and `scripts/pod_smoke_test.py` send one; any other script
+  that POSTs to the studio must send `X-AssetFurnace-Request` (any value). A studio on
+  127.0.0.1 answers only loopback names, so DNS rebinding cannot read the repository. Behind
+  tailscale serve, cloudflared, ngrok or VS Code port forwarding, list the name you open it
+  under in `I3D_ALLOWED_HOSTS` (comma-separated host names). A studio bound to another
+  address (`--host`, a pod) needs its key instead (above).
+
+### Fixed
+- **The Discord link works again for good.** The old invite was set to expire; the README, the studio
+  and bug reports now use a permanent one.
+- **Setup finds uv right after install.** In a shell that has not picked up `~/.local/bin`
+  yet (a fresh WSL one, say), setups stopped with "uv is required" although install.sh had
+  just put uv there (#168).
+- **A plan no longer skips the move after rigging.** Rig and Finish said "done" a moment before
+  recording their file, so a plan could carry on without it (seen on a robot).
 - **The studio reads and writes its text files as UTF-8 on every computer.** On Windows
   Python defaults to cp1252, so non-ASCII text such as an em dash or a middle dot read from
   `prompt_recipes.json` and similar files came out garbled.
@@ -25,22 +99,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   themselves (about 10% of the UV area on two real models); the retopology is now unwrapped
   so almost nothing overlaps (under 0.1%). Islands are now packed 0.002 apart instead of
   0.0002: there are about twice as many, and a gap near zero lets neighbours share texels at
-  their edges.
-
-### Security
-- **Re-rigging does not run the uploaded .blend's startup scripts, drivers or Rigify
-  finalize script,** whatever Blender's Auto Run preference says, and your add-ons are left
-  out.
-- **A web page can no longer drive the studio behind your back.** Every write (setup and
-  weight removal, the Hugging Face sign-in, jobs, Library changes) now needs the studio's own
-  origin and a request header, which a form on another site cannot send. The studio's pages,
-  the plan runner, the MCP server and `scripts/pod_smoke_test.py` send one; any other script
-  that POSTs to the studio must send `X-AssetFurnace-Request` (any value). A studio on
-  127.0.0.1 answers only loopback names, so DNS rebinding cannot read the repository. Behind
-  tailscale serve, cloudflared, ngrok or VS Code port forwarding, list the name you open it
-  under in `I3D_ALLOWED_HOSTS` (comma-separated host names). A studio bound to another
-  address (`--host`, a pod) trusts its network and is not protected against DNS rebinding;
-  this was not tested on RunPod.
+  their edges. On Blender 5.2.0, whose overlap check crashes (fixed in 5.2.1), Finish keeps the
+  old projection.
 
 ## [0.5.2] - 2026-10-25
 

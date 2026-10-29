@@ -51,8 +51,8 @@ def group_popen_kwargs(windows: bool = _IS_WINDOWS) -> dict:
 # The job object this process put itself in, kept open for its whole life: the kernel
 # closes the last handle when the process ends, however it ends.
 _JOB = None
-# Whether a child may leave that job: Windows refuses it when an outer job (a terminal's,
-# a CI runner's) forbids breakaway, and CreateProcess then fails; so it is tried once.
+# Whether a child may leave that job, tried once: if the server could not get a job of its
+# own, a breakaway flag on a job that forbids it makes CreateProcess fail.
 _BREAKAWAY = False
 _CREATE_NO_WINDOW = 0x08000000
 
@@ -111,7 +111,9 @@ def kill_children_with_this_process(windows: bool = _IS_WINDOWS) -> bool:
         return False
     _JOB = job
     try:
-        subprocess.run(["cmd.exe", "/c", "exit 0"], check=True, stdout=subprocess.DEVNULL,
+        # the full path: a bare "cmd.exe" is looked up in the working folder first on Windows
+        cmd = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "cmd.exe")
+        subprocess.run([cmd, "/c", "exit 0"], check=True, stdout=subprocess.DEVNULL,
                        stderr=subprocess.DEVNULL, creationflags=CREATE_BREAKAWAY_FROM_JOB | _CREATE_NO_WINDOW)
         _BREAKAWAY = True
     except (OSError, subprocess.CalledProcessError):

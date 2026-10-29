@@ -729,3 +729,154 @@ def test_a_failed_hero_run_leads_with_its_own_reason():
              "[hero] cannot start, not installed: Hero face upscaler (Real-ESRGAN, 67 MB). Install them from the Setup page."]
     assert finish.failure_message(lines, 2).startswith("cannot start, not installed: Hero face upscaler")
     assert finish.failure_message(["Traceback ...", "boom"], 1) == "worker exited with code 1"
+
+
+def test_done_is_said_only_after_the_done_event_names_the_file(tmp_path, monkeypatch):
+    """A plan polls the status and reads the last event: "done" before the event lost the file.
+    Same race that lost a rig mid-plan on 2026-10-25 (see test_autorig_api)."""
+    import finish_api
+
+    job = finish_api.FinishJob("0" * 32, tmp_path / "out" / "fox__finish__20261025-010101")
+    job.settings = {**job.settings, "hero": True}
+
+    class Worker:
+        pid = 1
+        returncode = 0
+        stdout = iter(["[hero] done\n"])
+
+        def __init__(self, *args, **kwargs):
+            job.result_glb.parent.mkdir(parents=True, exist_ok=True)
+            job.result_glb.write_bytes(b"glb")
+
+        def wait(self, timeout=None):
+            return 0
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(finish_api, "hero_command", lambda job, settings: ["worker"])
+    monkeypatch.setattr(finish_api.subprocess, "Popen", Worker)
+    seen = []
+    real_emit = job.emit
+
+    def emit(event):
+        if event.get("phase") == "done":
+            seen.append(job.status)
+        real_emit(event)
+
+    job.emit = emit
+    finish_api.run_job(job, finish_api.FinishJobManager(tmp_path / "out", tmp_path / "out"))
+    assert seen and "done" not in seen
+    assert job.status == "done" and job.events[-1]["phase"] == "done"
+
+
+def _views(tmp_path: Path, files: list[str]) -> Path:
+    views = tmp_path / "views"
+    views.mkdir()
+    (views / "transforms.json").write_text(json.dumps({"frames": [{"file_path": f} for f in files]}))
+    return views
+
+
+def test_pixel_match_says_front_or_front_and_back_from_the_saved_views(tmp_path):
+    two = _views(tmp_path, ["view_000.png", "view_180.png"])
+    assert finish.pixel_match_result(True, two, {}) == "on (front + back)"
+    one = tmp_path / "one"
+    one.mkdir()
+    (one / "transforms.json").write_text(json.dumps({"frames": [{"file_path": "input.png"}]}))
+    assert finish.pixel_match_result(True, one, {}) == "on (front)"
+
+
+def test_pixel_match_that_did_not_run_says_why(tmp_path):
+    views = _views(tmp_path, ["view_000.png"])
+    assert finish.pixel_match_result(False, views, {"skip_photo": True}) == "off"
+    assert finish.pixel_match_result(False, tmp_path / "nowhere", {}).startswith("skipped: no saved camera")
+    assert finish.pixel_match_result(False, views, {}) == "skipped"
+
+
+def test_both_kinds_of_run_are_recognised_by_their_real_log_lines():
+    assert finish.PHOTO_RAN.search("[photo] 2 view(s); 16% of the texture from the photo")
+    assert finish.PHOTO_RAN.search("[hero      5s] body: Finish 32000 + Pixel Match ...")
+    assert not finish.PHOTO_RAN.search("Starting: found the source camera, so Pixel Match will keep the photo's pixels")
+    assert not finish.PHOTO_RAN.search("[hero      5s] body: Finish 32000 ...")
+
+
+def test_a_finished_run_says_and_keeps_whether_pixel_match_ran(tmp_path, monkeypatch):
+    import finish_api
+
+    job = finish_api.FinishJob("1" * 32, tmp_path / "out" / "fox__finish__20261027-010101")
+    job.views_dir.mkdir(parents=True)
+    (job.views_dir / "transforms.json").write_text(json.dumps({"frames": [{}, {}]}))
+
+    class Worker:
+        pid = 1
+        returncode = 0
+        stdout = iter(["[photo] 2 view(s); 16% of the texture from the photo\n", "baking\n"])
+
+        def __init__(self, *args, **kwargs):
+            job.result_glb.parent.mkdir(parents=True, exist_ok=True)
+            job.result_glb.write_bytes(b"glb")
+
+        def wait(self, timeout=None):
+            return 0
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(finish_api, "build_command", lambda job, settings, resume=False: ["worker"])
+    monkeypatch.setattr(finish_api.subprocess, "Popen", Worker)
+    finish_api.run_job(job, finish_api.FinishJobManager(tmp_path / "out", tmp_path / "out"))
+    done = job.events[-1]
+    assert done["phase"] == "done" and done["pixel_match"] == "on (front + back)"
+    assert done["message"].endswith("· Pixel Match: on (front + back)")
+    saved = json.loads((job.directory / finish_api.PIXEL_MATCH_NAME).read_text())
+    assert saved == {"pixel_match": "on (front + back)"}
+
+
+def test_a_post_launch_error_terminates_the_worker_before_releasing_the_slot(tmp_path, monkeypatch):
+    """If the pid-record write fails after Popen, the child must be stopped and reaped
+    before the active slot is freed; otherwise the worker keeps running and a second
+    Finish can start."""
+    import finish_api
+
+    job = finish_api.FinishJob("2" * 32, tmp_path / "out" / "fox__finish__20261027-020202")
+    manager = finish_api.FinishJobManager(tmp_path / "out", tmp_path / "out")
+    manager.active = job.id
+
+    calls = []
+
+    class Worker:
+        pid = 4242
+        returncode = 0
+        stdout = iter([])
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def wait(self, timeout=None):
+            calls.append(("wait", timeout, manager.active))
+            return 0
+
+        def poll(self):
+            return None  # still alive until terminated
+
+    def fake_terminate_group(pid):
+        calls.append(("terminate_group", pid, manager.active))
+
+    original_write_text = Path.write_text
+
+    def fake_write_text(self, *args, **kwargs):
+        if self.name == "pid":
+            raise OSError("No space left on device")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(finish_api, "build_command", lambda job, settings, resume=False: ["worker"])
+    monkeypatch.setattr(finish_api.subprocess, "Popen", Worker)
+    monkeypatch.setattr(finish_api.processes, "terminate_group", fake_terminate_group)
+    monkeypatch.setattr(Path, "write_text", fake_write_text)
+
+    finish_api.run_job(job, manager)
+
+    assert job.status == "error"
+    assert any(event.get("phase") == "error" for event in job.events)
+    assert calls == [("terminate_group", 4242, job.id), ("wait", pytest.approx(30, rel=0.1), job.id)]
+    assert manager.active is None

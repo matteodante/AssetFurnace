@@ -79,10 +79,10 @@ $Py = Join-Path $Dir ".venv\Scripts\python.exe"
 # requirements.txt only bounds them, so installing from it gave each install whatever
 # PyPI had that day. (It falls back to requirements.txt only in a checkout older than the lock.)
 $Reqs = Join-Path $Dir "requirements.lock"
-if (-not (Test-Path $Reqs)) { $Reqs = Join-Path $Dir "requirements.txt" }
+if (-not (Test-Path -LiteralPath $Reqs)) { $Reqs = Join-Path $Dir "requirements.txt" }
 # requirements.txt pins no torch, so then nothing matches and PyTorch stays unpinned, as before
-$TorchPin = Select-String -Path $Reqs -Pattern '^torch==([^ ;]+)' | Select-Object -First 1
-$VisionPin = Select-String -Path $Reqs -Pattern '^torchvision==([^ ;]+)' | Select-Object -First 1
+$TorchPin = Select-String -LiteralPath $Reqs -Pattern '^torch==([^ ;]+)' | Select-Object -First 1
+$VisionPin = Select-String -LiteralPath $Reqs -Pattern '^torchvision==([^ ;]+)' | Select-Object -First 1
 $TorchVersion = if ($TorchPin) { $TorchPin.Matches[0].Groups[1].Value } else { $null }
 $VisionVersion = if ($VisionPin) { $VisionPin.Matches[0].Groups[1].Value } else { $null }
 $Pinned = [bool]($TorchVersion -and $VisionVersion)

@@ -420,8 +420,9 @@ def run_job(job: AnimateJob, manager: AnimateJobManager = ANIMATE_JOBS) -> None:
         else:
             job.result.with_suffix(".provenance.json").write_text(
                 json.dumps(job.record, indent=2), encoding="utf-8")
-            job.status = "done"
-            usage_api.count_done("rig" if job.kind == "rig" else "animation")
+            # The done event (with the file's path) goes out BEFORE the status flips: a plan polls
+            # the status and reads the last event, and the fit check takes seconds. The other order
+            # lost a robot's rig mid-plan (2026-10-25).
             fit = rig_fit(job.result) if job.kind == "rig" else {}
             job.emit({"phase": "done", "overall_pct": 100,
                       "message": fit.get("message") or ("Rigged" if job.kind == "rig" else "Animated"),
@@ -431,11 +432,19 @@ def run_job(job: AnimateJob, manager: AnimateJobManager = ANIMATE_JOBS) -> None:
                       if REPO / "output" in job.result.parents else None,
                       "result_url": served_url(job.result),
                       "size_bytes": job.result.stat().st_size})
+            job.status = "done"
+            usage_api.count_done("rig" if job.kind == "rig" else "animation")
     except Exception as exc:
         job.status = "error"
         job.emit({"phase": "error", "message": str(exc)})
     finally:
         stop.set()
+        if job.process is not None and job.process.poll() is None:
+            try:
+                processes.terminate_group(job.process.pid)
+                job.process.wait(timeout=30)
+            except Exception as cleanup_exc:
+                job.append_log(f"cleanup warning: {cleanup_exc}")
         manager.finish(job)
 
 
