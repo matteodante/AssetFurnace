@@ -11,7 +11,8 @@ run by hand, each with its own flags, in an order that matters:
 Run by hand across several assets, each gets slightly different treatment and the
 comparison between them stops meaning anything. It also takes ~8 minutes of attention per
 asset, most of it waiting. This runs the chain, keeps every intermediate, and writes a
-JSON record of what was actually done.
+JSON record of what was actually done, plus a `.provenance.json` that carries the source
+model's licence over to the finished one.
 
 **What the route is for.** TRELLIS.2's geometry is good and its 1024 texture stage bleaches
 flat-illustration inputs. So: take the geometry, throw the texture away, and repaint from
@@ -56,7 +57,7 @@ REPO = Path(__file__).resolve().parents[1]
 SCRIPTS = REPO / "scripts"
 sys.path.insert(0, str(REPO))
 
-from image_to_3dlab import pixal3d_native
+from image_to_3dlab import pixal3d_native, provenance
 from image_to_3dlab.blender import MAC_APP, find_blender, missing_help
 from image_to_3dlab.host import APPLE, host_platform
 
@@ -270,6 +271,18 @@ def step_paths(output: Path, steps_dir: Path | None = None) -> dict[str, Path]:
         "photo_fade": steps_dir / "3_photo_fade.png",
         "baked": steps_dir / "4_baked.glb", "bake_log": steps_dir / "4_bake.log",
     }
+
+
+def write_provenance(source: Path, output: Path) -> Path:
+    """The finished model's licence sidecar, `<output>.provenance.json`: the licence of the
+    model it was made from carries over, read from the record beside `source` (the studio
+    copies the generator's record in as `input/source.json`). A source with no record, an
+    upload, gets `license: null` rather than a guess."""
+    sidecar = output.with_suffix(".provenance.json")
+    record = provenance.derived_record("scripts/retopo_repaint.py (Finish)", source, output,
+                                       provenance.licence_record_beside(source))
+    sidecar.write_text(json.dumps(record, indent=2), encoding="utf-8")
+    return sidecar
 
 
 def preflight(blender: Path | None, skip_paint: bool, platform: str | None = None,
@@ -583,6 +596,7 @@ def main() -> int:
     }
     record_path = Path(f"{stem}.retopo-repaint.json")
     record_path.write_text(json.dumps(record, indent=2))
+    write_provenance(args.source, args.output)
 
     emit_stage("done", f"Finished at {record['size_bytes'] / 1048576:.1f} MB")
     print(f"[retopo-repaint] done in {record['total_seconds']:.0f}s -> {args.output} "

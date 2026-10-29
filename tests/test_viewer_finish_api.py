@@ -392,6 +392,83 @@ def test_a_finished_run_offers_its_source_for_comparison(tmp_path):
     assert described["source_url"] is None or described["source_url"].endswith("source.glb")
 
 
+# --- Licence: the generator's travels through Finish to the rig and its moves -------------
+
+
+def _licensed_run(root, glb_bytes=b"glb-bytes"):
+    """`_pixal3d_run` with the licence pixal3d_generate.py records."""
+    record_path = _pixal3d_run(root, glb_bytes).with_suffix(".json")
+    record = json.loads(record_path.read_text())
+    record["license"] = {"name": "MIT (code + flow weights); DINOv3 License (bundled encoder)"}
+    record["output"]["classification"] = "commercial-conditional"
+    record_path.write_text(json.dumps(record))
+    return record
+
+
+def _finished(job, data=b"finished"):
+    """What the worker leaves behind: the result, then its licence sidecar."""
+    job.result_glb.write_bytes(data)
+    finish.worker_module().write_provenance(job.asset_path, job.result_glb)
+    job.status = "done"
+
+
+def _animate_api():
+    import sys
+    sys.path.insert(0, str(MODULE.parent))
+    import autorig_api
+    return autorig_api
+
+
+def test_a_finished_model_s_rig_and_moves_name_the_generator_s_licence(tmp_path):
+    """The studio run of 2026-10-29: picture, model, Finish, rig wrote `license: null`."""
+    generator = _licensed_run(tmp_path / "generated")
+    job = finish.FinishJobManager(tmp_path / "finish", tmp_path / "generated").create(
+        "robot.glb", b"glb-bytes", b"png", {})
+    assert json.loads(job.source_record_path.read_text()) == generator
+    _finished(job)
+    aa = _animate_api()
+    rig = aa.rig_record(job.result_glb.name, b"finished", aa.source_record_for(job.result_glb), "generated")
+    assert rig["license"] == generator["license"]
+    assert rig["classification"] == "commercial-conditional"
+    assert rig["source_record"]["source_record"] == generator   # rig -> Finish -> generator
+    moves = aa.animation_record(rig, {"id": "walk", "label": "Walk"}, 0)
+    assert moves["license"] == generator["license"]
+
+
+def test_finishing_a_finished_model_again_keeps_its_licence(tmp_path):
+    generator = _licensed_run(tmp_path / "generated")
+    manager = finish.FinishJobManager(tmp_path / "generated" / "finish", tmp_path / "generated")
+    _finished(manager.create("robot.glb", b"glb-bytes", b"png", {}))
+    again = manager.create("robot_20k.glb", b"finished", b"png", {})
+    _finished(again, b"finished again")
+    record = json.loads(again.result_glb.with_suffix(".provenance.json").read_text())
+    assert record["license"] == generator["license"]
+
+
+def test_an_upload_is_finished_and_rigged_with_no_licence_rather_than_an_invented_one(tmp_path):
+    _licensed_run(tmp_path / "generated")
+    job = finish.FinishJobManager(tmp_path / "finish", tmp_path / "generated").create(
+        "mine.glb", b"made-elsewhere", b"png", {})
+    assert not job.source_record_path.exists()
+    _finished(job)
+    record = json.loads(job.result_glb.with_suffix(".provenance.json").read_text())
+    assert record["license"] is None and record["source_record"] is None
+    assert _animate_api().source_record_for(job.result_glb) is None
+
+
+def test_a_finish_record_from_before_the_licence_is_still_read(tmp_path):
+    """Finish records written before the fix: no licence, and `output` a bare path. Looking a
+    model up past them must not trip, and a rig of their result still says no licence."""
+    _licensed_run(tmp_path / "generated")
+    old = tmp_path / "generated" / "finish" / "robot__finish__20261029-111919"
+    old.mkdir(parents=True)
+    (old / "robot_20k.glb").write_bytes(b"old-finished")
+    (old / "robot_20k.retopo-repaint.json").write_text(json.dumps({"output": str(old / "robot_20k.glb")}))
+    assert finish.find_source_record(b"old-finished", tmp_path / "generated") is None
+    assert finish.find_source_record(b"glb-bytes", tmp_path / "generated").name == "robot__pixal3d__1.json"
+    assert _animate_api().source_record_for(old / "robot_20k.glb") is None
+
+
 # --- Run folder layout (0.3.5): the finished model is the only GLB at the top ----------
 
 @pytest.mark.parametrize("faces, label", [

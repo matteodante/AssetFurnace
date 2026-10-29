@@ -174,6 +174,47 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+# Where a model's licence record sits beside it: the sidecar that travels with the file, or
+# the run record a generator writes (`<name>.json`, Pixal3D's and the viewer's).
+LICENCE_SIDECARS = (".provenance.json", ".json")
+
+
+def licence_record_beside(model: Path) -> dict[str, Any] | None:
+    """The record beside `model` that names its licence, or None: an upload, a model made
+    elsewhere, or one whose record was lost."""
+    for suffix in LICENCE_SIDECARS:
+        try:
+            record = json.loads(model.with_suffix(suffix).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(record, dict) and record.get("license"):
+            return record
+    return None
+
+
+def derived_record(tool: str, source: Path, output: Path,
+                   source_record: dict[str, Any] | None) -> dict[str, Any]:
+    """Provenance for a model made from another one (finished, patched): the source's
+    licence carries over and its whole record is kept as `source_record`, so a chain of
+    steps still leads back to the generator. A source with no record gets `license: None`,
+    never a guessed one."""
+    record = source_record if isinstance(source_record, dict) else {}
+    made = record.get("output")
+    classification = ((made.get("classification") if isinstance(made, dict) else None)
+                      or record.get("classification"))
+    return {
+        "schema_version": 1,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "tool": tool,
+        "input": {"path": str(source), "sha256": sha256_file(source)},
+        "output": {"path": str(output), "sha256": sha256_file(output),
+                   "classification": classification},
+        "license": record.get("license"),
+        "classification": classification,
+        "source_record": record or None,
+    }
+
+
 def _git_revision(repo: Path) -> str | None:
     try:
         return subprocess.run(

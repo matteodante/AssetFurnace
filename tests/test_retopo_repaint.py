@@ -10,6 +10,7 @@ asset rather than an error — exactly the kind of failure a comparison would hi
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -393,3 +394,33 @@ def test_keeping_the_full_mesh_never_calms_it():
 def test_the_calmed_mesh_has_its_own_step_file(tmp_path):
     assert rr.step_paths(tmp_path / "out.glb")["calm"] == tmp_path / "out_calm.glb"
     assert rr.step_paths(tmp_path / "o.glb", tmp_path / "s")["calm"].name == "1_calm.glb"
+
+
+# --- The finished model's licence sidecar --------------------------------------------------
+
+def _source_and_result(folder: Path) -> tuple[Path, Path]:
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "source.glb").write_bytes(b"raw")
+    (folder / "wolf_20k.glb").write_bytes(b"finished")
+    return folder / "source.glb", folder / "wolf_20k.glb"
+
+
+def test_the_finished_model_names_the_licence_of_the_model_it_came_from(tmp_path):
+    """The studio copies the generator's record in as input/source.json; the result's sidecar
+    must carry its licence on, or the rig and the moves made from it name none."""
+    source, result = _source_and_result(tmp_path)
+    generator = {"backend": "pixal3d", "license": {"name": "MIT (code + flow weights); DINOv3 License"},
+                 "output": {"sha256": "abc", "classification": "commercial-conditional"}}
+    source.with_suffix(".json").write_text(json.dumps(generator))
+    sidecar = rr.write_provenance(source, result)
+    assert sidecar == tmp_path / "wolf_20k.provenance.json"
+    record = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert record["license"] == generator["license"]
+    assert record["classification"] == "commercial-conditional"
+    assert record["source_record"] == generator
+
+
+def test_an_uploaded_model_is_finished_with_no_licence_rather_than_an_invented_one(tmp_path):
+    source, result = _source_and_result(tmp_path)
+    record = json.loads(rr.write_provenance(source, result).read_text(encoding="utf-8"))
+    assert record["license"] is None and record["source_record"] is None

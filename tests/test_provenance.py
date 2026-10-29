@@ -2,7 +2,14 @@ import json
 
 import pytest
 
-from image_to_3dlab.provenance import LICENSES, finalize_output, validate_run_policy
+from image_to_3dlab.provenance import (
+    LICENSES,
+    derived_record,
+    finalize_output,
+    licence_record_beside,
+    sha256_file,
+    validate_run_policy,
+)
 
 
 def test_sf3d_is_allowed_when_conditionals_are_enabled():
@@ -168,3 +175,44 @@ def test_finalize_output_marks_unknown_identity_unverified(tmp_path):
     assert record["license"]["conditions"] == [
         "Verify this model's licence yourself; this run used an identity not in the reviewed profile."
     ]
+
+
+# --- A model made from another one (Finish, Fix a spot) inherits its licence --------------
+
+PIXAL3D = {"backend": "pixal3d",
+           "license": {"name": LICENSES["pixal3d"].license_name, "url": LICENSES["pixal3d"].license_url},
+           "output": {"sha256": "abc", "classification": "commercial-conditional"}}
+
+
+def test_a_derived_model_carries_the_generator_s_licence_and_its_record(tmp_path):
+    source, made = tmp_path / "wolf.glb", tmp_path / "wolf_20k.glb"
+    source.write_bytes(b"raw")
+    made.write_bytes(b"finished")
+    (tmp_path / "wolf.json").write_text(json.dumps(PIXAL3D))
+    record = derived_record("Finish", source, made, licence_record_beside(source))
+    assert record["license"] == PIXAL3D["license"]
+    assert record["classification"] == record["output"]["classification"] == "commercial-conditional"
+    assert record["source_record"] == PIXAL3D
+    assert record["input"]["sha256"] == sha256_file(source)
+    assert record["output"]["sha256"] == sha256_file(made)
+
+
+def test_the_sidecar_beats_the_run_record_and_a_record_without_a_licence_is_skipped(tmp_path):
+    model = tmp_path / "m.glb"
+    model.write_bytes(b"x")
+    (tmp_path / "m.provenance.json").write_text(json.dumps({"seed": 1}))
+    (tmp_path / "m.json").write_text(json.dumps(PIXAL3D))
+    assert licence_record_beside(model) == PIXAL3D
+    (tmp_path / "m.provenance.json").write_text(json.dumps({"license": {"name": "X"}}))
+    assert licence_record_beside(model)["license"]["name"] == "X"
+
+
+def test_an_upload_with_no_record_is_said_to_have_none_not_given_one(tmp_path):
+    source, made = tmp_path / "upload.glb", tmp_path / "upload_20k.glb"
+    source.write_bytes(b"raw")
+    made.write_bytes(b"finished")
+    (tmp_path / "upload.json").write_text("not json {")
+    assert licence_record_beside(source) is None
+    record = derived_record("Finish", source, made, None)
+    assert record["license"] is None and record["classification"] is None
+    assert record["source_record"] is None
