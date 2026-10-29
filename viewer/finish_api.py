@@ -344,13 +344,23 @@ def find_source_record(asset: bytes, root: Path = GENERATED_ROOT) -> Path | None
     return unlicensed
 
 
+def _records_under(root: Path):
+    """Every .json under `root`, skipping two-camera capture folders: a creature's practice
+    poses are 2,200 small .json files each, and none is a model's record."""
+    for folder, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d != "twocam"]
+        for name in files:
+            if name.endswith(".json"):
+                yield Path(folder) / name
+
+
 def _matching_runs(asset: bytes, root: Path, backend: str | None = "pixal3d"):
     """(record path, record) for each run whose output has `asset`'s sha256: Pixal3D's
     runs, or with `backend=None` any record that names its output's sha256."""
     digest = hashlib.sha256(asset).hexdigest()
     if not root.is_dir():
         return
-    for record_path in root.rglob("*.json"):
+    for record_path in _records_under(root):
         if record_path.stat().st_size > 20000:
             continue
         record = _read_json(record_path)

@@ -957,3 +957,17 @@ def test_a_post_launch_error_terminates_the_worker_before_releasing_the_slot(tmp
     assert any(event.get("phase") == "error" for event in job.events)
     assert calls == [("terminate_group", 4242, job.id), ("wait", pytest.approx(30, rel=0.1), job.id)]
     assert manager.active is None
+
+
+def test_the_record_search_skips_two_camera_practice_poses(tmp_path, monkeypatch):
+    """A prepared creature keeps 2,200 small .json files under twocam/: Finish looked through
+    every one of them, about 0.7 s a creature on every start."""
+    _licensed_run(tmp_path / "generated")
+    poses = tmp_path / "generated" / "animate" / "wolf__rig__1" / "twocam" / "creature" / "dataset"
+    poses.mkdir(parents=True)
+    (poses / "00000_meta.json").write_text(json.dumps({"output": {"sha256": "x"}}))
+    opened = []
+    real = finish._read_json
+    monkeypatch.setattr(finish, "_read_json", lambda path: opened.append(Path(path)) or real(path))
+    assert finish.find_source_record(b"glb-bytes", tmp_path / "generated").name == "robot__pixal3d__1.json"
+    assert not any("twocam" in p.parts for p in opened)
