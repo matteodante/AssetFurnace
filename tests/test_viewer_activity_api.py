@@ -49,9 +49,19 @@ class FakeJobs:
                      "model": made["model"] if kind == "model" else None}
 
 
-def _runner(tmp_path, **fake):
+def _runner(tmp_path, shape_check=None, **fake):
     jobs = FakeJobs(tmp_path, **fake)
-    return aa.ChainRunner(tmp_path, jobs, poll=0, sleep=lambda s: None), jobs
+    extra = {"shape_check": shape_check} if shape_check else {}
+    return aa.ChainRunner(tmp_path, jobs, poll=0, sleep=lambda s: None, **extra), jobs
+
+
+def _shape(gap):
+    measured = []
+
+    def check(model):
+        measured.append(model)
+        return {"mirror_gap_pct": gap, "limit_pct": 2.5, "lopsided": gap > 2.5}
+    return check, measured
 
 
 def test_a_whole_character_runs_and_each_step_gets_the_last_ones_file(tmp_path):
@@ -382,3 +392,55 @@ def test_every_finish_detail_agents_can_ask_for_reaches_finish():
         form = {"title": {"value": "k"}, "steps": {"value": json.dumps(["finished"])},
                 "finish_settings": {"value": json.dumps(settings)}}
         assert aa.chain_from_form(form).finish_settings == settings, detail
+
+
+def test_a_lopsided_creature_stops_after_its_3d_model_and_says_to_draw_another(tmp_path):
+    check, measured = _shape(3.1)
+    runner, jobs = _runner(tmp_path, shape_check=check)
+    chain = aa.Chain(title="wyvern", want="creature", prompt="a wyvern", steps=["picture", "model", "finished", "rigged"])
+    runner.submit(chain, background=False)
+    assert measured == [tmp_path / "pixal3d/m/model.glb"]
+    assert chain.status == "done" and chain.done == ["picture", "model"]       # a calm stop, not a failure
+    out = chain.to_dict()
+    assert "lopsided" in out["note"] and "3.1%" in out["note"] and "another picture" in out["note"]
+    assert out["shape"] == {"mirror_gap_pct": 3.1, "limit_pct": 2.5, "lopsided": True}
+    assert not any(p in ("/api/finish", "/api/animate/rig") for _, p, _ in jobs.calls)
+
+
+def test_a_straight_creature_goes_on_to_its_rig_and_plays_no_preset(tmp_path):
+    check, measured = _shape(0.8)
+    runner, jobs = _runner(tmp_path, shape_check=check, four_legged=True)
+    chain = aa.Chain(title="dragon", want="creature", prompt="a dragon", steps=["picture", "model", "finished", "rigged"])
+    runner.submit(chain, background=False)
+    assert chain.status == "done" and chain.done == chain.steps and len(measured) == 1
+    assert chain.to_dict()["shape"]["lopsided"] is False
+    assert not any(p == "/api/animate/play" for _, p, _ in jobs.calls)
+
+
+def test_a_model_that_cannot_be_measured_is_not_held_back(tmp_path):
+    def broken(model):
+        raise ValueError("model.glb has no surface to measure")
+    runner, _ = _runner(tmp_path, shape_check=broken)
+    chain = aa.Chain(title="dragon", want="creature", steps=["model", "finished"], made={"picture": "images/p/pic.png"})
+    (tmp_path / "images/p").mkdir(parents=True)
+    (tmp_path / "images/p/pic.png").write_bytes(b"png")
+    runner.submit(chain, background=False)
+    assert chain.status == "done" and chain.done == ["model", "finished"] and chain.to_dict()["shape"] is None
+
+
+def test_only_creatures_are_measured(tmp_path):
+    check, measured = _shape(9.0)
+    runner, _ = _runner(tmp_path, shape_check=check)
+    chain = aa.Chain(title="knight", want="character", prompt="k", steps=["picture", "model", "finished"])
+    runner.submit(chain, background=False)
+    assert measured == [] and chain.done == chain.steps
+
+
+def test_the_studio_measures_a_real_model_and_keeps_the_report_beside_it(tmp_path):
+    trimesh = pytest.importorskip("trimesh")
+    model = tmp_path / "beast.glb"
+    parts = [trimesh.creation.box([0.1, 0.6, 0.1], trimesh.transformations.translation_matrix([x, 0.3, 0])) for x in (-0.3, 0.3)]
+    trimesh.util.concatenate(parts).export(model)
+    report = aa.measure_shape(model)
+    assert report["lopsided"] is False
+    assert json.loads((tmp_path / "beast.symmetry.json").read_text(encoding="utf-8")) == report

@@ -362,9 +362,9 @@ RECIPES = json.loads((REPO / "image_to_3dlab" / "prompt_recipes.json").read_text
 
 def test_every_goal_has_tips_and_the_3d_goals_add_wording():
     goals = RECIPES["goals"]
-    assert set(goals) >= {"character", "prop", "set", "picture", "upload"}
+    assert set(goals) >= {"character", "creature", "prop", "set", "picture", "upload"}
     assert all(goal["tips"] for goal in goals.values())
-    for key in ("character", "prop", "set"):
+    for key in ("character", "creature", "prop", "set"):
         assert goals[key]["wording"]
     assert "A-pose" in goals["character"]["wording"] and "empty hands" in goals["character"]["wording"]
 
@@ -384,6 +384,26 @@ def test_the_added_wording_names_only_what_it_wants_and_leaves_fingers_alone():
         words = set(re.findall(r"[a-z']+", goal["wording"].lower()))
         assert not words & {"no", "not", "never", "without", "don't"}, key
         assert not words & {"finger", "fingers"}, key
+
+
+def test_the_creature_wording_asks_for_one_still_straight_creature_and_names_no_parts():
+    """Tested on a dragon, a wolf, a spider, a griffin and a troll (2026-10-29). Asking for its
+    sides to mirror each other drew two wolves side by side, so the wording says symmetrical
+    and one creature alone; wings and tails are not named, since naming one adds it."""
+    import re
+    wording = RECIPES["goals"]["creature"]["wording"]
+    assert "one creature alone" in wording and "standing still on all of its legs" in wording
+    assert "symmetrical" in wording and "three-quarter front view" in wording
+    words = set(re.findall(r"[a-z']+", wording.lower()))
+    assert not words & {"mirror", "mirroring", "mirrored", "wing", "wings", "tail", "four", "two"}
+
+
+def test_creature_trouble_words_catch_a_creature_drawn_in_motion():
+    rules = [r for r in RECIPES["trouble"] if "creature" in r["goals"]]
+    words = {w for r in rules for w in r["words"]}
+    assert {"flying", "rearing", "running", "attacking"} <= words
+    assert any("glowing" in r["words"] for r in rules)        # effects and scenes apply to creatures too
+    assert not any("wings" in r["words"] for r in rules)      # wings are welcome on a creature
 
 
 @needs_node
@@ -1103,3 +1123,50 @@ def test_copy_details_copies_what_the_server_scrubbed_and_nothing_if_it_cannot()
     assert out["copied"] == ["~/x.log", "z"]          # the server's text, never the raw log
     assert out["url"] == "/api/bug-report" and out["size"] == 30000
     assert out["fallback"] == "A step failed"         # the server refuses an empty message
+
+
+DRAGON = {"name": "green dragon", "kind": "creature", "stage": "finished", "picture": "images/d/d.png",
+          "prompt": "A green dragon", "model": "a/d.glb", "finished": "finish/d/d_20k.glb", "rigged": None,
+          "clips": [], "props": [], "shape": {"mirror_gap_pct": 3.1, "limit_pct": 2.5, "lopsided": True}}
+
+
+@needs_node
+def test_a_creature_is_rigged_without_the_humanoid_question_and_carries_on_as_a_creature():
+    out = _run("steps.js", f"""
+      const dragon = {json.dumps(DRAGON)};
+      const ctx = {{ presets: [], engines: [{{ id: 'pixal3d', label: 'Pixal3D', license: 'x' }}] }};
+      console.log(JSON.stringify({{
+        rig: m.stepBody('rigged', dragon, ctx), knightRig: m.stepBody('rigged', {json.dumps(KNIGHT)}, ctx),
+        plan: m.chainPlan('rigged', dragon, {{ rigSource: 'finished' }}),
+        model: m.chainPlan('model', dragon, {{ backend: 'pixal3d' }}).want,
+      }}));""")
+    assert "Is this a humanoid" not in out["rig"] and 'data-run="rigged"' in out["rig"] and "from a video" in out["rig"]
+    assert "Is this a humanoid" in out["knightRig"]
+    assert out["plan"]["want"] == "creature" and out["model"] == "creature"   # a new 3D try is measured again
+
+
+@needs_node
+def test_a_lopsided_creature_says_so_with_a_way_to_draw_another_picture():
+    out = _run("steps.js", f"""
+      const dragon = {json.dumps(DRAGON)};
+      const straight = {{ ...dragon, shape: {{ mirror_gap_pct: 0.8, limit_pct: 2.5, lopsided: false }} }};
+      const ctx = {{ presets: [], engines: [{{ id: 'pixal3d', label: 'Pixal3D', license: 'x' }}] }};
+      console.log(JSON.stringify({{
+        finish: m.stepBody('finished', {{ ...dragon, finished: null }}, ctx), rig: m.stepBody('rigged', dragon, ctx),
+        straight: m.stepBody('rigged', straight, ctx), unmeasured: m.stepBody('rigged', {{ ...dragon, shape: null }}, ctx),
+        animate: m.stepBody('animated', {{ ...dragon, rigged: 'r/d.glb', fits_moves: false }}, ctx),
+        troll: m.stepBody('animated', {{ ...dragon, rigged: 'r/d.glb', fits_moves: true, shape: null }}, ctx),
+      }}));""")
+    assert "data-twocam" in out["troll"]   # a creature on two legs still moves from a video, not a preset
+    for key in ("finish", "rig", "animate"):
+        assert "lopsided" in out[key] and "3.1%" in out[key] and "data-newpicture" in out[key], key
+    assert "lopsided" not in out["straight"] and "lopsided" not in out["unmeasured"]
+
+
+@needs_node
+def test_create_offers_a_moving_creature_beside_a_moving_character():
+    out = _run("plan.js", "console.log(JSON.stringify([m.WANTS.creature, m.planFor('idea', 'creature')]));")
+    assert out[0]["label"] == "A moving creature" and "video" in out[0]["hint"]
+    assert out[1] == ["picture", "model", "finished", "rigged"]
+    create = (REPO / "viewer" / "studio" / "create.js").read_text(encoding="utf-8")
+    assert "['creature', 'idea', 'Make a creature']" in create

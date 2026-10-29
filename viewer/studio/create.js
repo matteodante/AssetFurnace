@@ -1,7 +1,7 @@
 // Create: one sheet that asks "start from" and "I want", then a runner that carries one
 // thing through every step it needs, using the same job APIs as the Steps panel.
 
-import { HAVES, WANTS, ALLOWED, STEP_LABELS, FULL_GUIDE, planFor, stopAfter, composePrompt, troubleFor } from './plan.js';
+import { HAVES, WANTS, ALLOWED, STEP_LABELS, FULL_GUIDE, planFor, stopAfter, composePrompt, troubleFor, frontBackByDefault } from './plan.js';
 import { plainError } from './jobs.js';
 import { openPromptGuide, isGuideLink } from './guide.js';
 
@@ -52,9 +52,12 @@ export function openCreate({ stage, recipes, engines, presets, frontBack = null,
   const state = { have: 'idea', want: 'character', stop: null, tips: false, useRecipe: true, text: '', file: null, preview: null,
     engine: engines[0]?.id, firstMove: presets.find((p) => !p.take)?.id,
     pic: { size: 768, steps: 8, newEachTime: true, seed: 42 }, keep: false, hero: false,
-    frontBack: Boolean(frontBack?.ready) };  // the best result by default, when it can run
+    frontBack: false };
+  // the best result by default, when it can run; a creature's starts off (plan.js frontBackByDefault)
+  const wantNow = (want) => { state.want = want; state.frontBack = frontBackByDefault(want, frontBack?.ready); };
+  wantNow(state.want);
   // "Draw another picture": the picture's own description, word for word, so nothing is added twice
-  if (prefill?.text) Object.assign(state, { text: prefill.text, useRecipe: false, want: prefill.want || state.want });
+  if (prefill?.text) { Object.assign(state, { text: prefill.text, useRecipe: false }); wantNow(prefill.want || state.want); }
   // paste a picture (Ctrl+V) anywhere while the sheet is open; text pastes are left alone
   const onPaste = (e) => {
     const picture = pastedPicture(e.clipboardData);
@@ -81,9 +84,9 @@ export function openCreate({ stage, recipes, engines, presets, frontBack = null,
     const active = stopAfter(plan, state.stop);
     const tipKey = state.have === 'idea' ? state.want : state.have === 'picture' ? 'upload' : null;
     const recipe = recipes?.goals?.[state.want];
-    const quick = [['character', 'idea', 'Make a character'], ['prop', 'idea', 'Make props'], ['picture', 'idea', 'Make a picture'], ['character', 'model', 'Rig and animate my model']];
+    const quick = [['character', 'idea', 'Make a character'], ['creature', 'idea', 'Make a creature'], ['prop', 'idea', 'Make props'], ['picture', 'idea', 'Make a picture'], ['character', 'model', 'Rig and animate my model']];
     const source = state.have === 'idea'
-      ? `<label class="field">Describe it<textarea data-k="text" rows="3" placeholder="${state.want === 'character' ? 'A stylised orc blacksmith with short tusks, a braided beard and heavy boots' : state.want === 'picture' ? 'Concept art of an orc blacksmith at a glowing forge' : 'A weathered wooden tavern barrel with iron bands'}">${esc(state.text)}</textarea></label>
+      ? `<label class="field">Describe it<textarea data-k="text" rows="3" placeholder="${state.want === 'character' ? 'A stylised orc blacksmith with short tusks, a braided beard and heavy boots' : state.want === 'creature' ? 'A dark green dragon with four legs, two bat wings folded at its sides and a long tail' : state.want === 'picture' ? 'Concept art of an orc blacksmith at a glowing forge' : 'A weathered wooden tavern barrel with iron bands'}">${esc(state.text)}</textarea></label>
          ${recipe?.wording ? `<label class="check addline"><input type="checkbox" data-k="recipe" ${state.useRecipe ? 'checked' : ''}><span><b>We add:</b> ${esc(recipe.wording)}</span></label>` : ''}
          <div class="warnings" aria-live="polite"></div>`
       : `<div class="drop" data-drop tabindex="0" role="button">${state.file ? `${state.preview ? `<img class="droppreview" src="${state.preview}" alt="The picture you chose">` : ''}<b>${esc(state.file.name)}</b><br><span class="hint">${fileSizeText(state.file.size)} · click${state.have === 'picture' ? ', drop or paste' : ' or drop'} another to replace</span>` : `Drop ${state.have === 'picture' ? 'a picture (PNG, JPG, WebP)' : 'a 3D model (GLB)'} here, ${state.have === 'picture' ? 'paste one (Ctrl+V), ' : ''}or click to choose`}</div>`;
@@ -108,7 +111,7 @@ export function openCreate({ stage, recipes, engines, presets, frontBack = null,
           <label class="check"><input type="checkbox" data-pic="newEachTime" ${state.pic.newEachTime ? 'checked' : ''}><span>New picture each time <span class="hint">untick to reuse a seed and get the same picture back</span></span></label>
           ${state.pic.newEachTime ? '' : `<label class="field">Seed<input type="number" data-pic="seed" step="1" value="${state.pic.seed}"></label>`}
         </div></details>` : ''}
-      ${active.includes('model') ? `<details class="adv"><summary>Advanced: 3D model</summary>${engines.length > 1 ? `<label class="field">Engine<select data-k="engine">${engines.map((e, i) => `<option value="${esc(e.id)}" ${e.id === state.engine ? 'selected' : ''}>${i ? '' : 'Best quality: '}${esc(e.label)}</option>`).join('')}</select></label>` : ''}${pixal && state.want !== 'set' ? (frontBack?.ready ? `<label class="check"><input type="checkbox" data-k="frontback" ${state.frontBack ? 'checked' : ''}><span>Front + back <span class="hint">draws the back too, so the sides and back match your picture instead of being guessed. A few minutes more on a Mac, under a minute on a Linux GPU.</span></span></label>` : frontBack?.hint ? `<p class="hint">Front + back is off. ${esc(frontBack.hint)}</p>` : '') : ''}<label class="check"><input type="checkbox" data-k="keep" ${state.keep ? 'checked' : ''}><span>Keep everything <span class="hint">textures, in-between meshes and resume files, for digging into a bad result. Takes a lot more disk.</span></span></label></details>` : ''}
+      ${active.includes('model') ? `<details class="adv"><summary>Advanced: 3D model</summary>${engines.length > 1 ? `<label class="field">Engine<select data-k="engine">${engines.map((e, i) => `<option value="${esc(e.id)}" ${e.id === state.engine ? 'selected' : ''}>${i ? '' : 'Best quality: '}${esc(e.label)}</option>`).join('')}</select></label>` : ''}${pixal && state.want !== 'set' ? (frontBack?.ready ? `<label class="check"><input type="checkbox" data-k="frontback" ${state.frontBack ? 'checked' : ''}><span>Front + back <span class="hint">${state.want === 'creature' ? 'off by default for a creature: its back is drawn on its own, and a back that did not match gave a dragon a second neck.' : 'draws the back too, so the sides and back match your picture instead of being guessed. A few minutes more on a Mac, under a minute on a Linux GPU.'}</span></span></label>` : frontBack?.hint ? `<p class="hint">Front + back is off. ${esc(frontBack.hint)}</p>` : '') : ''}<label class="check"><input type="checkbox" data-k="keep" ${state.keep ? 'checked' : ''}><span>Keep everything <span class="hint">textures, in-between meshes and resume files, for digging into a bad result. Takes a lot more disk.</span></span></label></details>` : ''}
       <p class="error" data-error hidden></p>
       <div class="row end"><span class="hint">${active.length} step${active.length === 1 ? '' : 's'}${active.includes('picture') ? ' · the picture uses Qwen-Image, run on this machine' : ''}</span><button type="submit" class="primary">Make it</button></div>
     </form>`;
@@ -132,9 +135,9 @@ export function openCreate({ stage, recipes, engines, presets, frontBack = null,
     const q = (sel) => sheet.querySelector(sel);
     q('[data-close]').onclick = close;
     sheet.querySelectorAll('[data-have]').forEach((b) => b.onclick = () => { state.have = b.dataset.have; setFile(null); state.stop = null; render(); });
-    sheet.querySelectorAll('[data-want]').forEach((b) => b.onclick = () => { state.want = b.dataset.want; state.stop = null; render(); });
+    sheet.querySelectorAll('[data-want]').forEach((b) => b.onclick = () => { wantNow(b.dataset.want); state.stop = null; render(); });
     sheet.querySelectorAll('[data-stop]').forEach((b) => b.onclick = () => { state.stop = state.stop === b.dataset.stop ? null : b.dataset.stop; render(); });
-    sheet.querySelectorAll('.qs').forEach((b) => b.onclick = () => { state.want = b.dataset.w; state.have = b.dataset.h; setFile(null); state.stop = null; render(); });
+    sheet.querySelectorAll('.qs').forEach((b) => b.onclick = () => { wantNow(b.dataset.w); state.have = b.dataset.h; setFile(null); state.stop = null; render(); });
     q('[data-tips]')?.addEventListener('click', () => { state.tips = !state.tips; render(); });
     // the tips' "picture guide" link opens here, over Create, instead of on GitHub
     q('.tipsbox')?.addEventListener('click', (e) => {

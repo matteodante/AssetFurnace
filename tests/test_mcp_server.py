@@ -708,3 +708,16 @@ def test_status_says_where_models_go_and_survives_an_older_studio():
     assert ms.models_folder(Answers({"in_use": "/Volumes/Big/models"})) == "/Volumes/Big/models"
     assert ms.models_folder(Answers({"in_use": None})) is None
     assert ms.models_folder(Answers(RuntimeError("404: no such route"))) is None
+
+
+@pytest.mark.skipif(__import__("shutil").which("node") is None, reason="Node runs the studio's steps.js")
+def test_continuing_an_asset_asks_for_what_the_studio_would_ask():
+    """A creature carried on by an agent stays a creature: its next 3D try is measured again."""
+    import subprocess
+    kinds = ["character", "creature", "prop", "prop set", "model", "picture"]
+    url = (Path(__file__).resolve().parents[1] / "viewer" / "studio" / "steps.js").as_uri()
+    program = f"import * as m from {json.dumps(url)};\nconsole.log(JSON.stringify({json.dumps(kinds)}.map(k => m.wantOf({{ kind: k }}))));"
+    studio = json.loads(subprocess.run(["node", "--input-type=module", "--eval", program], check=True,
+                                       capture_output=True, text=True, encoding="utf-8").stdout)
+    assert [ms.want_for({"kind": k}) for k in kinds] == studio
+    assert ms.want_for({"kind": "creature"}) == "creature"

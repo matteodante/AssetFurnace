@@ -23,6 +23,21 @@ export async function postStart(url, body) {
 
 /** The body for the step the asset can take next. `ctx` has engines, presets, url(). */
 export function stepBody(stepId, asset, ctx) {
+  return shapeWarning(asset, stepId) + baseBody(stepId, asset, ctx);
+}
+
+/** A creature whose 3D model came out lopsided (measured when it was built: Create's chain stops
+ *  there) says so on the step it would take next, with a way to draw another picture. */
+export function shapeWarning(asset, stepId) {
+  const shape = asset.kind === 'creature' ? asset.shape : null;
+  if (!shape?.lopsided) return '';
+  const next = !asset.finished ? 'finished' : !asset.rigged ? 'rigged' : 'animated';
+  if (stepId !== next) return '';
+  return `<div class="warning"><p>This creature came out lopsided: its two sides are ${esc(shape.mirror_gap_pct)}% apart (a straight one is under ${esc(shape.limit_pct)}%). Animating it from a video needs a body whose sides mirror each other, and its rig will be wonky.</p>
+    ${asset.prompt ? '<button class="ghost" data-newpicture>Draw another picture</button>' : ''}</div>`;
+}
+
+function baseBody(stepId, asset, ctx) {
   if (stepId === 'picture') {
     return asset.prompt
       ? `<details class="adv redo"><summary>Draw another picture</summary><p class="hint">Opens Create with the same description. A new picture starts a new item in the Library.</p>
@@ -68,15 +83,21 @@ export function stepBody(stepId, asset, ctx) {
   }
   if (stepId === 'rigged') {
     const both = asset.finished && asset.model;
+    const which = both ? '<label class="field">Rig which model<select data-k="rigsource"><option value="finished">The finished model</option><option value="model">The raw model (skips Finish)</option></select></label>' : '';
+    if (asset.kind === 'creature') {
+      const creature = `<p class="hint">Adds a skeleton so it can move from a video. About a minute.</p>${which}
+        <button class="primary" data-run="rigged" data-humanoid="no">Rig it</button>`;
+      return asset.rigged ? redoBox('Re-rig', 'Makes a new rig from the model. It shows up as a new version; the current rig and its moves are kept.', creature) : creature;
+    }
     const body = `<p class="hint">Adds a skeleton so it can move. About a minute. Works best on a character standing in an A-pose (a T-pose works too) with empty hands.</p>
-      ${both ? '<label class="field">Rig which model<select data-k="rigsource"><option value="finished">The finished model</option><option value="model">The raw model (skips Finish)</option></select></label>' : ''}
+      ${which}
       <p class="ask">Is this a humanoid: two arms, two legs, standing upright?</p>
       <div class="row"><button class="primary" data-run="rigged" data-humanoid="yes">Yes, rig it</button>
       <button class="ghost" data-run="rigged" data-humanoid="no" data-tip="Four-legged and other creatures are animated from a video instead of the preset moves, and the rig may be wonky.">No, rig it anyway</button></div>`;
     return asset.rigged ? redoBox('Re-rig', 'Makes a new rig from the model. It shows up as a new version; the current rig and its moves are kept.', body) : body;
   }
   // not a humanoid: it moves from a video instead (viewer/studio/twocam.js fills this in)
-  if (stepId === 'animated' && asset.fits_moves === false) return '<div class="twocam" data-twocam><p class="hint">Loading…</p></div>';
+  if (stepId === 'animated' && (asset.fits_moves === false || asset.kind === 'creature')) return '<div class="twocam" data-twocam><p class="hint">Loading…</p></div>';
   if (stepId === 'animated') return movePicker(asset, ctx, asset.clips.length ? 'Add this move' : 'Animate');
   return '';
 }
@@ -180,10 +201,15 @@ export function wireStep(card, stepId, asset, ctx) {
         : startFinish(asset, ctx, { ...settings.detail, skip_photo: !settings.photo, skip_edge_fade: !settings.edgeFade, skip_nudge: !settings.nudge, texture_size: settings.texture })),
       rigged: () => startRig(asset, settings.rigSource),
       animated: () => startAnimate(asset, settings.preset, settings.speed, settings.spread) }[stepId];
-    const note = button.dataset.humanoid === 'no'
+    const note = button.dataset.humanoid === 'no' && asset.kind !== 'creature'
       ? 'Rigging anyway. Preset moves only fit humanoids, so this one is animated from a video in the next step. The rig may be wonky.' : '';
     await runInCard(card, run, ctx, stepId, note);
   });
+}
+
+/** What Create would have been asked for to make this asset. */
+export function wantOf(asset) {
+  return { 'prop set': 'set', prop: 'prop', creature: 'creature' }[asset.kind] || 'character';
 }
 
 /** The step as a one-step chain from the asset's own files, or null when it cannot be one.
@@ -191,7 +217,7 @@ export function wireStep(card, stepId, asset, ctx) {
 export function chainPlan(stepId, asset, settings) {
   const made = Object.fromEntries(['picture', 'back', 'model', 'finished', 'rigged']
     .filter((k) => asset[k]).map((k) => [k, asset[k]]));
-  const base = { description: asset.name || 'Asset', want: asset.kind === 'prop set' ? 'set' : asset.kind === 'prop' ? 'prop' : 'character' };
+  const base = { description: asset.name || 'Asset', want: wantOf(asset) };
   if (stepId === 'model') {
     if (!asset.picture) return null;
     return { ...base, steps: ['model'], made: { picture: asset.picture, ...(asset.back ? { back: asset.back } : {}) },

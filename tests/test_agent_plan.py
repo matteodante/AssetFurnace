@@ -28,7 +28,7 @@ def _plan_js(body: str):
 
 CASES = [
     {"have": have, "want": want, "finishUpload": fu, "frontBack": fb}
-    for have, want, fu, fb in itertools.product(("idea", "picture", "model"), ("picture", "prop", "set", "character"),
+    for have, want, fu, fb in itertools.product(("idea", "picture", "model"), ("picture", "prop", "set", "character", "creature"),
                                                 (False, True), (False, True))
 ]
 
@@ -59,7 +59,7 @@ def test_stop_after_matches_the_studio():
 @needs_node
 def test_the_prompt_sent_matches_the_studio_with_and_without_the_added_wording():
     texts = ["a knight in rusty armour", "  a red barrel,. ", ""]
-    combos = [(t, goal, use) for t in texts for goal in ("character", "prop", "set", "picture", "nope") for use in (True, False)]
+    combos = [(t, goal, use) for t in texts for goal in ("character", "creature", "prop", "set", "picture", "nope") for use in (True, False)]
     studio = _plan_js(f"""const r = {json.dumps(RECIPES)};
       console.log(JSON.stringify({json.dumps(combos)}.map(([t, g, u]) => m.composePrompt(t, g, r, u))));""")
     assert [agent_plan.compose_prompt(t, g, RECIPES, u) for t, g, u in combos] == studio
@@ -69,3 +69,23 @@ def test_refusal_names_the_reason():
     assert agent_plan.refusal("idea", "character") is None
     assert agent_plan.refusal("picture", "picture") == "You already have the picture."
     assert "want must be" in agent_plan.refusal("idea", "dragon")
+
+
+def test_a_creature_stops_after_its_rig_since_it_moves_from_a_video_not_a_preset():
+    assert agent_plan.plan_for("idea", "creature") == ["picture", "model", "finished", "rigged"]
+    assert agent_plan.plan_for("idea", "creature", front_back=True) == ["picture", "back", "model", "finished", "rigged"]
+    assert agent_plan.plan_for("model", "creature") == ["rigged"]
+    assert agent_plan.refusal("picture", "creature") is None
+
+
+@needs_node
+def test_front_and_back_starts_off_for_a_creature_only_and_matches_the_studio():
+    """A back drawn on its own gave a dragon a second neck (4.25% off its mirror image, 1.13%
+    from the front alone); another dragon 1.72% against 0.96% (2026-10-29)."""
+    cases = [(w, r) for w in ("character", "creature", "prop", "set", "picture") for r in (True, False)]
+    studio = _plan_js(f"console.log(JSON.stringify({json.dumps(cases)}.map(([w, r]) => m.frontBackByDefault(w, r))));")
+    ours = [agent_plan.front_back_by_default(w, r) for w, r in cases]
+    assert ours == studio
+    assert agent_plan.front_back_by_default("creature", True) is False
+    assert agent_plan.front_back_by_default("character", True) is True
+    assert agent_plan.front_back_by_default("character", False) is False

@@ -7,13 +7,14 @@ export const WANTS = {
   prop: { label: 'One prop', hint: 'One object, game-ready, with detail levels.' },
   set: { label: 'Nine props', hint: 'A 3×3 sheet of props, cut into nine game-ready models.' },
   character: { label: 'A moving character', hint: 'Rigged and animated. Humanoids only for now.' },
+  creature: { label: 'A moving creature', hint: 'Four legs, wings or a tail. Rigged, then animated from a video.' },
 };
 
 // What each starting point can lead to; a string is the reason it can't.
 export const ALLOWED = {
-  idea: { picture: true, prop: true, set: true, character: true },
-  picture: { picture: 'You already have the picture.', prop: true, set: true, character: true },
-  model: { picture: 'Start from an idea to make a picture.', prop: true, set: 'Upload the 3×3 sheet as a picture instead.', character: true },
+  idea: { picture: true, prop: true, set: true, character: true, creature: true },
+  picture: { picture: 'You already have the picture.', prop: true, set: true, character: true, creature: true },
+  model: { picture: 'Start from an idea to make a picture.', prop: true, set: 'Upload the 3×3 sheet as a picture instead.', character: true, creature: true },
 };
 
 // Steps by id; `set` finishes by splitting the sheet into props.
@@ -30,6 +31,8 @@ export function planFor(have, want, { finishUpload = false, frontBack = false } 
     prop: ['picture', 'model', 'finished'],
     set: ['picture', 'model', 'split'],
     character: ['picture', 'model', 'finished', 'rigged', 'animated'],
+    // a creature moves from a video (two-camera capture), started from its Animate step
+    creature: ['picture', 'model', 'finished', 'rigged'],
   }[want] || [];
   const skip = have === 'picture' ? ['picture'] : have === 'model' ? ['picture', 'model'] : [];
   let steps = full.filter((s) => !skip.includes(s));
@@ -39,6 +42,12 @@ export function planFor(have, want, { finishUpload = false, frontBack = false } 
     steps.splice(steps.indexOf('model'), 0, 'back');
   }
   return steps;
+}
+
+/** Whether "front + back" starts on: when it is installed, except for a creature, whose back,
+ *  drawn on its own, can disagree with its front (a dragon got a second neck). agent_plan.py twin. */
+export function frontBackByDefault(want, ready) {
+  return Boolean(ready) && want !== 'creature';
 }
 
 /** Cut a plan after a step the user clicked, or keep it whole. */

@@ -62,7 +62,7 @@ def test_a_four_legged_skeleton_is_rigged_but_not_for_preset_moves(tmp_path):
     nodes = _skeleton(legs=4)
     out = rc.check(_glb(tmp_path / "q.glb", nodes, list(range(len(nodes))), [0]))
     assert out["humanoid"] is False
-    assert "humanoids only" in out["message"] and "Blender" in out["message"]
+    assert "humanoids only" in out["message"] and "Animate from video" in out["message"]   # creatures move from a video
 
 
 def test_world_positions_follow_the_parents_and_an_armature_above_them(tmp_path):

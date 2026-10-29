@@ -66,6 +66,16 @@ own licence (`prepare` copies it next to `rigged.blend`).
 
 ## In the studio
 
+**Make a creature** in Create draws it the way capture needs it: one creature, standing still
+on all its legs, straight, at three-quarters. The pose words are added for you; say what it
+has ("four legs, two bat wings and a long tail") and how it holds its wings, the same on both
+sides. Asked "a dragon on four legs" without them, the picture model drew a wyvern rearing with
+one wing up, and its 3D model was 3.1% off its own mirror image; with them, three dragons came
+out 0.7% to 1.0% off (a knight in an A-pose: 0.7%). The studio measures every creature's 3D
+model as it is built (`image_to_3dlab/twocam/symmetry.py`, written beside it as
+`<model>.symmetry.json`); over 2.5% the run stops there and offers another picture. The
+creature is then finished and rigged, and its Animate step is the one below.
+
 A rigged model that is not a humanoid gets **Animate from video** in its Animate step, in
 place of the preset moves. Four stages, each one run of `scripts/twocam_mocap.py`:
 

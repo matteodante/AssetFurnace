@@ -12,19 +12,22 @@ import re
 from typing import Any
 
 HAVES = ("idea", "picture", "model")
-WANTS = ("picture", "prop", "set", "character")
+WANTS = ("picture", "prop", "set", "character", "creature")
 # What each starting point can lead to; a string is the reason it can't.
 ALLOWED: dict[str, dict[str, bool | str]] = {
-    "idea": {"picture": True, "prop": True, "set": True, "character": True},
-    "picture": {"picture": "You already have the picture.", "prop": True, "set": True, "character": True},
+    "idea": {"picture": True, "prop": True, "set": True, "character": True, "creature": True},
+    "picture": {"picture": "You already have the picture.", "prop": True, "set": True, "character": True,
+                "creature": True},
     "model": {"picture": "Start from an idea to make a picture.", "prop": True,
-              "set": "Upload the 3×3 sheet as a picture instead.", "character": True},
+              "set": "Upload the 3×3 sheet as a picture instead.", "character": True, "creature": True},
 }
 FULL = {
     "picture": ["picture"],
     "prop": ["picture", "model", "finished"],
     "set": ["picture", "model", "split"],
     "character": ["picture", "model", "finished", "rigged", "animated"],
+    # a creature moves from a video (two-camera capture), started from its Animate step
+    "creature": ["picture", "model", "finished", "rigged"],
 }
 
 
@@ -37,6 +40,14 @@ def plan_for(have: str, want: str, *, finish_upload: bool = False, front_back: b
     if front_back and want != "set" and "model" in steps:
         steps.insert(steps.index("model"), "back")
     return steps
+
+
+def front_back_by_default(want: str, ready: bool) -> bool:
+    """Whether "front + back" starts on (plan.js `frontBackByDefault`): when it is installed, except
+    for a creature, whose back, drawn on its own, can disagree with its front. A dragon built from
+    both came out with a second neck, 4.25% off its mirror image against 1.13% from the front
+    alone; another 1.72% against 0.96% (2026-10-29)."""
+    return bool(ready) and want != "creature"
 
 
 def stop_after(steps: list[str], last: str | None) -> list[str]:

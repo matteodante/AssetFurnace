@@ -266,6 +266,47 @@ def test_a_model_nobody_asked_to_be_a_prop_stays_a_model(output):
     assert _by_name(aa.list_assets(output))["a wooden barrel"]["kind"] == "model"
 
 
+def _single_creature(output, stem="a-green-dragon__20261029-150000", prompt="A green dragon"):
+    _write(output / "images" / stem / f"{stem}.png", b"dragon-png", 6000)
+    _write(output / "images" / stem / f"{stem}.provenance.json", json.dumps({"prompt": prompt}), 6000)
+    gen = f"{stem}__pixal3d__20261029-150500"
+    model = _write(output / "commercial_conditional" / gen / f"{gen}.glb", b"DRAGON", 6100)
+    return stem, model
+
+
+def test_a_creature_the_chain_asked_for_is_filed_as_a_creature(output):
+    from viewer import activity_api
+    stem, _ = _single_creature(output)
+    activity_api.append_history(output, {"chain": "c2", "step": "picture", "result": "done", "want": "creature",
+                                         "made": f"images/{stem}/{stem}.png"})
+    dragon = _by_name(aa.list_assets(output))["a green dragon"]
+    assert dragon["kind"] == "creature" and dragon["stage"] == "model"
+
+
+def test_a_rigged_creature_stays_a_creature(output):
+    from viewer import activity_api
+    activity_api.append_history(output, {"chain": "c3", "step": "rigged", "result": "done", "want": "creature",
+                                         "made": f"animate/{RIG}/a-chunky-knight_40k_rigged.glb"})
+    knight = _by_name(aa.list_assets(output))["a chunky knight"]
+    assert knight["kind"] == "creature" and knight["stage"] == "animated"
+
+
+def test_an_older_creature_is_known_by_the_creature_wording_in_its_prompt(output):
+    wording = json.loads((Path(aa.__file__).resolve().parents[1] / "image_to_3dlab" / "prompt_recipes.json")
+                         .read_text(encoding="utf-8"))["goals"]["creature"]["wording"]
+    _single_creature(output, prompt=f"A green dragon, {wording}")
+    assert _by_name(aa.list_assets(output))["a green dragon"]["kind"] == "creature"
+
+
+def test_a_creature_carries_how_lopsided_its_model_came_out(output):
+    _, model = _single_creature(output)
+    report = {"mirror_gap_pct": 3.1, "limit_pct": 2.5, "lopsided": True}
+    _write(model.with_suffix(".symmetry.json"), json.dumps(report), 6100)
+    assets = _by_name(aa.list_assets(output))
+    assert assets["a green dragon"]["shape"] == report
+    assert assets["a chunky knight"]["shape"] is None
+
+
 def test_an_asset_carries_its_back_picture_when_there_is_one(output):
     stem = _single_prop(output)
     _write(output / "images" / stem / f"{stem}__back.png", b"back-png", 6050)
