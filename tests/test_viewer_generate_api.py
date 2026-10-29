@@ -1038,7 +1038,7 @@ def test_reconcile_annotates_and_clears_a_dead_orphan(tmp_path, monkeypatch):
     job_dir.mkdir()
     (job_dir / "pid").write_text("4242")
     (job_dir / "run.log").write_text("views decoded (100s)\n")
-    monkeypatch.setattr(api.os, "killpg", lambda pid, sig: (_ for _ in ()).throw(ProcessLookupError()))
+    monkeypatch.setattr(api, "_process_group_alive", lambda pid: False)   # the job is gone
 
     touched = api._reconcile_orphaned_jobs(tmp_path)
 
@@ -1068,7 +1068,7 @@ def test_reconcile_survives_a_missing_run_log(tmp_path, monkeypatch):
     job_dir = tmp_path / "no-log-job"
     job_dir.mkdir()
     (job_dir / "pid").write_text("4242")
-    monkeypatch.setattr(api.os, "killpg", lambda pid, sig: (_ for _ in ()).throw(ProcessLookupError()))
+    monkeypatch.setattr(api, "_process_group_alive", lambda pid: False)   # the job is gone
 
     touched = api._reconcile_orphaned_jobs(tmp_path)
 
